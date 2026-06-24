@@ -103,12 +103,15 @@ export default function App() {
   const [channelSort, setChannelSort] = useState('score')
 
   // ── URL sync ──────────────────────────────────────────
+  // replaceState for reactive filter changes (tags, window, sort) — no new history entry
   const syncUrl = useCallback(() => {
     const path = buildPath(page, selectedChannelId, selectedTags, window, sort)
-    history.replaceState(null, '', path)
+    if (location.pathname + location.search !== path) {
+      history.replaceState(null, '', path)
+    }
   }, [page, selectedChannelId, selectedTags, window, sort])
 
-  // Sync URL on any state change
+  // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
 
   // Listen for browser back/forward
@@ -207,10 +210,13 @@ export default function App() {
   }, [page, fetchFeed])
 
   // ── Actions ───────────────────────────────────────────
+  // pushState for explicit navigations (page/channel changes create a history entry)
   const setPage = useCallback((p: 'feed' | 'channels' | 'channel') => {
+    const newChannelId = p !== 'channel' ? null : selectedChannelId
+    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, window, sort))
     setPageRaw(p)
     if (p !== 'channel') setSelectedChannelId(null)
-  }, [])
+  }, [selectedChannelId, selectedTags, window, sort])
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -244,16 +250,25 @@ export default function App() {
   }
 
   function selectChannel(channelId: string) {
+    history.pushState(null, '', buildPath('channel', channelId, selectedTags, window, sort))
     setSelectedChannelId(channelId)
     setPageRaw('channel')
   }
 
   function backToChannels() {
-    setSelectedChannelId(null)
-    setPageRaw('channels')
+    // Use history.back() to avoid pushing a duplicate /channels entry.
+    // Fall back to replaceState when there's no history to go back to.
+    if (history.length > 1) {
+      history.back()
+    } else {
+      history.replaceState(null, '', '/channels')
+      setSelectedChannelId(null)
+      setPageRaw('channels')
+    }
   }
 
   function goHome() {
+    history.pushState(null, '', '/')
     setSelectedTags([])
     setSelectedChannelId(null)
     setPageRaw('feed')
