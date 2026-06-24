@@ -111,7 +111,7 @@ export default function App() {
 
   // ── Channel page takeover state ──────────────────────
   const [channelControlsScrolledAway, setChannelControlsScrolledAway] = useState(false)
-  const [channelWindow, setChannelWindow] = useState('1w')
+  const [channelWindow, setChannelWindow] = useState('1m')
   const [channelSort, setChannelSort] = useState('likes')
   const [channelTimeMode, setChannelTimeMode] = useState('wide')
 
@@ -231,6 +231,11 @@ export default function App() {
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, window, sort, timeMode, channelsSort))
     setPageRaw(p)
     if (p !== 'channel') setSelectedChannelId(null)
+    if (p === 'channel') {
+      setChannelWindow('1m')
+      setChannelSort('likes')
+      setChannelTimeMode('wide')
+    }
   }, [selectedChannelId, selectedTags, window, sort, timeMode, channelsSort])
 
   function toggleTag(tag: string) {
@@ -268,6 +273,9 @@ export default function App() {
     history.pushState(null, '', buildPath('channel', channelId, selectedTags, window, sort, timeMode, channelsSort))
     setSelectedChannelId(channelId)
     setPageRaw('channel')
+    setChannelWindow('1m')
+    setChannelSort('likes')
+    setChannelTimeMode('wide')
   }
 
   function backToChannels() {
