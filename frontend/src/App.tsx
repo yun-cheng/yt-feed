@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
-import TimeSortControls from './components/TimeSortControls'
 import VideoRow from './components/VideoRow'
 import ChannelsPage from './components/ChannelsPage'
 import ChannelPage from './components/ChannelPage'
@@ -288,20 +287,13 @@ export default function App() {
           tags={tags}
           onToggleTag={toggleTag}
           onClearFilter={clearFilter}
-          hideControls={page === 'channel' && !channelControlsScrolledAway}
+          hideControls={page === 'channel'}
+          showTakeover={page === 'channel' && channelControlsScrolledAway}
+          takeoverWindow={channelWindow}
+          takeoverSort={channelSort}
+          onTakeoverWindowChange={setChannelWindow}
+          onTakeoverSortChange={setChannelSort}
         />
-
-        {/* Takeover controls — shown in TopBar when channel page controls scroll away */}
-        {page === 'channel' && channelControlsScrolledAway && (
-          <div className="px-6 py-3 border-b border-[#272727]">
-            <TimeSortControls
-              window={channelWindow}
-              onWindowChange={setChannelWindow}
-              sort={channelSort}
-              onSortChange={setChannelSort}
-            />
-          </div>
-        )}
 
         {page === 'channel' && selectedChannelId ? (
           <ChannelPage

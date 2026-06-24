@@ -10,14 +10,20 @@ type Props = {
   tags: TagInfo[]
   onToggleTag: (tag: string) => void
   onClearFilter: () => void
-  /** When true, time/sort controls are not rendered here (shown in page content instead) */
+  /** When true, normal time/sort controls are not rendered (shown in page content instead) */
   hideControls?: boolean
+  /** Takeover mode: show channel's time/sort in the sticky header */
+  showTakeover?: boolean
+  takeoverWindow?: string
+  takeoverSort?: string
+  onTakeoverWindowChange?: (w: string) => void
+  onTakeoverSortChange?: (s: string) => void
 }
 
-export default function TopBar({ window, onWindowChange, sort, onSortChange, selectedTags, tags, onToggleTag, onClearFilter, hideControls }: Props) {
+export default function TopBar({ window, onWindowChange, sort, onSortChange, selectedTags, tags, onToggleTag, onClearFilter, hideControls, showTakeover, takeoverWindow, takeoverSort, onTakeoverWindowChange, onTakeoverSortChange }: Props) {
   return (
     <header className="sticky top-0 z-20 bg-[#0f0f0f]">
-      {/* Row 1: time + sort (or empty spacer) */}
+      {/* Row 1: normal time + sort (shown on feed/channels, hidden on channel page) */}
       {!hideControls && (
         <div className="px-6 py-3 border-b border-[#272727]">
           <TimeSortControls
@@ -25,6 +31,18 @@ export default function TopBar({ window, onWindowChange, sort, onSortChange, sel
             onWindowChange={onWindowChange}
             sort={sort}
             onSortChange={onSortChange}
+          />
+        </div>
+      )}
+
+      {/* Takeover row: channel page time + sort (sticky inside TopBar) */}
+      {showTakeover && takeoverWindow !== undefined && takeoverSort !== undefined && onTakeoverWindowChange && onTakeoverSortChange && (
+        <div className="px-6 py-3 border-b border-[#272727]">
+          <TimeSortControls
+            window={takeoverWindow}
+            onWindowChange={onTakeoverWindowChange}
+            sort={takeoverSort}
+            onSortChange={onTakeoverSortChange}
           />
         </div>
       )}
