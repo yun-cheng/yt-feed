@@ -2,12 +2,15 @@ import TimeSortControls from './TimeSortControls'
 import type { TagInfo } from '../App'
 
 type Props = {
+  variant?: 'feed' | 'channels' | 'channel'
   window: string
   onWindowChange: (w: string) => void
   sort: string
   onSortChange: (s: string) => void
   timeMode: string
   onTimeModeChange: (m: string) => void
+  channelsSort?: string
+  onChannelsSortChange?: (s: string) => void
   selectedTags: string[]
   tags: TagInfo[]
   onToggleTag: (tag: string) => void
@@ -24,20 +27,29 @@ type Props = {
   onTakeoverTimeModeChange?: (m: string) => void
 }
 
-export default function TopBar({ window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, selectedTags, tags, onToggleTag, onClearFilter, hideControls, showTakeover, takeoverWindow, takeoverSort, takeoverTimeMode, onTakeoverWindowChange, onTakeoverSortChange, onTakeoverTimeModeChange }: Props) {
+export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, selectedTags, tags, onToggleTag, onClearFilter, hideControls, showTakeover, takeoverWindow, takeoverSort, takeoverTimeMode, onTakeoverWindowChange, onTakeoverSortChange, onTakeoverTimeModeChange }: Props) {
   return (
     <header className="sticky top-0 z-20 bg-[#0f0f0f]">
       {/* Row 1: normal time + sort (shown on feed/channels, hidden on channel page) */}
       {!hideControls && (
         <div className="px-6 py-3 border-b border-[#272727]">
-          <TimeSortControls
-            window={window}
-            onWindowChange={onWindowChange}
-            sort={sort}
-            onSortChange={onSortChange}
-            timeMode={timeMode}
-            onTimeModeChange={onTimeModeChange}
-          />
+          {variant === 'channels' ? (
+            <TimeSortControls
+              variant="channels"
+              sort={channelsSort ?? 'subs'}
+              onSortChange={onChannelsSortChange ?? (() => {})}
+            />
+          ) : (
+            <TimeSortControls
+              variant={variant}
+              window={window}
+              onWindowChange={onWindowChange}
+              sort={sort}
+              onSortChange={onSortChange}
+              timeMode={timeMode}
+              onTimeModeChange={onTimeModeChange}
+            />
+          )}
         </div>
       )}
 
@@ -45,6 +57,7 @@ export default function TopBar({ window, onWindowChange, sort, onSortChange, tim
       {showTakeover && takeoverWindow !== undefined && takeoverSort !== undefined && onTakeoverWindowChange && onTakeoverSortChange && (
         <div className="px-6 py-3 border-b border-[#272727]">
           <TimeSortControls
+            variant="channel"
             window={takeoverWindow}
             onWindowChange={onTakeoverWindowChange}
             sort={takeoverSort}

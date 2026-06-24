@@ -22,20 +22,48 @@ export const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
 ] as const
 
+export const CHANNEL_SORT_OPTIONS = [
+  { value: 'subs', label: 'Subs' },
+  { value: 'alpha', label: 'A-Z' },
+] as const
+
 // ── Props ──────────────────────────────────────────────────
 
 type Props = {
-  window: string
-  onWindowChange: (w: string) => void
+  variant?: 'feed' | 'channels' | 'channel'
+  window?: string
+  onWindowChange?: (w: string) => void
   sort: string
   onSortChange: (s: string) => void
-  timeMode: string
-  onTimeModeChange: (m: string) => void
+  timeMode?: string
+  onTimeModeChange?: (m: string) => void
 }
 
 // ── Inline time + sort (no TopBar wrapper) ─────────────────
 
-export default function TimeSortControls({ window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange }: Props) {
+export default function TimeSortControls({ variant = 'feed', window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange }: Props) {
+  if (variant === 'channels') {
+    return (
+      <div className="flex justify-end">
+        <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5">
+          {CHANNEL_SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onSortChange(opt.value)}
+              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                sort === opt.value
+                  ? 'bg-[#272727] text-white font-medium'
+                  : 'text-[#888] hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-2">
       {/* Time window buttons */}
@@ -44,7 +72,7 @@ export default function TimeSortControls({ window, onWindowChange, sort, onSortC
           {WINDOWS.map((w) => (
             <button
               key={w.value}
-              onClick={() => onWindowChange(w.value)}
+              onClick={() => onWindowChange?.(w.value)}
               className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
                 window === w.value
                   ? 'bg-white text-black font-medium'
@@ -59,7 +87,7 @@ export default function TimeSortControls({ window, onWindowChange, sort, onSortC
         {/* Narrow / Wide mode toggle */}
         <div className="flex items-center bg-[#1a1a1a] rounded-full p-0.5 text-xs">
           <button
-            onClick={() => onTimeModeChange('narrow')}
+            onClick={() => onTimeModeChange?.('narrow')}
             className={`px-2.5 py-1 rounded-full transition-colors ${
               timeMode === 'narrow'
                 ? 'bg-[#272727] text-white font-medium'
@@ -69,7 +97,7 @@ export default function TimeSortControls({ window, onWindowChange, sort, onSortC
             Narrow
           </button>
           <button
-            onClick={() => onTimeModeChange('wide')}
+            onClick={() => onTimeModeChange?.('wide')}
             className={`px-2.5 py-1 rounded-full transition-colors ${
               timeMode === 'wide'
                 ? 'bg-[#272727] text-white font-medium'

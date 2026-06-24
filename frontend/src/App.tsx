@@ -48,13 +48,15 @@ function parsePath(): { page: 'feed' | 'channels' | 'channel'; channelId: string
   return { page: 'feed', channelId: null }
 }
 
-function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string } {
+function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string; channelsSort: string } {
   const p = new URLSearchParams(window.location.search)
+  const rawSort = p.get('sort')
   return {
     tags: p.get('tags') ? p.get('tags')!.split(',').filter(Boolean) : [],
     window: p.get('window') || '1d',
-    sort: p.get('sort') || 'score',
+    sort: rawSort || 'score',
     timeMode: p.get('time_mode') || 'narrow',
+    channelsSort: rawSort || 'subs',
   }
 }
 
@@ -65,11 +67,16 @@ function buildPath(
   window: string,
   sort: string,
   timeMode: string,
+  channelsSort: string,
 ): string {
   const params = new URLSearchParams()
   if (tags.length > 0) params.set('tags', tags.join(','))
   if (window !== '1d') params.set('window', window)
-  if (sort !== 'score') params.set('sort', sort)
+  if (page === 'channels') {
+    if (channelsSort !== 'subs') params.set('sort', channelsSort)
+  } else {
+    if (sort !== 'score') params.set('sort', sort)
+  }
   if (timeMode !== 'narrow') params.set('time_mode', timeMode)
   const qs = params.toString()
 
@@ -99,6 +106,7 @@ export default function App() {
   const [window, setWindow] = useState(initQ.window)
   const [sort, setSort] = useState(initQ.sort)
   const [timeMode, setTimeMode] = useState(initQ.timeMode)
+  const [channelsSort, setChannelsSort] = useState(initQ.channelsSort)
   const [refreshing, setRefreshing] = useState(false)
 
   // ── Channel page takeover state ──────────────────────
@@ -110,11 +118,11 @@ export default function App() {
   // ── URL sync ──────────────────────────────────────────
   // replaceState for reactive filter changes (tags, window, sort) — no new history entry
   const syncUrl = useCallback(() => {
-    const path = buildPath(page, selectedChannelId, selectedTags, window, sort, timeMode)
+    const path = buildPath(page, selectedChannelId, selectedTags, window, sort, timeMode, channelsSort)
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
     }
-  }, [page, selectedChannelId, selectedTags, window, sort, timeMode])
+  }, [page, selectedChannelId, selectedTags, window, sort, timeMode, channelsSort])
 
   // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
@@ -130,6 +138,7 @@ export default function App() {
       setWindow(q.window)
       setSort(q.sort)
       setTimeMode(q.timeMode)
+      setChannelsSort(q.channelsSort)
     }
     addEventListener('popstate', onPop)
     return () => removeEventListener('popstate', onPop)
@@ -219,10 +228,10 @@ export default function App() {
   // pushState for explicit navigations (page/channel changes create a history entry)
   const setPage = useCallback((p: 'feed' | 'channels' | 'channel') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
-    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, window, sort, timeMode))
+    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, window, sort, timeMode, channelsSort))
     setPageRaw(p)
     if (p !== 'channel') setSelectedChannelId(null)
-  }, [selectedChannelId, selectedTags, window, sort, timeMode])
+  }, [selectedChannelId, selectedTags, window, sort, timeMode, channelsSort])
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -256,7 +265,7 @@ export default function App() {
   }
 
   function selectChannel(channelId: string) {
-    history.pushState(null, '', buildPath('channel', channelId, selectedTags, window, sort, timeMode))
+    history.pushState(null, '', buildPath('channel', channelId, selectedTags, window, sort, timeMode, channelsSort))
     setSelectedChannelId(channelId)
     setPageRaw('channel')
   }
@@ -301,12 +310,15 @@ export default function App() {
 
       <main className="flex-1 overflow-y-auto">
         <TopBar
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : 'feed'}
           window={window}
           onWindowChange={setWindow}
           sort={sort}
           onSortChange={setSort}
           timeMode={timeMode}
           onTimeModeChange={setTimeMode}
+          channelsSort={channelsSort}
+          onChannelsSortChange={setChannelsSort}
           selectedTags={selectedTags}
           tags={tags}
           onToggleTag={toggleTag}
@@ -356,7 +368,7 @@ export default function App() {
             )}
           </div>
         ) : (
-          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} />
+          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={channelsSort} onSortChange={setChannelsSort} />
         )}
       </main>
     </div>

@@ -13,6 +13,8 @@ type ChannelInfo = {
 type Props = {
   selectedTags: string[]
   onSelectChannel: (channelId: string) => void
+  sort: string
+  onSortChange: (s: string) => void
 }
 
 function formatSubs(n: number): string {
@@ -21,10 +23,9 @@ function formatSubs(n: number): string {
   return String(n)
 }
 
-export default function ChannelsPage({ selectedTags, onSelectChannel }: Props) {
+export default function ChannelsPage({ selectedTags, onSelectChannel, sort }: Props) {
   const [channels, setChannels] = useState<ChannelInfo[]>([])
   const [loading, setLoading] = useState(true)
-  const [sort, setSort] = useState('subs')
 
   useEffect(() => {
     fetchChannels()
@@ -61,31 +62,7 @@ export default function ChannelsPage({ selectedTags, onSelectChannel }: Props) {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-[#777]">{channels.length} channels</p>
-        <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5">
-          <button
-            onClick={() => setSort('subs')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              sort === 'subs'
-                ? 'bg-[#272727] text-white font-medium'
-                : 'text-[#555] hover:text-white'
-            }`}
-          >
-            Subs
-          </button>
-          <button
-            onClick={() => setSort('alpha')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              sort === 'alpha'
-                ? 'bg-[#272727] text-white font-medium'
-                : 'text-[#555] hover:text-white'
-            }`}
-          >
-            A–Z
-          </button>
-        </div>
-      </div>
+      <p className="text-sm text-[#777] mb-4">{channels.length} channels</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {channels.map((ch) => (
