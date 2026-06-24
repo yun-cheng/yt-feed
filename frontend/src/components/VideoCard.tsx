@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import type { VideoItem } from '../App'
 
 type Props = {
   video: VideoItem
+  isHovered: boolean
+  onHover: (id: string | null) => void
+  onChannelClick: (channelId: string) => void
 }
 
 function formatViewCount(n: number): string {
@@ -33,23 +36,35 @@ function timeAgo(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
-export default function VideoCard({ video }: Props) {
-  const [hovering, setHovering] = useState(false)
+export default function VideoCard({ video, isHovered, onHover, onChannelClick }: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!isHovered && containerRef.current) {
+      const iframes = containerRef.current.querySelectorAll('iframe')
+      iframes.forEach(el => el.remove())
+    }
+  }, [isHovered])
 
   const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
 
   return (
     <div
+      ref={containerRef}
       className="relative cursor-pointer"
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
+      onMouseEnter={() => onHover(video.youtube_id)}
+      onMouseLeave={() => onHover(null)}
       onClick={() => window.open(videoUrl, '_blank')}
     >
       {/* Thumbnail area — swaps to video player on hover */}
       <div className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]">
-        {hovering ? (
-          <div className="absolute inset-0 overflow-hidden" style={{ marginBottom: '-80px' }}>
+        {isHovered ? (
+          <div
+            key={video.youtube_id + '-player'}
+            className="absolute inset-0 overflow-hidden"
+            style={{ marginBottom: '-80px' }}
+          >
             <iframe
               src={`https://www.youtube-nocookie.com/embed/${video.youtube_id}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${video.youtube_id}&iv_load_policy=3&fs=0&disablekb=1&playsinline=1&cc_load_policy=0&modestbranding=1`}
               className="absolute inset-0 w-full"
@@ -61,12 +76,14 @@ export default function VideoCard({ video }: Props) {
             <div className="absolute inset-0 z-10" />
           </div>
         ) : (
-          <img
-            src={thumb}
-            alt={video.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <div key={video.youtube_id + '-thumb'}>
+            <img
+              src={thumb}
+              alt={video.title}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </div>
         )}
         {video.duration_seconds > 0 && (
           <div className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium">
@@ -81,11 +98,17 @@ export default function VideoCard({ video }: Props) {
           <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">
             {video.title}
           </h3>
-          <p className="text-xs text-[#aaaaaa] mt-0.5">
+          <p
+            className="text-xs text-[#aaaaaa] mt-0.5 hover:text-blue-400 cursor-pointer transition-colors"
+            onClick={(e) => { e.stopPropagation(); onChannelClick(video.channel_id) }}
+          >
             {video.channel_name || 'Unknown'}
           </p>
           <p className="text-xs text-[#aaaaaa] mt-0.5">
-            {formatViewCount(video.view_count)} views · {timeAgo(video.published_at)}
+            {formatViewCount(video.view_count)} views · {formatViewCount(video.like_count)} likes
+            {video.view_count > 0 && (
+              <span> · <span className="text-[#888]">{((video.like_count / video.view_count) * 100).toFixed(1)}%</span></span>
+            )} · {timeAgo(video.published_at)}
           </p>
           <div className="text-xs text-[#717171] mt-0.5">
             Score: {video.score.toFixed(1)}

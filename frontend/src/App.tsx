@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
+import ChannelsPage from './components/ChannelsPage'
+import ChannelPage from './components/ChannelPage'
 
 export type VideoItem = {
   youtube_id: string
@@ -36,61 +38,174 @@ export type FeedResponse = {
   window: string
 }
 
+// ── URL helpers ─────────────────────────────────────────────
+
+function parsePath(): { page: 'feed' | 'channels' | 'channel'; channelId: string | null } {
+  const path = window.location.pathname
+  if (path === '/channels') return { page: 'channels', channelId: null }
+  const m = path.match(/^\/channel\/([^/]+)/)
+  if (m) return { page: 'channel', channelId: m[1] }
+  return { page: 'feed', channelId: null }
+}
+
+function parseSearch(): { tags: string[]; window: string; sort: string } {
+  const p = new URLSearchParams(window.location.search)
+  return {
+    tags: p.get('tags') ? p.get('tags')!.split(',').filter(Boolean) : [],
+    window: p.get('window') || '1d',
+    sort: p.get('sort') || 'score',
+  }
+}
+
+function buildPath(
+  page: string,
+  channelId: string | null,
+  tags: string[],
+  window: string,
+  sort: string,
+): string {
+  const params = new URLSearchParams()
+  if (tags.length > 0) params.set('tags', tags.join(','))
+  if (window !== '1d') params.set('window', window)
+  if (sort !== 'score') params.set('sort', sort)
+  const qs = params.toString()
+
+  if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
+  if (page === 'channel' && channelId) {
+    return qs ? `/channel/${channelId}?${qs}` : `/channel/${channelId}`
+  }
+  // feed
+  return qs ? `/?${qs}` : '/'
+}
+
+// ── App ─────────────────────────────────────────────────────
+
+const ACTIVE_INTERVAL = 5 * 60 * 1000  // 5 min when visible
+const INACTIVE_INTERVAL = 15 * 60 * 1000  // 15 min when hidden
+
 export default function App() {
+  // Init from URL
+  const initPath = parsePath()
+  const initQ = parseSearch()
+  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel'>(initPath.page)
   const [feed, setFeed] = useState<FeedResponse | null>(null)
   const [tags, setTags] = useState<TagInfo[]>([])
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(initPath.channelId)
   const [loading, setLoading] = useState(true)
-  const [window, setWindow] = useState('1w')
+  const [window, setWindow] = useState(initQ.window)
+  const [sort, setSort] = useState(initQ.sort)
+  const [refreshing, setRefreshing] = useState(false)
+
+  // ── URL sync ──────────────────────────────────────────
+  const syncUrl = useCallback(() => {
+    const path = buildPath(page, selectedChannelId, selectedTags, window, sort)
+    history.replaceState(null, '', path)
+  }, [page, selectedChannelId, selectedTags, window, sort])
+
+  // Sync URL on any state change
+  useEffect(() => { syncUrl() }, [syncUrl])
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const onPop = () => {
+      const p = parsePath()
+      const q = parseSearch()
+      setPageRaw(p.page)
+      setSelectedChannelId(p.channelId)
+      setSelectedTags(q.tags)
+      setWindow(q.window)
+      setSort(q.sort)
+    }
+    addEventListener('popstate', onPop)
+    return () => removeEventListener('popstate', onPop)
+  }, [])
+
+  // ── Auto-refresh via Page Visibility API ────────────────
+  const lastFetchRef = useRef(Date.now())
+  const visibilityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const refreshRef = useRef(refresh)
+  refreshRef.current = refresh
+
+  const startTimer = useCallback((interval: number) => {
+    if (visibilityTimerRef.current) clearInterval(visibilityTimerRef.current)
+    visibilityTimerRef.current = setInterval(() => {
+      lastFetchRef.current = Date.now()
+      refreshRef.current()
+    }, interval)
+  }, []) // stable: refresh is not in deps, it's called dynamically
 
   useEffect(() => {
-    fetchTags()
-    fetchFeed()
-  }, [window, selectedTags])
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // Reactivated: check if overdue
+        const elapsed = Date.now() - lastFetchRef.current
+        if (elapsed > ACTIVE_INTERVAL) {
+          lastFetchRef.current = Date.now()
+          refreshRef.current()
+        }
+        startTimer(ACTIVE_INTERVAL)
+      } else {
+        // Went inactive
+        startTimer(INACTIVE_INTERVAL)
+      }
+    }
 
-  async function fetchTags() {
+    // Initial setup
+    startTimer(document.visibilityState === 'visible' ? ACTIVE_INTERVAL : INACTIVE_INTERVAL)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      if (visibilityTimerRef.current) clearInterval(visibilityTimerRef.current)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [startTimer])
+
+  // ── Data fetching ─────────────────────────────────────
+  const fetchTags = useCallback(async () => {
     try {
       const res = await fetch('/api/tags')
       setTags(await res.json())
     } catch (e) {
       console.error('Failed to fetch tags:', e)
     }
-  }
+  }, [])
 
-  async function fetchFeed() {
+  useEffect(() => { fetchTags() }, [fetchTags])
+
+  const fetchFeed = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ window })
-      if (selectedTags.length > 0) {
-        params.set('tags', selectedTags.join(','))
-      }
-      // Use tag feed endpoint when tags are selected, else use old feed
-      const url = selectedTags.length > 0
-        ? `/api/tags/feed?${params}`
-        : `/api/feed?${params}`
+      const params = new URLSearchParams({ window, sort })
+      if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
+      const url = `/api/tags/feed?${params}`
       const res = await fetch(url)
       const data = await res.json()
-
-      if (selectedTags.length > 0) {
-        // Wrap tag feed results in a single group
-        setFeed({
-          categories: [],
-          groups: [{
-            name: selectedTags.map(t => tags.find(ti => ti.name === t)?.icon || t).join(' + '),
-            icon: '',
-            sort_order: 0,
-            videos: data.videos || [],
-          }],
-          window: data.window,
-        })
-      } else {
-        setFeed(data)
-      }
+      setFeed({
+        categories: [],
+        groups: [{
+          name: 'Feed',
+          icon: '',
+          sort_order: 0,
+          videos: data.videos || [],
+        }],
+        window: data.window,
+      })
     } catch (e) {
       console.error('Failed to fetch feed:', e)
     }
     setLoading(false)
-  }
+  }, [window, sort, selectedTags, tags])
+
+  useEffect(() => {
+    if (page === 'feed') fetchFeed()
+  }, [page, fetchFeed])
+
+  // ── Actions ───────────────────────────────────────────
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel') => {
+    setPageRaw(p)
+    if (p !== 'channel') setSelectedChannelId(null)
+  }, [])
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -98,9 +213,51 @@ export default function App() {
     )
   }
 
-  async function refreshFeed() {
-    await fetchFeed()
-    await fetchTags()
+  async function refresh() {
+    lastFetchRef.current = Date.now()
+    setRefreshing(true)
+    try {
+      // Trigger background scan
+      const res = await fetch('/api/refresh', { method: 'POST' })
+      const { status } = await res.json()
+      if (status === 'started' || status === 'already_running') {
+        // Poll until done
+        while (true) {
+          await new Promise(r => setTimeout(r, 2000))
+          const sres = await fetch('/api/refresh/status')
+          const { running } = await sres.json()
+          if (!running) break
+        }
+      }
+      // Re-fetch everything
+      await fetchTags()
+      if (page === 'feed') await fetchFeed()
+    } catch (e) {
+      console.error('Refresh failed:', e)
+    }
+    setRefreshing(false)
+  }
+
+  function selectChannel(channelId: string) {
+    setSelectedChannelId(channelId)
+    setPageRaw('channel')
+  }
+
+  function backToChannels() {
+    setSelectedChannelId(null)
+    setPageRaw('channels')
+  }
+
+  function goHome() {
+    setSelectedTags([])
+    setSelectedChannelId(null)
+    setPageRaw('feed')
+    setWindow('1w')
+    setSort('score')
+  }
+
+  function clearFilter() {
+    setSelectedTags([])
   }
 
   return (
@@ -109,36 +266,51 @@ export default function App() {
         tags={tags}
         selectedTags={selectedTags}
         onToggleTag={toggleTag}
+        page={page}
+        onPageChange={setPage}
+        onClearFilter={clearFilter}
+        onHome={refresh}
       />
 
       <main className="flex-1 overflow-y-auto">
         <TopBar
           window={window}
           onWindowChange={setWindow}
-          onRefresh={refreshFeed}
+          sort={sort}
+          onSortChange={setSort}
+          selectedTags={selectedTags}
+          tags={tags}
+          onToggleTag={toggleTag}
+          onClearFilter={clearFilter}
         />
 
-        <div className="px-6 py-4">
-          {!feed ? (
-            loading ? (
+        {page === 'channel' && selectedChannelId ? (
+          <ChannelPage channelId={selectedChannelId} onBack={backToChannels} />
+        ) : page === 'feed' ? (
+          <div className="px-6 py-4">
+            {!feed ? (
+              loading ? (
+                <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                  Loading feed...
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                  No data yet.
+                </div>
+              )
+            ) : feed.groups.length === 0 ? (
               <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                Loading feed...
+                No videos found.
               </div>
             ) : (
-              <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                No data yet.
-              </div>
-            )
-          ) : feed.groups.length === 0 ? (
-            <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-              No videos found.
-            </div>
-          ) : (
-            feed.groups.map((group) => (
-              <VideoRow key={group.name} group={group} />
-            ))
-          )}
-        </div>
+              feed.groups.map((group) => (
+                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} />
+              ))
+            )}
+          </div>
+        ) : (
+          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} />
+        )}
       </main>
     </div>
   )

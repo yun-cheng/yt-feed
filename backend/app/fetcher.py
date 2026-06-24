@@ -18,10 +18,11 @@ def _run_ytdlp(url: str, **extra_opts) -> list[dict[str, Any]]:
     """Run yt-dlp and return parsed JSON output."""
     opts = {
         "quiet": True,
-        "extract_flat": "in_playlist",  # fast mode — no per-video metadata
+        "skip_download": True,
         "dump_single_json": False,
         "ignoreerrors": True,
-        "skip_download": True,
+        "no_warnings": True,
+        "extractor_args": {"youtube": {"skip": ["dash", "hls"]}},
     }
     opts.update(extra_opts)
 
@@ -61,10 +62,14 @@ def fetch_subscriptions(channel_urls: list[str]) -> list[dict[str, Any]]:
     return channels
 
 
+YOUTUBE_THUMB = "https://i.ytimg.com/vi/{vid}/mqdefault.jpg"
+
+
 def fetch_latest_videos(
     channel_url: str,
     max_results: int = 50,
     since: datetime | None = None,
+    detailed: bool = True,
 ) -> list[dict[str, Any]]:
     """
     Fetch the latest N videos from a channel.
@@ -72,14 +77,21 @@ def fetch_latest_videos(
     When `since` is provided, only returns videos published after that time
     (used for incremental refresh).
 
+    When `detailed` is True (default), uses full extraction which returns
+    real view_count, timestamp, and thumbnail.
+
+    When `detailed` is False, uses flat mode for speed (no per-video stats).
+    Only use for bulk initial imports where speed matters.
+
     Returns list of dicts with keys:
         id, title, description, thumbnail, timestamp (unix),
         view_count, like_count, duration (seconds), webpage_url
     """
     opts: dict[str, Any] = {
-        "extract_flat": "in_playlist",
         "playlistend": max_results,
     }
+    if not detailed:
+        opts["extract_flat"] = "in_playlist"
     if since:
         opts["dateafter"] = since.strftime("%Y%m%d")
 
@@ -94,20 +106,29 @@ def fetch_latest_videos(
         if not entry or not entry.get("id"):
             continue
 
+        vid = entry["id"]
+
+        # Extract timestamp: prefer timestamp (unix epoch), fallback upload_date
         pub_ts = entry.get("timestamp")
         if not pub_ts:
-            # try upload_date string YYYYMMDD
             ud = entry.get("upload_date")
             if ud:
                 pub_ts = datetime.strptime(ud, "%Y%m%d").replace(tzinfo=timezone.utc).timestamp()
 
+        # Build reliable thumbnail URL
+        thumb = entry.get("thumbnail") or YOUTUBE_THUMB.format(vid=vid)
+
+        view_count = entry.get("view_count")
+        if view_count is None:
+            view_count = 0
+
         videos.append({
-            "youtube_id": entry["id"],
+            "youtube_id": vid,
             "title": entry.get("title", ""),
             "description": entry.get("description", ""),
-            "thumbnail_url": entry.get("thumbnail", ""),
+            "thumbnail_url": thumb,
             "published_at": pub_ts,
-            "view_count": entry.get("view_count", 0),
+            "view_count": view_count,
             "like_count": entry.get("like_count", 0),
             "duration_seconds": entry.get("duration", 0),
             "channel_id": entry.get("channel_id", entry.get("uploader_id", "")),

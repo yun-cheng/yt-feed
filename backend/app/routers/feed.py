@@ -22,6 +22,7 @@ async def get_db():
 @router.get("")
 async def get_feed(
     window: TimeWindow = Query(default=TimeWindow.ONE_WEEK, alias="window"),
+    sort: str = Query(default="score", description="score | views | newest | oldest"),
     group: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
@@ -29,6 +30,7 @@ async def get_feed(
     Return ranked videos, grouped by category.
 
     - window: time filter (1w, 2w, 1m, 3m, 6m, 1y)
+    - sort: sort mode (score, views, newest, oldest)
     - group: filter to a specific category (omit for all)
     """
     # 1. Load categories + channel-group mapping
@@ -67,7 +69,7 @@ async def get_feed(
         if not group_videos:
             continue
 
-        ranked = rank_videos(group_videos, window, chan_titles)
+        ranked = rank_videos(group_videos, window, chan_titles, sort=sort)
         response_groups.append({
             "name": name,
             "icon": cat.get("icon", ""),
@@ -79,7 +81,7 @@ async def get_feed(
     if not group:
         uncategorized = [v for v in all_videos if v.channel_id not in channel_groups]
         if uncategorized:
-            ranked_uncat = rank_videos(uncategorized, window, chan_titles)
+            ranked_uncat = rank_videos(uncategorized, window, chan_titles, sort=sort)
             if ranked_uncat:
                 response_groups.append({
                     "name": "其他",

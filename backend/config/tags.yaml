@@ -45,13 +45,26 @@ tags:
     group: 開發
     icon: 🤖
     keywords:
-    - ai
+    - artificial intelligence
     - machine learning
+    - deep learning
     - deepmind
     - anthropic
     - claude
-    - artificial intelligence
-    - deep learning
+    - openai
+    - gpt
+    - llm
+    - large language model
+    - generative ai
+    - gen ai
+    - ai safety
+    - ai assistant
+    - ai code editor
+    - ai nerd
+    - firebase
+    - google deepmind
+    - google for developers
+    - visual studio code
   backend:
     group: 開發
     icon: ⚙️
@@ -73,15 +86,17 @@ tags:
     icon: 🎨
     keywords:
     - frontend
-    - ui
-    - ux
+    - front-end
+    - front end
     - css
     - html
     - javascript
     - react
     - vue
     - angular
-    - web
+    - web dev
+    - web development
+    - web developer
     - 網頁
   google:
     group: 開發
@@ -286,12 +301,12 @@ tags:
     group: 知識
     icon: 🎨
     keywords:
-    - art
     - drawing
     - painting
     - illustration
     - procreate
     - proko
+    - sketch
     - 素描
     - 水彩
     - 油畫

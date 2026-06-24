@@ -7,10 +7,12 @@ const LOAD_MORE = 20
 
 type Props = {
   group: FeedGroup
+  onChannelClick: (channelId: string) => void
 }
 
-export default function VideoRow({ group }: Props) {
+export default function VideoRow({ group, onChannelClick }: Props) {
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
   const hasMore = visibleCount < group.videos.length
@@ -53,7 +55,13 @@ export default function VideoRow({ group }: Props) {
       {/* Video grid */}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-x-4 gap-y-6">
         {visibleVideos.map((video) => (
-          <VideoCard key={video.youtube_id} video={video} />
+          <VideoCard
+            key={video.youtube_id}
+            video={video}
+            isHovered={hoveredId === video.youtube_id}
+            onHover={(id) => setHoveredId(id)}
+            onChannelClick={onChannelClick}
+          />
         ))}
       </div>
 

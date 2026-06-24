@@ -18,6 +18,7 @@ class ImportChannel(BaseModel):
     title: str = ""
     description: str = ""
     thumbnail_url: str = ""
+    subscriber_count: int = 0
 
 
 async def get_db():
@@ -61,7 +62,11 @@ async def import_subscriptions(
                 title=ch.title,
                 description=ch.description,
                 thumbnail_url=ch.thumbnail_url,
+                subscriber_count=ch.subscriber_count,
             ))
+        # Always update subscriber count on re-import
+        if exists:
+            exists.subscriber_count = ch.subscriber_count
         saved += 1
 
     await db.commit()
@@ -97,23 +102,28 @@ async def sync_all_from_subscriptions(db: AsyncSession = Depends(get_db)):
 
     headers = {"Authorization": f"Bearer {creds.token}"}
     channels = []
-    async with httpx.AsyncClient() as client:
-        for cid in ids:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Batch 50 IDs per request
+        for i in range(0, len(ids), 50):
+            batch = ids[i:i + 50]
             resp = await client.get(
                 f"https://www.googleapis.com/youtube/v3/channels",
                 headers=headers,
-                params={"part": "snippet", "id": cid},
+                params={"part": "snippet,statistics", "id": ",".join(batch)},
             )
             if resp.status_code != 200:
+                print(f"  API error {resp.status_code} for batch {i // 50}")
                 continue
             data = resp.json()
             for item in data.get("items", []):
                 s = item.get("snippet", {})
+                stats = item.get("statistics", {})
                 channels.append(ImportChannel(
                     youtube_id=item["id"],
                     title=s.get("title", ""),
                     description=s.get("description", ""),
                     thumbnail_url=s.get("thumbnails", {}).get("default", {}).get("url", ""),
+                    subscriber_count=int(stats.get("subscriberCount", 0)),
                 ))
 
     return await import_subscriptions(channels, db)

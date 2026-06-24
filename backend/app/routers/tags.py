@@ -5,7 +5,7 @@ Tag router — channels can have multiple tags. Tags are used for filtering in t
 from __future__ import annotations
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,8 +39,12 @@ DEFAULT_TAGS = {
         "flutter community", "flutter explained",
     ]},
     "AI": {"group": "開發", "icon": "🤖", "keywords": [
-        "ai", "machine learning", "deepmind", "anthropic",
-        "claude", "artificial intelligence", "deep learning",
+        "artificial intelligence", "machine learning", "deep learning",
+        "deepmind", "anthropic", "claude", "openai", "gpt",
+        "llm", "large language model", "generative ai", "gen ai",
+        "ai safety", "ai assistant", "ai code editor", "ai nerd",
+        "firebase", "google deepmind", "google for developers",
+        "visual studio code",
     ]},
     "backend": {"group": "開發", "icon": "⚙️", "keywords": [
         "backend", "server", "api", "database", "firebase",
@@ -48,9 +52,12 @@ DEFAULT_TAGS = {
         "infrastructure", "devops", "linux",
     ]},
     "frontend": {"group": "開發", "icon": "🎨", "keywords": [
-        "frontend", "ui", "ux", "css", "html", "javascript",
-        "react", "vue", "angular", "web", "網頁",
-    ]},
+            "frontend", "front-end", "front end",
+            "css", "html", "javascript",
+            "react", "vue", "angular",
+            "web dev", "web development", "web developer",
+            "網頁",
+        ]},
     "google": {"group": "開發", "icon": "🔵", "keywords": [
         "google", "firebase", "google cloud", "google for developers",
         "google deepmind", "gdg", "line developers",
@@ -121,8 +128,9 @@ DEFAULT_TAGS = {
         "national geographic", "nature video",
     ]},
     "art": {"group": "知識", "icon": "🎨", "keywords": [
-        "art", "drawing", "painting", "illustration", "procreate",
-        "proko", "素描", "水彩", "油畫", "插畫",
+        "drawing", "painting", "illustration", "procreate",
+        "proko", "sketch",
+        "素描", "水彩", "油畫", "插畫",
         "有點艺思", "刘采翎", "創意",
     ]},
     "health": {"group": "知識", "icon": "🏥", "keywords": [
@@ -322,6 +330,7 @@ async def set_channel_tags(
 async def feed_by_tags(
     tags: str = "",
     window: str = "1w",
+    sort: str = Query(default="score", description="score | views | likes | like% | newest | oldest"),
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
 ):
@@ -355,9 +364,10 @@ async def feed_by_tags(
     chan_result = await db.execute(select(Channel.youtube_id, Channel.title))
     chan_titles = {r.youtube_id: r.title for r in chan_result}
 
-    ranked = rank_videos(list(all_videos), TimeWindow(window), chan_titles)
+    ranked = rank_videos(list(all_videos), TimeWindow(window), chan_titles, sort=sort)
     return {
         "window": window,
+        "sort": sort,
         "tags": tag_list,
         "videos": ranked[:limit],
         "total": len(ranked),
