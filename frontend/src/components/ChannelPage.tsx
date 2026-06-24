@@ -139,15 +139,12 @@ export default function ChannelPage({ channelId, onBack, timeWindow, onTimeWindo
 
       {/* Controls (page-level) */}
       <div className="mb-4">
-        <div className="flex items-center">
-          <TimeSortControls
-            window={timeWindow}
-            onWindowChange={onTimeWindowChange}
-            sort={sort}
-            onSortChange={onSortChange}
-          />
-          <span className="text-xs text-[#555] ml-4">{data.total} videos</span>
-        </div>
+        <TimeSortControls
+          window={timeWindow}
+          onWindowChange={onTimeWindowChange}
+          sort={sort}
+          onSortChange={onSortChange}
+        />
       </div>
 
       {/* Video grid */}
