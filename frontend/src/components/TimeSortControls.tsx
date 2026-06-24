@@ -3,14 +3,14 @@ import type { TagInfo } from '../App'
 // ── Constants ──────────────────────────────────────────────
 
 export const WINDOWS = [
-  { value: '1d', label: '1d', wideLabel: '≤1d' },
-  { value: '3d', label: '3d', wideLabel: '≤3d' },
-  { value: '1w', label: '1w', wideLabel: '≤1w' },
-  { value: '2w', label: '2w', wideLabel: '≤2w' },
-  { value: '1m', label: '1m', wideLabel: '≤1m' },
-  { value: '3m', label: '3m', wideLabel: '≤3m' },
-  { value: '6m', label: '6m', wideLabel: '≤6m' },
-  { value: '1y', label: '1y', wideLabel: '≤1y' },
+  { value: '1d', label: '1d' },
+  { value: '3d', label: '3d' },
+  { value: '1w', label: '1w' },
+  { value: '2w', label: '2w' },
+  { value: '1m', label: '1m' },
+  { value: '3m', label: '3m' },
+  { value: '6m', label: '6m' },
+  { value: '1y', label: '1y' },
 ] as const
 
 export const SORT_OPTIONS = [
@@ -69,19 +69,23 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
       {/* Time window buttons */}
       <div className="flex items-center gap-3">
         <div className="flex gap-1">
-          {WINDOWS.map((w) => (
-            <button
-              key={w.value}
-              onClick={() => onWindowChange?.(w.value)}
-              className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                window === w.value
-                  ? 'bg-white text-black font-medium'
-                  : 'bg-[#272727] text-white hover:bg-[#3a3a3a]'
-              }`}
-            >
-              {timeMode === 'wide' ? w.wideLabel : w.label}
-            </button>
-          ))}
+          {WINDOWS.map((w, i) => {
+            const selectedIdx = WINDOWS.findIndex((x) => x.value === window)
+            const isSelected = timeMode === 'wide' ? i <= selectedIdx : window === w.value
+            return (
+              <button
+                key={w.value}
+                onClick={() => onWindowChange?.(w.value)}
+                className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                  isSelected
+                    ? 'bg-white text-black font-medium'
+                    : 'bg-[#272727] text-white hover:bg-[#3a3a3a]'
+                }`}
+              >
+                {w.label}
+              </button>
+            )
+          })}
         </div>
 
         {/* Narrow / Wide mode toggle */}
