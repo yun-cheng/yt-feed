@@ -65,10 +65,10 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Time window buttons */}
+    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+      {/* Row 1 on mobile / left on desktop: time window buttons + narrow/wide toggle */}
       <div className="flex items-center gap-3">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {WINDOWS.map((w, i) => {
             const selectedIdx = WINDOWS.findIndex((x) => x.value === window)
             const isSelected = timeMode === 'wide' ? i <= selectedIdx : window === w.value
@@ -111,23 +111,23 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
             Wide
           </button>
         </div>
+      </div>
 
-        {/* Sort segmented toggle */}
-        <div className="ml-auto flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5">
-          {SORT_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => onSortChange(opt.value)}
-              className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
-                sort === opt.value
-                  ? 'bg-[#272727] text-white font-medium'
-                  : 'text-[#888] hover:text-white'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+      {/* Row 2 on mobile / right on desktop: sort buttons */}
+      <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 md:ml-auto">
+        {SORT_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onSortChange(opt.value)}
+            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+              sort === opt.value
+                ? 'bg-[#272727] text-white font-medium'
+                : 'text-[#888] hover:text-white'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
     </div>
   )
