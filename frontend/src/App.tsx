@@ -40,9 +40,10 @@ export type FeedResponse = {
 
 // ── URL helpers ─────────────────────────────────────────────
 
-function parsePath(): { page: 'feed' | 'channels' | 'channel'; channelId: string | null } {
+function parsePath(): { page: 'feed' | 'channels' | 'channel' | 'watchlater'; channelId: string | null } {
   const path = window.location.pathname
   if (path === '/channels') return { page: 'channels', channelId: null }
+  if (path === '/watchlater') return { page: 'watchlater', channelId: null }
   const m = path.match(/^\/channel\/([^/]+)/)
   if (m) return { page: 'channel', channelId: m[1] }
   return { page: 'feed', channelId: null }
@@ -81,11 +82,45 @@ function buildPath(
   const qs = params.toString()
 
   if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
+  if (page === 'watchlater') return '/watchlater'
   if (page === 'channel' && channelId) {
     return qs ? `/channel/${channelId}?${qs}` : `/channel/${channelId}`
   }
   // feed
   return qs ? `/?${qs}` : '/'
+}
+
+// ── Watch Later helpers ──────────────────────────────────────
+
+const WINDOW_HOURS: Record<string, number> = {
+  '1d': 24, '3d': 72, '1w': 168, '2w': 336,
+  '1m': 720, '3m': 2160, '6m': 4320, '1y': 8760,
+}
+
+function filterWatchLater(videos: VideoItem[], win: string, timeMode: string): VideoItem[] {
+  const hours = WINDOW_HOURS[win]
+  if (!hours) return videos
+  const cutoff = Date.now() - hours * 3_600_000
+  if (timeMode === 'wide') return videos.filter(v => new Date(v.published_at).getTime() >= cutoff)
+  return videos.filter(v => {
+    const t = new Date(v.published_at).getTime()
+    return t >= Date.now() - hours * 3_600_000 && t <= Date.now()
+  })
+}
+
+function sortWatchLater(videos: VideoItem[], sort: string): VideoItem[] {
+  const v = [...videos]
+  if (sort === 'views') return v.sort((a, b) => b.view_count - a.view_count)
+  if (sort === 'score') return v.sort((a, b) => b.score - a.score)
+  if (sort === 'likes') return v.sort((a, b) => b.like_count - a.like_count)
+  if (sort === 'like%') return v.sort((a, b) => {
+    const ra = a.view_count > 0 ? a.like_count / a.view_count : 0
+    const rb = b.view_count > 0 ? b.like_count / b.view_count : 0
+    return rb - ra
+  })
+  if (sort === 'oldest') return v.sort((a, b) => new Date(a.published_at).getTime() - new Date(b.published_at).getTime())
+  if (sort === 'newest') return v.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+  return v
 }
 
 // ── App ─────────────────────────────────────────────────────
@@ -97,7 +132,7 @@ export default function App() {
   // Init from URL
   const initPath = parsePath()
   const initQ = parseSearch()
-  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel'>(initPath.page)
+  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel' | 'watchlater'>(initPath.page)
   const [feed, setFeed] = useState<FeedResponse | null>(null)
   const [tags, setTags] = useState<TagInfo[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
@@ -109,12 +144,84 @@ export default function App() {
   const [channelsSort, setChannelsSort] = useState(initQ.channelsSort)
   const [refreshing, setRefreshing] = useState(false)
 
+  // ── Watch Later ───────────────────────────────────────
+  const [watchLater, setWatchLater] = useState<VideoItem[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('watch_later') || '[]')
+    } catch { return [] }
+  })
+  const watchLaterIds = new Set(watchLater.map(v => v.youtube_id))
+
+  function toggleWatchLater(video: VideoItem) {
+    setWatchLater(prev => {
+      const next = prev.some(v => v.youtube_id === video.youtube_id)
+        ? prev.filter(v => v.youtube_id !== video.youtube_id)
+        : [video, ...prev]
+      localStorage.setItem('watch_later', JSON.stringify(next))
+      return next
+    })
+  }
+
   // ── Sidebar state ─────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const mainRef = useRef<HTMLElement>(null)
+  const topbarRef = useRef<HTMLDivElement>(null)
 
-  // ── Channel page takeover state ──────────────────────
-  const [channelControlsScrolledAway, setChannelControlsScrolledAway] = useState(false)
+  // ── Mobile detection ──────────────────────────────────
+  const [isMobile, setIsMobile] = useState(() => matchMedia('(max-width: 767px)').matches)
+  useEffect(() => {
+    const mq = matchMedia('(max-width: 767px)')
+    const handler = (e: MediaQueryListEvent) => {
+      setIsMobile(e.matches)
+      if (!e.matches) setTopbarPinned(true)
+    }
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  // Measure topbar height so <main> can pad below it when fixed on mobile.
+  const topbarHeightRef = useRef(0)
+  const [topbarHeight, setTopbarHeight] = useState(0)
+  useEffect(() => {
+    const el = topbarRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      topbarHeightRef.current = el.offsetHeight
+      setTopbarHeight(el.offsetHeight)
+    })
+    ro.observe(el)
+    topbarHeightRef.current = el.offsetHeight
+    setTopbarHeight(el.offsetHeight)
+    return () => ro.disconnect()
+  }, [])
+
+  const [topbarPinned, setTopbarPinned] = useState(true)
+
+  // ── Topbar hide-on-scroll (mobile only) ───────────────
+  // Topbar is position:fixed on mobile so hiding/showing it never changes
+  // <main>'s dimensions — no scrollTop clamping, no layout-driven jitter.
+  useEffect(() => {
+    const el = mainRef.current
+    if (!el) return
+    let lastY = 0
+    const onScroll = () => {
+      if (!matchMedia('(max-width: 767px)').matches) return
+      const y = el.scrollTop
+      if (y <= 10) {
+        setTopbarPinned(true)
+      } else if (y > lastY + 4) {
+        setTopbarPinned(false)
+      } else if (y < lastY - 4) {
+        setTopbarPinned(true)
+      }
+      lastY = y
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // ── Channel page state ────────────────────────────────
   const [channelWindow, setChannelWindow] = useState('1m')
   const [channelSort, setChannelSort] = useState('likes')
   const [channelTimeMode, setChannelTimeMode] = useState('wide')
@@ -143,6 +250,8 @@ export default function App() {
       setSort(q.sort)
       setTimeMode(q.timeMode)
       setChannelsSort(q.channelsSort)
+      mainRef.current?.scrollTo({ top: 0 })
+      setTopbarPinned(true)
     }
     addEventListener('popstate', onPop)
     return () => removeEventListener('popstate', onPop)
@@ -189,10 +298,24 @@ export default function App() {
   }, [startTimer])
 
   // ── Data fetching ─────────────────────────────────────
+  const [tagChannels, setTagChannels] = useState<Map<string, Set<string>>>(new Map())
+
   const fetchTags = useCallback(async () => {
     try {
-      const res = await fetch('/api/tags')
-      setTags(await res.json())
+      const [tagsRes, channelsRes] = await Promise.all([
+        fetch('/api/tags'),
+        fetch('/api/tags/channels'),
+      ])
+      setTags(await tagsRes.json())
+      const channelMap: Record<string, string[]> = await channelsRes.json()
+      const reverse = new Map<string, Set<string>>()
+      for (const [channelId, tagNames] of Object.entries(channelMap)) {
+        for (const tag of tagNames) {
+          if (!reverse.has(tag)) reverse.set(tag, new Set())
+          reverse.get(tag)!.add(channelId)
+        }
+      }
+      setTagChannels(reverse)
     } catch (e) {
       console.error('Failed to fetch tags:', e)
     }
@@ -230,16 +353,19 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, window, sort, timeMode, channelsSort))
     setPageRaw(p)
+    mainRef.current?.scrollTo({ top: 0 })
+    setTopbarPinned(true)
     if (p !== 'channel') setSelectedChannelId(null)
     if (p === 'channel') {
       setChannelWindow('1m')
       setChannelSort('likes')
       setChannelTimeMode('wide')
     }
+    if (p !== 'feed') setMobileMenuOpen(false)
   }, [selectedChannelId, selectedTags, window, sort, timeMode, channelsSort])
 
   function toggleTag(tag: string) {
@@ -280,6 +406,7 @@ export default function App() {
     setChannelWindow('1m')
     setChannelSort('likes')
     setChannelTimeMode('wide')
+    mainRef.current?.scrollTo({ top: 0 })
   }
 
   function goHome() {
@@ -290,6 +417,8 @@ export default function App() {
     setWindow('1w')
     setSort('likes')
     setTimeMode('wide')
+    mainRef.current?.scrollTo({ top: 0 })
+    setTopbarPinned(true)
   }
 
   function clearFilter() {
@@ -297,57 +426,121 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Mobile backdrop — closes sidebar when clicking outside */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Sidebar — fixed overlay on mobile, static on desktop */}
-      <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40' : 'hidden'} md:relative md:flex md:z-auto`}>
-        <Sidebar
-          tags={tags}
-          selectedTags={selectedTags}
-          onToggleTag={toggleTag}
-          page={page}
-          onPageChange={setPage}
-          onClearFilter={clearFilter}
-          onHome={refresh}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
-        />
+    <div className="flex flex-col h-screen overflow-hidden">
+      {/* TopBar — fixed on mobile (slides up/down without affecting layout),
+           static in-flow on desktop (no hiding behaviour) */}
+      <div
+        ref={topbarRef}
+        className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:static md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
+      >
+      <TopBar
+        variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : 'feed'}
+        window={page === 'channel' ? channelWindow : window}
+        onWindowChange={page === 'channel' ? setChannelWindow : setWindow}
+        sort={page === 'channel' ? channelSort : sort}
+        onSortChange={page === 'channel' ? setChannelSort : setSort}
+        timeMode={page === 'channel' ? channelTimeMode : timeMode}
+        onTimeModeChange={page === 'channel' ? setChannelTimeMode : setTimeMode}
+        channelsSort={channelsSort}
+        onChannelsSortChange={setChannelsSort}
+        onToggleCollapse={() => {
+          if (matchMedia('(max-width: 767px)').matches) {
+            setMobileMenuOpen(prev => !prev)
+          } else {
+            setSidebarCollapsed(prev => !prev)
+          }
+        }}
+        onHome={goHome}
+        sidebarCollapsed={sidebarCollapsed}
+      />
       </div>
 
-      <main className="flex-1 overflow-y-auto min-w-0">
-        <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : 'feed'}
-          window={window}
-          onWindowChange={setWindow}
-          sort={sort}
-          onSortChange={setSort}
-          timeMode={timeMode}
-          onTimeModeChange={setTimeMode}
-          channelsSort={channelsSort}
-          onChannelsSortChange={setChannelsSort}
-          selectedTags={selectedTags}
-          tags={tags}
-          onToggleTag={toggleTag}
-          onClearFilter={clearFilter}
-          hideControls={page === 'channel'}
-          showTakeover={page === 'channel' && channelControlsScrolledAway}
-          takeoverWindow={channelWindow}
-          takeoverSort={channelSort}
-          takeoverTimeMode={channelTimeMode}
-          onTakeoverWindowChange={setChannelWindow}
-          onTakeoverSortChange={setChannelSort}
-          onTakeoverTimeModeChange={setChannelTimeMode}
-          onHamburger={() => setMobileMenuOpen(prev => !prev)}
-        />
+      {/* Body row: sidebar + content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Mobile backdrop */}
+        {mobileMenuOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
 
-        {page === 'channel' && selectedChannelId ? (
+        {/* Sidebar */}
+        <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40' : 'hidden'} md:flex md:relative md:z-auto`}>
+          <Sidebar
+            tags={tags}
+            selectedTags={selectedTags}
+            onToggleTag={toggleTag}
+            onSetTags={setSelectedTags}
+            page={page}
+            onPageChange={setPage}
+            onClearFilter={clearFilter}
+            collapsed={sidebarCollapsed}
+            watchLaterCount={watchLater.length}
+          />
+        </div>
+
+      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-14 md:mb-0 [overflow-anchor:none]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
+        {selectedTags.length > 0 && (
+          <div className="sticky top-0 z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2">
+            <span className="text-xs text-[#555] font-medium">Filters:</span>
+            <div className="flex flex-wrap gap-1.5">
+              {selectedTags.map((tag) => {
+                const info = tags.find(t => t.name === tag)
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTag(tag)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-white text-black font-medium hover:opacity-80 transition-opacity"
+                  >
+                    <span>{info?.icon || '🏷️'}</span>
+                    <span>{tag}</span>
+                    <span className="ml-0.5 text-black/40 font-bold">×</span>
+                  </button>
+                )
+              })}
+            </div>
+            <button
+              onClick={clearFilter}
+              className="ml-1 text-xs text-[#555] hover:text-white transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        {page === 'watchlater' ? (
+          <div className="px-6 py-4">
+            {watchLater.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
+                <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+                </svg>
+                <p className="text-sm">No videos saved yet.</p>
+                <p className="text-xs text-[#555]">Hover a video and click the bookmark icon to save it.</p>
+              </div>
+            ) : (() => {
+              let result = filterWatchLater(watchLater, window, timeMode)
+              if (selectedTags.length > 0) {
+                const allowed = new Set(selectedTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
+                result = result.filter(v => allowed.has(v.channel_id))
+              }
+              result = sortWatchLater(result, sort)
+              return result.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
+                  No saved videos match the current filters.
+                </div>
+              ) : (
+                <VideoRow
+                  group={{ name: 'Watch Later', icon: '', sort_order: 0, videos: result }}
+                  onChannelClick={selectChannel}
+                  sort={sort}
+                  watchLaterIds={watchLaterIds}
+                  onToggleWatchLater={toggleWatchLater}
+                />
+              )
+            })()}
+          </div>
+        ) : page === 'channel' && selectedChannelId ? (
           <ChannelPage
             channelId={selectedChannelId}
             timeWindow={channelWindow}
@@ -356,7 +549,8 @@ export default function App() {
             onSortChange={setChannelSort}
             timeMode={channelTimeMode}
             onTimeModeChange={setChannelTimeMode}
-            onControlsScrolledAway={setChannelControlsScrolledAway}
+            watchLaterIds={watchLaterIds}
+            onToggleWatchLater={toggleWatchLater}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">
@@ -376,7 +570,7 @@ export default function App() {
               </div>
             ) : (
               feed.groups.map((group) => (
-                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} />
+                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={toggleWatchLater} />
               ))
             )}
           </div>
@@ -384,6 +578,37 @@ export default function App() {
           <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={channelsSort} onSortChange={setChannelsSort} />
         )}
       </main>
+      </div>
+
+      {/* Mobile bottom nav */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#0f0f0f] border-t border-[#272727] flex">
+        <button
+          onClick={goHome}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'feed' ? 'text-white' : 'text-[#717171]'}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+          <span className="text-[10px]">My Feed</span>
+        </button>
+        <button
+          onClick={() => setPage('channels')}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'channels' ? 'text-white' : 'text-[#717171]'}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
+          <span className="text-[10px]">Channels</span>
+        </button>
+        <button
+          onClick={() => setPage('watchlater')}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${page === 'watchlater' ? 'text-white' : 'text-[#717171]'}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+          <span className="text-[10px]">Watch Later</span>
+          {!!watchLater.length && (
+            <span className="absolute top-1.5 right-[calc(50%-14px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+              {watchLater.length > 9 ? '9+' : watchLater.length}
+            </span>
+          )}
+        </button>
+      </nav>
     </div>
   )
 }
