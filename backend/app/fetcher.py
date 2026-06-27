@@ -118,6 +118,10 @@ def fetch_latest_videos(
         # Build reliable thumbnail URL
         thumb = entry.get("thumbnail") or YOUTUBE_THUMB.format(vid=vid)
 
+        # Skip member-only / subscriber-only videos
+        if entry.get("availability") in ("subscriber_only", "needs_auth", "premium_only"):
+            continue
+
         view_count = entry.get("view_count")
         if view_count is None:
             view_count = 0

@@ -64,6 +64,9 @@ def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "
 
     result = []
     for v in videos:
+        # Exclude member-only videos (0 views but has likes — gated content)
+        if v.view_count == 0 and v.like_count > 0:
+            continue
         pub = v.published_at
         if pub.tzinfo is None:
             pub = pub.replace(tzinfo=timezone.utc)
