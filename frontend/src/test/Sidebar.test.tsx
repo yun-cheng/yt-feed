@@ -79,3 +79,40 @@ describe('Sidebar — collapsed', () => {
     expect(onPageChange).toHaveBeenCalledWith('feed')
   })
 })
+
+describe('Sidebar — Watch Later', () => {
+  it('renders Watch Later nav button in expanded mode', () => {
+    render(<Sidebar {...defaultProps} />)
+    expect(screen.getByRole('button', { name: /Watch Later/i })).toBeInTheDocument()
+  })
+
+  it('calls onPageChange with watchlater when clicked', () => {
+    const onPageChange = vi.fn()
+    render(<Sidebar {...defaultProps} onPageChange={onPageChange} />)
+    fireEvent.click(screen.getByRole('button', { name: /Watch Later/i }))
+    expect(onPageChange).toHaveBeenCalledWith('watchlater')
+  })
+
+  it('shows watchLaterCount badge when count > 0', () => {
+    render(<Sidebar {...defaultProps} watchLaterCount={7} />)
+    // badge shows the count next to the Watch Later button
+    const btn = screen.getByRole('button', { name: /Watch Later/i })
+    expect(btn).toHaveTextContent('7')
+  })
+
+  it('shows 9+ badge in collapsed mode when count > 9', () => {
+    render(<Sidebar {...defaultProps} collapsed={true} watchLaterCount={12} />)
+    expect(screen.getByText('9+')).toBeInTheDocument()
+  })
+
+  it('highlights Watch Later button when page=watchlater', () => {
+    render(<Sidebar {...defaultProps} page="watchlater" />)
+    const btn = screen.getByRole('button', { name: /Watch Later/i })
+    expect(btn.className).toMatch(/bg-\[#272727\]/)
+  })
+
+  it('renders Watch Later button in collapsed mode as "Later"', () => {
+    render(<Sidebar {...defaultProps} collapsed={true} />)
+    expect(screen.getByText('Later')).toBeInTheDocument()
+  })
+})

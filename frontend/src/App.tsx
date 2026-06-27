@@ -61,7 +61,7 @@ function parseSearch(): { tags: string[]; window: string; sort: string; timeMode
   }
 }
 
-function buildPath(
+export function buildPath(
   page: string,
   channelId: string | null,
   tags: string[],
@@ -97,7 +97,7 @@ const WINDOW_HOURS: Record<string, number> = {
   '1m': 720, '3m': 2160, '6m': 4320, '1y': 8760,
 }
 
-function filterWatchLater(videos: VideoItem[], win: string, timeMode: string): VideoItem[] {
+export function filterWatchLater(videos: VideoItem[], win: string, timeMode: string): VideoItem[] {
   const hours = WINDOW_HOURS[win]
   if (!hours) return videos
   const now = Date.now()
@@ -109,7 +109,7 @@ function filterWatchLater(videos: VideoItem[], win: string, timeMode: string): V
   })
 }
 
-function sortWatchLater(videos: VideoItem[], sort: string): VideoItem[] {
+export function sortWatchLater(videos: VideoItem[], sort: string): VideoItem[] {
   const v = [...videos]
   if (sort === 'views') return v.sort((a, b) => b.view_count - a.view_count)
   if (sort === 'score') return v.sort((a, b) => b.score - a.score)

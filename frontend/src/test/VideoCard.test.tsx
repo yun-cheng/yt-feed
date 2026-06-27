@@ -98,3 +98,62 @@ describe('VideoCard', () => {
     expect(screen.queryByText(/^\d+:\d{2}$/)).not.toBeInTheDocument()
   })
 })
+
+describe('VideoCard — Watch Later bookmark', () => {
+  it('does not show bookmark button without onToggleWatchLater', () => {
+    render(<VideoCard video={mockVideo} isHovered={true} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    expect(screen.queryByTitle(/Watch Later/i)).not.toBeInTheDocument()
+  })
+
+  it('shows bookmark button when hovered and onToggleWatchLater provided', () => {
+    render(<VideoCard video={mockVideo} isHovered={true} onHover={vi.fn()} onChannelClick={vi.fn()} onToggleWatchLater={vi.fn()} />)
+    expect(screen.getByTitle('Save to Watch Later')).toBeInTheDocument()
+  })
+
+  it('does not show bookmark button when not hovered and not saved', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} onToggleWatchLater={vi.fn()} />)
+    expect(screen.queryByTitle(/Watch Later/i)).not.toBeInTheDocument()
+  })
+
+  it('shows filled bookmark when isWatchLater=true even when not hovered', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} isWatchLater={true} onToggleWatchLater={vi.fn()} />)
+    expect(screen.getByTitle('Remove from Watch Later')).toBeInTheDocument()
+  })
+
+  it('calls onToggleWatchLater with the video when bookmark is clicked', () => {
+    const onToggleWatchLater = vi.fn()
+    render(<VideoCard video={mockVideo} isHovered={true} onHover={vi.fn()} onChannelClick={vi.fn()} onToggleWatchLater={onToggleWatchLater} />)
+    fireEvent.click(screen.getByTitle('Save to Watch Later'))
+    expect(onToggleWatchLater).toHaveBeenCalledWith(mockVideo)
+  })
+
+  it('bookmark click does not open YouTube (stopPropagation)', () => {
+    const onOpen = vi.fn()
+    window.open = onOpen
+    render(<VideoCard video={mockVideo} isHovered={true} onHover={vi.fn()} onChannelClick={vi.fn()} onToggleWatchLater={vi.fn()} />)
+    fireEvent.click(screen.getByTitle('Save to Watch Later'))
+    expect(onOpen).not.toHaveBeenCalled()
+  })
+})
+
+describe('VideoCard — sort highlighting', () => {
+  it('highlights the active sort stat', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} sort="views" />)
+    expect(screen.getByText('1.5M views')).toHaveClass('text-white', 'font-medium')
+  })
+
+  it('does not highlight other stats when sort=views', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} sort="views" />)
+    expect(screen.getByText('75.0K likes')).not.toHaveClass('text-white')
+  })
+
+  it('highlights newest stat when sort=oldest', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} sort="oldest" />)
+    expect(screen.getByText('2h ago')).toHaveClass('text-white', 'font-medium')
+  })
+
+  it('does not highlight any stat when no sort prop', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    expect(screen.getByText('1.5M views')).not.toHaveClass('text-white')
+  })
+})
