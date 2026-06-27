@@ -14,8 +14,8 @@ export const WINDOWS = [
 ] as const
 
 export const SORT_OPTIONS = [
-  { value: 'score', label: 'Hot' },
   { value: 'views', label: 'Views' },
+  { value: 'score', label: 'Hot' },
   { value: 'likes', label: 'Likes' },
   { value: 'like%', label: 'Like%' },
   { value: 'newest', label: 'Newest' },
@@ -30,7 +30,7 @@ export const CHANNEL_SORT_OPTIONS = [
 // ── Props ──────────────────────────────────────────────────
 
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel'
+  variant?: 'feed' | 'channels' | 'channel' | 'watchlater'
   window?: string
   onWindowChange?: (w: string) => void
   sort: string
@@ -42,7 +42,8 @@ type Props = {
 // ── Inline time + sort (no TopBar wrapper) ─────────────────
 
 export default function TimeSortControls({ variant = 'feed', window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange }: Props) {
-  if (variant === 'channels') {
+  const effectiveVariant = variant === 'watchlater' ? 'feed' : variant
+  if (effectiveVariant === 'channels') {
     return (
       <div className="flex justify-end">
         <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5">
@@ -67,8 +68,8 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
   return (
     <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
       {/* Row 1 on mobile / left on desktop: time window buttons + narrow/wide toggle */}
-      <div className="flex items-center gap-3">
-        <div className="flex flex-wrap gap-1">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex gap-1 overflow-x-auto no-scrollbar flex-shrink-0">
           {WINDOWS.map((w, i) => {
             const selectedIdx = WINDOWS.findIndex((x) => x.value === window)
             const isSelected = timeMode === 'wide' ? i <= selectedIdx : window === w.value
@@ -114,7 +115,7 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
       </div>
 
       {/* Row 2 on mobile / right on desktop: sort buttons */}
-      <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 md:ml-auto">
+      <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 md:ml-auto overflow-x-auto no-scrollbar">
         {SORT_OPTIONS.map((opt) => (
           <button
             key={opt.value}
