@@ -5,6 +5,9 @@ type Props = {
   isHovered: boolean
   onHover: (id: string | null) => void
   onChannelClick: (channelId: string) => void
+  sort?: string
+  isWatchLater?: boolean
+  onToggleWatchLater?: (video: VideoItem) => void
 }
 
 function formatViewCount(n: number): string {
@@ -35,7 +38,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
-export default function VideoCard({ video, isHovered, onHover, onChannelClick }: Props) {
+export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater }: Props) {
   const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
 
@@ -74,6 +77,28 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick }:
           <div className="absolute inset-0 z-10" />
         </div>
 
+        {onToggleWatchLater && (isHovered || isWatchLater) && (
+          <button
+            className={`absolute top-1 right-1 z-20 p-2 rounded-full transition-colors ${
+              isWatchLater
+                ? 'bg-white/90 text-black hover:bg-white'
+                : 'bg-black/60 text-white hover:bg-black/80'
+            }`}
+            onClick={(e) => { e.stopPropagation(); onToggleWatchLater(video) }}
+            title={isWatchLater ? 'Remove from Watch Later' : 'Save to Watch Later'}
+          >
+            {isWatchLater ? (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+              </svg>
+            )}
+          </button>
+        )}
+
         {video.duration_seconds > 0 && (
           <div className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium">
             {formatDuration(video.duration_seconds)}
@@ -93,16 +118,29 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick }:
           >
             {video.channel_name || 'Unknown'}
           </p>
-          <p className="text-xs text-[#aaaaaa] mt-0.5">
-            {formatViewCount(video.view_count)} views · {formatViewCount(video.like_count)} likes
-            {video.view_count > 0 && (
-              <span> · <span className="text-[#888]">{((video.like_count / video.view_count) * 100).toFixed(1)}%</span></span>
-            )} · {timeAgo(video.published_at)}
+          <p className="text-xs text-[#717171] mt-0.5">
+            {(() => {
+              const likeRate = video.view_count > 0 ? (video.like_count / video.view_count) * 100 : null
+              const stats: { key: string; label: string }[] = [
+                { key: 'views', label: formatViewCount(video.view_count) + ' views' },
+                { key: 'score', label: video.score.toFixed(1) + ' v/h' },
+                { key: 'likes', label: formatViewCount(video.like_count) + ' likes' },
+                ...(likeRate !== null ? [{ key: 'like%', label: likeRate.toFixed(1) + '%' }] : []),
+                { key: 'newest', label: timeAgo(video.published_at) },
+              ]
+              return stats.map(({ key, label }, i) => {
+                const active = sort === key || (key === 'newest' && sort === 'oldest')
+                return (
+                  <span key={key}>
+                    {i > 0 && <span className="text-[#444]"> · </span>}
+                    <span className={active ? 'text-white font-medium' : ''}>
+                      {label}
+                    </span>
+                  </span>
+                )
+              })
+            })()}
           </p>
-          <div className="text-xs text-[#717171] mt-0.5">
-            Score: {video.score.toFixed(1)}
-            <span className="text-[#555]"> views/h</span>
-          </div>
         </div>
       </div>
     </div>

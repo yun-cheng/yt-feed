@@ -5,12 +5,17 @@ import type { FeedGroup } from '../App'
 const INITIAL_COUNT = 20
 const LOAD_MORE = 20
 
+import type { VideoItem } from '../App'
+
 type Props = {
   group: FeedGroup
   onChannelClick: (channelId: string) => void
+  sort?: string
+  watchLaterIds?: Set<string>
+  onToggleWatchLater?: (video: VideoItem) => void
 }
 
-export default function VideoRow({ group, onChannelClick }: Props) {
+export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater }: Props) {
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -53,7 +58,7 @@ export default function VideoRow({ group, onChannelClick }: Props) {
       </div>
 
       {/* Video grid */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-x-4 gap-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-x-4 gap-y-6">
         {visibleVideos.map((video) => (
           <VideoCard
             key={video.youtube_id}
@@ -61,6 +66,9 @@ export default function VideoRow({ group, onChannelClick }: Props) {
             isHovered={hoveredId === video.youtube_id}
             onHover={(id) => setHoveredId(id)}
             onChannelClick={onChannelClick}
+            sort={sort}
+            isWatchLater={watchLaterIds?.has(video.youtube_id)}
+            onToggleWatchLater={onToggleWatchLater}
           />
         ))}
       </div>

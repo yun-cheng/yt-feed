@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useInView } from 'react-intersection-observer'
 import TimeSortControls from './TimeSortControls'
 import type { VideoItem } from '../App'
 import VideoRow from './VideoRow'
@@ -29,7 +28,8 @@ type Props = {
   onSortChange: (s: string) => void
   timeMode: string
   onTimeModeChange: (m: string) => void
-  onControlsScrolledAway?: (scrolledAway: boolean) => void
+  watchLaterIds?: Set<string>
+  onToggleWatchLater?: (video: VideoItem) => void
 }
 
 function formatSubs(n: number): string {
@@ -38,16 +38,9 @@ function formatSubs(n: number): string {
   return String(n)
 }
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, onControlsScrolledAway }: Props) {
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater }: Props) {
   const [data, setData] = useState<ChannelResponse | null>(null)
   const [loading, setLoading] = useState(true)
-
-  // Sentinel: detect when page-level controls scroll out of view
-  const { ref: sentinelRef, inView } = useInView({ threshold: 0, initialInView: true })
-
-  useEffect(() => {
-    onControlsScrolledAway?.(!inView)
-  }, [inView, onControlsScrolledAway])
 
   useEffect(() => {
     fetchChannel()
@@ -124,20 +117,6 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
         </div>
       </div>
 
-      {/* Sentinel — when this scrolls off-screen, TopBar takes over */}
-      <div ref={sentinelRef} />
-
-      {/* Controls (page-level) */}
-      <div className="mb-4">
-        <TimeSortControls
-          window={timeWindow}
-          onWindowChange={onTimeWindowChange}
-          sort={sort}
-          onSortChange={onSortChange}
-          timeMode={timeMode}
-          onTimeModeChange={onTimeModeChange}
-        />
-      </div>
 
       {/* Video grid */}
       {data.videos.length === 0 ? (
@@ -145,7 +124,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
           No videos in this time range.
         </div>
       ) : (
-        <VideoRow group={{ name: ch.title, icon: '', sort_order: 0, videos: data.videos }} onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')} />
+        <VideoRow group={{ name: ch.title, icon: '', sort_order: 0, videos: data.videos }} onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={onToggleWatchLater} />
       )}
     </div>
   )
