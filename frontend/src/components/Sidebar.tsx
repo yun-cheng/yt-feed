@@ -4,12 +4,12 @@ type Props = {
   tags: TagInfo[]
   selectedTags: string[]
   onToggleTag: (tag: string) => void
-  page: 'feed' | 'channels' | 'channel'
-  onPageChange: (p: 'feed' | 'channels' | 'channel') => void
+  onSetTags: (tags: string[]) => void
+  page: 'feed' | 'channels' | 'channel' | 'watchlater'
+  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater') => void
   onClearFilter: () => void
-  onHome: () => void
   collapsed: boolean
-  onToggleCollapse: () => void
+  watchLaterCount?: number
 }
 
 const GROUP_NAMES: Record<string, string> = {
@@ -34,18 +34,6 @@ const GROUP_ORDER = [
   { key: '其他', icon: '🏷️' },
 ]
 
-const YoutubeIcon = () => (
-  <svg className="w-6 h-6 text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z"/>
-  </svg>
-)
-
-const HamburgerIcon = () => (
-  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M3 18h18v-2H3zm0-5h18v-2H3zm0-7v2h18V6z"/>
-  </svg>
-)
-
 const HomeIcon = () => (
   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
     <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
@@ -58,7 +46,13 @@ const ChannelsIcon = () => (
   </svg>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, page, onPageChange, onClearFilter, onHome, collapsed, onToggleCollapse }: Props) {
+const WatchLaterIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+  </svg>
+)
+
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onClearFilter, collapsed, watchLaterCount }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -68,69 +62,49 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, page, onPageC
 
   if (collapsed) {
     return (
-      <aside className="w-16 bg-[#0f0f0f] border-r border-[#272727] flex-shrink-0 flex flex-col h-full transition-[width] duration-200">
-        <div className="flex flex-col items-center pt-3 pb-2 gap-1">
-          {/* Expand toggle */}
-          <button
-            onClick={onToggleCollapse}
-            className="w-full flex justify-center py-2 text-[#555] hover:text-white transition-colors"
-          >
-            <HamburgerIcon />
-          </button>
-          {/* Home */}
-          <button
-            onClick={() => { onHome(); onPageChange('feed'); onClearFilter() }}
-            className="w-full flex justify-center py-2 hover:opacity-80 transition-opacity"
-            title="Home"
-          >
-            <YoutubeIcon />
-          </button>
-          {/* Feed */}
+      <aside className="w-16 bg-[#0f0f0f] border-r border-[#272727] flex-shrink-0 flex flex-col h-full">
+        <nav className="flex flex-col items-center pt-2 gap-1">
           <button
             onClick={() => onPageChange('feed')}
-            className={`w-full flex justify-center py-2 transition-colors ${
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
               page === 'feed' ? 'text-white' : 'text-[#717171] hover:text-white'
             }`}
-            title="Home"
           >
             <HomeIcon />
+            <span className="text-[10px]">My Feed</span>
           </button>
-          {/* Channels */}
           <button
             onClick={() => onPageChange('channels')}
-            className={`w-full flex justify-center py-2 transition-colors ${
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
               page === 'channels' ? 'text-white' : 'text-[#717171] hover:text-white'
             }`}
-            title="Channels"
           >
             <ChannelsIcon />
+            <span className="text-[10px]">Channels</span>
           </button>
-        </div>
+          <button
+            onClick={() => onPageChange('watchlater')}
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
+              page === 'watchlater' ? 'text-white' : 'text-[#717171] hover:text-white'
+            }`}
+          >
+            <WatchLaterIcon />
+            <span className="text-[10px]">Later</span>
+            {!!watchLaterCount && (
+              <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {watchLaterCount > 9 ? '9+' : watchLaterCount}
+              </span>
+            )}
+          </button>
+        </nav>
       </aside>
     )
   }
 
   return (
-    <aside className="w-60 bg-[#0f0f0f] border-r border-[#272727] flex-shrink-0 flex flex-col h-full transition-[width] duration-200">
-      {/* Home logo row + collapse button */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#272727]">
-        <button
-          onClick={() => { onHome(); onPageChange('feed'); onClearFilter() }}
-          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-        >
-          <YoutubeIcon />
-          <span className="text-base font-semibold tracking-tight">Home</span>
-        </button>
-        <button
-          onClick={onToggleCollapse}
-          className="text-[#555] hover:text-white transition-colors p-1"
-        >
-          <HamburgerIcon />
-        </button>
-      </div>
-
-      {/* Nav: Feed, Channels */}
-      <div className="py-2">
+    <aside className="w-60 bg-[#0f0f0f] border-r border-[#272727] flex-shrink-0 flex flex-col h-full">
+      {/* Nav: Feed, Channels — hidden on mobile (bottom bar handles navigation) */}
+      <div className="py-2 hidden md:block">
         <button
           onClick={() => onPageChange('feed')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
@@ -140,7 +114,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, page, onPageC
           }`}
         >
           <HomeIcon />
-          Home
+          My Feed
         </button>
         <button
           onClick={() => onPageChange('channels')}
@@ -153,9 +127,25 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, page, onPageC
           <ChannelsIcon />
           Channels
         </button>
+        <button
+          onClick={() => onPageChange('watchlater')}
+          className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
+            page === 'watchlater'
+              ? 'bg-[#272727] text-white font-medium'
+              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+          }`}
+        >
+          <WatchLaterIcon />
+          Watch Later
+          {!!watchLaterCount && (
+            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+              {watchLaterCount}
+            </span>
+          )}
+        </button>
       </div>
 
-      <div className="border-t border-[#272727] mx-4" />
+      <div className="border-t border-[#272727] mx-4 hidden md:block" />
 
       {/* Tag groups */}
       <div className="p-4 space-y-5 flex-1 overflow-y-auto">
@@ -164,10 +154,34 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, page, onPageC
           if (!groupTags?.length) return null
           return (
             <div key={key}>
-              <div className="flex items-center gap-1.5 mb-2 text-xs text-[#717171] uppercase tracking-wider font-medium">
-                <span>{icon}</span>
-                <span>{GROUP_NAMES[key] || key}</span>
-              </div>
+              {(() => {
+                const groupNames = groupTags.map(t => t.name)
+                const allSelected = groupNames.every(n => selectedTags.includes(n))
+                const toggleGroup = () => {
+                  if (allSelected) {
+                    onSetTags(selectedTags.filter(t => !groupNames.includes(t)))
+                  } else {
+                    const toAdd = groupNames.filter(n => !selectedTags.includes(n))
+                    onSetTags([...selectedTags, ...toAdd])
+                  }
+                }
+                return (
+                  <button
+                    onClick={toggleGroup}
+                    className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
+                      allSelected
+                        ? 'text-white hover:bg-[#2a2a2a]'
+                        : 'text-[#717171] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+                    }`}
+                  >
+                    <span>{icon}</span>
+                    <span>{GROUP_NAMES[key] || key}</span>
+                    <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
+                      {allSelected ? 'deselect all' : 'select all'}
+                    </span>
+                  </button>
+                )
+              })()}
               <div className="flex flex-wrap gap-1.5">
                 {groupTags.map((tag) => {
                   const active = selectedTags.includes(tag.name)
@@ -175,7 +189,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, page, onPageC
                     <button
                       key={tag.name}
                       onClick={() => onToggleTag(tag.name)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full transition-colors ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
                         active
                           ? 'bg-white text-black font-medium'
                           : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
