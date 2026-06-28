@@ -139,7 +139,7 @@ export default function App() {
   const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(initPath.channelId)
   const [loading, setLoading] = useState(true)
-  const [window, setWindow] = useState(initQ.window)
+  const [timeWindow, setTimeWindow] = useState(initQ.window)
   const [sort, setSort] = useState(initQ.sort)
   const [timeMode, setTimeMode] = useState(initQ.timeMode)
   const [channelsSort, setChannelsSort] = useState(initQ.channelsSort)
@@ -225,11 +225,11 @@ export default function App() {
   // ── URL sync ──────────────────────────────────────────
   // replaceState for reactive filter changes (tags, window, sort) — no new history entry
   const syncUrl = useCallback(() => {
-    const path = buildPath(page, selectedChannelId, selectedTags, window, sort, timeMode, channelsSort)
+    const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort)
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
     }
-  }, [page, selectedChannelId, selectedTags, window, sort, timeMode, channelsSort])
+  }, [page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort])
 
   // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
@@ -242,7 +242,7 @@ export default function App() {
       setPageRaw(p.page)
       setSelectedChannelId(p.channelId)
       setSelectedTags(q.tags)
-      setWindow(q.window)
+      setTimeWindow(q.window)
       setSort(q.sort)
       setTimeMode(q.timeMode)
       setChannelsSort(q.channelsSort)
@@ -322,7 +322,7 @@ export default function App() {
   const fetchFeed = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ window, sort, time_mode: timeMode })
+      const params = new URLSearchParams({ window: timeWindow, sort, time_mode: timeMode })
       if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
       const url = `/api/tags/feed?${params}`
       const res = await fetch(url)
@@ -341,7 +341,7 @@ export default function App() {
       console.error('Failed to fetch feed:', e)
     }
     setLoading(false)
-  }, [window, sort, timeMode, selectedTags])
+  }, [timeWindow, sort, timeMode, selectedTags])
 
   useEffect(() => {
     if (page === 'feed') fetchFeed()
@@ -351,7 +351,7 @@ export default function App() {
   // pushState for explicit navigations (page/channel changes create a history entry)
   const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
-    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, window, sort, timeMode, channelsSort))
+    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
     setPageRaw(p)
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
@@ -362,7 +362,7 @@ export default function App() {
       setChannelTimeMode('wide')
     }
     if (p !== 'feed') setMobileMenuOpen(false)
-  }, [selectedChannelId, selectedTags, window, sort, timeMode, channelsSort])
+  }, [selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort])
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -396,7 +396,7 @@ export default function App() {
   }
 
   function selectChannel(channelId: string) {
-    history.pushState(null, '', buildPath('channel', channelId, selectedTags, window, sort, timeMode, channelsSort))
+    history.pushState(null, '', buildPath('channel', channelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
     setSelectedChannelId(channelId)
     setPageRaw('channel')
     setChannelWindow('1m')
@@ -410,7 +410,7 @@ export default function App() {
     setSelectedTags([])
     setSelectedChannelId(null)
     setPageRaw('feed')
-    setWindow('3d')
+    setTimeWindow('3d')
     setSort('likes')
     setTimeMode('wide')
     mainRef.current?.scrollTo({ top: 0 })
@@ -431,8 +431,8 @@ export default function App() {
       >
       <TopBar
         variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : 'feed'}
-        window={page === 'channel' ? channelWindow : window}
-        onWindowChange={page === 'channel' ? setChannelWindow : setWindow}
+        window={page === 'channel' ? channelWindow : timeWindow}
+        onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
         sort={page === 'channel' ? channelSort : sort}
         onSortChange={page === 'channel' ? setChannelSort : setSort}
         timeMode={page === 'channel' ? channelTimeMode : timeMode}
@@ -515,7 +515,7 @@ export default function App() {
                 <p className="text-xs text-[#555]">Hover a video and click the bookmark icon to save it.</p>
               </div>
             ) : (() => {
-              let result = filterWatchLater(watchLater, window, timeMode)
+              let result = filterWatchLater(watchLater, timeWindow, timeMode)
               if (selectedTags.length > 0) {
                 const allowed = new Set(selectedTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
                 result = result.filter(v => allowed.has(v.channel_id))
