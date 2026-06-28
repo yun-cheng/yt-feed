@@ -89,29 +89,24 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
           })}
         </div>
 
-        {/* Narrow / Wide mode toggle */}
-        <div className="flex items-center bg-[#1a1a1a] rounded-full p-0.5 text-xs flex-shrink-0">
-          <button
-            onClick={() => onTimeModeChange?.('narrow')}
-            className={`px-2.5 py-1 rounded-full transition-colors ${
-              timeMode === 'narrow'
-                ? 'bg-[#272727] text-white font-medium'
-                : 'text-[#666] hover:text-white'
-            }`}
-          >
-            Narrow
-          </button>
-          <button
-            onClick={() => onTimeModeChange?.('wide')}
-            className={`px-2.5 py-1 rounded-full transition-colors ${
-              timeMode === 'wide'
-                ? 'bg-[#272727] text-white font-medium'
-                : 'text-[#666] hover:text-white'
-            }`}
-          >
-            Wide
-          </button>
-        </div>
+        {/* Narrow / Wide mode toggle — single icon button */}
+        <button
+          onClick={() => onTimeModeChange?.(timeMode === 'wide' ? 'narrow' : 'wide')}
+          title={timeMode === 'wide' ? 'Wide (cumulative) — click for Narrow' : 'Narrow (discrete) — click for Wide'}
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-[#1a1a1a] hover:bg-[#272727] transition-colors text-[#aaa] hover:text-white"
+        >
+          {timeMode === 'wide' ? (
+            /* Wide: outward arrows — viewing a cumulative range */
+            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+              <path d="M2 8h4M10 8h4M2 5l-1.5 3L2 11M14 5l1.5 3L14 11"/>
+            </svg>
+          ) : (
+            /* Narrow: inward arrows — viewing a single slice */
+            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round">
+              <path d="M5 8h6M5 5l1.5 3L5 11M11 5l-1.5 3L11 11"/>
+            </svg>
+          )}
+        </button>
       </div>
 
       {/* Row 2 on mobile / right on desktop: sort buttons */}
