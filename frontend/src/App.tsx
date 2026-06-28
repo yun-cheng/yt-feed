@@ -321,6 +321,7 @@ export default function App() {
 
   const fetchFeed = useCallback(async () => {
     setLoading(true)
+    setFeed(null)
     try {
       const params = new URLSearchParams({ window: timeWindow, sort, time_mode: timeMode })
       if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
