@@ -23,6 +23,10 @@
   background: #555;
 }
 
+button, a, [role="button"] {
+  cursor: pointer;
+}
+
 .no-scrollbar {
   scrollbar-width: none !important;
 }
