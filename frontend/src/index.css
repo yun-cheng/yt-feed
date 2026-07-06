@@ -27,6 +27,36 @@ button, a, [role="button"] {
   cursor: pointer;
 }
 
+/* Volume slider (VideoCard hover control). Track background is set inline as a
+   gradient so the filled portion tracks the current volume. */
+.vol-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+.vol-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+.vol-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+  cursor: pointer;
+}
+
 .no-scrollbar {
   scrollbar-width: none !important;
 }

@@ -1,4 +1,78 @@
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import type { VideoItem } from '../App'
+import { useAudio, setAudioMuted, setAudioVolume } from '../hooks/audioStore'
+
+// Minimal YT IFrame API types
+declare global {
+  interface Window {
+    YT: { Player: new (el: HTMLElement, cfg: YTPlayerConfig) => YTPlayerInstance }
+    onYouTubeIframeAPIReady?: () => void
+  }
+}
+interface YTPlayerConfig {
+  videoId?: string
+  width?: string | number
+  height?: string | number
+  playerVars?: Record<string, unknown>
+  events?: {
+    onReady?: (e: { target: YTPlayerInstance }) => void
+    onStateChange?: (e: { data: number; target: YTPlayerInstance }) => void
+    onApiChange?: (e: { target: YTPlayerInstance }) => void
+  }
+}
+interface YTPlayerInstance {
+  playVideo(): void
+  pauseVideo(): void
+  seekTo(s: number, allow: boolean): void
+  mute(): void
+  unMute(): void
+  isMuted(): boolean
+  setVolume(volume: number): void
+  getVolume(): number
+  getCurrentTime(): number
+  getDuration(): number
+  loadModule(name: string): void
+  unloadModule(name: string): void
+  getOptions(): string[]
+  getOption(module: string, key: string): unknown
+  setOption(module: string, key: string, value: unknown): void
+  destroy(): void
+}
+
+let _ytReady = false
+const _ytQ: Array<() => void> = []
+function ensureYTApi(): Promise<void> {
+  return new Promise(resolve => {
+    if (_ytReady) return resolve()
+    // After HMR, _ytReady resets but window.YT may already be loaded
+    if (window.YT?.Player) { _ytReady = true; return resolve() }
+    _ytQ.push(resolve)
+    if (!document.getElementById('yt-api-script')) {
+      const s = document.createElement('script')
+      s.id = 'yt-api-script'
+      s.src = 'https://www.youtube.com/iframe_api'
+      document.head.appendChild(s)
+    }
+    const prev = window.onYouTubeIframeAPIReady
+    window.onYouTubeIframeAPIReady = () => {
+      _ytReady = true
+      _ytQ.splice(0).forEach(cb => cb())
+      prev?.()
+    }
+  })
+}
+
+type StoryboardInfo = {
+  rows: number
+  cols: number
+  frame_width: number
+  frame_height: number
+  fragment_urls: string[]
+  fragment_duration: number
+}
+
+// A single timed caption cue (seconds) from /feed/captions
+type Cue = { start: number; dur: number; text: string }
 
 type Props = {
   video: VideoItem
@@ -27,7 +101,7 @@ function formatDuration(s: number): string {
 
 function timeAgo(iso: string): string {
   const now = Date.now()
-  const then = new Date(iso).getTime()
+  const then = new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
   const hours = Math.floor((now - then) / 3600000)
   if (hours < 1) return 'Just now'
   if (hours < 24) return `${hours}h ago`
@@ -38,70 +112,556 @@ function timeAgo(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
+// Scale down frames so preview fits in small cards
+const SB_SCALE = 0.5
+
+function getStoryboardFrame(sb: StoryboardInfo, time: number) {
+  const framesPerSheet = sb.rows * sb.cols
+  const totalFrames = framesPerSheet * sb.fragment_urls.length
+  const frameDuration = (sb.fragment_duration * sb.fragment_urls.length) / totalFrames
+  const frame = Math.max(0, Math.min(totalFrames - 1, Math.floor(time / frameDuration)))
+  const sheetIdx = Math.floor(frame / framesPerSheet)
+  const posInSheet = frame % framesPerSheet
+  const col = posInSheet % sb.cols
+  const row = Math.floor(posInSheet / sb.cols)
+  const fw = sb.frame_width * SB_SCALE
+  const fh = sb.frame_height * SB_SCALE
+  return {
+    url: sb.fragment_urls[sheetIdx] ?? sb.fragment_urls[0],
+    bgX: -col * fw,
+    bgY: -row * fh,
+    fw,
+    fh,
+    sheetW: sb.cols * fw,
+    sheetH: sb.rows * fh,
+  }
+}
+
+// Shared circle-button sizes so bookmark / mute / CC all match
+const BTN = 'p-2 rounded-full transition-colors'
+const BTN_DARK = `${BTN} bg-black/60 text-white hover:bg-black/80`
+const BTN_LIGHT = `${BTN} bg-white/90 text-black hover:bg-white`
+
+// Per-video caption preference for THIS page load (module-level = survives a card
+// remount / re-hover, but resets on refresh). Captions default ON; toggling off a
+// specific video is remembered here so re-hovering it keeps them off.
+const ccPrefByVideo = new Map<string, boolean>()
+
 export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater }: Props) {
   const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
 
+  const playerRef = useRef<YTPlayerInstance | null>(null)
+  const playerReadyRef = useRef(false)
+  const playerWrapperRef = useRef<HTMLDivElement>(null)
+  const playerCreatedRef = useRef(false)
+  const progressBarRef = useRef<HTMLDivElement>(null)
+  const isDraggingRef = useRef(false)
+
+  // Mute/volume are shared globally across every preview and persisted (see audioStore).
+  const { muted: isMuted, volume } = useAudio()
+  const audioRef = useRef({ muted: isMuted, volume })
+  audioRef.current = { muted: isMuted, volume }
+  // Captions default ON, unless this video was explicitly turned off this session.
+  const [showCaptions, setShowCaptions] = useState(() => ccPrefByVideo.get(video.youtube_id) ?? true)
+  const [captions, setCaptions] = useState<Cue[] | null>(null)
+  const captionsFetchedRef = useRef(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(video.duration_seconds > 0 ? video.duration_seconds : 0)
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null)
+  const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
+
+  const currentTimeRef = useRef(currentTime)
+  useEffect(() => { currentTimeRef.current = currentTime }, [currentTime])
+  const durationRef = useRef(duration)
+  useEffect(() => { durationRef.current = duration }, [duration])
+  // Latest hover state for async callbacks (player onReady may fire after the user
+  // has already moved on to another card — see the guard in createPlayer's onReady).
+  const isHoveredRef = useRef(isHovered)
+  isHoveredRef.current = isHovered
+
+  const seekFromX = (clientX: number) => {
+    if (!progressBarRef.current || durationRef.current <= 0) return
+    const rect = progressBarRef.current.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    const seekTime = ratio * durationRef.current
+    setCurrentTime(seekTime)
+    playerRef.current?.seekTo(seekTime, true)
+  }
+  const seekFromXRef = useRef(seekFromX)
+  seekFromXRef.current = seekFromX
+
+  // Shared player-creation logic — called on first hover and on CC toggle.
+  // The container div is created imperatively so React never reconciles it —
+  // if we let React own the target element, re-renders replace the YT-generated
+  // iframe with the original div, leaving audio playing but nothing visible.
+  const createPlayer = useCallback((seekTime?: number) => {
+    if (!playerWrapperRef.current) return
+    playerCreatedRef.current = true
+    const container = document.createElement('div')
+    container.style.width = '100%'
+    container.style.height = '100%'
+    playerWrapperRef.current.appendChild(container)
+    ensureYTApi().then(() => {
+      // If cleanup removed container from DOM (StrictMode double-mount), skip
+      if (!playerWrapperRef.current || !playerWrapperRef.current.contains(container)) return
+      new window.YT.Player(container, {
+        videoId: video.youtube_id,
+        width: '100%',
+        height: '100%',
+        playerVars: {
+          // autoplay:0 — we start playback explicitly in onReady (only if still
+          // hovered), so a video loaded then abandoned never emits sound.
+          autoplay: 0, mute: audioRef.current.muted ? 1 : 0, controls: 0, rel: 0, loop: 1,
+          playlist: video.youtube_id, iv_load_policy: 3,
+          fs: 0, disablekb: 1, playsinline: 1, modestbranding: 1,
+          // We render captions ourselves from the /feed/captions transcript
+          // (see the caption overlay below), so YouTube's own captions stay off —
+          // its embedded rendering is tiny and unreliable inside a cropped embed.
+          // controls:0 removes the controls bar; the symmetric over-scan on the
+          // wrapper hides the remaining top/bottom chrome (share, logo, etc.).
+          // pointer-events:none on the wrapper prevents the hover overlay.
+        },
+        events: {
+          onReady: (e) => {
+            // Only expose the player after it's fully initialized
+            playerRef.current = e.target
+            playerReadyRef.current = true
+            const iframe = playerWrapperRef.current?.querySelector('iframe')
+            if (iframe) {
+              iframe.style.width = '100%'
+              iframe.style.height = '100%'
+              iframe.style.border = 'none'
+            }
+            // Apply the shared audio state (volume, and mute in case it changed
+            // between player creation and ready).
+            e.target.setVolume(audioRef.current.volume)
+            if (audioRef.current.muted) e.target.mute()
+            else e.target.unMute()
+            if (seekTime && seekTime > 0) e.target.seekTo(seekTime, true)
+            // The user may have already hovered away while the player was loading
+            // (autoplay:1 would otherwise start it, sound and all) — only play if
+            // this card is still the hovered one; otherwise pause immediately.
+            if (isHoveredRef.current) e.target.playVideo()
+            else e.target.pauseVideo()
+          },
+        },
+      })
+    })
+  }, [video.youtube_id])
+
+  useEffect(() => {
+    if (!isHovered || playerCreatedRef.current) return
+    createPlayer()
+  }, [isHovered, createPlayer])
+
+  // Pause/resume on hover change
+  useEffect(() => {
+    if (!playerRef.current) return
+    if (isHovered) playerRef.current.playVideo()
+    else playerRef.current.pauseVideo()
+  }, [isHovered])
+
+  // Apply shared mute/volume to this card's player whenever it changes. Every
+  // mounted card runs this, so changing the volume on one preview updates them all.
+  useEffect(() => {
+    const p = playerRef.current
+    if (!p || !playerReadyRef.current) return
+    p.setVolume(volume)
+    if (isMuted) p.mute()
+    else p.unMute()
+  }, [isMuted, volume])
+
+  // Poll currentTime/duration while hovered (mute/volume are driven by the store,
+  // not read back from the player, so they stay authoritative across all cards).
+  useEffect(() => {
+    if (!isHovered) return
+    const id = setInterval(() => {
+      const p = playerRef.current
+      if (!p) return
+      const t = p.getCurrentTime()
+      const d = p.getDuration()
+      if (typeof t === 'number') setCurrentTime(t)
+      if (typeof d === 'number' && d > 0) setDuration(d)
+    }, 250)
+    return () => clearInterval(id)
+  }, [isHovered])
+
+  // Destroy player on unmount; reset flags so StrictMode double-mount works cleanly
+  useEffect(() => {
+    return () => {
+      playerRef.current?.destroy()
+      playerRef.current = null
+      playerReadyRef.current = false
+      playerCreatedRef.current = false
+      if (playerWrapperRef.current) playerWrapperRef.current.innerHTML = ''
+    }
+  }, [])
+
+  // Keyboard shortcuts: m = mute, c = cc (only when this card is hovered)
+  useEffect(() => {
+    if (!isHovered) return
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      const p = playerRef.current
+      if (!p) return
+      if (e.key === 'm') {
+        // Apply to the player within the key gesture (browsers gate unmuting on it),
+        // then persist to the shared store so every preview follows.
+        if (isMuted) {
+          p.unMute()
+          if (volume === 0) { p.setVolume(100); setAudioVolume(100) }
+          setAudioMuted(false)
+        } else {
+          p.mute(); setAudioMuted(true)
+        }
+      } else if (e.key === 'c') {
+        toggleCaptions()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isHovered, isMuted, volume, showCaptions])
+
+  // Fetch storyboard on first hover
+  const fetchStoryboard = useCallback(async () => {
+    if (storyboard) return
+    try {
+      const res = await fetch(`/api/feed/storyboard/${video.youtube_id}`)
+      const data = await res.json()
+      if (data?.fragment_urls?.length) setStoryboard(data)
+    } catch { /* ignore */ }
+  }, [video.youtube_id, storyboard])
+
+  useEffect(() => {
+    if (isHovered) fetchStoryboard()
+  }, [isHovered, fetchStoryboard])
+
+  // Global drag listeners for progress scrubbing
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => { if (isDraggingRef.current) seekFromXRef.current(e.clientX) }
+    const onUp = () => { isDraggingRef.current = false }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
+  // Reset controls when preview closes. Mute/volume (shared + persisted) and caption
+  // on/off (remembered per video) are intentionally NOT reset here.
+  useEffect(() => {
+    if (!isHovered) {
+      setCurrentTime(0)
+      setHoverRatio(null)
+    }
+  }, [isHovered])
+
+  const handleMuteToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const p = playerRef.current
+    if (isMuted) {
+      // Apply within the click gesture (browsers gate unmuting on it), then persist.
+      p?.unMute()
+      // Unmuting while the slider sits at 0 would be silent — restore audible volume.
+      if (volume === 0) { p?.setVolume(100); setAudioVolume(100) }
+      setAudioMuted(false)
+    } else {
+      p?.mute(); setAudioMuted(true)
+    }
+  }
+
+  // Volume slider: persist the new volume (all previews follow via the store effect)
+  // and keep mute consistent — dragging up unmutes, dragging to 0 mutes. Apply to
+  // this player directly too so the change is immediate during the drag gesture.
+  const handleVolumeChange = (v: number) => {
+    const p = playerRef.current
+    p?.setVolume(v)
+    setAudioVolume(v)
+    if (v === 0) { p?.mute(); setAudioMuted(true) }
+    else if (isMuted) { p?.unMute(); setAudioMuted(false) }
+  }
+
+  // Lazily fetch the transcript the first time captions are switched on, then
+  // render it ourselves (see the caption overlay in the JSX). No player restart.
+  // Sets captions to [] when the video has no track — that empties `activeCaption`
+  // and drives the CC button's "unavailable" state (see captionsUnavailable).
+  const fetchCaptions = useCallback(() => {
+    if (captionsFetchedRef.current) return
+    captionsFetchedRef.current = true
+    fetch(`/api/feed/captions/${video.youtube_id}`)
+      .then((r) => r.json())
+      .then((d) => setCaptions(Array.isArray(d?.cues) ? d.cues : []))
+      .catch(() => setCaptions([]))
+  }, [video.youtube_id])
+
+  // null = not fetched yet; [] = fetched, this video has no captions.
+  const captionsUnavailable = captions !== null && captions.length === 0
+
+  const toggleCaptions = () => {
+    if (captionsUnavailable) return  // nothing to toggle
+    const next = !showCaptions
+    setShowCaptions(next)
+    ccPrefByVideo.set(video.youtube_id, next)  // remember for re-hover this session
+  }
+
+  // Always fetch on hover — even when captions are toggled off — so we know whether
+  // a track exists and can reflect that on the CC button.
+  useEffect(() => {
+    if (isHovered) fetchCaptions()
+  }, [isHovered, fetchCaptions])
+
+  const handleCCToggle = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    toggleCaptions()
+  }
+
+  // The caption line to show at the current playback time. Auto-generated cues
+  // overlap (rolling window), so among all cues active at `currentTime` we take
+  // the one that started most recently — that's the line being "spoken" now.
+  const activeCaption = useMemo(() => {
+    if (!showCaptions || !captions) return ''
+    let best: Cue | null = null
+    for (const c of captions) {
+      if (c.start <= currentTime && currentTime < c.start + c.dur) {
+        if (!best || c.start > best.start) best = c
+      }
+    }
+    return best?.text ?? ''
+  }, [showCaptions, captions, currentTime])
+
+  const handleProgressMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    isDraggingRef.current = true
+    seekFromX(e.clientX)
+  }
+
+  const handleProgressMouseMove = (e: React.MouseEvent) => {
+    if (!progressBarRef.current) return
+    const rect = progressBarRef.current.getBoundingClientRect()
+    setHoverRatio(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
+  }
+
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0
+  const hoverTime = hoverRatio !== null ? hoverRatio * duration : null
+  const sbFrame = storyboard && hoverTime !== null ? getStoryboardFrame(storyboard, hoverTime) : null
+
   return (
-    <div
-      className="relative cursor-pointer"
-      onMouseEnter={() => onHover(video.youtube_id)}
-      onMouseLeave={() => onHover(null)}
-      onClick={() => window.open(videoUrl, '_blank')}
-    >
-      {/* Thumbnail area — swaps to video player on hover */}
-      <div className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]">
-        {/* Thumbnail — hidden while hovered */}
+    <div className="relative cursor-pointer" onClick={() => window.open(videoUrl, '_blank')}>
+      {/* Thumbnail — hover here only triggers preview */}
+      <div
+        className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]"
+        onMouseEnter={() => onHover(video.youtube_id)}
+        onMouseLeave={() => onHover(null)}
+      >
+        {/* Static thumbnail */}
         <div style={{ display: isHovered ? 'none' : 'block' }}>
-          <img
-            src={thumb}
-            alt={video.title}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <img src={thumb} alt={video.title} className="w-full h-full object-cover" loading="lazy" />
         </div>
 
-        {/* Player — always in DOM, hidden until hovered */}
+        {/* Video player */}
         <div
           className="absolute inset-0 overflow-hidden"
-          style={{ display: isHovered ? 'block' : 'none', marginBottom: '-80px' }}
+          style={{ display: isHovered ? 'block' : 'none' }}
         >
-          <iframe
-            src={`https://www.youtube-nocookie.com/embed/${video.youtube_id}?autoplay=1&mute=1&controls=0&rel=0&loop=1&playlist=${video.youtube_id}&iv_load_policy=3&fs=0&disablekb=1&playsinline=1&cc_load_policy=0&modestbranding=1`}
-            className="absolute inset-0 w-full"
-            style={{ height: 'calc(100% + 80px)', top: '-80px', pointerEvents: 'none' }}
-            allow="autoplay; encrypted-media"
-            title={video.title}
+          {/* React owns nothing inside here — YT.Player appends its iframe imperatively.
+             Symmetric vertical over-scan: the iframe is 64px taller than the card on
+             BOTH top and bottom. YouTube anchors its chrome (top share/watch-later bar,
+             bottom logo) to the iframe edges, so those edges are pushed outside the
+             overflow:hidden card and clipped, while the 16:9 video stays fit-to-width and
+             centered, filling the card exactly. We render captions ourselves (below), so
+             clipping the video's own caption strip no longer matters. */}
+          <div
+            ref={playerWrapperRef}
+            className="absolute left-0 right-0 w-full"
+            style={{ top: '-64px', height: 'calc(100% + 128px)', pointerEvents: 'none' }}
           />
-          {/* Overlay to block mouse events from reaching the iframe */}
-          <div className="absolute inset-0 z-10" />
+          <div className="absolute inset-0" style={{ zIndex: 2 }} />
+
+          {/* Our own caption overlay — rendered from the fetched transcript so we
+             fully control size/position/style (YouTube's embed captions are tiny).
+             Sits above the progress bar (which lifts up on hover) so they never overlap. */}
+          {showCaptions && activeCaption && (
+            <div className="absolute inset-x-0 bottom-7 z-20 flex justify-center px-3 pointer-events-none">
+              <span className="max-w-[95%] text-center text-white text-sm md:text-base font-medium leading-snug bg-black/70 rounded px-2 py-0.5 [text-wrap:balance]">
+                {activeCaption}
+              </span>
+            </div>
+          )}
         </div>
 
-        {onToggleWatchLater && (isHovered || isWatchLater) && (
-          <button
-            className={`absolute top-1 right-1 z-20 p-2 rounded-full transition-colors ${
-              isWatchLater
-                ? 'bg-white/90 text-black hover:bg-white'
-                : 'bg-black/60 text-white hover:bg-black/80'
-            }`}
-            onClick={(e) => { e.stopPropagation(); onToggleWatchLater(video) }}
-            title={isWatchLater ? 'Remove from Watch Later' : 'Save to Watch Later'}
+        {/* Right-side controls — bookmark → mute → CC, equal gaps. items-end keeps
+           them right-aligned so the volume slider can expand leftward without
+           shifting the circular buttons. */}
+        <div className="absolute top-1 right-1 z-30 flex flex-col gap-1 items-end">
+          {onToggleWatchLater && (isHovered || isWatchLater) && (
+            <button
+              className={isWatchLater ? BTN_LIGHT : BTN_DARK}
+              onClick={(e) => { e.stopPropagation(); onToggleWatchLater(video) }}
+              title={isWatchLater ? 'Remove from Watch Later' : 'Save to Watch Later'}
+            >
+              {isWatchLater ? (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+                </svg>
+              )}
+            </button>
+          )}
+
+          {isHovered && (
+            // Mute button + volume slider as one pill. The slider is collapsed to
+            // zero width and slides out to the LEFT of the speaker on hover (the
+            // speaker stays put on the right so the controls column stays aligned).
+            <div className="group/vol flex items-center rounded-full bg-black/60" onClick={(e) => e.stopPropagation()}>
+              {/* overflow-hidden drives the horizontal collapse animation but also
+                 clips the round thumb, which overflows the 4px track. py-2.5 gives it
+                 vertical room; the horizontal px-3 is applied ONLY when expanded — with
+                 box-border, keeping px-3 while collapsed leaves a 24px stub that makes
+                 the resting mute button an oval instead of a clean circle. */}
+              <div className="flex items-center overflow-hidden max-w-0 opacity-0 py-2.5 transition-all duration-200 ease-out group-hover/vol:max-w-[128px] group-hover/vol:px-3 group-hover/vol:opacity-100">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={isMuted ? 0 : volume}
+                  onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  aria-label="Volume"
+                  className="vol-slider w-20"
+                  style={{ background: `linear-gradient(to right, #fff ${isMuted ? 0 : volume}%, rgba(255,255,255,0.18) ${isMuted ? 0 : volume}%)` }}
+                />
+              </div>
+              <button className="p-2 rounded-full text-white hover:bg-white/15 transition-colors" onClick={handleMuteToggle} title={isMuted ? 'Unmute' : 'Mute'}>
+                {isMuted ? (
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                  </svg>
+                )}
+              </button>
+            </div>
+          )}
+
+          {isHovered && (
+            <button
+              className={
+                captionsUnavailable
+                  // Same dark circle, but NO hover:bg change — it isn't clickable,
+                  // so it shouldn't give clickable hover feedback.
+                  ? `${BTN} bg-black/60 text-white`
+                  : showCaptions ? BTN_LIGHT : BTN_DARK
+              }
+              onClick={handleCCToggle}
+              title={
+                captionsUnavailable
+                  ? 'No captions available'
+                  : showCaptions ? 'Hide captions' : 'Show captions'
+              }
+            >
+              {/* When no caption track exists: keep the dark circle visible but gray
+                 the CC text and strike it through so the disabled state reads on any
+                 background (dark video frames made a faded whole-button invisible). */}
+              <span className={`relative w-5 h-5 flex items-center justify-center text-[11px] font-bold leading-none ${captionsUnavailable ? 'text-white/40' : ''}`}>
+                CC
+                {captionsUnavailable && (
+                  <span className="absolute left-[-2px] right-[-2px] top-1/2 h-px bg-current -rotate-45" />
+                )}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {/* Progress bar + storyboard preview */}
+        {isHovered && (
+          <div
+            className="absolute bottom-0 left-0 right-0 z-20 px-2 pb-2 pt-6 bg-gradient-to-t from-black/70 to-transparent group/controls"
+            onClick={(e) => e.stopPropagation()}
+            onMouseMove={(e) => {
+              if (!progressBarRef.current) return
+              const rect = progressBarRef.current.getBoundingClientRect()
+              setHoverRatio(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)))
+            }}
+            onMouseDown={(e) => {
+              if (!progressBarRef.current) return
+              e.stopPropagation()
+              e.preventDefault()
+              isDraggingRef.current = true
+              seekFromX(e.clientX)
+            }}
+            onMouseLeave={() => setHoverRatio(null)}
           >
-            {isWatchLater ? (
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
-              </svg>
-            )}
-          </button>
+            {/* Bar wrapper — lifts up when cursor enters the controls area */}
+            <div className="transition-transform duration-150 group-hover/controls:-translate-y-2">
+              <div
+                ref={progressBarRef}
+                className="relative py-2 -my-2 cursor-pointer group/bar"
+                onMouseDown={handleProgressMouseDown}
+                onMouseMove={handleProgressMouseMove}
+              >
+                {/* Storyboard preview — floats above the hit area */}
+                {sbFrame && hoverRatio !== null && (
+                  <div
+                    className="absolute pointer-events-none"
+                    style={{
+                      bottom: '20px',
+                      left: `clamp(${sbFrame.fw / 2}px, ${(hoverRatio * 100).toFixed(2)}%, calc(100% - ${sbFrame.fw / 2}px))`,
+                      transform: 'translateX(-50%)',
+                    }}
+                  >
+                    <div
+                      className="rounded overflow-hidden shadow-lg border border-white/20"
+                      style={{
+                        width: sbFrame.fw,
+                        height: sbFrame.fh,
+                        backgroundImage: `url(${sbFrame.url})`,
+                        backgroundPosition: `${sbFrame.bgX}px ${sbFrame.bgY}px`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: `${sbFrame.sheetW}px ${sbFrame.sheetH}px`,
+                      }}
+                    />
+                    <div className="text-center text-white text-sm mt-1 font-semibold drop-shadow-lg">
+                      {formatDuration(Math.round(hoverTime!))}
+                    </div>
+                  </div>
+                )}
+
+              <div
+                className="relative h-1 bg-white/30 rounded-full"
+              >
+                {/* Playback fill */}
+                <div className="absolute inset-y-0 left-0 bg-red-500 rounded-full" style={{ width: `${progress * 100}%` }} />
+
+                {/* Hover position indicator */}
+                {hoverRatio !== null && (
+                  <div
+                    className="absolute top-1/2 w-0.5 h-3 bg-white/50 -translate-y-1/2 pointer-events-none"
+                    style={{ left: `${hoverRatio * 100}%` }}
+                  />
+                )}
+
+                {/* Scrubber handle */}
+                <div
+                  className="absolute top-1/2 w-3 h-3 bg-red-500 rounded-full shadow -translate-x-1/2 -translate-y-1/2 opacity-0 group-hover/controls:opacity-100 transition-opacity pointer-events-none"
+                  style={{ left: `${progress * 100}%` }}
+                />
+              </div>
+              </div>
+            </div>
+          </div>
         )}
 
-        {video.duration_seconds > 0 && (
-          <div className="absolute bottom-1 right-1 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium">
-            {formatDuration(video.duration_seconds)}
+        {/* Duration badge — shows remaining time while hovered, hides when preview scrubbing */}
+        {video.duration_seconds > 0 && !hoverRatio && (
+          <div className={`absolute right-1 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium transition-all ${isHovered ? 'bottom-6' : 'bottom-1'}`}>
+            {isHovered && duration > 0
+              ? formatDuration(Math.max(0, Math.round(duration - currentTime)))
+              : formatDuration(video.duration_seconds)}
           </div>
         )}
       </div>
@@ -109,9 +669,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       {/* Info row */}
       <div className="flex gap-3 mt-2">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">
-            {video.title}
-          </h3>
+          <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{video.title}</h3>
           <p
             className="text-xs text-[#aaaaaa] mt-0.5 hover:text-blue-400 cursor-pointer transition-colors"
             onClick={(e) => { e.stopPropagation(); onChannelClick(video.channel_id) }}
@@ -133,9 +691,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 return (
                   <span key={key}>
                     {i > 0 && <span className="text-[#444]"> · </span>}
-                    <span className={active ? 'text-white font-medium' : ''}>
-                      {label}
-                    </span>
+                    <span className={active ? 'text-white font-medium' : ''}>{label}</span>
                   </span>
                 )
               })
