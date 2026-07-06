@@ -10,6 +10,7 @@ type Props = {
   onClearFilter: () => void
   collapsed: boolean
   watchLaterCount?: number
+  tagFilteredCounts?: Map<string, number> | null
 }
 
 const GROUP_NAMES: Record<string, string> = {
@@ -52,7 +53,7 @@ const WatchLaterIcon = () => (
   </svg>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onClearFilter, collapsed, watchLaterCount }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onClearFilter, collapsed, watchLaterCount, tagFilteredCounts }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -198,7 +199,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
                       <span>{tag.icon}</span>
                       <span>{tag.name}</span>
                       <span className={`text-[10px] ${active ? 'text-black/50' : 'text-[#555]'}`}>
-                        {tag.channel_count}
+                        {tagFilteredCounts ? (tagFilteredCounts.get(tag.name) ?? 0) : tag.channel_count}
                       </span>
                     </button>
                   )

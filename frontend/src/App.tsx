@@ -296,6 +296,47 @@ export default function App() {
   // ── Data fetching ─────────────────────────────────────
   const [tagChannels, setTagChannels] = useState<Map<string, Set<string>>>(new Map())
 
+  // Per-tag channel count that updates as tags are selected.
+  // For tags in a group that already has selections, count uses the filter from
+  // ALL OTHER groups only (so sibling tags show how many would match if chosen instead).
+  // For tags in groups with no selections, count uses the full cross-group filter.
+  const tagFilteredCounts = useMemo(() => {
+    if (selectedTags.length === 0) return null
+
+    const byGroup = new Map<string, string[]>()
+    for (const t of selectedTags) {
+      const group = tags.find(x => x.name === t)?.group ?? '__ungrouped__'
+      byGroup.set(group, [...(byGroup.get(group) ?? []), t])
+    }
+
+    const intersect = (sets: Set<string>[]): Set<string> =>
+      sets.reduce<Set<string> | null>((acc, s) => acc === null ? s : new Set([...acc].filter(id => s.has(id))), null) ?? new Set()
+
+    // Precompute "filter excluding group G" for each group that has selections
+    const filterWithoutGroup = new Map<string, Set<string> | null>()
+    for (const [excludeGroup] of byGroup) {
+      const otherGroupSets = [...byGroup.entries()]
+        .filter(([g]) => g !== excludeGroup)
+        .map(([, groupTags]) => new Set(groupTags.flatMap(t => [...(tagChannels.get(t) ?? [])])))
+      filterWithoutGroup.set(excludeGroup, otherGroupSets.length > 0 ? intersect(otherGroupSets) : null)
+    }
+
+    // Full cross-group filter (for tags in groups with no selections)
+    const allGroupSets = [...byGroup.values()].map(groupTags =>
+      new Set(groupTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
+    )
+    const fullFilter = intersect(allGroupSets)
+
+    const counts = new Map<string, number>()
+    for (const tag of tags) {
+      const group = tag.group ?? '__ungrouped__'
+      const tagIds = tagChannels.get(tag.name) ?? new Set<string>()
+      const baseFilter = byGroup.has(group) ? filterWithoutGroup.get(group)! : fullFilter
+      counts.set(tag.name, baseFilter === null ? tagIds.size : [...tagIds].filter(id => baseFilter.has(id)).length)
+    }
+    return counts
+  }, [selectedTags, tags, tagChannels])
+
   const fetchTags = useCallback(async () => {
     try {
       const [tagsRes, channelsRes] = await Promise.all([
@@ -319,9 +360,11 @@ export default function App() {
 
   useEffect(() => { fetchTags() }, [fetchTags])
 
-  const fetchFeed = useCallback(async () => {
-    setLoading(true)
-    setFeed(null)
+  const fetchFeed = useCallback(async (background = false) => {
+    if (!background) {
+      setLoading(true)
+      setFeed(null)
+    }
     try {
       const params = new URLSearchParams({ window: timeWindow, sort, time_mode: timeMode })
       if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
@@ -341,7 +384,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to fetch feed:', e)
     }
-    setLoading(false)
+    if (!background) setLoading(false)
   }, [timeWindow, sort, timeMode, selectedTags])
 
   useEffect(() => {
@@ -389,7 +432,7 @@ export default function App() {
       }
       // Re-fetch everything
       await fetchTags()
-      if (page === 'feed') await fetchFeed()
+      if (page === 'feed') await fetchFeed(true)
     } catch (e) {
       console.error('Refresh failed:', e)
     }
@@ -474,6 +517,7 @@ export default function App() {
             onClearFilter={clearFilter}
             collapsed={sidebarCollapsed}
             watchLaterCount={watchLater.length}
+            tagFilteredCounts={tagFilteredCounts}
           />
         </div>
 
