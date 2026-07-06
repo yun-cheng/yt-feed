@@ -2,6 +2,8 @@
 Feed endpoints — ranked videos grouped by category.
 """
 
+import asyncio
+import time
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,145 @@ from app.ranking import TimeWindow, rank_videos
 from app.categorizer import get_categories, get_channel_groups
 
 router = APIRouter(prefix="/feed")
+
+# In-memory storyboard cache: video_id -> (timestamp, data)
+_sb_cache: dict[str, tuple[float, dict]] = {}
+_SB_TTL = 3600  # 1 hour
+
+# In-memory caption cache: video_id -> (timestamp, cues). Captions never change,
+# so the TTL is only there to bound memory growth over a long-running process.
+_cc_cache: dict[str, tuple[float, list[dict]]] = {}
+_CC_TTL = 86400  # 24 hours
+
+
+async def _fetch_storyboard(video_id: str) -> dict | None:
+    """Run yt-dlp in a thread to get storyboard fragment URLs."""
+    def _run():
+        import yt_dlp
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": False,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+        # Find highest-quality storyboard format (sb0 is highest, then sb1, sb2, sb3)
+        sb_fmts = [f for f in info.get("formats", []) if f.get("format_id", "").startswith("sb")]
+        if not sb_fmts:
+            return None
+        # Pick the best (lowest sb number = highest quality)
+        sb_fmts.sort(key=lambda f: f.get("format_id", "sb9"))
+        best = sb_fmts[0]
+        fragments = best.get("fragments", [])
+        if not fragments:
+            return None
+        return {
+            "rows": best.get("rows", 10),
+            "cols": best.get("columns", 10),
+            "frame_width": best.get("width", 160),
+            "frame_height": best.get("height", 90),
+            "fragment_urls": [fr["url"] for fr in fragments],
+            "fragment_duration": fragments[0].get("duration", 0) if fragments else 0,
+        }
+
+    try:
+        return await asyncio.get_event_loop().run_in_executor(None, _run)
+    except Exception:
+        return None
+
+
+async def _fetch_captions(video_id: str, lang: str = "en") -> list[dict] | None:
+    """
+    Fetch a video's timed caption track via yt-dlp and parse it into cues.
+
+    Serves the video's NATIVE captions (e.g. Chinese for a Chinese video), not a
+    forced language: prefers human-uploaded subtitles, then the original ASR track.
+    `lang` is only a soft preference used to break ties. Returns a list of
+    {start, dur, text} (seconds), or None if none available. Rendering the transcript
+    ourselves avoids the embedded player's tiny/unreliable caption rendering.
+    """
+    def _run():
+        import json
+        import urllib.request
+
+        import yt_dlp
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(
+                f"https://www.youtube.com/watch?v={video_id}", download=False
+            )
+
+        subs = info.get("subtitles") or {}
+        auto = info.get("automatic_captions") or {}
+        # The video's own language (e.g. "zh", "en") is the native caption we want;
+        # fall back to the requested `lang` only when yt-dlp doesn't report it.
+        prefs = [p for p in (info.get("language"), lang, "en") if p]
+
+        def json3(tracks: list | None) -> dict | None:
+            return next((t for t in (tracks or []) if t.get("ext") == "json3"), None)
+
+        def pick_lang(source: dict) -> list | None:
+            for p in prefs:
+                if p in source:
+                    return source[p]
+            for p in prefs:  # regional variant, e.g. zh-TW for zh, en-US for en
+                base = p.split("-")[0]
+                for key, tracks in source.items():
+                    if key.split("-")[0] == base:
+                        return tracks
+            return None
+
+        j3 = None
+        # 1. Human-uploaded subtitles are cleanest — prefer the native language,
+        #    else just take whatever the creator uploaded (usually the native one).
+        if subs:
+            j3 = json3(pick_lang(subs) or next(iter(subs.values())))
+        # 2. Otherwise auto-captions. Prefer a preferred-language track, but if none
+        #    matches, use the ORIGINAL ASR track (the spoken language) rather than a
+        #    machine translation — the translated tracks carry `tlang=` in their URL.
+        if j3 is None and auto:
+            j3 = json3(pick_lang(auto))
+            if j3 is None:
+                for tracks in auto.values():
+                    t = json3(tracks)
+                    if t and "tlang=" not in t.get("url", ""):
+                        j3 = t
+                        break
+                j3 = j3 or json3(next(iter(auto.values())))
+        if j3 is None:
+            return None
+
+        req = urllib.request.Request(j3["url"], headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+
+        cues: list[dict] = []
+        for ev in data.get("events", []):
+            segs = ev.get("segs")
+            if not segs:
+                continue
+            text = "".join(s.get("utf8", "") for s in segs).replace("\n", " ").strip()
+            if not text:
+                continue
+            cues.append({
+                "start": round(ev.get("tStartMs", 0) / 1000, 3),
+                "dur": round(ev.get("dDurationMs", 0) / 1000, 3),
+                "text": text,
+            })
+        return cues or None
+
+    try:
+        return await asyncio.get_event_loop().run_in_executor(None, _run)
+    except Exception:
+        return None
 
 
 async def get_db():
@@ -98,6 +239,36 @@ async def get_feed(
         "groups": response_groups,
         "window": window.value,
     }
+
+
+@router.get("/storyboard/{video_id}")
+async def get_storyboard(video_id: str):
+    """Return storyboard (preview thumbnail) info for a video."""
+    now = time.time()
+    cached = _sb_cache.get(video_id)
+    if cached and now - cached[0] < _SB_TTL:
+        return cached[1]
+
+    data = await _fetch_storyboard(video_id)
+    if data is None:
+        return {}
+    _sb_cache[video_id] = (now, data)
+    return data
+
+
+@router.get("/captions/{video_id}")
+async def get_captions(video_id: str, lang: str = "en"):
+    """Return timed caption cues [{start, dur, text}] for a video, or {cues: []}."""
+    now = time.time()
+    cached = _cc_cache.get(video_id)
+    if cached and now - cached[0] < _CC_TTL:
+        return {"cues": cached[1]}
+
+    cues = await _fetch_captions(video_id, lang)
+    if cues is None:
+        return {"cues": []}
+    _cc_cache[video_id] = (now, cues)
+    return {"cues": cues}
 
 
 @router.get("/statistics")
