@@ -22,6 +22,7 @@ def _run_ytdlp(url: str, **extra_opts) -> list[dict[str, Any]]:
         "ignoreerrors": True,
         "no_warnings": True,
         "extractor_args": {"youtube": {"skip": ["dash", "hls"]}},
+        "http_headers": {"Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5"},
     }
     opts.update(extra_opts)
 

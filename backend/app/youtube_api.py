@@ -93,7 +93,7 @@ def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
                 params={
                     "part": "statistics,snippet,contentDetails",
                     "id": ids_param,
-                    "hl": "zh",
+                    "hl": "zh-TW",
                 },
             )
             _quota_used += 1
@@ -129,7 +129,13 @@ def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
                 except (ValueError, AttributeError):
                     pub_dt = None
 
+                # Prefer localized title (respects hl= param), fall back to default
+                localized_title = (
+                    snippet.get("localized", {}).get("title")
+                    or snippet.get("title", "")
+                )
                 results[vid] = {
+                    "title": localized_title,
                     "view_count": int(stats.get("viewCount", 0)),
                     "like_count": int(stats.get("likeCount", 0)),
                     "comment_count": int(stats.get("commentCount", 0)),

@@ -117,6 +117,8 @@ async def batch_update_stats(new_ids: list[str]):
             if not v:
                 continue
 
+            if s.get("title"):
+                v.title = s["title"]
             v.view_count = s["view_count"]
             v.like_count = s["like_count"]
             if s["published_at"]:
