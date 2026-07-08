@@ -5,6 +5,7 @@ __pycache__/
 node_modules/
 dist/
 data/*.db
+data/downloads/
 frontend/dist/
 backend/config/*.json
 backend/config/subscriptions.yaml

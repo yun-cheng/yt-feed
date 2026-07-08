@@ -5,11 +5,12 @@ type Props = {
   selectedTags: string[]
   onToggleTag: (tag: string) => void
   onSetTags: (tags: string[]) => void
-  page: 'feed' | 'channels' | 'channel' | 'watchlater'
-  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater') => void
+  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'
+  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads') => void
   onClearFilter: () => void
   collapsed: boolean
   watchLaterCount?: number
+  downloadsCount?: number
   tagFilteredCounts?: Map<string, number> | null
 }
 
@@ -53,7 +54,13 @@ const WatchLaterIcon = () => (
   </svg>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onClearFilter, collapsed, watchLaterCount, tagFilteredCounts }: Props) {
+const DownloadsIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+  </svg>
+)
+
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onClearFilter, collapsed, watchLaterCount, downloadsCount, tagFilteredCounts }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -94,6 +101,20 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             {!!watchLaterCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {watchLaterCount > 9 ? '9+' : watchLaterCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => onPageChange('downloads')}
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
+              page === 'downloads' ? 'text-white' : 'text-[#717171] hover:text-white'
+            }`}
+          >
+            <DownloadsIcon />
+            <span className="text-[10px]">Downloads</span>
+            {!!downloadsCount && (
+              <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {downloadsCount > 9 ? '9+' : downloadsCount}
               </span>
             )}
           </button>
@@ -141,6 +162,22 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           {!!watchLaterCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {watchLaterCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => onPageChange('downloads')}
+          className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
+            page === 'downloads'
+              ? 'bg-[#272727] text-white font-medium'
+              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+          }`}
+        >
+          <DownloadsIcon />
+          Downloads
+          {!!downloadsCount && (
+            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+              {downloadsCount}
             </span>
           )}
         </button>

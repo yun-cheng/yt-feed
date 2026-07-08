@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property
+    def downloads_dir(self) -> str:
+        return str(Path(self.db_path).parent / "downloads")
+
+    @property
     def categories_path(self) -> str:
         return str(Path(self.config_dir) / "categories.yaml")
 

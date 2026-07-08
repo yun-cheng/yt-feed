@@ -1,7 +1,7 @@
 import TimeSortControls from './TimeSortControls'
 
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel' | 'watchlater'
+  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'
   window: string
   onWindowChange: (w: string) => void
   sort: string
@@ -16,7 +16,7 @@ type Props = {
 }
 
 export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, onToggleCollapse, onHome, sidebarCollapsed }: Props) {
-  const controls = variant === 'watchlater' ? (
+  const controls = variant === 'downloads' ? null : variant === 'watchlater' ? (
     <TimeSortControls
       variant="watchlater"
       sort={sort}

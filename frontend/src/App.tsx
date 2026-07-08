@@ -4,6 +4,24 @@ import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
 import ChannelsPage from './components/ChannelsPage'
 import ChannelPage from './components/ChannelPage'
+import DownloadsPage from './components/DownloadsPage'
+
+export type DownloadItem = {
+  youtube_id: string
+  title: string
+  channel_id: string
+  channel_name: string
+  thumbnail_url: string
+  duration_seconds: number
+  published_at: string
+  view_count: number
+  like_count: number
+  score: number
+  status: 'downloading' | 'ready' | 'error'
+  error: string
+  filesize: number
+  created_at: string | null
+}
 
 export type VideoItem = {
   youtube_id: string
@@ -40,10 +58,11 @@ export type FeedResponse = {
 
 // ── URL helpers ─────────────────────────────────────────────
 
-function parsePath(): { page: 'feed' | 'channels' | 'channel' | 'watchlater'; channelId: string | null } {
+function parsePath(): { page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'; channelId: string | null } {
   const path = window.location.pathname
   if (path === '/channels') return { page: 'channels', channelId: null }
   if (path === '/watchlater') return { page: 'watchlater', channelId: null }
+  if (path === '/downloads') return { page: 'downloads', channelId: null }
   const m = path.match(/^\/channel\/([^/]+)/)
   if (m) return { page: 'channel', channelId: m[1] }
   return { page: 'feed', channelId: null }
@@ -83,6 +102,7 @@ export function buildPath(
 
   if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
   if (page === 'watchlater') return '/watchlater'
+  if (page === 'downloads') return '/downloads'
   if (page === 'channel' && channelId) {
     return qs ? `/channel/${channelId}?${qs}` : `/channel/${channelId}`
   }
@@ -133,7 +153,7 @@ export default function App() {
   // Init from URL
   const initPath = parsePath()
   const initQ = parseSearch()
-  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel' | 'watchlater'>(initPath.page)
+  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'>(initPath.page)
   const [feed, setFeed] = useState<FeedResponse | null>(null)
   const [tags, setTags] = useState<TagInfo[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
@@ -162,6 +182,55 @@ export default function App() {
       return next
     })
   }
+
+  // ── Downloads (server-side offline library) ───────────
+  const [downloads, setDownloads] = useState<DownloadItem[]>([])
+  const downloadIds = useMemo(() => new Set(downloads.map(d => d.youtube_id)), [downloads])
+
+  const fetchDownloads = useCallback(async () => {
+    try {
+      const res = await fetch('/api/downloads')
+      if (res.ok) setDownloads(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { fetchDownloads() }, [fetchDownloads])
+
+  // Poll while anything is still downloading so the library updates to "ready".
+  useEffect(() => {
+    if (!downloads.some(d => d.status === 'downloading')) return
+    const id = setInterval(fetchDownloads, 2000)
+    return () => clearInterval(id)
+  }, [downloads, fetchDownloads])
+
+  const startDownload = useCallback(async (video: {
+    youtube_id: string; title: string; channel_id: string
+    channel_name?: string; thumbnail_url: string; duration_seconds: number
+    published_at?: string; view_count?: number; like_count?: number; score?: number
+  }) => {
+    const meta = {
+      youtube_id: video.youtube_id, title: video.title, channel_id: video.channel_id,
+      channel_name: video.channel_name || '', thumbnail_url: video.thumbnail_url,
+      duration_seconds: video.duration_seconds, published_at: video.published_at || '',
+      view_count: video.view_count || 0, like_count: video.like_count || 0, score: video.score || 0,
+    }
+    // optimistic: show it immediately as downloading
+    setDownloads(prev => prev.some(d => d.youtube_id === video.youtube_id) ? prev
+      : [{ ...meta, status: 'downloading', error: '', filesize: 0, created_at: new Date().toISOString() }, ...prev])
+    try {
+      await fetch('/api/downloads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meta),
+      })
+    } catch { /* ignore */ }
+    fetchDownloads()
+  }, [fetchDownloads])
+
+  const deleteDownload = useCallback(async (videoId: string) => {
+    setDownloads(prev => prev.filter(d => d.youtube_id !== videoId))
+    try { await fetch(`/api/downloads/${videoId}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }, [])
 
   // ── Sidebar state ─────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -393,7 +462,7 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
     setPageRaw(p)
@@ -474,7 +543,7 @@ export default function App() {
         className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:static md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
       >
       <TopBar
-        variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : 'feed'}
+        variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : 'feed'}
         window={page === 'channel' ? channelWindow : timeWindow}
         onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
         sort={page === 'channel' ? channelSort : sort}
@@ -514,6 +583,7 @@ export default function App() {
             onSetTags={setSelectedTags}
             page={page}
             onPageChange={setPage}
+            downloadsCount={downloads.length}
             onClearFilter={clearFilter}
             collapsed={sidebarCollapsed}
             watchLaterCount={watchLater.length}
@@ -549,7 +619,9 @@ export default function App() {
             </button>
           </div>
         )}
-        {page === 'watchlater' ? (
+        {page === 'downloads' ? (
+          <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />
+        ) : page === 'watchlater' ? (
           <div className="px-6 py-4">
             {watchLater.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
@@ -586,6 +658,8 @@ export default function App() {
                   sort={sort}
                   watchLaterIds={watchLaterIds}
                   onToggleWatchLater={toggleWatchLater}
+                  onDownload={startDownload}
+                  downloadIds={downloadIds}
                 />
               )
             })()}
@@ -601,6 +675,8 @@ export default function App() {
             onTimeModeChange={setChannelTimeMode}
             watchLaterIds={watchLaterIds}
             onToggleWatchLater={toggleWatchLater}
+            onDownload={startDownload}
+            downloadIds={downloadIds}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">
@@ -620,7 +696,7 @@ export default function App() {
               </div>
             ) : (
               feed.groups.map((group) => (
-                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={toggleWatchLater} />
+                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={toggleWatchLater} onDownload={startDownload} downloadIds={downloadIds} />
               ))
             )}
           </div>
@@ -655,6 +731,18 @@ export default function App() {
           {!!watchLater.length && (
             <span className="absolute top-1.5 right-[calc(50%-14px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
               {watchLater.length > 9 ? '9+' : watchLater.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setPage('downloads')}
+          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${page === 'downloads' ? 'text-white' : 'text-[#717171]'}`}
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+          <span className="text-[10px]">Downloads</span>
+          {!!downloads.length && (
+            <span className="absolute top-1.5 right-[calc(50%-16px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+              {downloads.length > 9 ? '9+' : downloads.length}
             </span>
           )}
         </button>

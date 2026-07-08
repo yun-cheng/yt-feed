@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import feed, channels, subscriptions
+from app.routers import feed, channels, subscriptions, downloads
 from app.auth_google import router as auth_router
 from app.routers.tags import router as tags_router
 
@@ -29,6 +29,7 @@ app.add_middleware(
 
 app.include_router(feed.router, prefix="/api")
 app.include_router(channels.router, prefix="/api")
+app.include_router(downloads.router, prefix="/api")
 app.include_router(subscriptions.router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(tags_router, prefix="/api")

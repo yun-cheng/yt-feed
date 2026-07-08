@@ -74,6 +74,30 @@ type StoryboardInfo = {
 // A single timed caption cue (seconds) from /feed/captions
 type Cue = { start: number; dur: number; text: string }
 
+// Wrap a native <video> so it exposes the same surface as a YT player instance —
+// lets the whole preview/controls/seek/volume machinery below run unchanged whether
+// the source is a YouTube embed or a locally downloaded file.
+function makeVideoAdapter(v: HTMLVideoElement): YTPlayerInstance {
+  return {
+    playVideo: () => { v.play().catch(() => {}) },
+    pauseVideo: () => v.pause(),
+    seekTo: (s) => { v.currentTime = s },
+    mute: () => { v.muted = true },
+    unMute: () => { v.muted = false },
+    isMuted: () => v.muted,
+    setVolume: (vol) => { v.volume = Math.max(0, Math.min(1, vol / 100)) },
+    getVolume: () => v.volume * 100,
+    getCurrentTime: () => v.currentTime || 0,
+    getDuration: () => v.duration || 0,
+    loadModule: () => {},
+    unloadModule: () => {},
+    getOptions: () => [],
+    getOption: () => undefined,
+    setOption: () => {},
+    destroy: () => { v.pause(); v.removeAttribute('src'); v.load(); v.remove() },
+  }
+}
+
 type Props = {
   video: VideoItem
   isHovered: boolean
@@ -82,6 +106,12 @@ type Props = {
   sort?: string
   isWatchLater?: boolean
   onToggleWatchLater?: (video: VideoItem) => void
+  onDownload?: (video: VideoItem) => void
+  isDownloaded?: boolean
+  onOpen?: (video: VideoItem) => void            // overrides the default "open on YouTube" click
+  onRemoveDownload?: (video: VideoItem) => void  // when set, the menu shows "remove download"
+  localSrc?: string                              // preview a local file instead of the YouTube embed
+  localOnly?: boolean                            // never fall back to YouTube; wait for localSrc (offline)
 }
 
 function formatViewCount(n: number): string {
@@ -147,7 +177,7 @@ const BTN_LIGHT = `${BTN} bg-white/90 text-black hover:bg-white`
 // specific video is remembered here so re-hovering it keeps them off.
 const ccPrefByVideo = new Map<string, boolean>()
 
-export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater }: Props) {
+export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, localSrc, localOnly }: Props) {
   const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
 
@@ -157,6 +187,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const playerCreatedRef = useRef(false)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const isDraggingRef = useRef(false)
+  const scrubVideoRef = useRef<HTMLVideoElement>(null)  // local-file scrubbing thumbnail
 
   // Mute/volume are shared globally across every preview and persisted (see audioStore).
   const { muted: isMuted, volume } = useAudio()
@@ -170,6 +201,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [duration, setDuration] = useState(video.duration_seconds > 0 ? video.duration_seconds : 0)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)   // title "more actions" menu
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const currentTimeRef = useRef(currentTime)
   useEffect(() => { currentTimeRef.current = currentTime }, [currentTime])
@@ -198,6 +231,34 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const createPlayer = useCallback((seekTime?: number) => {
     if (!playerWrapperRef.current) return
     playerCreatedRef.current = true
+
+    // Local downloaded file: play it directly (offline, no YouTube network).
+    if (localSrc) {
+      const v = document.createElement('video')
+      v.src = localSrc
+      v.loop = true
+      v.playsInline = true
+      v.preload = 'auto'   // buffer the whole local file so scrubbing works offline
+      v.muted = audioRef.current.muted
+      v.volume = audioRef.current.volume / 100
+      v.style.width = '100%'
+      v.style.height = '100%'
+      v.style.objectFit = 'cover'
+      playerWrapperRef.current.appendChild(v)
+      const adapter = makeVideoAdapter(v)
+      const onReady = () => {
+        if (!playerWrapperRef.current || !playerWrapperRef.current.contains(v)) return
+        playerRef.current = adapter
+        playerReadyRef.current = true
+        if (v.duration) setDuration(v.duration)
+        if (seekTime && seekTime > 0) v.currentTime = seekTime
+        if (isHoveredRef.current) v.play().catch(() => {})
+        else v.pause()
+      }
+      v.addEventListener('loadedmetadata', onReady, { once: true })
+      return
+    }
+
     const container = document.createElement('div')
     container.style.width = '100%'
     container.style.height = '100%'
@@ -248,12 +309,13 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         },
       })
     })
-  }, [video.youtube_id])
+  }, [video.youtube_id, localSrc])
 
   useEffect(() => {
     if (!isHovered || playerCreatedRef.current) return
+    if (localOnly && !localSrc) return  // download card: wait for the in-memory blob URL
     createPlayer()
-  }, [isHovered, createPlayer])
+  }, [isHovered, localOnly, localSrc, createPlayer])
 
   // Pause/resume on hover change
   useEffect(() => {
@@ -334,8 +396,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   }, [video.youtube_id, storyboard])
 
   useEffect(() => {
-    if (isHovered) fetchStoryboard()
-  }, [isHovered, fetchStoryboard])
+    // Gate on localOnly, not localSrc: a download card has localSrc briefly undefined
+    // while its blob loads, and we must NOT fetch the YouTube storyboard in that window
+    // (it would show a second preview alongside the local scrubber).
+    if (isHovered && !localOnly) fetchStoryboard()
+  }, [isHovered, localOnly, fetchStoryboard])
 
   // Global drag listeners for progress scrubbing
   useEffect(() => {
@@ -354,6 +419,29 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       setHoverRatio(null)
     }
   }, [isHovered])
+
+  // Close the "more actions" menu on any outside click.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [menuOpen])
+
+  // Add the video to the offline Downloads library (server downloads it to disk).
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onDownload?.(video)
+    setMenuOpen(false)
+  }
+
+  const handleRemoveDownload = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onRemoveDownload?.(video)
+    setMenuOpen(false)
+  }
 
   const handleMuteToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -404,10 +492,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   }
 
   // Always fetch on hover — even when captions are toggled off — so we know whether
-  // a track exists and can reflect that on the CC button.
+  // a track exists and can reflect that on the CC button. (Skipped for local files:
+  // the transcript is a YouTube-only network fetch, and CC is hidden offline.)
   useEffect(() => {
-    if (isHovered) fetchCaptions()
-  }, [isHovered, fetchCaptions])
+    if (isHovered && !localOnly) fetchCaptions()
+  }, [isHovered, localOnly, fetchCaptions])
 
   const handleCCToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -445,14 +534,34 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const hoverTime = hoverRatio !== null ? hoverRatio * duration : null
   const sbFrame = storyboard && hoverTime !== null ? getStoryboardFrame(storyboard, hoverTime) : null
 
+  // Local file: generate the scrubbing thumbnail from the video itself by seeking a
+  // hidden <video> to the hovered time (offline — no YouTube storyboard needed).
+  useEffect(() => {
+    if (localSrc && scrubVideoRef.current && hoverTime !== null) {
+      scrubVideoRef.current.currentTime = hoverTime
+    }
+  }, [hoverTime, localSrc])
+
   return (
-    <div className="relative cursor-pointer" onClick={() => window.open(videoUrl, '_blank')}>
+    <div className="relative cursor-pointer" onClick={() => onOpen ? onOpen(video) : window.open(videoUrl, '_blank')}>
       {/* Thumbnail — hover here only triggers preview */}
       <div
         className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]"
         onMouseEnter={() => onHover(video.youtube_id)}
         onMouseLeave={() => onHover(null)}
       >
+        {/* Real anchor over the preview so right-click / middle-click / cmd-click get
+           the native "Open link in new tab" behaviour. Sits below the control buttons
+           (z-30+). Downloads open a local modal instead, so skip the YouTube link there. */}
+        {!onOpen && (
+          <a
+            href={videoUrl}
+            aria-label={video.title}
+            className="absolute inset-0 z-10"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(videoUrl, '_blank') }}
+          />
+        )}
+
         {/* Static thumbnail */}
         <div style={{ display: isHovered ? 'none' : 'block' }}>
           <img src={thumb} alt={video.title} className="w-full h-full object-cover" loading="lazy" />
@@ -473,7 +582,9 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           <div
             ref={playerWrapperRef}
             className="absolute left-0 right-0 w-full"
-            style={{ top: '-64px', height: 'calc(100% + 128px)', pointerEvents: 'none' }}
+            style={localSrc
+              ? { top: 0, height: '100%', pointerEvents: 'none' }        // native <video>: no chrome, no crop
+              : { top: '-64px', height: 'calc(100% + 128px)', pointerEvents: 'none' }}
           />
           <div className="absolute inset-0" style={{ zIndex: 2 }} />
 
@@ -548,7 +659,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             </div>
           )}
 
-          {isHovered && (
+          {isHovered && !localSrc && !localOnly && (
             <button
               className={
                 captionsUnavailable
@@ -577,10 +688,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           )}
         </div>
 
-        {/* Progress bar + storyboard preview */}
+        {/* Progress bar + storyboard preview. z-40 (above the z-30 right-side buttons)
+           so the scrub/storyboard thumbnail floats over them near the top of the card. */}
         {isHovered && (
           <div
-            className="absolute bottom-0 left-0 right-0 z-20 px-2 pb-2 pt-6 bg-gradient-to-t from-black/70 to-transparent group/controls"
+            className="absolute bottom-0 left-0 right-0 z-40 px-2 pb-2 pt-6 bg-gradient-to-t from-black/70 to-transparent group/controls"
             onClick={(e) => e.stopPropagation()}
             onMouseMove={(e) => {
               if (!progressBarRef.current) return
@@ -604,7 +716,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 onMouseDown={handleProgressMouseDown}
                 onMouseMove={handleProgressMouseMove}
               >
-                {/* Storyboard preview — floats above the hit area */}
+                {/* Storyboard preview (YouTube) — floats above the hit area */}
                 {sbFrame && hoverRatio !== null && (
                   <div
                     className="absolute pointer-events-none"
@@ -625,8 +737,44 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                         backgroundSize: `${sbFrame.sheetW}px ${sbFrame.sheetH}px`,
                       }}
                     />
-                    <div className="text-center text-white text-sm mt-1 font-semibold drop-shadow-lg">
-                      {formatDuration(Math.round(hoverTime!))}
+                    <div className="text-center mt-1">
+                      <span className="inline-block bg-black/80 text-white text-sm font-semibold px-1.5 py-0.5 rounded">
+                        {formatDuration(Math.round(hoverTime!))}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Scrubbing preview (local file) — a hidden <video> seeked to the
+                   hovered time. Kept mounted while hovered so the frame is instant;
+                   only shown/positioned once the cursor is over the progress bar. */}
+                {localSrc && isHovered && (
+                  <div
+                    className="absolute pointer-events-none transition-opacity duration-75"
+                    style={{
+                      bottom: '20px',
+                      // Fixed width so the popup keeps its size when clamped near the edge
+                      // (an auto-width abs box would shrink-to-fit the remaining space).
+                      width: 160,
+                      left: hoverRatio !== null ? `clamp(80px, ${(hoverRatio * 100).toFixed(2)}%, calc(100% - 80px))` : '50%',
+                      transform: 'translateX(-50%)',
+                      opacity: hoverRatio !== null ? 1 : 0,
+                    }}
+                  >
+                    <video
+                      ref={scrubVideoRef}
+                      src={localSrc}
+                      muted
+                      preload="auto"
+                      className="rounded shadow-lg border border-white/20 bg-black object-cover"
+                      style={{ width: 160, height: 90, maxWidth: 'none' }}
+                    />
+                    <div className="text-center mt-1">
+                      {hoverTime !== null && (
+                        <span className="inline-block bg-black/80 text-white text-sm font-semibold px-1.5 py-0.5 rounded">
+                          {formatDuration(Math.round(hoverTime))}
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -669,13 +817,25 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       {/* Info row */}
       <div className="flex gap-3 mt-2">
         <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{video.title}</h3>
-          <p
-            className="text-xs text-[#aaaaaa] mt-0.5 hover:text-blue-400 cursor-pointer transition-colors"
-            onClick={(e) => { e.stopPropagation(); onChannelClick(video.channel_id) }}
+          {onOpen ? (
+            <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{video.title}</h3>
+          ) : (
+            <a
+              href={videoUrl}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(videoUrl, '_blank') }}
+              className="block text-sm font-medium text-white line-clamp-2 leading-5"
+            >
+              {video.title}
+            </a>
+          )}
+          {/* Channel — a real link to the channel page (right-click → open in new tab) */}
+          <a
+            href={`/channel/${video.channel_id}`}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChannelClick(video.channel_id) }}
+            className="inline-block text-xs text-[#aaaaaa] mt-0.5 hover:text-blue-400 transition-colors"
           >
             {video.channel_name || 'Unknown'}
-          </p>
+          </a>
           <p className="text-xs text-[#717171] mt-0.5">
             {(() => {
               const likeRate = video.view_count > 0 ? (video.like_count / video.view_count) * 100 : null
@@ -697,6 +857,55 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               })
             })()}
           </p>
+        </div>
+
+        {/* More-actions menu (right of the title) */}
+        <div className="relative flex-shrink-0" ref={menuRef}>
+          <button
+            className="p-1.5 -mr-1 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
+            title="More actions"
+            aria-label="More actions"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+            </svg>
+          </button>
+          {menuOpen && (
+            <div
+              className="absolute right-0 top-full mt-1 z-40 min-w-[180px] rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {onRemoveDownload ? (
+                <button
+                  className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
+                  onClick={handleRemoveDownload}
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>
+                  </svg>
+                  移除下載
+                </button>
+              ) : (
+                <button
+                  className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
+                  onClick={handleDownload}
+                  disabled={isDownloaded}
+                >
+                  {isDownloaded ? (
+                    <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+                    </svg>
+                  )}
+                  {isDownloaded ? '已在下載清單' : '下載'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
