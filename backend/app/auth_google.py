@@ -39,6 +39,11 @@ def _make_flow(redirect_uri: str | None = None) -> Flow:
     return flow
 
 
+# PKCE: the code_verifier generated in /login must be reused in /callback to
+# exchange the code. Stashed here by `state` (short-lived, popped on callback).
+_pending_verifiers: dict[str, str] = {}
+
+
 def _get_token() -> Credentials | None:
     """Load saved OAuth token. Tries personal (J7 brand), then project, then Hermes."""
     for path in (PERSONAL_TOKEN_PATH, TOKEN_PATH, HERMES_TOKEN_PATH):
@@ -70,24 +75,42 @@ async def login():
     """Redirect user to Google OAuth consent screen."""
     redirect_uri = "http://localhost:8000/api/auth/callback"
     flow = _make_flow(redirect_uri)
-    auth_url, _ = flow.authorization_url(
+    auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
     )
+    # remember the PKCE verifier for this login so /callback can exchange the code
+    if getattr(flow, "code_verifier", None):
+        _pending_verifiers[state] = flow.code_verifier
     return RedirectResponse(auth_url)
 
 
+def _error_page(message: str) -> HTMLResponse:
+    return HTMLResponse(f"""
+    <html><body style="background:#0f0f0f;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+    <div style="text-align:center;max-width:520px">
+      <h1>⚠️ Sign-in failed</h1>
+      <p style="color:#f87171">{message}</p>
+      <p style="color:#aaa">Close this tab and click “Re-authenticate” in the app to try again.</p>
+    </div>
+    </body></html>
+    """, status_code=400)
+
+
 @router.get("/callback")
-async def callback(code: str, request: Request):
+async def callback(code: str, request: Request, state: str | None = None):
     """Handle OAuth callback — exchange code for token."""
     redirect_uri = "http://localhost:8000/api/auth/callback"
     flow = _make_flow(redirect_uri)
-    flow.fetch_token(code=code)
-    creds = flow.credentials
-    _save_token(creds)
+    if state and state in _pending_verifiers:
+        flow.code_verifier = _pending_verifiers.pop(state)
+    try:
+        flow.fetch_token(code=code)
+    except Exception as e:
+        return _error_page(str(e)[:300])
+    _save_token(flow.credentials)
 
-    # Redirect to frontend with success signal
     return HTMLResponse("""
     <html><body style="background:#0f0f0f;color:white;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
     <div style="text-align:center">

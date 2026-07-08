@@ -232,6 +232,25 @@ export default function App() {
     try { await fetch(`/api/downloads/${videoId}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }, [])
 
+  // ── YouTube API token health (reminder to re-auth) ────
+  const [tokenBad, setTokenBad] = useState(false)
+  const [tokenNoticeDismissed, setTokenNoticeDismissed] = useState(
+    () => sessionStorage.getItem('yt_token_notice_dismissed') === '1'
+  )
+  const checkToken = useCallback((force = false) => {
+    fetch(`/api/youtube-token${force ? '?force=1' : ''}`)
+      .then(r => r.json())
+      .then(d => setTokenBad(d && d.ok === false))
+      .catch(() => {})
+  }, [])
+  useEffect(() => {
+    checkToken()
+    // Re-check when returning to the tab — clears the banner right after re-auth.
+    const onFocus = () => checkToken(true)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [checkToken])
+
   // ── Sidebar state ─────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -536,6 +555,31 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      {/* YouTube API token expired/revoked — stats stop updating until re-auth */}
+      {tokenBad && !tokenNoticeDismissed && (
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 text-sm bg-amber-500/15 text-amber-300 border-b border-amber-500/30">
+          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A2 2 0 003.53 21h16.94a2 2 0 001.72-2.44l-8.48-14.7a2 2 0 00-3.42 0z"/>
+          </svg>
+          <span className="flex-1 min-w-0">
+            YouTube API token is expired/revoked — video stats will stop updating.{' '}
+            <a
+              href="/api/auth/login"
+              target="_blank"
+              rel="noreferrer"
+              className="underline font-semibold text-amber-200 hover:text-amber-100"
+            >
+              Re-authenticate
+            </a>{' '}to resume.
+          </span>
+          <button
+            className="flex-shrink-0 text-amber-300/70 hover:text-amber-200 text-xs px-2 py-0.5"
+            onClick={() => { sessionStorage.setItem('yt_token_notice_dismissed', '1'); setTokenNoticeDismissed(true) }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {/* TopBar — fixed on mobile (slides up/down without affecting layout),
            static in-flow on desktop (no hiding behaviour) */}
       <div

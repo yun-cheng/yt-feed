@@ -18,13 +18,21 @@ import json
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2.credentials import Credentials
 
+from app.config import settings
+
+# Token written by the app's own OAuth flow (/api/auth/login) — this is what the
+# in-app "Re-authenticate" link refreshes, so prefer it. Fall back to the external
+# "work" token for backwards compatibility.
+APP_TOKEN_PATH = str(Path(settings.config_dir) / "youtube_oauth_token.json")
 WORK_TOKEN_PATH = os.path.expanduser("~/.hermes/google_token.json")
+_TOKEN_PATHS = [APP_TOKEN_PATH, WORK_TOKEN_PATH]
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
 BATCH_SIZE = 50  # max IDs per videos.list request
 CACHE_TTL = 3600  # 1 hour cache for recently-fetched video IDs
@@ -36,12 +44,35 @@ _fetch_cache: dict[str, float] = {}
 _quota_used = 0
 
 
+def _save_creds(path: str, creds: Credentials) -> None:
+    with open(path, "w") as f:
+        json.dump({
+            "token": creds.token,
+            "refresh_token": creds.refresh_token,
+            "token_uri": creds.token_uri,
+            "client_id": creds.client_id,
+            "client_secret": creds.client_secret,
+            "scopes": creds.scopes,
+        }, f)
+
+
 def _get_creds() -> Credentials:
-    with open(WORK_TOKEN_PATH) as f:
-        creds = Credentials.from_authorized_user_info(json.load(f), SCOPES)
-    if creds.expired and creds.refresh_token:
-        creds.refresh(GoogleRequest())
-    return creds
+    """Return usable credentials from the first token file that works."""
+    last_err: Exception | None = None
+    for path in _TOKEN_PATHS:
+        try:
+            with open(path) as f:
+                creds = Credentials.from_authorized_user_info(json.load(f), SCOPES)
+        except (FileNotFoundError, ValueError):
+            continue
+        try:
+            if creds.expired and creds.refresh_token:
+                creds.refresh(GoogleRequest())
+                _save_creds(path, creds)  # persist the refreshed access token
+            return creds
+        except Exception as e:  # revoked/expired refresh token — try the next file
+            last_err = e
+    raise last_err or FileNotFoundError("no usable YouTube token found")
 
 
 def _parse_iso8601_duration(duration_str: str) -> int:
@@ -78,7 +109,13 @@ def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
         return {}
 
     results: dict[str, dict[str, Any]] = {}
-    creds = _get_creds()
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        # Token missing/expired/revoked — don't crash the caller; let it fall back
+        # (e.g. cron_update uses yt-dlp for stats when the Data API is unavailable).
+        print(f"[youtube_api] credentials unavailable, skipping API stats: {e}")
+        return {}
     global _quota_used
 
     # Process in batches of 50
@@ -163,3 +200,28 @@ def get_quota_used() -> int:
 def clear_cache():
     """Clear the in-memory fetch cache."""
     _fetch_cache.clear()
+
+
+# --- Credentials health (surfaced in the UI so the token gets re-authed) ---
+_cred_check: tuple[float, dict[str, Any]] | None = None
+_CRED_CHECK_TTL = 300  # re-check at most every 5 min (so a re-auth clears it quickly)
+
+
+def youtube_credentials_status(force: bool = False) -> dict[str, Any]:
+    """Report whether the YouTube Data API token is usable.
+
+    {"ok": True}  — token loads/refreshes fine.
+    {"ok": False, "reason": "..."} — expired/revoked/missing; stats won't update.
+    Cached briefly so calling it repeatedly doesn't spam token refreshes.
+    """
+    global _cred_check
+    now = time.monotonic()
+    if not force and _cred_check and now - _cred_check[0] < _CRED_CHECK_TTL:
+        return _cred_check[1]
+    try:
+        _get_creds()
+        status: dict[str, Any] = {"ok": True, "reason": ""}
+    except Exception as e:
+        status = {"ok": False, "reason": str(e)[:200]}
+    _cred_check = (now, status)
+    return status

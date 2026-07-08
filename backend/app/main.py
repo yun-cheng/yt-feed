@@ -40,6 +40,13 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/api/youtube-token")
+async def youtube_token_status(force: bool = False):
+    """Token health for the stats API — the UI warns you to re-auth when it's dead."""
+    from app.youtube_api import youtube_credentials_status
+    return youtube_credentials_status(force=force)
+
+
 _refreshing = False
 
 

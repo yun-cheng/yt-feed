@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 from app.database import async_session, init_db
 from app.models import Channel, Video
-from app.fetcher import fetch_latest_videos
+from app.fetcher import fetch_latest_videos, fetch_video_details
 from app.youtube_api import batch_fetch_video_stats, get_quota_used
 
 
@@ -69,12 +69,14 @@ async def scan_channel_videos(
 
             if exists:
                 # Update thumbnail/duration if missing, but NOT view_count
-                # (view_count will come from YouTube API)
+                # (view_count will come from YouTube API). Do NOT touch last_updated:
+                # it tracks when STATS were last refreshed, and the stale-refresh phase
+                # relies on it. Bumping it here (without refreshing stats) would make
+                # the video look fresh and starve the stats refresh — freezing counts.
                 if not exists.thumbnail_url:
                     exists.thumbnail_url = thumb
                 if not exists.duration_seconds and duration:
                     exists.duration_seconds = duration
-                exists.last_updated = datetime.now(timezone.utc)
             else:
                 session.add(Video(
                     youtube_id=vid,
@@ -96,14 +98,36 @@ async def scan_channel_videos(
     return new_ids
 
 
-async def batch_update_stats(new_ids: list[str]):
+async def batch_update_stats(new_ids: list[str], ytdlp_fallback: bool = False):
     """
     Batch-fetch real stats via YouTube Data API and update DB.
+
+    When `ytdlp_fallback` is set, any IDs the Data API didn't return (e.g. the
+    OAuth token is expired/revoked) are fetched via yt-dlp instead — slower, but
+    it keeps stats flowing without the API. Reserved for small sets (new videos);
+    the large stale-refresh set skips it to avoid a very slow run.
     """
     if not new_ids:
         return
 
     stats = batch_fetch_video_stats(new_ids)
+
+    if ytdlp_fallback:
+        missing = [vid for vid in new_ids if vid not in stats]
+        if missing:
+            loop = asyncio.get_event_loop()
+            details = await loop.run_in_executor(None, fetch_video_details, missing)
+            for d in details:
+                stats[d["youtube_id"]] = {
+                    "view_count": d.get("view_count", 0) or 0,
+                    "like_count": d.get("like_count", 0) or 0,
+                    "published_at": d.get("published_at"),
+                    "duration_seconds": d.get("duration_seconds", 0) or 0,
+                    # yt-dlp details don't carry these — leave existing values alone
+                    "title": None,
+                    "thumbnail_url": None,
+                }
+
     if not stats:
         return
 
@@ -168,10 +192,11 @@ async def run_update():
     scan_elapsed = (datetime.now(timezone.utc) - start).total_seconds()
     print(f"\nPhase 1 done: {total} new videos found in {scan_elapsed:.0f}s")
 
-    # Phase 2: Batch-fetch stats via YouTube API for new videos
+    # Phase 2: Batch-fetch stats via YouTube API for new videos (yt-dlp fallback
+    # so newly-added videos still get real counts if the Data API is unavailable).
     if all_new_ids:
         print(f"Fetching stats for {len(all_new_ids)} new videos via YouTube API...")
-        await batch_update_stats(all_new_ids)
+        await batch_update_stats(all_new_ids, ytdlp_fallback=True)
         print(f"  API quota used: ~{get_quota_used()} units")
     else:
         print("No new videos to update.")
