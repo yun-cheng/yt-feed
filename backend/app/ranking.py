@@ -42,13 +42,26 @@ WINDOW_RANGES = {
 }
 
 
+# Hot-score "burn-in": hours added to a video's age before dividing views by it.
+# Without it, a video published minutes ago divides by ~0.1h and a handful of
+# views explodes to the top of the hot order. This shrinks early velocity toward
+# 0 until enough time (and thus views) accrues to trust the rate.
+HOT_HOUR_OFFSET = 12.0
+
+# like% Bayesian shrinkage: a video's like/view ratio is pulled toward the feed's
+# average, weighted by C "pseudo-views". Small-sample videos sit near the prior;
+# only videos with >> C views are trusted at their raw ratio.
+LIKE_PCT_PSEUDO_VIEWS = 1500
+LIKE_PCT_FALLBACK_PRIOR = 0.04  # used when the result set has no views to average
+
+
 def score_video(view_count: int, published_at: datetime) -> float:
-    """Score = views / hours since published."""
+    """Hot score = views / (hours since published + burn-in offset)."""
     now = datetime.now(timezone.utc)
     if published_at.tzinfo is None:
         published_at = published_at.replace(tzinfo=timezone.utc)
-    hours = max((now - published_at).total_seconds() / 3600, 0.1)
-    return view_count / hours
+    hours = max((now - published_at).total_seconds() / 3600, 0.0)
+    return view_count / (hours + HOT_HOUR_OFFSET)
 
 
 def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "wide") -> list[Video]:
@@ -111,7 +124,16 @@ def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str
     elif sort == "likes":
         ranked.sort(key=lambda x: x["like_count"], reverse=True)
     elif sort == "like%":
-        ranked.sort(key=lambda x: x["like_count"] / max(x["view_count"], 100) * 100, reverse=True)
+        # Shrink each ratio toward the feed's average like/view rate so tiny-sample
+        # videos can't top the list on a handful of likes (see LIKE_PCT_* above).
+        total_likes = sum(x["like_count"] for x in ranked)
+        total_views = sum(x["view_count"] for x in ranked)
+        prior = total_likes / total_views if total_views else LIKE_PCT_FALLBACK_PRIOR
+        c = LIKE_PCT_PSEUDO_VIEWS
+        ranked.sort(
+            key=lambda x: (x["like_count"] + prior * c) / (x["view_count"] + c),
+            reverse=True,
+        )
     elif sort == "newest":
         ranked.sort(key=lambda x: x["published_at"], reverse=True)
     elif sort == "oldest":
