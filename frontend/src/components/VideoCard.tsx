@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import type { VideoItem } from '../App'
 import { useAudio, setAudioMuted, setAudioVolume } from '../hooks/audioStore'
+import SaveToPlaylist from './SaveToPlaylist'
 
 // Minimal YT IFrame API types
 declare global {
@@ -110,6 +111,7 @@ type Props = {
   isDownloaded?: boolean
   onOpen?: (video: VideoItem) => void            // overrides the default "open on YouTube" click
   onRemoveDownload?: (video: VideoItem) => void  // when set, the menu shows "remove download"
+  onRemoveFromPlaylist?: (video: VideoItem) => void  // when set (playlist page), the menu shows "remove from playlist"
   onHideChannel?: (channelId: string) => void    // when set, the menu shows "hide channel from home"
   localSrc?: string                              // preview a local file instead of the YouTube embed
   localOnly?: boolean                            // never fall back to YouTube; wait for localSrc (offline)
@@ -178,7 +180,7 @@ const BTN_LIGHT = `${BTN} bg-white/90 text-black hover:bg-white`
 // specific video is remembered here so re-hovering it keeps them off.
 const ccPrefByVideo = new Map<string, boolean>()
 
-export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onHideChannel, localSrc, localOnly }: Props) {
+export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onHideChannel, localSrc, localOnly }: Props) {
   const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
 
@@ -203,6 +205,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)   // title "more actions" menu
+  const [showSavePanel, setShowSavePanel] = useState(false)  // "save to playlist" sub-panel
   const menuRef = useRef<HTMLDivElement>(null)
 
   const currentTimeRef = useRef(currentTime)
@@ -425,7 +428,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) { setMenuOpen(false); setShowSavePanel(false) }
     }
     window.addEventListener('mousedown', onDown)
     return () => window.removeEventListener('mousedown', onDown)
@@ -447,6 +450,12 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const handleHideChannel = (e: React.MouseEvent) => {
     e.stopPropagation()
     onHideChannel?.(video.channel_id)
+    setMenuOpen(false)
+  }
+
+  const handleRemoveFromPlaylist = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onRemoveFromPlaylist?.(video)
     setMenuOpen(false)
   }
 
@@ -880,7 +889,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         <div className="relative flex-shrink-0" ref={menuRef}>
           <button
             className="p-1.5 -mr-1 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o) }}
+            onClick={(e) => { e.stopPropagation(); setShowSavePanel(false); setMenuOpen((o) => !o) }}
             title="More actions"
             aria-label="More actions"
           >
@@ -893,6 +902,30 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               className="absolute right-0 top-full mt-1 z-40 min-w-[180px] rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2"
               onClick={(e) => e.stopPropagation()}
             >
+              {showSavePanel ? (
+                <SaveToPlaylist video={video} onBack={() => setShowSavePanel(false)} />
+              ) : (
+              <>
+              <button
+                className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
+                onClick={(e) => { e.stopPropagation(); setShowSavePanel(true) }}
+              >
+                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
+                </svg>
+                儲存至播放清單
+              </button>
+              {onRemoveFromPlaylist && (
+                <button
+                  className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
+                  onClick={handleRemoveFromPlaylist}
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h11M4 12h11M4 18h7M15 15l6 6m0-6l-6 6" />
+                  </svg>
+                  從播放清單中移除
+                </button>
+              )}
               {onRemoveDownload ? (
                 <button
                   className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
@@ -931,6 +964,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   </svg>
                   隱藏此頻道
                 </button>
+              )}
+              </>
               )}
             </div>
           )}

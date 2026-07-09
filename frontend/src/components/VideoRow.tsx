@@ -14,6 +14,7 @@ type Props = {
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
+  onRemoveFromPlaylist?: (video: VideoItem) => void
   // Server pagination (feed): when onLoadMore is set, this row renders every
   // video it's given and asks the parent to fetch the next page on scroll,
   // instead of paginating an already-loaded array client-side.
@@ -22,7 +23,7 @@ type Props = {
   totalCount?: number
 }
 
-export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
+export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onRemoveFromPlaylist, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
   const serverMode = typeof onLoadMore === 'function'
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -92,6 +93,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
             onDownload={onDownload}
             isDownloaded={downloadIds?.has(video.youtube_id)}
             onHideChannel={onHideChannel}
+            onRemoveFromPlaylist={onRemoveFromPlaylist}
           />
         ))}
       </div>

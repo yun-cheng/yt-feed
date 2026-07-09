@@ -71,6 +71,34 @@ class WatchLater(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Playlist(Base):
+    """A user-created playlist (server-side)."""
+    __tablename__ = "playlists"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PlaylistItem(Base):
+    """A video in a playlist. Stores a metadata snapshot like WatchLater."""
+    __tablename__ = "playlist_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    playlist_id = Column(Integer, ForeignKey("playlists.id"), index=True, nullable=False)
+    youtube_id = Column(String, nullable=False, index=True)
+    title = Column(String, default="")
+    channel_id = Column(String, default="")
+    channel_name = Column(String, default="")
+    thumbnail_url = Column(String, default="")
+    duration_seconds = Column(Integer, default=0)
+    published_at = Column(String, default="")  # ISO string
+    view_count = Column(BigInteger, default=0)
+    like_count = Column(BigInteger, default=0)
+    score = Column(Float, default=0.0)
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Video(Base):
     __tablename__ = "videos"
 

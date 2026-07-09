@@ -6,6 +6,9 @@ import ChannelsPage from './components/ChannelsPage'
 import ChannelPage from './components/ChannelPage'
 import DownloadsPage from './components/DownloadsPage'
 import SearchPage from './components/SearchPage'
+import PlaylistsPage from './components/PlaylistsPage'
+import type { PlaylistSummary } from './components/PlaylistsPage'
+import PlaylistPage from './components/PlaylistPage'
 
 export type DownloadItem = {
   youtube_id: string
@@ -59,15 +62,20 @@ export type FeedResponse = {
 
 // ── URL helpers ─────────────────────────────────────────────
 
-function parsePath(): { page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'; channelId: string | null } {
+type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist'
+
+function parsePath(): { page: Page; channelId: string | null; playlistId: number | null } {
   const path = window.location.pathname
-  if (path === '/channels') return { page: 'channels', channelId: null }
-  if (path === '/watchlater') return { page: 'watchlater', channelId: null }
-  if (path === '/downloads') return { page: 'downloads', channelId: null }
-  if (path === '/search') return { page: 'search', channelId: null }
+  if (path === '/channels') return { page: 'channels', channelId: null, playlistId: null }
+  if (path === '/watchlater') return { page: 'watchlater', channelId: null, playlistId: null }
+  if (path === '/downloads') return { page: 'downloads', channelId: null, playlistId: null }
+  if (path === '/search') return { page: 'search', channelId: null, playlistId: null }
+  if (path === '/playlists') return { page: 'playlists', channelId: null, playlistId: null }
+  const pm = path.match(/^\/playlist\/(\d+)/)
+  if (pm) return { page: 'playlist', channelId: null, playlistId: Number(pm[1]) }
   const m = path.match(/^\/channel\/([^/]+)/)
-  if (m) return { page: 'channel', channelId: m[1] }
-  return { page: 'feed', channelId: null }
+  if (m) return { page: 'channel', channelId: m[1], playlistId: null }
+  return { page: 'feed', channelId: null, playlistId: null }
 }
 
 function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string; channelsSort: string } {
@@ -106,6 +114,8 @@ export function buildPath(
   if (page === 'watchlater') return '/watchlater'
   if (page === 'downloads') return '/downloads'
   if (page === 'search') return '/search'  // ?q= is appended by the search URL sync
+  if (page === 'playlists') return '/playlists'
+  // 'playlist' (single) is navigated directly with its id; syncUrl skips it
   if (page === 'channel' && channelId) {
     return qs ? `/channel/${channelId}?${qs}` : `/channel/${channelId}`
   }
@@ -158,7 +168,8 @@ export default function App() {
   // Init from URL
   const initPath = parsePath()
   const initQ = parseSearch()
-  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'>(initPath.page)
+  const [page, setPageRaw] = useState<Page>(initPath.page)
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(initPath.playlistId)
   const [searchInput, setSearchInput] = useState<string>(() => new URLSearchParams(window.location.search).get('q') || '')
   // True once we've pushed a /search history entry, so clearing the box can go
   // back() to the page (and its state) we were on before searching.
@@ -244,6 +255,28 @@ export default function App() {
       persistHidden(next); return next
     })
   }
+
+  // ── Playlists (server-side) ───────────────────────────
+  const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
+  const fetchPlaylists = useCallback(async () => {
+    try {
+      const res = await fetch('/api/playlists')
+      if (res.ok) setPlaylists(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+  useEffect(() => { fetchPlaylists() }, [fetchPlaylists])
+  // A video card's save-to-playlist panel fires this when it changes anything.
+  useEffect(() => {
+    const h = () => fetchPlaylists()
+    window.addEventListener('playlists-changed', h)
+    return () => window.removeEventListener('playlists-changed', h)
+  }, [fetchPlaylists])
+
+  const deletePlaylist = useCallback(async (id: number) => {
+    setPlaylists(prev => prev.filter(p => p.id !== id))
+    try { await fetch(`/api/playlists/${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+    fetchPlaylists()
+  }, [fetchPlaylists])
 
   // ── Downloads (server-side offline library) ───────────
   const [downloads, setDownloads] = useState<DownloadItem[]>([])
@@ -376,6 +409,7 @@ export default function App() {
   // replaceState for reactive filter changes (tags, window, sort) — no new history entry
   const syncUrl = useCallback(() => {
     if (page === 'search') return  // search URL (?q=) is managed by onSearchChange
+    if (page === 'playlist') return  // /playlist/{id} is navigated directly
     const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort)
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
@@ -393,6 +427,7 @@ export default function App() {
       setPageRaw(p.page)
       setSearchInput(new URLSearchParams(window.location.search).get('q') || '')
       setSelectedChannelId(p.channelId)
+      setSelectedPlaylistId(p.playlistId)
       setSelectedTags(q.tags)
       setTimeWindow(q.window)
       setSort(q.sort)
@@ -572,10 +607,11 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
     setPageRaw(p)
+    setSelectedPlaylistId(null)
     setSearchInput('')  // leaving via nav clears the search box
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
@@ -661,6 +697,7 @@ export default function App() {
   function selectChannel(channelId: string) {
     history.pushState(null, '', buildPath('channel', channelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
     setSelectedChannelId(channelId)
+    setSelectedPlaylistId(null)
     setPageRaw('channel')
     setChannelWindow('1m')
     setChannelSort('likes')
@@ -668,10 +705,19 @@ export default function App() {
     mainRef.current?.scrollTo({ top: 0 })
   }
 
+  function selectPlaylist(id: number) {
+    history.pushState(null, '', `/playlist/${id}`)
+    setSelectedPlaylistId(id)
+    setPageRaw('playlist')
+    setSearchInput('')
+    mainRef.current?.scrollTo({ top: 0 })
+  }
+
   function goHome() {
     history.pushState(null, '', '/')
     setSelectedTags([])
     setSelectedChannelId(null)
+    setSelectedPlaylistId(null)
     setPageRaw('feed')
     setTimeWindow('3d')
     setSort('likes')
@@ -712,6 +758,7 @@ export default function App() {
             }
           }}
           downloadsCount={downloads.length}
+          playlistsCount={playlists.length}
           onClearFilter={clearFilter}
           collapsed={sidebarCollapsed}
           watchLaterCount={watchLater.length}
@@ -756,7 +803,7 @@ export default function App() {
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:static md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
         <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : 'feed'}
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           window={page === 'channel' ? channelWindow : timeWindow}
@@ -815,6 +862,19 @@ export default function App() {
             onDownload={startDownload}
             downloadIds={downloadIds}
             onHideChannel={hideChannel}
+          />
+        ) : page === 'playlists' ? (
+          <PlaylistsPage playlists={playlists} onOpen={selectPlaylist} onDelete={deletePlaylist} />
+        ) : page === 'playlist' && selectedPlaylistId != null ? (
+          <PlaylistPage
+            playlistId={selectedPlaylistId}
+            onChannelClick={selectChannel}
+            watchLaterIds={watchLaterIds}
+            onToggleWatchLater={toggleWatchLater}
+            onDownload={startDownload}
+            downloadIds={downloadIds}
+            onHideChannel={hideChannel}
+            onDeleted={() => setPage('playlists')}
           />
         ) : page === 'downloads' ? (
           <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />

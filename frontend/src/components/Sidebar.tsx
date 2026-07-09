@@ -5,14 +5,15 @@ type Props = {
   selectedTags: string[]
   onToggleTag: (tag: string) => void
   onSetTags: (tags: string[]) => void
-  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'
-  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads') => void
+  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist'
+  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists') => void
   onHome: () => void
   onToggleCollapse: () => void
   onClearFilter: () => void
   collapsed: boolean
   watchLaterCount?: number
   downloadsCount?: number
+  playlistsCount?: number
   tagFilteredCounts?: Map<string, number> | null
   hiddenCount?: number
   showHidden?: boolean
@@ -65,6 +66,12 @@ const DownloadsIcon = () => (
   </svg>
 )
 
+const PlaylistsIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M3 10h11v2H3v-2zm0-4h11v2H3V6zm0 8h7v2H3v-2zm13-1v8l6-4-6-4z"/>
+  </svg>
+)
+
 const HamburgerButton = ({ onClick, className = '' }: { onClick: () => void; className?: string }) => (
   <button
     onClick={onClick}
@@ -96,7 +103,7 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -162,6 +169,20 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             {!!downloadsCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {downloadsCount > 9 ? '9+' : downloadsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => onPageChange('playlists')}
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
+              page === 'playlists' || page === 'playlist' ? 'text-white' : 'text-[#717171] hover:text-white'
+            }`}
+          >
+            <PlaylistsIcon />
+            <span className="text-[10px]">Lists</span>
+            {!!playlistsCount && (
+              <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {playlistsCount > 9 ? '9+' : playlistsCount}
               </span>
             )}
           </button>
@@ -249,6 +270,22 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           {!!downloadsCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {downloadsCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => onPageChange('playlists')}
+          className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
+            page === 'playlists' || page === 'playlist'
+              ? 'bg-[#272727] text-white font-medium'
+              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+          }`}
+        >
+          <PlaylistsIcon />
+          Playlists
+          {!!playlistsCount && (
+            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+              {playlistsCount}
             </span>
           )}
         </button>
