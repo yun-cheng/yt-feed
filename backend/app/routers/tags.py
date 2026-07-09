@@ -332,7 +332,8 @@ async def feed_by_tags(
     window: str = "3d",
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
     time_mode: str = Query(default="wide", description="narrow | wide"),
-    limit: int = 50,
+    offset: int = 0,     # pagination: index into the ranked list
+    limit: int = 60,     # pagination: page size
     db: AsyncSession = Depends(get_db),
 ):
     """Get ranked videos filtered by tags.
@@ -341,7 +342,9 @@ async def feed_by_tags(
     e.g. selecting coding+flutter (both 開發) AND piano (音樂) returns
     channels tagged (coding OR flutter) AND piano.
     """
-    from app.ranking import TimeWindow, rank_videos
+    from datetime import datetime
+
+    from app.ranking import WINDOW_RANGES, TimeWindow, rank_videos
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
@@ -369,10 +372,20 @@ async def feed_by_tags(
         result = await db.execute(select(Channel.youtube_id))
         channel_ids = {r[0] for r in result}
 
-    # Query videos for these channels
-    stmt = select(Video).where(Video.channel_id.in_(channel_ids)).order_by(
-        Video.published_at.desc()
-    ).limit(2000)
+    # Only fetch videos within the window's widest extent so wide windows
+    # (6m, 1y) actually differ. A flat "2000 most recent" made them identical:
+    # the newest ~2000 videos all fall within ~3 months, so the window filter
+    # (applied afterwards) never reached the older 6m–1y videos.
+    # published_at is stored as naive UTC, so compare against a naive cutoff.
+    # Ranking (score / like%) depends on the whole windowed set, so we must fetch
+    # and rank all of it, then return just the requested page. 10000 is a safety
+    # cap far above any realistic window.
+    tw = TimeWindow(window)
+    cutoff = datetime.utcnow() - WINDOW_RANGES[tw][1]
+    stmt = select(Video).where(
+        Video.channel_id.in_(channel_ids),
+        Video.published_at >= cutoff,
+    ).order_by(Video.published_at.desc()).limit(10000)
     result = await db.execute(stmt)
     all_videos = result.scalars().all()
 
@@ -380,12 +393,13 @@ async def feed_by_tags(
     chan_result = await db.execute(select(Channel.youtube_id, Channel.title))
     chan_titles = {r.youtube_id: r.title for r in chan_result}
 
-    ranked = rank_videos(list(all_videos), TimeWindow(window), chan_titles, sort=sort, time_mode=time_mode)
+    ranked = rank_videos(list(all_videos), tw, chan_titles, sort=sort, time_mode=time_mode)
     return {
         "window": window,
         "sort": sort,
         "time_mode": time_mode,
         "tags": tag_list,
-        "videos": ranked[:limit],
+        "videos": ranked[offset:offset + limit],
         "total": len(ranked),
+        "offset": offset,
     }

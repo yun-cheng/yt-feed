@@ -79,7 +79,8 @@ async def channel_videos(
     window: str = Query(default="3d", description="Time window: 3d, 1w, 2w, 1m, ..."),
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
     time_mode: str = Query(default="wide", description="narrow | wide"),
-    limit: int = Query(default=50, description="Max videos"),
+    offset: int = Query(default=0, description="pagination: index into the ranked list"),
+    limit: int = Query(default=60, description="pagination: page size"),
     db: AsyncSession = Depends(get_db),
 ):
     """Get ranked videos for a single channel, same as feed."""
@@ -122,8 +123,9 @@ async def channel_videos(
         "window": window,
         "sort": sort,
         "time_mode": time_mode,
-        "videos": ranked[:limit],
+        "videos": ranked[offset:offset + limit],
         "total": len(ranked),
+        "offset": offset,
     }
 
 

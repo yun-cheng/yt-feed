@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import VideoCard from './VideoCard'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import VideoRow from './VideoRow'
 import type { VideoItem } from '../App'
 
 type ChannelHit = {
@@ -19,37 +19,56 @@ type Props = {
   onHideChannel?: (channelId: string) => void
 }
 
+const SEARCH_PAGE_SIZE = 30
+
 export default function SearchPage({
   query, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel,
 }: Props) {
   const [channels, setChannels] = useState<ChannelHit[]>([])
   const [videos, setVideos] = useState<VideoItem[]>([])
+  const [videosTotal, setVideosTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const loadingMoreRef = useRef(false)
+
+  // Fetch one page of results; append video hits unless replacing.
+  const fetchPage = useCallback(async (q: string, offset: number, replace: boolean, signal?: AbortSignal) => {
+    const res = await fetch(
+      `/api/search?q=${encodeURIComponent(q)}&offset=${offset}&limit=${SEARCH_PAGE_SIZE}`,
+      signal ? { signal } : {},
+    )
+    if (!res.ok) return
+    const data = await res.json()
+    if (replace) setChannels(data.channels || [])
+    setVideosTotal(data.videos_total || 0)
+    setVideos((prev) => replace ? (data.videos || []) : [...prev, ...(data.videos || [])])
+  }, [])
 
   // Debounce the query so we search as the user pauses, not every keystroke.
   useEffect(() => {
     const q = query.trim()
     if (!q) {
-      setChannels([]); setVideos([]); setLoading(false)
+      setChannels([]); setVideos([]); setVideosTotal(0); setLoading(false)
       return
     }
     setLoading(true)
     const ctrl = new AbortController()
     const id = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=30`, { signal: ctrl.signal })
-        if (res.ok) {
-          const data = await res.json()
-          setChannels(data.channels || [])
-          setVideos(data.videos || [])
-        }
+        await fetchPage(q, 0, true, ctrl.signal)
       } catch { /* aborted or offline */ } finally {
         setLoading(false)
       }
     }, 150)
     return () => { clearTimeout(id); ctrl.abort() }
-  }, [query])
+  }, [query, fetchPage])
+
+  const loadMore = useCallback(async () => {
+    const q = query.trim()
+    if (loadingMoreRef.current || !q || videos.length >= videosTotal) return
+    loadingMoreRef.current = true
+    try { await fetchPage(q, videos.length, false) }
+    catch { /* ignore */ } finally { loadingMoreRef.current = false }
+  }, [query, videos.length, videosTotal, fetchPage])
 
   const trimmed = query.trim()
 
@@ -98,28 +117,21 @@ export default function SearchPage({
             </section>
           )}
 
-          {/* Videos section */}
+          {/* Videos section — paginated (infinite scroll) */}
           {videos.length > 0 && (
-            <section className="mb-8">
-              <h2 className="text-lg font-semibold text-white mb-4">Videos</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-x-4 gap-y-6">
-                {videos.map((video) => (
-                  <VideoCard
-                    key={video.youtube_id}
-                    video={video}
-                    isHovered={hoveredId === video.youtube_id}
-                    onHover={(id) => setHoveredId(id)}
-                    onChannelClick={onChannelClick}
-                    sort={sort}
-                    isWatchLater={watchLaterIds?.has(video.youtube_id)}
-                    onToggleWatchLater={onToggleWatchLater}
-                    onDownload={onDownload}
-                    isDownloaded={downloadIds?.has(video.youtube_id)}
-                    onHideChannel={onHideChannel}
-                  />
-                ))}
-              </div>
-            </section>
+            <VideoRow
+              group={{ name: 'Videos', icon: '', sort_order: 0, videos }}
+              onChannelClick={onChannelClick}
+              sort={sort}
+              watchLaterIds={watchLaterIds}
+              onToggleWatchLater={onToggleWatchLater}
+              onDownload={onDownload}
+              downloadIds={downloadIds}
+              onHideChannel={onHideChannel}
+              totalCount={videosTotal}
+              onLoadMore={loadMore}
+              hasMore={videos.length < videosTotal}
+            />
           )}
         </>
       )}

@@ -14,26 +14,43 @@ type Props = {
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
+  // Server pagination (feed): when onLoadMore is set, this row renders every
+  // video it's given and asks the parent to fetch the next page on scroll,
+  // instead of paginating an already-loaded array client-side.
+  onLoadMore?: () => void
+  hasMore?: boolean
+  totalCount?: number
 }
 
-export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel }: Props) {
+export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
+  const serverMode = typeof onLoadMore === 'function'
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const hasMore = visibleCount < group.videos.length
-  const visibleVideos = group.videos.slice(0, visibleCount)
+  const canLoadMore = serverMode ? !!hasMoreProp : visibleCount < group.videos.length
+  const visibleVideos = serverMode ? group.videos : group.videos.slice(0, visibleCount)
 
   const loadMore = useCallback(() => {
-    if (hasMore) {
-      setVisibleCount((prev) => Math.min(prev + LOAD_MORE, group.videos.length))
-    }
-  }, [hasMore, group.videos.length])
+    if (!canLoadMore) return
+    if (serverMode) onLoadMore!()
+    else setVisibleCount((prev) => Math.min(prev + LOAD_MORE, group.videos.length))
+  }, [canLoadMore, serverMode, onLoadMore, group.videos.length])
 
   // IntersectionObserver for infinite scroll
   useEffect(() => {
     const el = sentinelRef.current
-    if (!el || !hasMore) return
+    if (!el || !canLoadMore) return
+
+    // The scroll happens inside a nested overflow container (<main>), so the
+    // observer's root must be that container — otherwise it clips the sentinel
+    // at its own bottom and the prefetch rootMargin below has no effect.
+    let root: HTMLElement | null = el.parentElement
+    while (root) {
+      const oy = getComputedStyle(root).overflowY
+      if ((oy === 'auto' || oy === 'scroll') && root.scrollHeight > root.clientHeight) break
+      root = root.parentElement
+    }
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -41,11 +58,13 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
           loadMore()
         }
       },
-      { rootMargin: '200px' }
+      // Prefetch ~3 card rows before the bottom so the next page is usually
+      // already loaded by the time you get there — no visible stall.
+      { root, rootMargin: '0px 0px 1000px 0px' }
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [hasMore, loadMore])
+  }, [canLoadMore, loadMore])
 
   return (
     <section className="mb-8">
@@ -54,7 +73,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
         {group.icon && <span className="text-lg">{group.icon}</span>}
         <h2 className="text-lg font-semibold text-white">{group.name}</h2>
         <span className="text-xs text-[#717171] ml-1">
-          {group.videos.length} videos
+          {totalCount ?? group.videos.length} videos
         </span>
       </div>
 
@@ -78,7 +97,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
       </div>
 
       {/* Sentinel for infinite scroll */}
-      {hasMore && (
+      {canLoadMore && (
         <div ref={sentinelRef} className="flex justify-center py-6 text-sm text-[#717171]">
           <div className="flex items-center gap-2">
             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">

@@ -123,25 +123,37 @@ async def reindex_all() -> dict[str, int]:
         return {"channels": 0, "videos": 0}
 
 
-async def _search_index(index: str, q: str, limit: int) -> list[dict]:
+async def _search_raw(index: str, q: str, limit: int, offset: int = 0) -> dict:
     async with await _client(_SEARCH_TIMEOUT) as c:
-        r = await c.post(f"/indexes/{index}/search", json={"q": q, "limit": limit})
+        r = await c.post(
+            f"/indexes/{index}/search",
+            json={"q": q, "limit": limit, "offset": offset},
+        )
         r.raise_for_status()
-        return r.json().get("hits", [])
+        return r.json()
 
 
-async def search(q: str, limit: int = 20) -> dict[str, list[dict]]:
-    """Return {'channels': [...], 'videos': [...]} for a query. Empty on failure."""
+async def search(q: str, limit: int = 20, offset: int = 0) -> dict:
+    """Return {'channels', 'videos', 'videos_total'} for a query. Empty on failure.
+
+    Channels are just the top few (no pagination); the video results paginate
+    via offset/limit, with videos_total from Meilisearch's estimate.
+    """
     q = (q or "").strip()
     if not q:
-        return {"channels": [], "videos": []}
+        return {"channels": [], "videos": [], "videos_total": 0}
     try:
-        channels = await _search_index(CHANNELS_INDEX, q, min(limit, 8))
-        videos = await _search_index(VIDEOS_INDEX, q, limit)
+        channels = (await _search_raw(CHANNELS_INDEX, q, 8, 0)).get("hits", [])
+        vres = await _search_raw(VIDEOS_INDEX, q, limit, offset)
+        videos = vres.get("hits", [])
         # score isn't stored; VideoCard tolerates it missing, default to 0.
         for v in videos:
             v.setdefault("score", 0)
-        return {"channels": channels, "videos": videos}
+        return {
+            "channels": channels,
+            "videos": videos,
+            "videos_total": vres.get("estimatedTotalHits", len(videos)),
+        }
     except Exception as e:
         print(f"[search] query failed: {e}")
-        return {"channels": [], "videos": []}
+        return {"channels": [], "videos": [], "videos_total": 0}

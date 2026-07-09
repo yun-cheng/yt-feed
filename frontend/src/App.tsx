@@ -152,6 +152,8 @@ export function sortWatchLater(videos: VideoItem[], sort: string): VideoItem[] {
 const ACTIVE_INTERVAL = 5 * 60 * 1000  // 5 min when visible
 const INACTIVE_INTERVAL = 15 * 60 * 1000  // 15 min when hidden
 
+const FEED_PAGE_SIZE = 60  // home-feed pagination: videos fetched per page
+
 export default function App() {
   // Init from URL
   const initPath = parsePath()
@@ -162,6 +164,9 @@ export default function App() {
   // back() to the page (and its state) we were on before searching.
   const searchPushedRef = useRef(false)
   const [feed, setFeed] = useState<FeedResponse | null>(null)
+  const [feedTotal, setFeedTotal] = useState(0)          // total ranked videos in the window
+  const feedLoadedRef = useRef(0)                          // videos currently loaded (for bg refresh)
+  const feedLoadingMoreRef = useRef(false)                 // guard against overlapping page fetches
   const [tags, setTags] = useState<TagInfo[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(initPath.channelId)
@@ -482,36 +487,63 @@ export default function App() {
 
   useEffect(() => { fetchTags() }, [fetchTags])
 
+  // Fetch one page of the feed; append to the existing list unless replacing.
+  const fetchFeedPage = useCallback(async (offset: number, replace: boolean, size = FEED_PAGE_SIZE) => {
+    const params = new URLSearchParams({
+      window: timeWindow, sort, time_mode: timeMode,
+      offset: String(offset), limit: String(size),
+    })
+    if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
+    const res = await fetch(`/api/tags/feed?${params}`)
+    const data = await res.json()
+    setFeedTotal(data.total || 0)
+    setFeed((prev) => {
+      const existing = replace || !prev ? [] : prev.groups[0].videos
+      return {
+        categories: [],
+        groups: [{ name: 'Feed', icon: '', sort_order: 0, videos: [...existing, ...(data.videos || [])] }],
+        window: data.window,
+      }
+    })
+  }, [timeWindow, sort, timeMode, selectedTags])
+
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
       setLoading(true)
       setFeed(null)
+      setFeedTotal(0)
     }
     try {
-      const params = new URLSearchParams({ window: timeWindow, sort, time_mode: timeMode })
-      if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
-      const url = `/api/tags/feed?${params}`
-      const res = await fetch(url)
-      const data = await res.json()
-      setFeed({
-        categories: [],
-        groups: [{
-          name: 'Feed',
-          icon: '',
-          sort_order: 0,
-          videos: data.videos || [],
-        }],
-        window: data.window,
-      })
+      // A background refresh re-fetches the pages already loaded (so a scrolled
+      // list doesn't snap back to the first page); a fresh load starts at page 1.
+      const size = background ? Math.max(FEED_PAGE_SIZE, feedLoadedRef.current) : FEED_PAGE_SIZE
+      await fetchFeedPage(0, true, size)
     } catch (e) {
       console.error('Failed to fetch feed:', e)
     }
     if (!background) setLoading(false)
-  }, [timeWindow, sort, timeMode, selectedTags])
+  }, [fetchFeedPage])
+
+  const loadMoreFeed = useCallback(async () => {
+    if (feedLoadingMoreRef.current) return
+    const current = feed?.groups[0]?.videos.length ?? 0
+    if (current >= feedTotal) return
+    feedLoadingMoreRef.current = true
+    try {
+      await fetchFeedPage(current, false)
+    } catch (e) {
+      console.error('Failed to load more:', e)
+    } finally {
+      feedLoadingMoreRef.current = false
+    }
+  }, [feed, feedTotal, fetchFeedPage])
 
   useEffect(() => {
     if (page === 'feed') fetchFeed()
   }, [page, fetchFeed])
+
+  // Track how many feed videos are loaded (used by background refresh).
+  useEffect(() => { feedLoadedRef.current = feed?.groups[0]?.videos.length ?? 0 }, [feed])
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
@@ -831,23 +863,40 @@ export default function App() {
                   No data yet.
                 </div>
               )
-            ) : feed.groups.length === 0 ? (
-              <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                No videos found.
-              </div>
             ) : (() => {
-              // Drop hidden channels' videos from the home feed, then any group
-              // that becomes empty as a result.
-              const groups = (hiddenChannels.size === 0 || showHidden) ? feed.groups : feed.groups
-                .map((g) => ({ ...g, videos: g.videos.filter((v) => !hiddenChannels.has(v.channel_id)) }))
-                .filter((g) => g.videos.length > 0)
-              return groups.length === 0 ? (
-                <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                  All channels here are hidden from home.
-                </div>
-              ) : groups.map((group) => (
-                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={toggleWatchLater} onDownload={startDownload} downloadIds={downloadIds} onHideChannel={hideChannel} />
-              ))
+              const raw = feed.groups[0]
+              const loaded = raw?.videos.length ?? 0
+              const hasMore = loaded < feedTotal
+              // Drop hidden channels' videos from the home feed (unless "show hidden").
+              const videos = (hiddenChannels.size === 0 || showHidden)
+                ? raw?.videos ?? []
+                : (raw?.videos ?? []).filter((v) => !hiddenChannels.has(v.channel_id))
+              // Only show an empty-state once there are no more pages to load.
+              if (videos.length === 0 && !hasMore) {
+                return (
+                  <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                    {hiddenChannels.size > 0 && !showHidden
+                      ? 'All channels here are hidden from home.'
+                      : 'No videos found.'}
+                  </div>
+                )
+              }
+              return (
+                <VideoRow
+                  key="feed"
+                  group={{ name: 'Feed', icon: '', sort_order: 0, videos }}
+                  onChannelClick={selectChannel}
+                  sort={sort}
+                  watchLaterIds={watchLaterIds}
+                  onToggleWatchLater={toggleWatchLater}
+                  onDownload={startDownload}
+                  downloadIds={downloadIds}
+                  onHideChannel={hideChannel}
+                  totalCount={feedTotal}
+                  onLoadMore={loadMoreFeed}
+                  hasMore={hasMore}
+                />
+              )
             })()}
           </div>
         ) : (

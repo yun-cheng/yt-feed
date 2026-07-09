@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TimeSortControls from './TimeSortControls'
 import type { VideoItem } from '../App'
 import VideoRow from './VideoRow'
@@ -41,27 +41,47 @@ function formatSubs(n: number): string {
   return String(n)
 }
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel }: Props) {
-  const [data, setData] = useState<ChannelResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+const CHANNEL_PAGE_SIZE = 60
 
-  useEffect(() => {
-    fetchChannel()
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel }: Props) {
+  const [channel, setChannel] = useState<ChannelInfo | null>(null)
+  const [videos, setVideos] = useState<VideoItem[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const loadingMoreRef = useRef(false)
+
+  // Fetch one page; append unless replacing.
+  const fetchPage = useCallback(async (offset: number, replace: boolean) => {
+    const params = new URLSearchParams({
+      window: timeWindow, sort, time_mode: timeMode,
+      offset: String(offset), limit: String(CHANNEL_PAGE_SIZE),
+    })
+    const res = await fetch(`/api/channels/${channelId}/videos?${params}`)
+    if (!res.ok) throw new Error('Not found')
+    const d: ChannelResponse = await res.json()
+    setChannel(d.channel)
+    setTotal(d.total || 0)
+    setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
   }, [channelId, timeWindow, sort, timeMode])
 
-  async function fetchChannel() {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ window: timeWindow, sort, time_mode: timeMode })
-      const res = await fetch(`/api/channels/${channelId}/videos?${params}`)
-      if (!res.ok) throw new Error('Not found')
-      setData(await res.json())
-    } catch (e) {
-      console.error('Failed to fetch channel:', e)
-      setData(null)
-    }
-    setLoading(false)
-  }
+  // Reset to the first page when the channel or filters change.
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setNotFound(false); setVideos([]); setTotal(0)
+    fetchPage(0, true)
+      .catch(() => { if (!cancelled) setNotFound(true) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [fetchPage])
+
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || videos.length >= total) return
+    loadingMoreRef.current = true
+    try { await fetchPage(videos.length, false) }
+    catch (e) { console.error('Failed to load more:', e) }
+    finally { loadingMoreRef.current = false }
+  }, [videos.length, total, fetchPage])
 
   if (loading) {
     return (
@@ -71,7 +91,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     )
   }
 
-  if (!data) {
+  if (notFound || !channel) {
     return (
       <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
         Channel not found.
@@ -79,7 +99,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     )
   }
 
-  const ch = data.channel
+  const ch = channel
 
   return (
     <div className="px-6 py-4">
@@ -122,12 +142,24 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
 
 
       {/* Video grid */}
-      {data.videos.length === 0 ? (
+      {videos.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#aaaaaa] text-sm">
           No videos in this time range.
         </div>
       ) : (
-        <VideoRow group={{ name: ch.title, icon: '', sort_order: 0, videos: data.videos }} onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={onToggleWatchLater} onDownload={onDownload} downloadIds={downloadIds} onHideChannel={onHideChannel} />
+        <VideoRow
+          group={{ name: ch.title, icon: '', sort_order: 0, videos }}
+          onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')}
+          sort={sort}
+          watchLaterIds={watchLaterIds}
+          onToggleWatchLater={onToggleWatchLater}
+          onDownload={onDownload}
+          downloadIds={downloadIds}
+          onHideChannel={onHideChannel}
+          totalCount={total}
+          onLoadMore={loadMore}
+          hasMore={videos.length < total}
+        />
       )}
     </div>
   )
