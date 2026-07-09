@@ -32,6 +32,7 @@ type Props = {
   onToggleWatchLater?: (video: VideoItem) => void
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
+  onHideChannel?: (channelId: string) => void
 }
 
 function formatSubs(n: number): string {
@@ -40,7 +41,7 @@ function formatSubs(n: number): string {
   return String(n)
 }
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds }: Props) {
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel }: Props) {
   const [data, setData] = useState<ChannelResponse | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -126,7 +127,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
           No videos in this time range.
         </div>
       ) : (
-        <VideoRow group={{ name: ch.title, icon: '', sort_order: 0, videos: data.videos }} onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={onToggleWatchLater} onDownload={onDownload} downloadIds={downloadIds} />
+        <VideoRow group={{ name: ch.title, icon: '', sort_order: 0, videos: data.videos }} onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={onToggleWatchLater} onDownload={onDownload} downloadIds={downloadIds} onHideChannel={onHideChannel} />
       )}
     </div>
   )

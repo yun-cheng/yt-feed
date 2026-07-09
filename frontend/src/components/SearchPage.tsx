@@ -16,10 +16,11 @@ type Props = {
   onToggleWatchLater?: (video: VideoItem) => void
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
+  onHideChannel?: (channelId: string) => void
 }
 
 export default function SearchPage({
-  query, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds,
+  query, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel,
 }: Props) {
   const [channels, setChannels] = useState<ChannelHit[]>([])
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -114,6 +115,7 @@ export default function SearchPage({
                     onToggleWatchLater={onToggleWatchLater}
                     onDownload={onDownload}
                     isDownloaded={downloadIds?.has(video.youtube_id)}
+                    onHideChannel={onHideChannel}
                   />
                 ))}
               </div>

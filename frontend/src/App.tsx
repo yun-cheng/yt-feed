@@ -190,6 +190,31 @@ export default function App() {
     })
   }
 
+  // ── Hidden channels (excluded from the home feed) ─────
+  const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(() => {
+    try { return new Set<string>(JSON.parse(localStorage.getItem('hidden_channels') || '[]')) }
+    catch { return new Set() }
+  })
+  const persistHidden = (s: Set<string>) => localStorage.setItem('hidden_channels', JSON.stringify([...s]))
+  // When on, hidden channels' videos are shown in the feed anyway (a temporary peek).
+  const [showHidden, setShowHidden] = useState(false)
+
+  // From the video-card menu: hide the channel from the home feed.
+  function hideChannel(channelId: string) {
+    setHiddenChannels(prev => {
+      if (prev.has(channelId)) return prev
+      const next = new Set(prev); next.add(channelId); persistHidden(next); return next
+    })
+  }
+  // From the Channels page: flip a channel's hidden state.
+  function toggleHiddenChannel(channelId: string) {
+    setHiddenChannels(prev => {
+      const next = new Set(prev)
+      next.has(channelId) ? next.delete(channelId) : next.add(channelId)
+      persistHidden(next); return next
+    })
+  }
+
   // ── Downloads (server-side offline library) ───────────
   const [downloads, setDownloads] = useState<DownloadItem[]>([])
   const downloadIds = useMemo(() => new Set(downloads.map(d => d.youtube_id)), [downloads])
@@ -629,6 +654,9 @@ export default function App() {
           collapsed={sidebarCollapsed}
           watchLaterCount={watchLater.length}
           tagFilteredCounts={tagFilteredCounts}
+          hiddenCount={hiddenChannels.size}
+          showHidden={showHidden}
+          onToggleShowHidden={() => setShowHidden(v => !v)}
         />
       </div>
 
@@ -724,6 +752,7 @@ export default function App() {
             onToggleWatchLater={toggleWatchLater}
             onDownload={startDownload}
             downloadIds={downloadIds}
+            onHideChannel={hideChannel}
           />
         ) : page === 'downloads' ? (
           <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />
@@ -783,6 +812,7 @@ export default function App() {
             onToggleWatchLater={toggleWatchLater}
             onDownload={startDownload}
             downloadIds={downloadIds}
+            onHideChannel={hideChannel}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">
@@ -800,14 +830,23 @@ export default function App() {
               <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
                 No videos found.
               </div>
-            ) : (
-              feed.groups.map((group) => (
-                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={toggleWatchLater} onDownload={startDownload} downloadIds={downloadIds} />
+            ) : (() => {
+              // Drop hidden channels' videos from the home feed, then any group
+              // that becomes empty as a result.
+              const groups = (hiddenChannels.size === 0 || showHidden) ? feed.groups : feed.groups
+                .map((g) => ({ ...g, videos: g.videos.filter((v) => !hiddenChannels.has(v.channel_id)) }))
+                .filter((g) => g.videos.length > 0)
+              return groups.length === 0 ? (
+                <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                  All channels here are hidden from home.
+                </div>
+              ) : groups.map((group) => (
+                <VideoRow key={group.name} group={group} onChannelClick={selectChannel} sort={sort} watchLaterIds={watchLaterIds} onToggleWatchLater={toggleWatchLater} onDownload={startDownload} downloadIds={downloadIds} onHideChannel={hideChannel} />
               ))
-            )}
+            })()}
           </div>
         ) : (
-          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={channelsSort} onSortChange={setChannelsSort} />
+          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={channelsSort} onSortChange={setChannelsSort} hiddenChannels={hiddenChannels} onToggleHidden={toggleHiddenChannel} />
         )}
       </main>
       </div>

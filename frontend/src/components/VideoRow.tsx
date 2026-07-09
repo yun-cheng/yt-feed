@@ -13,9 +13,10 @@ type Props = {
   onToggleWatchLater?: (video: VideoItem) => void
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
+  onHideChannel?: (channelId: string) => void
 }
 
-export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds }: Props) {
+export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel }: Props) {
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -71,6 +72,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
             onToggleWatchLater={onToggleWatchLater}
             onDownload={onDownload}
             isDownloaded={downloadIds?.has(video.youtube_id)}
+            onHideChannel={onHideChannel}
           />
         ))}
       </div>

@@ -14,6 +14,9 @@ type Props = {
   watchLaterCount?: number
   downloadsCount?: number
   tagFilteredCounts?: Map<string, number> | null
+  hiddenCount?: number
+  showHidden?: boolean
+  onToggleShowHidden?: () => void
 }
 
 const GROUP_NAMES: Record<string, string> = {
@@ -80,7 +83,20 @@ const LogoMark = () => (
   </svg>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, tagFilteredCounts }: Props) {
+const EyeIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+)
+
+const ToggleSwitch = ({ on }: { on: boolean }) => (
+  <span className={`relative inline-block w-9 h-5 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-blue-500' : 'bg-[#3f3f3f]'}`}>
+    <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : ''}`} />
+  </span>
+)
+
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -149,6 +165,18 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
               </span>
             )}
           </button>
+          {!!hiddenCount && (
+            <button
+              onClick={onToggleShowHidden}
+              title={showHidden ? 'Hiding hidden channels' : 'Show hidden channels'}
+              className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
+                showHidden ? 'text-white' : 'text-[#717171] hover:text-white'
+              }`}
+            >
+              <EyeIcon />
+              <span className="text-[10px]">Hidden</span>
+            </button>
+          )}
         </nav>
       </aside>
     )
@@ -230,6 +258,15 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
 
       {/* Tag groups */}
       <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+        {!!hiddenCount && (
+          <button
+            onClick={onToggleShowHidden}
+            className="w-full flex items-center gap-3 pb-4 border-b border-[#272727] text-left text-[#aaa] hover:text-white transition-colors"
+          >
+            <ToggleSwitch on={!!showHidden} />
+            <span className="text-sm">Show hidden channels</span>
+          </button>
+        )}
         {GROUP_ORDER.map(({ key, icon }) => {
           const groupTags = grouped.get(key)
           if (!groupTags?.length) return null

@@ -110,6 +110,7 @@ type Props = {
   isDownloaded?: boolean
   onOpen?: (video: VideoItem) => void            // overrides the default "open on YouTube" click
   onRemoveDownload?: (video: VideoItem) => void  // when set, the menu shows "remove download"
+  onHideChannel?: (channelId: string) => void    // when set, the menu shows "hide channel from home"
   localSrc?: string                              // preview a local file instead of the YouTube embed
   localOnly?: boolean                            // never fall back to YouTube; wait for localSrc (offline)
 }
@@ -177,7 +178,7 @@ const BTN_LIGHT = `${BTN} bg-white/90 text-black hover:bg-white`
 // specific video is remembered here so re-hovering it keeps them off.
 const ccPrefByVideo = new Map<string, boolean>()
 
-export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, localSrc, localOnly }: Props) {
+export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onHideChannel, localSrc, localOnly }: Props) {
   const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
 
@@ -440,6 +441,12 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const handleRemoveDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
     onRemoveDownload?.(video)
+    setMenuOpen(false)
+  }
+
+  const handleHideChannel = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onHideChannel?.(video.channel_id)
     setMenuOpen(false)
   }
 
@@ -912,6 +919,17 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                     </svg>
                   )}
                   {isDownloaded ? '已在下載清單' : '下載'}
+                </button>
+              )}
+              {onHideChannel && (
+                <button
+                  className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
+                  onClick={handleHideChannel}
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                  </svg>
+                  隱藏此頻道
                 </button>
               )}
             </div>
