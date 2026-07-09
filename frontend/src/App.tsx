@@ -534,26 +534,31 @@ export default function App() {
   // Search box: typing routes to the /search page; the URL tracks the query.
   const onSearchChange = useCallback((q: string) => {
     setSearchInput(q)
+    if (!q.trim()) {
+      // Cleared the box.
+      if (searchPushedRef.current) {
+        // Still in the search session we pushed → return to the page (and state)
+        // we searched from, via the popstate handler. Fall back to the feed if
+        // there's nothing to return to (app opened directly on /search).
+        searchPushedRef.current = false
+        if (window.history.length > 1) {
+          history.back()
+        } else {
+          setPageRaw('feed')
+          history.replaceState(null, '', '/')
+        }
+      }
+      // Otherwise we've already navigated to a result (e.g. a channel page); just
+      // clear the leftover text and stay on that page — don't open a blank search.
+      return
+    }
     if (!searchPushedRef.current) {
       // Entering search: push one history entry so we can return to the current
-      // page (with its state) when the box is cleared. The ref guards against a
-      // second push if several keystrokes land before the re-render.
+      // page when the box is cleared. The ref guards against a second push if
+      // several keystrokes land before the re-render.
       searchPushedRef.current = true
       history.pushState(null, '', `/search?q=${encodeURIComponent(q)}`)
       setPageRaw('search')
-      return
-    }
-    if (!q.trim()) {
-      // Cleared the box → go back to where we came from (restores page + state
-      // via the popstate handler). Fall back to the feed if there's nothing to
-      // return to (e.g. the app was opened directly on /search).
-      searchPushedRef.current = false
-      if (window.history.length > 1) {
-        history.back()
-      } else {
-        setPageRaw('feed')
-        history.replaceState(null, '', '/')
-      }
       return
     }
     history.replaceState(null, '', `/search?q=${encodeURIComponent(q)}`)
