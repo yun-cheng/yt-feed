@@ -5,8 +5,10 @@ type Props = {
   selectedTags: string[]
   onToggleTag: (tag: string) => void
   onSetTags: (tags: string[]) => void
-  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'
+  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'
   onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads') => void
+  onHome: () => void
+  onToggleCollapse: () => void
   onClearFilter: () => void
   collapsed: boolean
   watchLaterCount?: number
@@ -60,7 +62,25 @@ const DownloadsIcon = () => (
   </svg>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onClearFilter, collapsed, watchLaterCount, downloadsCount, tagFilteredCounts }: Props) {
+const HamburgerButton = ({ onClick, className = '' }: { onClick: () => void; className?: string }) => (
+  <button
+    onClick={onClick}
+    className={`text-[#aaa] hover:text-white transition-colors flex-shrink-0 ${className}`}
+    aria-label="Toggle sidebar"
+  >
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  </button>
+)
+
+const LogoMark = () => (
+  <svg className="w-6 h-6 text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z"/>
+  </svg>
+)
+
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, tagFilteredCounts }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -70,7 +90,18 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
 
   if (collapsed) {
     return (
-      <aside className="w-16 bg-[#0f0f0f] border-r border-[#272727] flex-shrink-0 flex flex-col h-full">
+      <aside className="w-16 bg-[#0f0f0f] flex-shrink-0 flex flex-col h-full">
+        {/* Menu toggle + logo */}
+        <div className="flex flex-col items-center pt-2 gap-1 flex-shrink-0">
+          <HamburgerButton onClick={onToggleCollapse} className="p-2" />
+          <button
+            onClick={onHome}
+            className="flex items-center justify-center py-1 hover:opacity-80 transition-opacity"
+            aria-label="My Feed"
+          >
+            <LogoMark />
+          </button>
+        </div>
         <nav className="flex flex-col items-center pt-2 gap-1">
           <button
             onClick={() => onPageChange('feed')}
@@ -124,7 +155,19 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
   }
 
   return (
-    <aside className="w-60 bg-[#0f0f0f] border-r border-[#272727] flex-shrink-0 flex flex-col h-full">
+    <aside className="w-60 bg-[#0f0f0f] flex-shrink-0 flex flex-col h-full">
+      {/* Menu toggle + logo */}
+      <div className="flex items-center gap-3 px-4 h-14 flex-shrink-0">
+        <HamburgerButton onClick={onToggleCollapse} className="hidden md:block" />
+        <button
+          onClick={onHome}
+          className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+        >
+          <LogoMark />
+          <span className="text-base font-semibold tracking-tight text-white">My Feed</span>
+        </button>
+      </div>
+
       {/* Nav: Feed, Channels — hidden on mobile (bottom bar handles navigation) */}
       <div className="py-2 hidden md:block">
         <button

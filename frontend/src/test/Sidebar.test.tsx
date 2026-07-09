@@ -15,6 +15,8 @@ const defaultProps = {
   onSetTags: vi.fn(),
   page: 'feed' as const,
   onPageChange: vi.fn(),
+  onHome: vi.fn(),
+  onToggleCollapse: vi.fn(),
   onClearFilter: vi.fn(),
   collapsed: false,
 }
@@ -22,7 +24,8 @@ const defaultProps = {
 describe('Sidebar — expanded', () => {
   it('renders My Feed and Channels nav buttons', () => {
     render(<Sidebar {...defaultProps} />)
-    expect(screen.getByRole('button', { name: /My Feed/i })).toBeInTheDocument()
+    // Both the sidebar logo and the Home nav item are labelled "My Feed".
+    expect(screen.getAllByRole('button', { name: /My Feed/i }).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /Channels/i })).toBeInTheDocument()
   })
 

@@ -11,7 +11,6 @@ const defaultProps = {
   timeMode: 'wide',
   onTimeModeChange: vi.fn(),
   onToggleCollapse: vi.fn(),
-  onHome: vi.fn(),
 }
 
 describe('TopBar', () => {
@@ -39,16 +38,9 @@ describe('TopBar', () => {
     expect(onToggleCollapse).toHaveBeenCalled()
   })
 
-  it('shows My Feed logo', () => {
+  it('renders a search box', () => {
     render(<TopBar {...defaultProps} />)
-    expect(screen.getByText('My Feed')).toBeInTheDocument()
-  })
-
-  it('calls onHome when logo is clicked', () => {
-    const onHome = vi.fn()
-    render(<TopBar {...defaultProps} onHome={onHome} />)
-    fireEvent.click(screen.getByText('My Feed'))
-    expect(onHome).toHaveBeenCalled()
+    expect(screen.getByRole('textbox', { name: 'Search' })).toBeInTheDocument()
   })
 
   it('renders channel variant controls in topbar', () => {

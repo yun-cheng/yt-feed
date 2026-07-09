@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
 from app.routers import feed, channels, subscriptions, downloads
+from app.routers import search as search_router
 from app.auth_google import router as auth_router
 from app.routers.tags import router as tags_router
 
@@ -14,6 +15,12 @@ from app.routers.tags import router as tags_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # Build the search index in the background — never block or break startup on it.
+    async def _init_search():
+        from app import search_index
+        await search_index.ensure_indexes()
+        await search_index.reindex_all()
+    asyncio.create_task(_init_search())
     yield
 
 
@@ -30,6 +37,7 @@ app.add_middleware(
 app.include_router(feed.router, prefix="/api")
 app.include_router(channels.router, prefix="/api")
 app.include_router(downloads.router, prefix="/api")
+app.include_router(search_router.router, prefix="/api")
 app.include_router(subscriptions.router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(tags_router, prefix="/api")

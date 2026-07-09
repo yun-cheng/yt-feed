@@ -5,6 +5,7 @@ import VideoRow from './components/VideoRow'
 import ChannelsPage from './components/ChannelsPage'
 import ChannelPage from './components/ChannelPage'
 import DownloadsPage from './components/DownloadsPage'
+import SearchPage from './components/SearchPage'
 
 export type DownloadItem = {
   youtube_id: string
@@ -58,11 +59,12 @@ export type FeedResponse = {
 
 // ── URL helpers ─────────────────────────────────────────────
 
-function parsePath(): { page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'; channelId: string | null } {
+function parsePath(): { page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'; channelId: string | null } {
   const path = window.location.pathname
   if (path === '/channels') return { page: 'channels', channelId: null }
   if (path === '/watchlater') return { page: 'watchlater', channelId: null }
   if (path === '/downloads') return { page: 'downloads', channelId: null }
+  if (path === '/search') return { page: 'search', channelId: null }
   const m = path.match(/^\/channel\/([^/]+)/)
   if (m) return { page: 'channel', channelId: m[1] }
   return { page: 'feed', channelId: null }
@@ -103,6 +105,7 @@ export function buildPath(
   if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
   if (page === 'watchlater') return '/watchlater'
   if (page === 'downloads') return '/downloads'
+  if (page === 'search') return '/search'  // ?q= is appended by the search URL sync
   if (page === 'channel' && channelId) {
     return qs ? `/channel/${channelId}?${qs}` : `/channel/${channelId}`
   }
@@ -153,7 +156,11 @@ export default function App() {
   // Init from URL
   const initPath = parsePath()
   const initQ = parseSearch()
-  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads'>(initPath.page)
+  const [page, setPageRaw] = useState<'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'>(initPath.page)
+  const [searchInput, setSearchInput] = useState<string>(() => new URLSearchParams(window.location.search).get('q') || '')
+  // True once we've pushed a /search history entry, so clearing the box can go
+  // back() to the page (and its state) we were on before searching.
+  const searchPushedRef = useRef(false)
   const [feed, setFeed] = useState<FeedResponse | null>(null)
   const [tags, setTags] = useState<TagInfo[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
@@ -313,6 +320,7 @@ export default function App() {
   // ── URL sync ──────────────────────────────────────────
   // replaceState for reactive filter changes (tags, window, sort) — no new history entry
   const syncUrl = useCallback(() => {
+    if (page === 'search') return  // search URL (?q=) is managed by onSearchChange
     const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort)
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
@@ -328,6 +336,7 @@ export default function App() {
       const p = parsePath()
       const q = parseSearch()
       setPageRaw(p.page)
+      setSearchInput(new URLSearchParams(window.location.search).get('q') || '')
       setSelectedChannelId(p.channelId)
       setSelectedTags(q.tags)
       setTimeWindow(q.window)
@@ -485,6 +494,7 @@ export default function App() {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
     setPageRaw(p)
+    setSearchInput('')  // leaving via nav clears the search box
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
     if (p !== 'channel') setSelectedChannelId(null)
@@ -495,6 +505,40 @@ export default function App() {
     }
     if (p !== 'feed') setMobileMenuOpen(false)
   }, [selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort])
+
+  // Search box: typing routes to the /search page; the URL tracks the query.
+  const onSearchChange = useCallback((q: string) => {
+    setSearchInput(q)
+    if (!searchPushedRef.current) {
+      // Entering search: push one history entry so we can return to the current
+      // page (with its state) when the box is cleared. The ref guards against a
+      // second push if several keystrokes land before the re-render.
+      searchPushedRef.current = true
+      history.pushState(null, '', `/search?q=${encodeURIComponent(q)}`)
+      setPageRaw('search')
+      return
+    }
+    if (!q.trim()) {
+      // Cleared the box → go back to where we came from (restores page + state
+      // via the popstate handler). Fall back to the feed if there's nothing to
+      // return to (e.g. the app was opened directly on /search).
+      searchPushedRef.current = false
+      if (window.history.length > 1) {
+        history.back()
+      } else {
+        setPageRaw('feed')
+        history.replaceState(null, '', '/')
+      }
+      return
+    }
+    history.replaceState(null, '', `/search?q=${encodeURIComponent(q)}`)
+  }, [])
+
+  // Leaving the search page by any route (nav, channel open, browser back) ends
+  // the search session, so the next search pushes a fresh returnable entry.
+  useEffect(() => {
+    if (page !== 'search') searchPushedRef.current = false
+  }, [page])
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -554,85 +598,93 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {/* YouTube API token expired/revoked — stats stop updating until re-auth */}
-      {tokenBad && !tokenNoticeDismissed && (
-        <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 text-sm bg-amber-500/15 text-amber-300 border-b border-amber-500/30">
-          <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A2 2 0 003.53 21h16.94a2 2 0 001.72-2.44l-8.48-14.7a2 2 0 00-3.42 0z"/>
-          </svg>
-          <span className="flex-1 min-w-0">
-            YouTube API token is expired/revoked — video stats will stop updating.{' '}
-            <a
-              href="/api/auth/login"
-              target="_blank"
-              rel="noreferrer"
-              className="underline font-semibold text-amber-200 hover:text-amber-100"
-            >
-              Re-authenticate
-            </a>{' '}to resume.
-          </span>
-          <button
-            className="flex-shrink-0 text-amber-300/70 hover:text-amber-200 text-xs px-2 py-0.5"
-            onClick={() => { sessionStorage.setItem('yt_token_notice_dismissed', '1'); setTokenNoticeDismissed(true) }}
-          >
-            Dismiss
-          </button>
-        </div>
+    <div className="flex h-screen overflow-hidden">
+      {/* Mobile backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
       )}
-      {/* TopBar — fixed on mobile (slides up/down without affecting layout),
-           static in-flow on desktop (no hiding behaviour) */}
-      <div
-        ref={topbarRef}
-        className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:static md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
-      >
-      <TopBar
-        variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : 'feed'}
-        window={page === 'channel' ? channelWindow : timeWindow}
-        onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
-        sort={page === 'channel' ? channelSort : sort}
-        onSortChange={page === 'channel' ? setChannelSort : setSort}
-        timeMode={page === 'channel' ? channelTimeMode : timeMode}
-        onTimeModeChange={page === 'channel' ? setChannelTimeMode : setTimeMode}
-        channelsSort={channelsSort}
-        onChannelsSortChange={setChannelsSort}
-        onToggleCollapse={() => {
-          if (matchMedia('(max-width: 767px)').matches) {
-            setMobileMenuOpen(prev => !prev)
-          } else {
-            setSidebarCollapsed(prev => !prev)
-          }
-        }}
-        onHome={goHome}
-        sidebarCollapsed={sidebarCollapsed}
-      />
+
+      {/* Sidebar — full height (contains the logo); overlay on mobile */}
+      <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40' : 'hidden'} md:flex md:relative md:z-auto`}>
+        <Sidebar
+          tags={tags}
+          selectedTags={selectedTags}
+          onToggleTag={toggleTag}
+          onSetTags={setSelectedTags}
+          page={page}
+          onPageChange={setPage}
+          onHome={goHome}
+          onToggleCollapse={() => {
+            if (matchMedia('(max-width: 767px)').matches) {
+              setMobileMenuOpen(prev => !prev)
+            } else {
+              setSidebarCollapsed(prev => !prev)
+            }
+          }}
+          downloadsCount={downloads.length}
+          onClearFilter={clearFilter}
+          collapsed={sidebarCollapsed}
+          watchLaterCount={watchLater.length}
+          tagFilteredCounts={tagFilteredCounts}
+        />
       </div>
 
-      {/* Body row: sidebar + content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Mobile backdrop */}
-        {mobileMenuOpen && (
-          <div
-            className="fixed inset-0 z-30 bg-black/50 md:hidden"
-            onClick={() => setMobileMenuOpen(false)}
-          />
+      {/* Right column: token banner + topbar + main content */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        {/* YouTube API token expired/revoked — stats stop updating until re-auth */}
+        {tokenBad && !tokenNoticeDismissed && (
+          <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 text-sm bg-amber-500/15 text-amber-300 border-b border-amber-500/30">
+            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A2 2 0 003.53 21h16.94a2 2 0 001.72-2.44l-8.48-14.7a2 2 0 00-3.42 0z"/>
+            </svg>
+            <span className="flex-1 min-w-0">
+              YouTube API token is expired/revoked — video stats will stop updating.{' '}
+              <a
+                href="/api/auth/login"
+                target="_blank"
+                rel="noreferrer"
+                className="underline font-semibold text-amber-200 hover:text-amber-100"
+              >
+                Re-authenticate
+              </a>{' '}to resume.
+            </span>
+            <button
+              className="flex-shrink-0 text-amber-300/70 hover:text-amber-200 text-xs px-2 py-0.5"
+              onClick={() => { sessionStorage.setItem('yt_token_notice_dismissed', '1'); setTokenNoticeDismissed(true) }}
+            >
+              Dismiss
+            </button>
+          </div>
         )}
-
-        {/* Sidebar */}
-        <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40' : 'hidden'} md:flex md:relative md:z-auto`}>
-          <Sidebar
-            tags={tags}
-            selectedTags={selectedTags}
-            onToggleTag={toggleTag}
-            onSetTags={setSelectedTags}
-            page={page}
-            onPageChange={setPage}
-            downloadsCount={downloads.length}
-            onClearFilter={clearFilter}
-            collapsed={sidebarCollapsed}
-            watchLaterCount={watchLater.length}
-            tagFilteredCounts={tagFilteredCounts}
-          />
+        {/* TopBar — fixed on mobile (slides up/down without affecting layout),
+             static in-flow on desktop (no hiding behaviour) */}
+        <div
+          ref={topbarRef}
+          className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:static md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
+        >
+        <TopBar
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : 'feed'}
+          searchQuery={searchInput}
+          onSearchChange={onSearchChange}
+          window={page === 'channel' ? channelWindow : timeWindow}
+          onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
+          sort={page === 'channel' ? channelSort : sort}
+          onSortChange={page === 'channel' ? setChannelSort : setSort}
+          timeMode={page === 'channel' ? channelTimeMode : timeMode}
+          onTimeModeChange={page === 'channel' ? setChannelTimeMode : setTimeMode}
+          channelsSort={channelsSort}
+          onChannelsSortChange={setChannelsSort}
+          onToggleCollapse={() => {
+            if (matchMedia('(max-width: 767px)').matches) {
+              setMobileMenuOpen(prev => !prev)
+            } else {
+              setSidebarCollapsed(prev => !prev)
+            }
+          }}
+        />
         </div>
 
       <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-14 md:mb-0 [overflow-anchor:none]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
@@ -663,7 +715,17 @@ export default function App() {
             </button>
           </div>
         )}
-        {page === 'downloads' ? (
+        {page === 'search' ? (
+          <SearchPage
+            query={searchInput}
+            onChannelClick={selectChannel}
+            sort={sort}
+            watchLaterIds={watchLaterIds}
+            onToggleWatchLater={toggleWatchLater}
+            onDownload={startDownload}
+            downloadIds={downloadIds}
+          />
+        ) : page === 'downloads' ? (
           <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />
         ) : page === 'watchlater' ? (
           <div className="px-6 py-4">

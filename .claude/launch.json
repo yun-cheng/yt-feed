@@ -15,6 +15,13 @@
       "runtimeArgs": ["app.main:app", "--reload", "--port", "8000"],
       "port": 8000,
       "cwd": "backend"
+    },
+    {
+      "name": "meilisearch",
+      "runtimeExecutable": "meilisearch",
+      "runtimeArgs": ["--db-path", "data/meili", "--http-addr", "127.0.0.1:7700", "--no-analytics"],
+      "port": 7700,
+      "cwd": "."
     }
   ]
 }
