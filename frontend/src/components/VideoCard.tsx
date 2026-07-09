@@ -542,8 +542,18 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     }
   }, [hoverTime, localSrc])
 
+  // Opening the video navigates away (new tab / modal). Stop the hover preview
+  // first, otherwise it keeps playing (with sound) in the background because the
+  // card is still "hovered".
+  const openVideo = () => {
+    playerRef.current?.pauseVideo()
+    onHover(null)
+    if (onOpen) onOpen(video)
+    else window.open(videoUrl, '_blank')
+  }
+
   return (
-    <div className="relative cursor-pointer" onClick={() => onOpen ? onOpen(video) : window.open(videoUrl, '_blank')}>
+    <div className="relative cursor-pointer" onClick={openVideo}>
       {/* Thumbnail — hover here only triggers preview */}
       <div
         className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]"
@@ -558,7 +568,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             href={videoUrl}
             aria-label={video.title}
             className="absolute inset-0 z-10"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(videoUrl, '_blank') }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); openVideo() }}
           />
         )}
 
@@ -822,7 +832,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           ) : (
             <a
               href={videoUrl}
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(videoUrl, '_blank') }}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); openVideo() }}
               className="block text-sm font-medium text-white line-clamp-2 leading-5"
             >
               {video.title}
