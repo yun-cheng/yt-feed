@@ -178,21 +178,46 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false)
 
   // ── Watch Later ───────────────────────────────────────
-  const [watchLater, setWatchLater] = useState<VideoItem[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('watch_later') || '[]')
-    } catch { return [] }
-  })
+  const [watchLater, setWatchLater] = useState<VideoItem[]>([])
   const watchLaterIds = useMemo(() => new Set(watchLater.map(v => v.youtube_id)), [watchLater])
 
+  const fetchWatchLater = useCallback(async () => {
+    try {
+      const res = await fetch('/api/watch-later')
+      if (res.ok) setWatchLater(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+
+  // Load from the backend on mount, migrating any legacy localStorage entries once.
+  useEffect(() => {
+    (async () => {
+      try {
+        const legacy = JSON.parse(localStorage.getItem('watch_later') || '[]')
+        if (Array.isArray(legacy) && legacy.length > 0) {
+          await Promise.all(legacy.map((v: VideoItem) =>
+            fetch('/api/watch-later', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(v),
+            }).catch(() => {})))
+          localStorage.removeItem('watch_later')
+        }
+      } catch { /* ignore */ }
+      fetchWatchLater()
+    })()
+  }, [fetchWatchLater])
+
   function toggleWatchLater(video: VideoItem) {
-    setWatchLater(prev => {
-      const next = prev.some(v => v.youtube_id === video.youtube_id)
-        ? prev.filter(v => v.youtube_id !== video.youtube_id)
-        : [video, ...prev]
-      localStorage.setItem('watch_later', JSON.stringify(next))
-      return next
-    })
+    const has = watchLater.some(v => v.youtube_id === video.youtube_id)
+    // optimistic update, then sync to the backend
+    setWatchLater(prev => has ? prev.filter(v => v.youtube_id !== video.youtube_id) : [video, ...prev])
+    if (has) {
+      fetch(`/api/watch-later/${video.youtube_id}`, { method: 'DELETE' }).catch(() => {})
+    } else {
+      fetch('/api/watch-later', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(video),
+      }).catch(() => {})
+    }
   }
 
   // ── Hidden channels (excluded from the home feed) ─────

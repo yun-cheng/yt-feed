@@ -52,6 +52,25 @@ class Download(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class WatchLater(Base):
+    """A video the user saved to watch later (server-side, syncs across devices)."""
+    __tablename__ = "watch_later"
+
+    youtube_id = Column(String, primary_key=True)
+    title = Column(String, nullable=False, default="")
+    channel_id = Column(String, default="")
+    channel_name = Column(String, default="")
+    thumbnail_url = Column(String, default="")
+    duration_seconds = Column(Integer, default=0)
+    # Snapshot of the feed metadata so a reused VideoCard renders even after the
+    # video ages out of the feed window.
+    published_at = Column(String, default="")  # ISO string
+    view_count = Column(BigInteger, default=0)
+    like_count = Column(BigInteger, default=0)
+    score = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Video(Base):
     __tablename__ = "videos"
 
