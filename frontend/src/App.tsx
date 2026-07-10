@@ -624,7 +624,6 @@ export default function App() {
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
     setPageRaw(p)
     setSelectedPlaylistId(null)
-    setSearchInput('')  // leaving via nav clears the search box
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
     if (p !== 'channel') setSelectedChannelId(null)
@@ -721,7 +720,6 @@ export default function App() {
     history.pushState(null, '', `/playlist/${id}`)
     setSelectedPlaylistId(id)
     setPageRaw('playlist')
-    setSearchInput('')
     mainRef.current?.scrollTo({ top: 0 })
   }
 
