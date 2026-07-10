@@ -584,7 +584,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   }
 
   return (
-    <div className="relative cursor-pointer" onClick={openVideo}>
+    // isolate: contain the card's internal z-layers (anchor z-10, hover controls
+    // z-30/z-40) in their own stacking context. Without it they leak into the page
+    // root and paint over the sticky filter bar / topbar, so pointer events pass
+    // through those bars to the card underneath.
+    <div className="relative cursor-pointer isolate" onClick={openVideo}>
       {/* Thumbnail — hover here only triggers preview. Shorts are portrait (9:16). */}
       <div
         className={`relative rounded-xl overflow-hidden bg-[#272727] ${isShort ? 'aspect-[9/16]' : 'aspect-video'}`}
