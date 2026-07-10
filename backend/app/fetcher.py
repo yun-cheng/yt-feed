@@ -70,9 +70,15 @@ def fetch_latest_videos(
     max_results: int = 50,
     since: datetime | None = None,
     detailed: bool = True,
+    tab: str = "videos",
 ) -> list[dict[str, Any]]:
     """
     Fetch the latest N videos from a channel.
+
+    `tab` selects which channel tab to scan: "videos" (long-form, default) or
+    "shorts" (vertical short-form). Shorts live on a separate tab, so the normal
+    /videos scan never returns them. Entries from the shorts tab are flagged
+    is_short=True in the returned dicts.
 
     When `since` is provided, only returns videos published after that time
     (used for incremental refresh).
@@ -85,8 +91,9 @@ def fetch_latest_videos(
 
     Returns list of dicts with keys:
         id, title, description, thumbnail, timestamp (unix),
-        view_count, like_count, duration (seconds), webpage_url
+        view_count, like_count, duration (seconds), is_short, webpage_url
     """
+    is_short = tab == "shorts"
     opts: dict[str, Any] = {
         "playlistend": max_results,
     }
@@ -96,9 +103,9 @@ def fetch_latest_videos(
         opts["dateafter"] = since.strftime("%Y%m%d")
 
     try:
-        info = _run_ytdlp(channel_url + "/videos", **opts)
+        info = _run_ytdlp(f"{channel_url}/{tab}", **opts)
     except Exception as e:
-        print(f"Error fetching videos for {channel_url}: {e}")
+        print(f"Error fetching {tab} for {channel_url}: {e}")
         return []
 
     videos = []
@@ -135,6 +142,7 @@ def fetch_latest_videos(
             "view_count": view_count,
             "like_count": entry.get("like_count", 0),
             "duration_seconds": entry.get("duration", 0),
+            "is_short": is_short,
             "channel_id": entry.get("channel_id", entry.get("uploader_id", "")),
             "channel_title": entry.get("channel", entry.get("uploader", "")),
         })

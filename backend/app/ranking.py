@@ -116,6 +116,7 @@ def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str
             "view_count": v.view_count,
             "like_count": v.like_count,
             "duration_seconds": v.duration_seconds,
+            "is_short": bool(v.is_short),
             "score": round(score_video(v.view_count, v.published_at), 2),
         })
 

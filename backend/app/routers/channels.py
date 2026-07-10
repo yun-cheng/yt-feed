@@ -79,6 +79,7 @@ async def channel_videos(
     window: str = Query(default="3d", description="Time window: 3d, 1w, 2w, 1m, ..."),
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
     time_mode: str = Query(default="wide", description="narrow | wide"),
+    shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     offset: int = Query(default=0, description="pagination: index into the ranked list"),
     limit: int = Query(default=60, description="pagination: page size"),
     db: AsyncSession = Depends(get_db),
@@ -103,7 +104,7 @@ async def channel_videos(
     # Get videos
     vid_result = await db.execute(
         select(Video)
-        .where(Video.channel_id == channel_id)
+        .where(Video.channel_id == channel_id, Video.is_short == shorts)
         .order_by(Video.published_at.desc())
         .limit(2000)
     )

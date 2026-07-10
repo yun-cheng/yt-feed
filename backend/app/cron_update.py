@@ -46,19 +46,24 @@ async def scan_channel_videos(
     Returns list of NEWLY INSERTED video IDs (need stats via API).
     """
     url = f"https://www.youtube.com/channel/{channel.youtube_id}"
-    # Flat mode is fast — no JS challenges, no format extraction
+    # Flat mode is fast — no JS challenges, no format extraction.
+    # Shorts live on a separate tab, so scan both. Videos first, then shorts:
+    # if a video somehow appears in both, the first-seen (long-form) wins.
     videos_data = fetch_latest_videos(url, max_results=50, since=since, detailed=False)
+    videos_data += fetch_latest_videos(url, max_results=50, since=since, detailed=False, tab="shorts")
 
     if not videos_data:
         return []
 
     new_ids = []
+    seen: set[str] = set()
     async with async_session() as session:
         for v in videos_data:
             pub = _publication_time(v)
             vid = v.get("youtube_id")
-            if not vid:
+            if not vid or vid in seen:
                 continue
+            seen.add(vid)
 
             existing = await session.execute(
                 select(Video).where(Video.youtube_id == vid)
@@ -66,6 +71,7 @@ async def scan_channel_videos(
             exists = existing.scalar_one_or_none()
             thumb = v.get("thumbnail_url") or YOUTUBE_THUMB.format(vid=vid)
             duration = v.get("duration_seconds", 0)
+            is_short = bool(v.get("is_short"))
 
             if exists:
                 # Update thumbnail/duration if missing, but NOT view_count
@@ -77,6 +83,9 @@ async def scan_channel_videos(
                     exists.thumbnail_url = thumb
                 if not exists.duration_seconds and duration:
                     exists.duration_seconds = duration
+                # Backfill the shorts flag on rows that predate this column.
+                if is_short and not exists.is_short:
+                    exists.is_short = True
             else:
                 session.add(Video(
                     youtube_id=vid,
@@ -86,6 +95,7 @@ async def scan_channel_videos(
                     thumbnail_url=thumb,
                     published_at=pub,
                     duration_seconds=duration,
+                    is_short=is_short,
                     view_count=0,
                     like_count=0,
                     last_updated=datetime.now(timezone.utc),

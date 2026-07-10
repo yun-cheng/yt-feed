@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Text, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Text, ForeignKey, Float, Boolean
 from app.database import Base
 
 
@@ -112,4 +112,6 @@ class Video(Base):
     view_count = Column(BigInteger, default=0)
     like_count = Column(BigInteger, default=0)
     comment_count = Column(BigInteger, default=0)
+    # True for videos pulled from the channel's /shorts tab (vertical short-form).
+    is_short = Column(Boolean, nullable=False, default=False, server_default="0", index=True)
     last_updated = Column(DateTime, default=datetime.utcnow)

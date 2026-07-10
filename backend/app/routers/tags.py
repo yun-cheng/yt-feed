@@ -332,6 +332,7 @@ async def feed_by_tags(
     window: str = "3d",
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
     time_mode: str = Query(default="wide", description="narrow | wide"),
+    shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     offset: int = 0,     # pagination: index into the ranked list
     limit: int = 60,     # pagination: page size
     db: AsyncSession = Depends(get_db),
@@ -385,6 +386,7 @@ async def feed_by_tags(
     stmt = select(Video).where(
         Video.channel_id.in_(channel_ids),
         Video.published_at >= cutoff,
+        Video.is_short == shorts,
     ).order_by(Video.published_at.desc()).limit(10000)
     result = await db.execute(stmt)
     all_videos = result.scalars().all()
