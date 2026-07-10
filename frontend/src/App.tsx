@@ -808,11 +808,14 @@ export default function App() {
             </button>
           </div>
         )}
-        {/* TopBar — fixed on mobile (slides up/down without affecting layout),
-             static in-flow on desktop (no hiding behaviour) */}
+      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-14 md:mb-0 [overflow-anchor:none] [scrollbar-gutter:stable]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
+        {/* TopBar lives INSIDE the scroll container so scrolling works natively
+            even when the cursor rests on it. Desktop: sticky at the top. Mobile:
+            fixed (out of flow) and slides up/down on scroll — main's paddingTop
+            reserves the space. */}
         <div
           ref={topbarRef}
-          className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:static md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
+          className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
         <TopBar
           variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
@@ -836,9 +839,8 @@ export default function App() {
         />
         </div>
 
-      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-14 md:mb-0 [overflow-anchor:none]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
         {selectedTags.length > 0 && (
-          <div className="sticky top-0 z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2">
+          <div className="sticky z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2" style={{ top: isMobile ? 0 : topbarHeight }}>
             <span className="text-xs text-[#555] font-medium">Filters:</span>
             <div className="flex flex-wrap gap-1.5">
               {selectedTags.map((tag) => {
