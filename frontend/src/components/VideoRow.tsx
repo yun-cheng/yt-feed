@@ -32,6 +32,10 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
   const canLoadMore = serverMode ? !!hasMoreProp : visibleCount < group.videos.length
   const visibleVideos = serverMode ? group.videos : group.videos.slice(0, visibleCount)
 
+  // An all-Shorts row uses narrower columns to suit the portrait (9:16) cards;
+  // mixed/normal rows keep the wide 16:9 grid.
+  const allShorts = group.videos.length > 0 && group.videos.every((v) => v.is_short)
+
   const loadMore = useCallback(() => {
     if (!canLoadMore) return
     if (serverMode) onLoadMore!()
@@ -79,7 +83,11 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
       </div>
 
       {/* Video grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-x-4 gap-y-6">
+      <div className={`grid gap-x-4 gap-y-6 ${
+        allShorts
+          ? 'grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(240px,1fr))]'
+          : 'grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))]'
+      }`}>
         {visibleVideos.map((video) => (
           <VideoCard
             key={video.youtube_id}

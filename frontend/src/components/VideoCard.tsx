@@ -181,8 +181,23 @@ const BTN_LIGHT = `${BTN} bg-white/90 text-black hover:bg-white`
 const ccPrefByVideo = new Map<string, boolean>()
 
 export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onHideChannel, localSrc, localOnly }: Props) {
-  const thumb = video.thumbnail_url?.replace('hqdefault', 'mqdefault') || ''
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
+  // Shorts render as a vertical (9:16) card — YouTube's native Shorts ratio —
+  // instead of 16:9 landscape.
+  const isShort = !!video.is_short
+  // Landscape cards look sharp at mqdefault (320×180). A Short fills a tall 9:16
+  // card, so a 16:9 mqdefault would be centre-cropped and upscaled ~2× (blurry).
+  // Use sddefault (640×480) — reliably present and high enough res that the
+  // centre-cropped strip stays sharp — with mqdefault as the always-present
+  // last resort (onError / 120×90-placeholder onLoad fall through below).
+  const shortThumbs = useMemo(() => [
+    `https://i.ytimg.com/vi/${video.youtube_id}/sddefault.jpg`,
+    `https://i.ytimg.com/vi/${video.youtube_id}/mqdefault.jpg`,
+  ], [video.youtube_id])
+  const [shortThumbIdx, setShortThumbIdx] = useState(0)
+  const thumb = isShort
+    ? shortThumbs[Math.min(shortThumbIdx, shortThumbs.length - 1)]
+    : (video.thumbnail_url?.replace('hqdefault', 'mqdefault') || '')
 
   const playerRef = useRef<YTPlayerInstance | null>(null)
   const playerReadyRef = useRef(false)
@@ -570,9 +585,9 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
 
   return (
     <div className="relative cursor-pointer" onClick={openVideo}>
-      {/* Thumbnail — hover here only triggers preview */}
+      {/* Thumbnail — hover here only triggers preview. Shorts are portrait (9:16). */}
       <div
-        className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]"
+        className={`relative rounded-xl overflow-hidden bg-[#272727] ${isShort ? 'aspect-[9/16]' : 'aspect-video'}`}
         onMouseEnter={() => onHover(video.youtube_id)}
         onMouseLeave={() => onHover(null)}
       >
@@ -588,9 +603,26 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           />
         )}
 
-        {/* Static thumbnail */}
-        <div style={{ display: isHovered ? 'none' : 'block' }}>
-          <img src={thumb} alt={video.title} className="w-full h-full object-cover" loading="lazy" />
+        {/* Static thumbnail — fills the card (object-cover crops the 16:9 source to
+           the portrait frame for Shorts, and fills exactly for landscape). */}
+        <div className="absolute inset-0" style={{ display: isHovered ? 'none' : 'block' }}>
+          <img
+            src={thumb}
+            alt={video.title}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={() => {
+              // Candidate 404'd (e.g. no maxresdefault) — try the next one.
+              if (isShort) setShortThumbIdx((i) => Math.min(i + 1, shortThumbs.length - 1))
+            }}
+            onLoad={(e) => {
+              // Loaded, but it's YouTube's 120×90 grey "no thumbnail" placeholder
+              // (a valid 200, so onError never fires) — advance to the next candidate.
+              if (isShort && e.currentTarget.naturalWidth <= 120 && shortThumbIdx < shortThumbs.length - 1) {
+                setShortThumbIdx((i) => i + 1)
+              }
+            }}
+          />
         </div>
 
         {/* Video player */}
@@ -607,10 +639,17 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
              clipping the video's own caption strip no longer matters. */}
           <div
             ref={playerWrapperRef}
-            className="absolute left-0 right-0 w-full"
+            className="absolute"
             style={localSrc
-              ? { top: 0, height: '100%', pointerEvents: 'none' }        // native <video>: no chrome, no crop
-              : { top: '-64px', height: 'calc(100% + 128px)', pointerEvents: 'none' }}
+              ? { top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }  // native <video>: no chrome, no crop
+              : isShort
+                // Vertical short: the 16:9 embed pillarboxes the 9:16 video. Match the
+                // iframe HEIGHT to the 9:16 card and over-scan the WIDTH (316% ≈ (16/9)²)
+                // centered, so the centered video strip fills the card exactly and the
+                // black side bars fall outside the overflow-hidden frame — no cropping.
+                ? { top: 0, left: '50%', width: '316%', height: '100%', transform: 'translateX(-50%)', pointerEvents: 'none' }
+                // Landscape: symmetric vertical over-scan clips YouTube's top/bottom chrome.
+                : { top: '-64px', left: 0, width: '100%', height: 'calc(100% + 128px)', pointerEvents: 'none' }}
           />
           <div className="absolute inset-0" style={{ zIndex: 2 }} />
 

@@ -33,6 +33,7 @@ type Props = {
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
+  shorts?: boolean
 }
 
 function formatSubs(n: number): string {
@@ -43,7 +44,7 @@ function formatSubs(n: number): string {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel }: Props) {
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -55,6 +56,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
   const fetchPage = useCallback(async (offset: number, replace: boolean) => {
     const params = new URLSearchParams({
       window: timeWindow, sort, time_mode: timeMode,
+      shorts: String(shorts),
       offset: String(offset), limit: String(CHANNEL_PAGE_SIZE),
     })
     const res = await fetch(`/api/channels/${channelId}/videos?${params}`)
@@ -63,7 +65,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     setChannel(d.channel)
     setTotal(d.total || 0)
     setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
-  }, [channelId, timeWindow, sort, timeMode])
+  }, [channelId, timeWindow, sort, timeMode, shorts])
 
   // Reset to the first page when the channel or filters change.
   useEffect(() => {

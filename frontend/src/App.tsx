@@ -37,6 +37,7 @@ export type VideoItem = {
   view_count: number
   like_count: number
   duration_seconds: number
+  is_short?: boolean
   score: number
 }
 
@@ -78,7 +79,7 @@ function parsePath(): { page: Page; channelId: string | null; playlistId: number
   return { page: 'feed', channelId: null, playlistId: null }
 }
 
-function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string; channelsSort: string } {
+function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string; channelsSort: string; shorts: boolean } {
   const p = new URLSearchParams(window.location.search)
   const rawSort = p.get('sort')
   return {
@@ -87,6 +88,7 @@ function parseSearch(): { tags: string[]; window: string; sort: string; timeMode
     sort: rawSort || 'likes',
     timeMode: p.get('time_mode') || 'wide',
     channelsSort: rawSort || 'subs',
+    shorts: p.get('shorts') === '1',
   }
 }
 
@@ -98,6 +100,7 @@ export function buildPath(
   sort: string,
   timeMode: string,
   channelsSort: string,
+  shorts = false,
 ): string {
   const params = new URLSearchParams()
   if (tags.length > 0) params.set('tags', tags.join(','))
@@ -108,6 +111,8 @@ export function buildPath(
     if (sort !== 'likes') params.set('sort', sort)
   }
   if (timeMode !== 'wide') params.set('time_mode', timeMode)
+  // Shorts vs long-form is only meaningful on the feed and a channel page.
+  if (shorts && (page === 'feed' || page === 'channel')) params.set('shorts', '1')
   const qs = params.toString()
 
   if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
@@ -187,6 +192,11 @@ export default function App() {
   const [timeMode, setTimeMode] = useState(initQ.timeMode)
   const [channelsSort, setChannelsSort] = useState(initQ.channelsSort)
   const [refreshing, setRefreshing] = useState(false)
+  // Videos ↔ Shorts: switches the feed / channel pages between long-form and
+  // vertical short-form. Shorts live on a separate channel tab and rank very
+  // differently, so they're a distinct browse mode rather than mixed in.
+  // Persisted in the URL (?shorts=1) so a reload/shared link lands on the same mode.
+  const [contentMode, setContentMode] = useState<'videos' | 'shorts'>(initQ.shorts ? 'shorts' : 'videos')
 
   // ── Watch Later ───────────────────────────────────────
   const [watchLater, setWatchLater] = useState<VideoItem[]>([])
@@ -410,11 +420,11 @@ export default function App() {
   const syncUrl = useCallback(() => {
     if (page === 'search') return  // search URL (?q=) is managed by onSearchChange
     if (page === 'playlist') return  // /playlist/{id} is navigated directly
-    const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort)
+    const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts')
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
     }
-  }, [page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort])
+  }, [page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode])
 
   // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
@@ -433,6 +443,7 @@ export default function App() {
       setSort(q.sort)
       setTimeMode(q.timeMode)
       setChannelsSort(q.channelsSort)
+      setContentMode(q.shorts ? 'shorts' : 'videos')
       mainRef.current?.scrollTo({ top: 0 })
       setTopbarPinned(true)
     }
@@ -551,6 +562,7 @@ export default function App() {
   const fetchFeedPage = useCallback(async (offset: number, replace: boolean, size = FEED_PAGE_SIZE) => {
     const params = new URLSearchParams({
       window: timeWindow, sort, time_mode: timeMode,
+      shorts: String(contentMode === 'shorts'),
       offset: String(offset), limit: String(size),
     })
     if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
@@ -565,7 +577,7 @@ export default function App() {
         window: data.window,
       }
     })
-  }, [timeWindow, sort, timeMode, selectedTags])
+  }, [timeWindow, sort, timeMode, selectedTags, contentMode])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
@@ -609,7 +621,7 @@ export default function App() {
   // pushState for explicit navigations (page/channel changes create a history entry)
   const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
-    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
+    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
     setPageRaw(p)
     setSelectedPlaylistId(null)
     setSearchInput('')  // leaving via nav clears the search box
@@ -695,7 +707,7 @@ export default function App() {
   }
 
   function selectChannel(channelId: string) {
-    history.pushState(null, '', buildPath('channel', channelId, selectedTags, timeWindow, sort, timeMode, channelsSort))
+    history.pushState(null, '', buildPath('channel', channelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
     setSelectedChannelId(channelId)
     setSelectedPlaylistId(null)
     setPageRaw('channel')
@@ -766,6 +778,8 @@ export default function App() {
           hiddenCount={hiddenChannels.size}
           showHidden={showHidden}
           onToggleShowHidden={() => setShowHidden(v => !v)}
+          contentMode={contentMode}
+          onContentModeChange={setContentMode}
         />
       </div>
 
@@ -935,6 +949,7 @@ export default function App() {
             onDownload={startDownload}
             downloadIds={downloadIds}
             onHideChannel={hideChannel}
+            shorts={contentMode === 'shorts'}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">

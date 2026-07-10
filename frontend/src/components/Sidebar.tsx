@@ -18,6 +18,8 @@ type Props = {
   hiddenCount?: number
   showHidden?: boolean
   onToggleShowHidden?: () => void
+  contentMode?: 'videos' | 'shorts'
+  onContentModeChange?: (mode: 'videos' | 'shorts') => void
 }
 
 const GROUP_NAMES: Record<string, string> = {
@@ -90,6 +92,35 @@ const LogoMark = () => (
   </svg>
 )
 
+const ShortsIcon = () => (
+  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M10 8.64v6.72L15.27 12 10 8.64zM17.77 10.32c1.71.94 2.38 3.09 1.5 4.82-.34.67-.87 1.2-1.5 1.55l-6.9 3.8c-1.71.94-3.86.31-4.8-1.4-.94-1.71-.31-3.86 1.4-4.8l.4-.22-.4-.22c-1.71-.94-2.34-3.09-1.4-4.8.94-1.71 3.09-2.34 4.8-1.4l6.9 3.8z"/>
+  </svg>
+)
+
+const VideosIcon = () => (
+  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M4 5a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2v-3l4 3V7l-4 3V7a2 2 0 00-2-2H4z"/>
+  </svg>
+)
+
+const ContentModeToggle = ({ mode, onChange }: { mode: 'videos' | 'shorts'; onChange: (m: 'videos' | 'shorts') => void }) => (
+  <div className="flex bg-[#272727] rounded-full p-0.5 text-sm">
+    {(['videos', 'shorts'] as const).map((m) => (
+      <button
+        key={m}
+        onClick={() => onChange(m)}
+        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full transition-colors ${
+          mode === m ? 'bg-white text-black font-medium' : 'text-[#aaa] hover:text-white'
+        }`}
+      >
+        {m === 'videos' ? <VideosIcon /> : <ShortsIcon />}
+        {m === 'videos' ? 'Videos' : 'Shorts'}
+      </button>
+    ))}
+  </div>
+)
+
 const EyeIcon = () => (
   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -103,7 +134,7 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -126,6 +157,18 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           </button>
         </div>
         <nav className="flex flex-col items-center pt-2 gap-1">
+          {onContentModeChange && (
+            <button
+              onClick={() => onContentModeChange(contentMode === 'shorts' ? 'videos' : 'shorts')}
+              title={contentMode === 'shorts' ? 'Showing Shorts — switch to Videos' : 'Show Shorts'}
+              className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
+                contentMode === 'shorts' ? 'text-white' : 'text-[#717171] hover:text-white'
+              }`}
+            >
+              <ShortsIcon />
+              <span className="text-[10px]">Shorts</span>
+            </button>
+          )}
           <button
             onClick={() => onPageChange('feed')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
@@ -216,6 +259,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           <span className="text-base font-semibold tracking-tight text-white">My Feed</span>
         </button>
       </div>
+
+      {/* Videos ↔ Shorts: switches what the feed / channel pages show */}
+      {onContentModeChange && (
+        <div className="px-3 pb-2 flex-shrink-0">
+          <ContentModeToggle mode={contentMode} onChange={onContentModeChange} />
+        </div>
+      )}
 
       {/* Nav: Feed, Channels — hidden on mobile (bottom bar handles navigation) */}
       <div className="py-2 hidden md:block">
