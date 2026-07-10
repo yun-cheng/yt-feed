@@ -924,8 +924,10 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           </p>
         </div>
 
-        {/* More-actions menu (right of the title) */}
-        <div className="relative flex-shrink-0" ref={menuRef}>
+        {/* More-actions menu (right of the title). self-start so this container
+           hugs the button height — otherwise the flex row stretches it to the
+           full info-row height and the top-full dropdown drops below the card. */}
+        <div className="relative flex-shrink-0 self-start" ref={menuRef}>
           <button
             className="p-1.5 -mr-1 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
             onClick={(e) => { e.stopPropagation(); setShowSavePanel(false); setMenuOpen((o) => !o) }}
@@ -952,7 +954,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                 </svg>
-                儲存至播放清單
+                Save to playlist
               </button>
               {onRemoveFromPlaylist && (
                 <button
@@ -962,7 +964,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h11M4 12h11M4 18h7M15 15l6 6m0-6l-6 6" />
                   </svg>
-                  從播放清單中移除
+                  Remove from playlist
                 </button>
               )}
               {onRemoveDownload ? (
@@ -973,7 +975,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>
                   </svg>
-                  移除下載
+                  Remove download
                 </button>
               ) : (
                 <button
@@ -990,7 +992,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
                     </svg>
                   )}
-                  {isDownloaded ? '已在下載清單' : '下載'}
+                  {isDownloaded ? 'Downloaded' : 'Download'}
                 </button>
               )}
               {onHideChannel && (
@@ -1001,7 +1003,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
                   </svg>
-                  隱藏此頻道
+                  Hide channel
                 </button>
               )}
               </>

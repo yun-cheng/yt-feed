@@ -84,15 +84,15 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-white">儲存至…</span>
+        <span className="text-sm font-semibold text-white">Save to…</span>
       </div>
 
       {/* Playlists */}
       <div className="max-h-56 overflow-y-auto">
         {loading ? (
-          <div className="px-4 py-3 text-sm text-[#aaa]">載入中…</div>
+          <div className="px-4 py-3 text-sm text-[#aaa]">Loading…</div>
         ) : playlists.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-[#777]">尚無播放清單</div>
+          <div className="px-4 py-3 text-sm text-[#777]">No playlists yet</div>
         ) : (
           playlists.map((p) => (
             <button
@@ -105,7 +105,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-white truncate">{p.name}</div>
-                <div className="text-[11px] text-[#888]">{p.item_count} 部影片</div>
+                <div className="text-[11px] text-[#888]">{p.item_count} videos</div>
               </div>
               <BookmarkIcon filled={memberIds.has(p.id)} />
             </button>
@@ -122,12 +122,12 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') createAndAdd() }}
-              placeholder="播放清單名稱"
+              placeholder="Playlist name"
               className="w-full bg-[#121212] border border-[#3a3a3a] rounded px-2 py-1.5 text-sm text-white outline-none focus:border-[#3ea6ff]"
             />
             <div className="flex justify-end gap-2 text-sm">
-              <button onClick={() => { setCreating(false); setNewName('') }} className="px-3 py-1 text-[#aaa] hover:text-white">取消</button>
-              <button onClick={createAndAdd} disabled={!newName.trim()} className="px-3 py-1 rounded-full bg-white text-black font-medium disabled:opacity-40">建立</button>
+              <button onClick={() => { setCreating(false); setNewName('') }} className="px-3 py-1 text-[#aaa] hover:text-white">Cancel</button>
+              <button onClick={createAndAdd} disabled={!newName.trim()} className="px-3 py-1 rounded-full bg-white text-black font-medium disabled:opacity-40">Create</button>
             </div>
           </div>
         ) : (
@@ -138,7 +138,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
             <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
-            新增播放清單
+            New playlist
           </button>
         )}
       </div>
