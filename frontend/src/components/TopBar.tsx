@@ -13,9 +13,10 @@ type Props = {
   onToggleCollapse: () => void
   searchQuery?: string
   onSearchChange?: (q: string) => void
+  onSearchFocus?: () => void
 }
 
-export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange }: Props) {
+export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus }: Props) {
   const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' ? null : variant === 'watchlater' ? (
     <TimeSortControls
       variant="watchlater"
@@ -67,6 +68,7 @@ export default function TopBar({ variant, window, onWindowChange, sort, onSortCh
             <input
               value={searchQuery ?? ''}
               onChange={(e) => onSearchChange?.(e.target.value)}
+              onFocus={() => onSearchFocus?.()}
               onKeyDown={(e) => { if (e.key === 'Escape' && searchQuery) { e.preventDefault(); onSearchChange?.('') } }}
               placeholder="Search"
               aria-label="Search"

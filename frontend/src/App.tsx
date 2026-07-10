@@ -668,6 +668,15 @@ export default function App() {
     history.replaceState(null, '', `/search?q=${encodeURIComponent(q)}`)
   }, [])
 
+  // Refocusing the box while it still holds a query returns to the results page
+  // (the query now persists across navigation, so the text can outlive /search).
+  const onSearchFocus = useCallback(() => {
+    if (!searchInput.trim() || page === 'search') return
+    searchPushedRef.current = true
+    history.pushState(null, '', `/search?q=${encodeURIComponent(searchInput)}`)
+    setPageRaw('search')
+  }, [searchInput, page])
+
   // Leaving the search page by any route (nav, channel open, browser back) ends
   // the search session, so the next search pushes a fresh returnable entry.
   useEffect(() => {
@@ -821,6 +830,7 @@ export default function App() {
           variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
+          onSearchFocus={onSearchFocus}
           window={page === 'channel' ? channelWindow : timeWindow}
           onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
           sort={page === 'channel' ? channelSort : sort}
