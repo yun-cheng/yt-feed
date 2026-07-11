@@ -1,18 +1,18 @@
 /**
- * Global mute/volume state shared by every video preview (feed, channel pages,
- * anywhere VideoCard is used).
+ * Global VOLUME shared by every video preview (feed, channel pages, anywhere
+ * VideoCard is used) and persisted across refreshes.
  *
- * Mute is SESSION-ONLY: every page load starts muted — browsers forbid sound
- * before the first interaction anyway, so persisting "unmuted" only produced
- * previews that claimed sound but couldn't deliver it. Unmuting once applies to
- * all previews until the next refresh. Volume persists across refreshes.
+ * There is intentionally NO global mute state. Previews ALWAYS start muted —
+ * muted autoplay is the only kind browsers reliably allow — and unmuting is a
+ * PER-VIDEO action: clicking the preview unmutes just that video. A real click
+ * is the user gesture the autoplay policy requires, so unmuting inside the click
+ * is reliable (no stuck buffering, no audio-refetch spinner). Each card owns its
+ * own mute state; there's nothing global to sync or persist for mute.
  *
- * A tiny external store read via useSyncExternalStore: changing it from one
- * card re-renders all mounted cards so their players stay in sync.
+ * Volume, on the other hand, is shared and persisted: a tiny external store read
+ * via useSyncExternalStore, so changing it on one preview updates them all.
  */
 import { useSyncExternalStore } from 'react'
-
-export type AudioState = { muted: boolean; volume: number }
 
 const KEY = 'yt-feed-audio-v1'
 
@@ -27,19 +27,18 @@ function loadVolume(): number {
   return 100
 }
 
-let state: AudioState = { muted: true, volume: loadVolume() }
+let volume = loadVolume()
 const listeners = new Set<() => void>()
 
 function emit() { listeners.forEach((l) => l()) }
 function persist() {
-  // Only volume is persisted; mute is per-session (see header).
-  try { localStorage.setItem(KEY, JSON.stringify({ volume: state.volume })) } catch { /* ignore */ }
+  try { localStorage.setItem(KEY, JSON.stringify({ volume })) } catch { /* ignore */ }
 }
 
-// Keep tabs in sync too — volume only; each tab keeps its own session mute.
+// Keep tabs in sync on volume changes.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key === KEY) { state = { muted: state.muted, volume: loadVolume() }; emit() }
+    if (e.key === KEY) { volume = loadVolume(); emit() }
   })
 }
 
@@ -47,22 +46,16 @@ function subscribe(l: () => void) {
   listeners.add(l)
   return () => { listeners.delete(l) }
 }
-function getSnapshot(): AudioState { return state }
+function getSnapshot(): number { return volume }
 
-/** React hook: current shared { muted, volume }. */
-export function useAudio(): AudioState {
+/** React hook: current shared volume (0–100). */
+export function useVolume(): number {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
-export function setAudioMuted(muted: boolean) {
-  if (state.muted === muted) return
-  state = { ...state, muted }
-  persist(); emit()
-}
-
-export function setAudioVolume(volume: number) {
-  const v = Math.max(0, Math.min(100, Math.round(volume)))
-  if (state.volume === v) return
-  state = { ...state, volume: v }
+export function setAudioVolume(v: number) {
+  const next = Math.max(0, Math.min(100, Math.round(v)))
+  if (volume === next) return
+  volume = next
   persist(); emit()
 }
