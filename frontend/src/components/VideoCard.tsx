@@ -588,7 +588,10 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     // z-30/z-40) in their own stacking context. Without it they leak into the page
     // root and paint over the sticky filter bar / topbar, so pointer events pass
     // through those bars to the card underneath.
-    <div className="relative cursor-pointer isolate" onClick={openVideo}>
+    // While the ⋮ menu is open, lift the whole card above its siblings (z-[5]) so
+    // the dropdown, which overflows the card's bottom, isn't covered by the card
+    // below. Stays under the sticky filter bar (z-10) / topbar (z-20).
+    <div className={`relative cursor-pointer isolate ${menuOpen ? 'z-[5]' : ''}`} onClick={openVideo}>
       {/* Thumbnail — hover here only triggers preview. Shorts are portrait (9:16). */}
       <div
         className={`relative rounded-xl overflow-hidden bg-[#272727] ${isShort ? 'aspect-[9/16]' : 'aspect-video'}`}
