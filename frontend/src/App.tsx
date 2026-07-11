@@ -192,7 +192,6 @@ export default function App() {
   const [sort, setSort] = useState(initQ.sort)
   const [timeMode, setTimeMode] = useState(initQ.timeMode)
   const [channelsSort, setChannelsSort] = useState(initQ.channelsSort)
-  const [refreshing, setRefreshing] = useState(false)
   // Videos ↔ Shorts: switches the feed / channel pages between long-form and
   // vertical short-form. Shorts live on a separate channel tab and rank very
   // differently, so they're a distinct browse mode rather than mixed in.
@@ -698,29 +697,17 @@ export default function App() {
     )
   }
 
+  // Read-only reload for the auto-refresh timer. Scanning YouTube is now owned
+  // by the backend scheduler, so the frontend only re-reads the locally-cached
+  // feed to pick up whatever the last backend scan wrote — no scan is triggered.
   async function refresh() {
     lastFetchRef.current = Date.now()
-    setRefreshing(true)
     try {
-      // Trigger background scan
-      const res = await fetch('/api/refresh', { method: 'POST' })
-      const { status } = await res.json()
-      if (status === 'started' || status === 'already_running') {
-        // Poll until done
-        while (true) {
-          await new Promise(r => setTimeout(r, 2000))
-          const sres = await fetch('/api/refresh/status')
-          const { running } = await sres.json()
-          if (!running) break
-        }
-      }
-      // Re-fetch everything
       await fetchTags()
       if (page === 'feed') await fetchFeed(true)
     } catch (e) {
-      console.error('Refresh failed:', e)
+      console.error('Reload failed:', e)
     }
-    setRefreshing(false)
   }
 
   function selectChannel(channelId: string) {

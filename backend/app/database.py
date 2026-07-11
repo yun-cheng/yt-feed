@@ -29,5 +29,8 @@ async def _apply_column_migrations(conn):
 
 async def init_db():
     async with engine.begin() as conn:
+        # WAL lets readers (feed queries) proceed while the background scan writes,
+        # so a running/failing update never blocks the locally-cached feed.
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.run_sync(Base.metadata.create_all)
         await _apply_column_migrations(conn)

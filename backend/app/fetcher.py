@@ -21,6 +21,14 @@ def _run_ytdlp(url: str, **extra_opts) -> list[dict[str, Any]]:
         "dump_single_json": False,
         "ignoreerrors": True,
         "no_warnings": True,
+        # Fail fast. yt-dlp defaults to ~10 retries per URL; scanning 130+
+        # channels with that fan-out opens thousands of sockets on a flaky
+        # fetch and exhausts the process's file descriptors. A failing channel
+        # should give up quickly and let the run move on.
+        "socket_timeout": 10,
+        "retries": 1,
+        "extractor_retries": 1,
+        "fragment_retries": 0,
         "extractor_args": {"youtube": {"skip": ["dash", "hls"]}},
         "http_headers": {"Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5"},
     }
