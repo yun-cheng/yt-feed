@@ -32,6 +32,7 @@ interface YTPlayerInstance {
   getVolume(): number
   getCurrentTime(): number
   getDuration(): number
+  getPlayerState(): number
   loadModule(name: string): void
   unloadModule(name: string): void
   getOptions(): string[]
@@ -63,6 +64,12 @@ function ensureYTApi(): Promise<void> {
   })
 }
 
+// Warm the YouTube IFrame API early (call once on app start) so the very first
+// hover doesn't also wait on this script download before it can create a player.
+export function preloadYouTubeApi() {
+  ensureYTApi()
+}
+
 type StoryboardInfo = {
   rows: number
   cols: number
@@ -90,6 +97,8 @@ function makeVideoAdapter(v: HTMLVideoElement): YTPlayerInstance {
     getVolume: () => v.volume * 100,
     getCurrentTime: () => v.currentTime || 0,
     getDuration: () => v.duration || 0,
+    // 1 = playing, 2 = paused (matches YT's PlayerState enough for our checks).
+    getPlayerState: () => (!v.paused && !v.ended && v.currentTime > 0 ? 1 : 2),
     loadModule: () => {},
     unloadModule: () => {},
     getOptions: () => [],
@@ -180,6 +189,17 @@ const BTN_LIGHT = `${BTN} bg-white/90 text-black hover:bg-white`
 // specific video is remembered here so re-hovering it keeps them off.
 const ccPrefByVideo = new Map<string, boolean>()
 
+// How long a player stays alive after the cursor leaves before it's destroyed.
+// Long enough that flicking back to the card keeps it warm; short enough that
+// idle players (and their audio) don't linger.
+const PLAYER_IDLE_TEARDOWN_MS = 600
+
+// Set when a post-playback auto-unmute wedges the player (the stall watchdog had
+// to rescue it). From then on this session, previews stay muted instead of each
+// re-attempting the unmute and hanging; the speaker click still works, and the
+// saved preference is untouched.
+let autoUnmuteUnreliable = false
+
 export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onHideChannel, localSrc, localOnly }: Props) {
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
   // Shorts render as a vertical (9:16) card — YouTube's native Shorts ratio —
@@ -218,6 +238,23 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(video.duration_seconds > 0 ? video.duration_seconds : 0)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
+  // Keep the thumbnail up until the preview is actually playing — the YouTube
+  // embed takes ~1-2s to load, and hiding the thumbnail on hover would leave a
+  // blank card during that gap. Flips true on the player's first PLAYING state.
+  const [playing, setPlaying] = useState(false)
+  // The player's REAL mute state (polled), which can diverge from the store
+  // preference: unmuted autoplay is blocked before the first page interaction, so
+  // a preview may be forced to start muted. The speaker icon renders this, never
+  // the bare preference — so it can't show "sound on" while actually silent.
+  const [actualMuted, setActualMuted] = useState<boolean | null>(null)
+  const stallSinceRef = useRef<number | null>(null)   // when the preview stopped progressing
+  const fallbackTriedRef = useRef(false)              // one muted-rebuild rescue per hover
+  const pendingUnmuteRef = useRef(false)              // unmute once playback begins (sound-on pref + gesture)
+  const awaitingAudioRef = useRef(false)              // reveal held while the unmute refetches audio
+  const attemptedUnmuteRef = useRef(false)            // this hover tried the auto-unmute
+  // What the sound controls show/toggle: the player's real state when known,
+  // otherwise the shared preference.
+  const displayMuted = actualMuted ?? isMuted
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)   // title "more actions" menu
   const [showSavePanel, setShowSavePanel] = useState(false)  // "save to playlist" sub-panel
@@ -247,9 +284,25 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   // The container div is created imperatively so React never reconciles it —
   // if we let React own the target element, re-renders replace the YT-generated
   // iframe with the original div, leaving audio playing but nothing visible.
-  const createPlayer = useCallback((seekTime?: number) => {
+  const createPlayer = useCallback((seekTime?: number, forceMuted = false) => {
     if (!playerWrapperRef.current) return
     playerCreatedRef.current = true
+
+    // ALWAYS start muted: unmuted autoplay in the embed is blocked unless the
+    // origin has media-engagement history (page gesture or not), and a blocked
+    // unmuted start either stalls buffering forever or hangs on YouTube's spinner
+    // while silently muted. A muted start always plays. Sessions begin muted (see
+    // audioStore); once the user unmutes — necessarily a gesture — every later
+    // preview is unmuted right after playback begins (see onStateChange), with
+    // the reveal held back so the audio-refetch spinner stays hidden behind the
+    // thumbnail. The gesture check is belt-and-braces on top of that.
+    const hasGesture = typeof navigator !== 'undefined' && navigator.userActivation
+      ? navigator.userActivation.hasBeenActive
+      : true
+    const startMuted = true
+    pendingUnmuteRef.current = !forceMuted && !audioRef.current.muted && hasGesture && !autoUnmuteUnreliable
+    attemptedUnmuteRef.current = false
+    setActualMuted(startMuted)
 
     // Local downloaded file: play it directly (offline, no YouTube network).
     if (localSrc) {
@@ -258,7 +311,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       v.loop = true
       v.playsInline = true
       v.preload = 'auto'   // buffer the whole local file so scrubbing works offline
-      v.muted = audioRef.current.muted
+      v.muted = startMuted
       v.volume = audioRef.current.volume / 100
       v.style.width = '100%'
       v.style.height = '100%'
@@ -275,6 +328,18 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         else v.pause()
       }
       v.addEventListener('loadedmetadata', onReady, { once: true })
+      v.addEventListener('playing', () => {
+        // Same race guard as the YouTube path: if playback begins after the
+        // cursor already left, pause instead of leaking audio.
+        if (!isHoveredRef.current) { v.pause(); return }
+        // Restore the sound-on preference (local files unmute instantly).
+        if (pendingUnmuteRef.current) {
+          pendingUnmuteRef.current = false
+          v.muted = false
+          setActualMuted(false)
+        }
+        setPlaying(true)  // reveal video over thumbnail
+      })
       return
     }
 
@@ -292,7 +357,9 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         playerVars: {
           // autoplay:0 — we start playback explicitly in onReady (only if still
           // hovered), so a video loaded then abandoned never emits sound.
-          autoplay: 0, mute: audioRef.current.muted ? 1 : 0, controls: 0, rel: 0, loop: 1,
+          // mute:1 always (see startMuted above) — sound is restored after
+          // playback begins when the preference and autoplay policy allow it.
+          autoplay: 0, mute: startMuted ? 1 : 0, controls: 0, rel: 0, loop: 1,
           playlist: video.youtube_id, iv_load_policy: 3,
           fs: 0, disablekb: 1, playsinline: 1, modestbranding: 1,
           // We render captions ourselves from the /feed/captions transcript
@@ -313,17 +380,45 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               iframe.style.height = '100%'
               iframe.style.border = 'none'
             }
-            // Apply the shared audio state (volume, and mute in case it changed
-            // between player creation and ready).
+            // Muted start (see startMuted above); volume pre-set for the unmute.
             e.target.setVolume(audioRef.current.volume)
-            if (audioRef.current.muted) e.target.mute()
-            else e.target.unMute()
+            if (startMuted) e.target.mute()
             if (seekTime && seekTime > 0) e.target.seekTo(seekTime, true)
             // The user may have already hovered away while the player was loading
             // (autoplay:1 would otherwise start it, sound and all) — only play if
             // this card is still the hovered one; otherwise pause immediately.
             if (isHoveredRef.current) e.target.playVideo()
             else e.target.pauseVideo()
+          },
+          onStateChange: (e) => {
+            // 1 === PLAYING.
+            if (e.data === 1) {
+              // Race guard: pauseVideo() issued while the player is still buffering
+              // is dropped by YouTube, so a preview abandoned mid-load can start
+              // playing — with sound — after the cursor already left (the wrapper is
+              // only display:none, which doesn't stop iframe audio). If we're no
+              // longer hovered when playback actually begins, pause it now.
+              if (!isHoveredRef.current) { e.target.pauseVideo(); return }
+              // Sound-on preference: unmuted AUTOPLAY is blocked, but unmuting an
+              // already-playing player after a page gesture is allowed. Unmute now
+              // and hold the reveal until playback resumes, so YouTube's brief
+              // audio-refetch spinner stays hidden behind the thumbnail.
+              if (pendingUnmuteRef.current) {
+                pendingUnmuteRef.current = false
+                attemptedUnmuteRef.current = true
+                awaitingAudioRef.current = true
+                e.target.unMute()
+                // Fail-safe: if the audio never arrives, reveal anyway (the poll
+                // keeps the speaker icon truthful about the real mute state).
+                window.setTimeout(() => {
+                  if (awaitingAudioRef.current) { awaitingAudioRef.current = false; setPlaying(true) }
+                }, 3500)
+                return
+              }
+              awaitingAudioRef.current = false
+              // Reveal the video (hide the thumbnail) once frames render.
+              setPlaying(true)
+            }
           },
         },
       })
@@ -353,6 +448,17 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     else p.unMute()
   }, [isMuted, volume])
 
+  // Fully dispose this card's player and reset its flags so a later hover
+  // recreates it cleanly. Called on unmount, after the idle window below, and by
+  // the stall watchdog before a muted rebuild.
+  const teardownPlayer = useCallback(() => {
+    try { playerRef.current?.destroy() } catch { /* already gone */ }
+    playerRef.current = null
+    playerReadyRef.current = false
+    playerCreatedRef.current = false
+    if (playerWrapperRef.current) playerWrapperRef.current.innerHTML = ''
+  }, [])
+
   // Poll currentTime/duration while hovered (mute/volume are driven by the store,
   // not read back from the player, so they stay authoritative across all cards).
   useEffect(() => {
@@ -364,20 +470,57 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       const d = p.getDuration()
       if (typeof t === 'number') setCurrentTime(t)
       if (typeof d === 'number' && d > 0) setDuration(d)
+      // Safety net: if playback has advanced past 0 while hovered, reveal the
+      // video even should onStateChange have been missed — unless we're holding
+      // the reveal for an in-flight auto-unmute (its spinner must stay hidden).
+      if (typeof t === 'number' && t > 0 && !awaitingAudioRef.current) setPlaying(true)
+
+      // Mirror the player's REAL mute state into the UI — it can diverge from the
+      // store preference when autoplay policy forces a muted start.
+      const m = p.isMuted?.()
+      if (typeof m === 'boolean') setActualMuted(m)
+
+      // Stall watchdog: if the preview isn't actually playing for ~5s (blocked
+      // autoplay wedge, or an auto-unmute that hung the player), rebuild it muted
+      // — a muted start always plays — so the preview always ends up showing
+      // video, with the speaker icon truthfully reflecting the result. Once per
+      // hover. If the hang followed our auto-unmute, remember that for the
+      // session and stop auto-unmuting (the speaker click still works).
+      const isPlaying = p.getPlayerState?.() === 1
+      if (isPlaying) {
+        stallSinceRef.current = null
+      } else if (playerReadyRef.current && !fallbackTriedRef.current) {
+        const now = Date.now()
+        if (stallSinceRef.current == null) {
+          stallSinceRef.current = now
+        } else if (now - stallSinceRef.current > 5000) {
+          fallbackTriedRef.current = true
+          stallSinceRef.current = null
+          if (attemptedUnmuteRef.current) autoUnmuteUnreliable = true
+          awaitingAudioRef.current = false
+          teardownPlayer()
+          createPlayer(0, true)
+        }
+      }
     }, 250)
-    return () => clearInterval(id)
-  }, [isHovered])
+    return () => { clearInterval(id); stallSinceRef.current = null }
+  }, [isHovered, teardownPlayer, createPlayer])
+
+  // Don't keep an idle player alive. Once the cursor leaves, wait a short beat
+  // (so a quick re-hover stays warm) then destroy the iframe entirely. This caps
+  // memory — otherwise every hovered card leaves a live player behind — and is a
+  // hard guarantee against audio leaking from a paused-but-still-loading embed
+  // (display:none doesn't stop iframe sound; a destroyed iframe can't play).
+  useEffect(() => {
+    if (isHovered || !playerCreatedRef.current) return
+    const id = window.setTimeout(teardownPlayer, PLAYER_IDLE_TEARDOWN_MS)
+    return () => clearTimeout(id)
+  }, [isHovered, teardownPlayer])
 
   // Destroy player on unmount; reset flags so StrictMode double-mount works cleanly
   useEffect(() => {
-    return () => {
-      playerRef.current?.destroy()
-      playerRef.current = null
-      playerReadyRef.current = false
-      playerCreatedRef.current = false
-      if (playerWrapperRef.current) playerWrapperRef.current.innerHTML = ''
-    }
-  }, [])
+    return () => { teardownPlayer() }
+  }, [teardownPlayer])
 
   // Keyboard shortcuts: m = mute, c = cc (only when this card is hovered)
   useEffect(() => {
@@ -387,14 +530,15 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       const p = playerRef.current
       if (!p) return
       if (e.key === 'm') {
-        // Apply to the player within the key gesture (browsers gate unmuting on it),
-        // then persist to the shared store so every preview follows.
-        if (isMuted) {
+        // Toggle off the player's REAL state (displayMuted), apply within the key
+        // gesture (browsers gate unmuting on it), then persist the preference.
+        if (displayMuted) {
           p.unMute()
+          setActualMuted(false)
           if (volume === 0) { p.setVolume(100); setAudioVolume(100) }
           setAudioMuted(false)
         } else {
-          p.mute(); setAudioMuted(true)
+          p.mute(); setActualMuted(true); setAudioMuted(true)
         }
       } else if (e.key === 'c') {
         toggleCaptions()
@@ -402,7 +546,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [isHovered, isMuted, volume, showCaptions])
+  }, [isHovered, displayMuted, volume, showCaptions])
 
   // Fetch storyboard on first hover
   const fetchStoryboard = useCallback(async () => {
@@ -436,6 +580,13 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     if (!isHovered) {
       setCurrentTime(0)
       setHoverRatio(null)
+      setPlaying(false)  // bring the thumbnail back until the next play starts
+      setActualMuted(null)  // next hover re-derives the real state from its player
+      stallSinceRef.current = null
+      fallbackTriedRef.current = false
+      pendingUnmuteRef.current = false
+      awaitingAudioRef.current = false
+      attemptedUnmuteRef.current = false
     }
   }, [isHovered])
 
@@ -477,14 +628,17 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const handleMuteToggle = (e: React.MouseEvent) => {
     e.stopPropagation()
     const p = playerRef.current
-    if (isMuted) {
-      // Apply within the click gesture (browsers gate unmuting on it), then persist.
+    // Toggle off the player's REAL state (displayMuted): a preview forced to start
+    // muted by autoplay policy shows the muted icon even though the preference says
+    // unmuted, and this click — a genuine gesture — is what's allowed to unmute it.
+    if (displayMuted) {
       p?.unMute()
+      setActualMuted(false)
       // Unmuting while the slider sits at 0 would be silent — restore audible volume.
       if (volume === 0) { p?.setVolume(100); setAudioVolume(100) }
       setAudioMuted(false)
     } else {
-      p?.mute(); setAudioMuted(true)
+      p?.mute(); setActualMuted(true); setAudioMuted(true)
     }
   }
 
@@ -495,8 +649,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     const p = playerRef.current
     p?.setVolume(v)
     setAudioVolume(v)
-    if (v === 0) { p?.mute(); setAudioMuted(true) }
-    else if (isMuted) { p?.unMute(); setAudioMuted(false) }
+    if (v === 0) { p?.mute(); setActualMuted(true); setAudioMuted(true) }
+    else if (displayMuted) { p?.unMute(); setActualMuted(false); setAudioMuted(false) }
   }
 
   // Lazily fetch the transcript the first time captions are switched on, then
@@ -611,8 +765,10 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         )}
 
         {/* Static thumbnail — fills the card (object-cover crops the 16:9 source to
-           the portrait frame for Shorts, and fills exactly for landscape). */}
-        <div className="absolute inset-0" style={{ display: isHovered ? 'none' : 'block' }}>
+           the portrait frame for Shorts, and fills exactly for landscape). Stays
+           on top (z-[5], above the player) until playback starts, so the ~1-2s
+           embed load shows the thumbnail instead of a blank card. */}
+        <div className="absolute inset-0 z-[5]" style={{ display: playing ? 'none' : 'block' }}>
           <img
             src={thumb}
             alt={video.title}
@@ -630,6 +786,13 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               }
             }}
           />
+          {/* While the thumbnail holds and the embed loads (hovered, not yet
+             playing), fade the thumbnail toward black over ~1.5s. ease-in keeps a
+             quick/warm hover barely dimmed, while a prolonged wait goes fully
+             black as a "still loading" cue. Removed once playback starts. */}
+          {isHovered && !playing && (
+            <div className="absolute inset-0 bg-black pointer-events-none preview-dim" />
+          )}
         </div>
 
         {/* Video player */}
@@ -709,16 +872,16 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   type="range"
                   min={0}
                   max={100}
-                  value={isMuted ? 0 : volume}
+                  value={displayMuted ? 0 : volume}
                   onChange={(e) => handleVolumeChange(Number(e.target.value))}
                   onMouseDown={(e) => e.stopPropagation()}
                   aria-label="Volume"
                   className="vol-slider w-20"
-                  style={{ background: `linear-gradient(to right, #fff ${isMuted ? 0 : volume}%, rgba(255,255,255,0.18) ${isMuted ? 0 : volume}%)` }}
+                  style={{ background: `linear-gradient(to right, #fff ${displayMuted ? 0 : volume}%, rgba(255,255,255,0.18) ${displayMuted ? 0 : volume}%)` }}
                 />
               </div>
-              <button className="p-2 rounded-full text-white hover:bg-white/15 transition-colors" onClick={handleMuteToggle} title={isMuted ? 'Unmute' : 'Mute'}>
-                {isMuted ? (
+              <button className="p-2 rounded-full text-white hover:bg-white/15 transition-colors" onClick={handleMuteToggle} title={displayMuted ? 'Unmute' : 'Mute'}>
+                {displayMuted ? (
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
                   </svg>

@@ -6,6 +6,7 @@ import ChannelsPage from './components/ChannelsPage'
 import ChannelPage from './components/ChannelPage'
 import DownloadsPage from './components/DownloadsPage'
 import SearchPage from './components/SearchPage'
+import { preloadYouTubeApi } from './components/VideoCard'
 import PlaylistsPage from './components/PlaylistsPage'
 import type { PlaylistSummary } from './components/PlaylistsPage'
 import PlaylistPage from './components/PlaylistPage'
@@ -557,6 +558,14 @@ export default function App() {
   }, [])
 
   useEffect(() => { fetchTags() }, [fetchTags])
+
+  // Warm the YouTube IFrame API shortly after mount so the first hover preview
+  // doesn't also wait on that script download. Deferred so it doesn't compete
+  // with the initial render / first feed fetch.
+  useEffect(() => {
+    const id = setTimeout(preloadYouTubeApi, 1500)
+    return () => clearTimeout(id)
+  }, [])
 
   // Fetch one page of the feed; append to the existing list unless replacing.
   const fetchFeedPage = useCallback(async (offset: number, replace: boolean, size = FEED_PAGE_SIZE) => {

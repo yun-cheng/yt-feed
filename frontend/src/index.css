@@ -64,3 +64,16 @@ button, a, [role="button"] {
 .no-scrollbar::-webkit-scrollbar {
   display: none !important;
 }
+
+/* Preview loading overlay — a black layer that eases in over ~1.5s so a quick
+   hover barely dims but a prolonged embed load fades the thumbnail to black.
+   Applied via a class (not an inline style) so the card's frequent re-renders
+   during load don't restart the animation and pin it at opacity 0. */
+@keyframes previewLoaderIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.preview-dim {
+  animation: previewLoaderIn 1500ms ease-in forwards;
+}

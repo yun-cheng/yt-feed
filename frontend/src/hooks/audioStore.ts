@@ -1,6 +1,11 @@
 /**
- * Global mute/volume preference shared by every video preview (feed, channel
- * pages, anywhere VideoCard is used) and persisted across page refreshes.
+ * Global mute/volume state shared by every video preview (feed, channel pages,
+ * anywhere VideoCard is used).
+ *
+ * Mute is SESSION-ONLY: every page load starts muted — browsers forbid sound
+ * before the first interaction anyway, so persisting "unmuted" only produced
+ * previews that claimed sound but couldn't deliver it. Unmuting once applies to
+ * all previews until the next refresh. Volume persists across refreshes.
  *
  * A tiny external store read via useSyncExternalStore: changing it from one
  * card re-renders all mounted cards so their players stay in sync.
@@ -11,31 +16,30 @@ export type AudioState = { muted: boolean; volume: number }
 
 const KEY = 'yt-feed-audio-v1'
 
-function load(): AudioState {
+function loadVolume(): number {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const p = JSON.parse(raw)
-      const volume = typeof p.volume === 'number' ? Math.max(0, Math.min(100, p.volume)) : 100
-      const muted = typeof p.muted === 'boolean' ? p.muted : true
-      return { muted, volume }
+      if (typeof p.volume === 'number') return Math.max(0, Math.min(100, p.volume))
     }
   } catch { /* ignore malformed storage */ }
-  return { muted: true, volume: 100 } // videos autoplay muted by default
+  return 100
 }
 
-let state: AudioState = load()
+let state: AudioState = { muted: true, volume: loadVolume() }
 const listeners = new Set<() => void>()
 
 function emit() { listeners.forEach((l) => l()) }
 function persist() {
-  try { localStorage.setItem(KEY, JSON.stringify(state)) } catch { /* ignore */ }
+  // Only volume is persisted; mute is per-session (see header).
+  try { localStorage.setItem(KEY, JSON.stringify({ volume: state.volume })) } catch { /* ignore */ }
 }
 
-// Keep tabs in sync too — cheap and avoids a stale state after changing it elsewhere.
+// Keep tabs in sync too — volume only; each tab keeps its own session mute.
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (e) => {
-    if (e.key === KEY) { state = load(); emit() }
+    if (e.key === KEY) { state = { muted: state.muted, volume: loadVolume() }; emit() }
   })
 }
 
