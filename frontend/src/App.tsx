@@ -242,28 +242,53 @@ export default function App() {
   }
 
   // ── Hidden channels (excluded from the home feed) ─────
-  const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(() => {
-    try { return new Set<string>(JSON.parse(localStorage.getItem('hidden_channels') || '[]')) }
-    catch { return new Set() }
-  })
-  const persistHidden = (s: Set<string>) => localStorage.setItem('hidden_channels', JSON.stringify([...s]))
+  // Server-side now (syncs across devices); the feed query already excludes them.
+  const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(new Set())
   // When on, hidden channels' videos are shown in the feed anyway (a temporary peek).
   const [showHidden, setShowHidden] = useState(false)
 
-  // From the video-card menu: hide the channel from the home feed.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      // One-time migration of the old browser-local hidden list, then forget it.
+      try {
+        const legacy = localStorage.getItem('hidden_channels')
+        if (legacy !== null) {
+          const ids: string[] = JSON.parse(legacy) || []
+          if (ids.length > 0) {
+            await fetch('/api/hidden-channels/import', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ channel_ids: ids }),
+            })
+          }
+          localStorage.removeItem('hidden_channels')
+        }
+      } catch { /* ignore malformed legacy data */ }
+      try {
+        const res = await fetch('/api/hidden-channels')
+        const data = await res.json()
+        if (!cancelled) setHiddenChannels(new Set<string>(data.channel_ids ?? []))
+      } catch { /* leave empty on failure */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // From the video-card menu: hide the channel from the home feed (optimistic).
   function hideChannel(channelId: string) {
-    setHiddenChannels(prev => {
-      if (prev.has(channelId)) return prev
-      const next = new Set(prev); next.add(channelId); persistHidden(next); return next
-    })
+    if (hiddenChannels.has(channelId)) return
+    setHiddenChannels(prev => { const next = new Set(prev); next.add(channelId); return next })
+    fetch(`/api/hidden-channels/${channelId}`, { method: 'POST' }).catch(() => {})
   }
-  // From the Channels page: flip a channel's hidden state.
+  // From the Channels page: flip a channel's hidden state (optimistic).
   function toggleHiddenChannel(channelId: string) {
+    const wasHidden = hiddenChannels.has(channelId)
     setHiddenChannels(prev => {
       const next = new Set(prev)
-      next.has(channelId) ? next.delete(channelId) : next.add(channelId)
-      persistHidden(next); return next
+      wasHidden ? next.delete(channelId) : next.add(channelId)
+      return next
     })
+    fetch(`/api/hidden-channels/${channelId}`, { method: wasHidden ? 'DELETE' : 'POST' }).catch(() => {})
   }
 
   // ── Playlists (server-side) ───────────────────────────
@@ -574,6 +599,7 @@ export default function App() {
       offset: String(offset), limit: String(size),
     })
     if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
+    if (showHidden) params.set('include_hidden', 'true')
     const res = await fetch(`/api/tags/feed?${params}`)
     const data = await res.json()
     setFeedTotal(data.total || 0)
@@ -585,7 +611,7 @@ export default function App() {
         window: data.window,
       }
     })
-  }, [timeWindow, sort, timeMode, selectedTags, contentMode])
+  }, [timeWindow, sort, timeMode, selectedTags, contentMode, showHidden])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {

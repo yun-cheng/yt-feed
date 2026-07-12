@@ -99,6 +99,15 @@ class PlaylistItem(Base):
     added_at = Column(DateTime, default=datetime.utcnow)
 
 
+class HiddenChannel(Base):
+    """A channel the user hid from the home feed (server-side, so it syncs across
+    devices — unlike the old localStorage version)."""
+    __tablename__ = "hidden_channels"
+
+    channel_id = Column(String, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Video(Base):
     __tablename__ = "videos"
 

@@ -10,7 +10,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
-from app.models import Channel, Tag, ChannelTag, Video
+from app.models import Channel, Tag, ChannelTag, Video, HiddenChannel
 from app.config import settings
 
 router = APIRouter(prefix="/tags")
@@ -333,6 +333,7 @@ async def feed_by_tags(
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
     time_mode: str = Query(default="wide", description="narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
+    include_hidden: bool = Query(default=False, description="include channels hidden from home (peek mode)"),
     offset: int = 0,     # pagination: index into the ranked list
     limit: int = 60,     # pagination: page size
     db: AsyncSession = Depends(get_db),
@@ -372,6 +373,12 @@ async def feed_by_tags(
     else:
         result = await db.execute(select(Channel.youtube_id))
         channel_ids = {r[0] for r in result}
+
+    # Exclude channels the user hid from home, so they never come down the wire.
+    # `include_hidden` (the sidebar "show hidden" peek) bypasses this.
+    if not include_hidden:
+        hidden = {r[0] for r in await db.execute(select(HiddenChannel.channel_id))}
+        channel_ids = channel_ids - hidden
 
     # Only fetch videos within the window's widest extent so wide windows
     # (6m, 1y) actually differ. A flat "2000 most recent" made them identical:

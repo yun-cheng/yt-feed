@@ -208,6 +208,7 @@ the YouTube embed — so downloaded videos preview and play fully offline.
 | `watch_later` | saved-for-later videos (server-side, syncs across devices) |
 | `playlists` / `playlist_items` | user playlists |
 | `downloads` | videos downloaded to disk for offline viewing |
+| `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
 
 `watch_later`, `playlist_items`, and `downloads` each store a **metadata
 snapshot** of the video so a card still renders even after the video ages out
@@ -265,6 +266,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/channels/{id}` | a channel's videos |
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
 | GET/POST | `/api/tags`, `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
+| GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | POST | `/api/refresh` | manually trigger a scan (normally the scheduler handles it) |
 | GET | `/api/refresh/status` | `{running: bool}` |
 | GET | `/api/health` | liveness |
