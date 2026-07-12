@@ -4,6 +4,8 @@ Feed endpoints — ranked videos grouped by category.
 
 import asyncio
 import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,14 +17,63 @@ from app.categorizer import get_categories, get_channel_groups
 
 router = APIRouter(prefix="/feed")
 
-# In-memory storyboard cache: video_id -> (timestamp, data)
-_sb_cache: dict[str, tuple[float, dict]] = {}
+# Dedicated, BOUNDED pool for the blocking yt-dlp preview fetches (storyboard,
+# captions). Separate from the default executor so a burst of hovers can't starve
+# other blocking work (e.g. downloads), and bounded so a hover storm naturally
+# throttles instead of opening dozens of concurrent yt-dlp connections to YouTube.
+_preview_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="preview")
+
+# In-memory storyboard cache: video_id -> (timestamp, data-or-None)
+_sb_cache: dict[str, tuple[float, Optional[dict]]] = {}
 _SB_TTL = 3600  # 1 hour
 
-# In-memory caption cache: video_id -> (timestamp, cues). Captions never change,
-# so the TTL is only there to bound memory growth over a long-running process.
-_cc_cache: dict[str, tuple[float, list[dict]]] = {}
+# In-memory caption cache: video_id -> (timestamp, cues-or-None). Captions never
+# change; the TTL only bounds memory growth over a long-running process.
+_cc_cache: dict[str, tuple[float, Optional[list[dict]]]] = {}
 _CC_TTL = 86400  # 24 hours
+
+# Empty/failed results are cached too (so a caption-less video isn't re-fetched on
+# every hover) but with a short TTL, so a transient network failure retries soon.
+_NEG_TTL = 300  # 5 min
+
+# In-flight fetches, so concurrent requests for the same video (multiple cards, or
+# a quick re-hover) share ONE yt-dlp call instead of each launching their own.
+_sb_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
+_cc_inflight: dict[str, "asyncio.Future[Optional[list[dict]]]"] = {}
+
+_T = TypeVar("_T")
+
+
+async def _cached_fetch(
+    key: str,
+    cache: dict[str, tuple[float, Optional[_T]]],
+    inflight: dict[str, "asyncio.Future[Optional[_T]]"],
+    fetch: Callable[[], Awaitable[Optional[_T]]],
+    pos_ttl: float,
+) -> Optional[_T]:
+    """Serve `key` from cache, coalescing concurrent misses into one `fetch()`.
+
+    Positive results live for `pos_ttl`; empty/None results for `_NEG_TTL`.
+    """
+    now = time.time()
+    hit = cache.get(key)
+    if hit:
+        ts, val = hit
+        if now - ts < (pos_ttl if val else _NEG_TTL):
+            return val
+
+    task = inflight.get(key)
+    if task is None:
+        async def _go() -> Optional[_T]:
+            try:
+                val = await fetch()
+                cache[key] = (time.time(), val)
+                return val
+            finally:
+                inflight.pop(key, None)
+        task = asyncio.ensure_future(_go())
+        inflight[key] = task
+    return await task
 
 
 async def _fetch_storyboard(video_id: str) -> dict | None:
@@ -57,7 +108,7 @@ async def _fetch_storyboard(video_id: str) -> dict | None:
         }
 
     try:
-        return await asyncio.get_event_loop().run_in_executor(None, _run)
+        return await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
     except Exception:
         return None
 
@@ -150,7 +201,7 @@ async def _fetch_captions(video_id: str, lang: str = "en") -> list[dict] | None:
         return cues or None
 
     try:
-        return await asyncio.get_event_loop().run_in_executor(None, _run)
+        return await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
     except Exception:
         return None
 
@@ -244,31 +295,21 @@ async def get_feed(
 @router.get("/storyboard/{video_id}")
 async def get_storyboard(video_id: str):
     """Return storyboard (preview thumbnail) info for a video."""
-    now = time.time()
-    cached = _sb_cache.get(video_id)
-    if cached and now - cached[0] < _SB_TTL:
-        return cached[1]
-
-    data = await _fetch_storyboard(video_id)
-    if data is None:
-        return {}
-    _sb_cache[video_id] = (now, data)
-    return data
+    data = await _cached_fetch(
+        video_id, _sb_cache, _sb_inflight,
+        lambda: _fetch_storyboard(video_id), _SB_TTL,
+    )
+    return data or {}
 
 
 @router.get("/captions/{video_id}")
 async def get_captions(video_id: str, lang: str = "en"):
     """Return timed caption cues [{start, dur, text}] for a video, or {cues: []}."""
-    now = time.time()
-    cached = _cc_cache.get(video_id)
-    if cached and now - cached[0] < _CC_TTL:
-        return {"cues": cached[1]}
-
-    cues = await _fetch_captions(video_id, lang)
-    if cues is None:
-        return {"cues": []}
-    _cc_cache[video_id] = (now, cues)
-    return {"cues": cues}
+    cues = await _cached_fetch(
+        video_id, _cc_cache, _cc_inflight,
+        lambda: _fetch_captions(video_id, lang), _CC_TTL,
+    )
+    return {"cues": cues or []}
 
 
 @router.get("/statistics")
