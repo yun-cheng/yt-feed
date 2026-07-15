@@ -176,9 +176,9 @@ process's sockets.
 
 ---
 
-## Hover-preview data (`routers/feed.py`)
+## On-demand yt-dlp data (`routers/feed.py`)
 
-The frontend's hover preview pulls two extras from the backend, both served
+Three per-video extras are scraped when asked for rather than stored, all served
 through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes):
 
 - **Storyboards** (`/api/feed/storyboard/{id}`) — YouTube's sprite-sheet preview
@@ -188,6 +188,19 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   cropped embed). `_fetch_captions` deliberately serves the video's **native
   language**: it prefers human-uploaded subtitles, then the original ASR track,
   and skips machine-*translated* tracks (which carry `tlang=` in their URL).
+- **Descriptions** (`/api/feed/description/{id}`) — the watch page's description
+  box. Kept out of the DB deliberately: they run a few KB each and only one page
+  ever wants one, so a TTL cache is the whole storage story.
+
+The storyboard fetch is a full extraction that already carries the description,
+so it stashes it in the description cache on the way past (`_fetch_storyboard`
+shares `_extract_info` with `_fetch_description`). Hovering a card is nearly
+always how you reach the watch page, so by the time the description is asked for
+it's usually warm — ~9ms, instead of another ~1s extraction on a cold open.
+
+> Some videos genuinely have no description (3 of a 50-video sample), and the
+> negative cache keeps those from being re-fetched on every open. An empty box is
+> real data rather than a failed fetch — worth knowing before you debug one.
 
 ## Offline downloads (`routers/downloads.py`)
 
@@ -264,6 +277,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues (rendered by the frontend) |
 | GET | `/api/feed/video/{id}` | one video's metadata (for the in-app watch page / deep links) |
+| GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}` | a channel's videos |
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
 | GET/POST | `/api/tags`, `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |

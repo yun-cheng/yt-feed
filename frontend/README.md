@@ -83,7 +83,7 @@ components/
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx
   SearchPage.tsx
-  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed + metadata
+  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed, metadata, description
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
 ```
@@ -153,6 +153,13 @@ Other details:
   muted, which always plays.
 - **Metadata**: renders instantly from the clicked card's `VideoItem`, then
   enriches from `/api/feed/video/:id` (the only source on a cold load).
+- **Description**: its own fetch from `/api/feed/description/:id` (the backend
+  scrapes it on demand and never stores it), in a separate effect so a slow
+  fetch can't hold up the title and stats. Collapsed to four lines with a
+  `...more` toggle that appears only when the text really overflows. Clicking
+  the collapsed box expands it, the way YouTube does; collapsing is the button's
+  job alone, so a stray click while reading can't shut it. Links are clickable
+  and stop propagation, and a click that ends a text selection counts as a drag.
 - **Keyboard**: the embed is focused on load so its own shortcuts (space, arrows,
   `f`) work without a click; a window-level `Space`/`k` handler covers the case
   where focus has moved off the iframe (so Space doesn't just scroll the page).
