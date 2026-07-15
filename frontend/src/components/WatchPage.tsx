@@ -3,10 +3,6 @@ import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 
-// Watch page metadata is a feed VideoItem plus the description, which the feed
-// list doesn't carry (fetched from /api/feed/video/:id).
-type WatchMeta = VideoItem & { description?: string }
-
 type Props = {
   videoId: string
   // Metadata when we arrived from a card (renders instantly, no fetch flash).
@@ -33,8 +29,77 @@ function timeAgo(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
+/** Render a description as text with its URLs turned into links. */
+function linkify(text: string) {
+  return text.split(/(https?:\/\/\S+)/g).map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noreferrer noopener"
+        // Following a link shouldn't also expand the box behind it.
+        onClick={(e) => e.stopPropagation()}
+        className="text-blue-400 hover:underline [overflow-wrap:anywhere]"
+      >
+        {part}
+      </a>
+    ) : (
+      part
+    )
+  )
+}
+
+function Description({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [clipped, setClipped] = useState(false)
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  // Only offer the toggle when the text actually overflows the clamp.
+  useEffect(() => {
+    const el = bodyRef.current
+    if (el) setClipped(el.scrollHeight > el.clientHeight + 1)
+  }, [text])
+
+  // While collapsed, the whole box expands on click (YouTube does the same).
+  // Collapsing again is the button's job only, so a click inside long text can't
+  // yank it shut under you.
+  const expandOnClick = clipped && !expanded
+
+  return (
+    <div
+      onClick={expandOnClick ? () => {
+        // A click that ends a text selection is a drag, not an expand.
+        if (window.getSelection()?.toString()) return
+        setExpanded(true)
+      } : undefined}
+      className={`mt-4 rounded-xl bg-[#1a1a1a] p-4 text-sm leading-relaxed text-[#ccc] transition-colors ${
+        expandOnClick ? 'cursor-pointer hover:bg-[#222]' : ''
+      }`}
+    >
+      <div
+        ref={bodyRef}
+        className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${expanded ? '' : 'line-clamp-4'}`}
+      >
+        {linkify(text)}
+      </div>
+      {(clipped || expanded) && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
+          className="mt-2 font-medium text-white hover:text-blue-400 transition-colors"
+        >
+          {expanded ? 'Show less' : '...more'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function WatchPage({ videoId, video, onChannelClick }: Props) {
-  const [meta, setMeta] = useState<WatchMeta | null>(video ?? null)
+  const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
+  // Fetched separately and never stored server-side (see /api/feed/description).
+  // Usually a cache hit: hovering the card already warmed it.
+  const [description, setDescription] = useState('')
   const [embedError, setEmbedError] = useState(false)
   // Set by the stall watchdog when an unmuted autoplay gets blocked (it doesn't
   // error — it wedges on a buffering spinner). Flipping this recreates the
@@ -69,6 +134,16 @@ export default function WatchPage({ videoId, video, onChannelClick }: Props) {
       .catch(() => { /* keep the card metadata / minimal chrome */ })
     return () => { cancelled = true }
   }, [videoId, video])
+
+  useEffect(() => {
+    setDescription('')
+    let cancelled = false
+    fetch(`/api/feed/description/${videoId}`)
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setDescription(d?.description || '') })
+      .catch(() => { /* no description box */ })
+    return () => { cancelled = true }
+  }, [videoId])
 
   // Create the full-size player. Opening the page is a click (a page gesture), so
   // we FIRST try unmuted autoplay — when the browser honors it, the video plays
@@ -224,11 +299,7 @@ export default function WatchPage({ videoId, video, onChannelClick }: Props) {
           )}
         </div>
 
-        {meta?.description && (
-          <div className="mt-4 max-h-96 overflow-y-auto whitespace-pre-wrap rounded-xl bg-[#1a1a1a] p-4 text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
-            {meta.description}
-          </div>
-        )}
+        {description && <Description text={description} />}
       </div>
     </div>
   )
