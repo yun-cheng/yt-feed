@@ -324,7 +324,6 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
         "like_count": v.like_count,
         "duration_seconds": v.duration_seconds,
         "is_short": bool(v.is_short),
-        "description": v.description or "",
         "score": round(score_video(v.view_count, v.published_at), 2),
     }
 

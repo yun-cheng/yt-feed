@@ -91,7 +91,6 @@ async def scan_channel_videos(
                     youtube_id=vid,
                     channel_id=channel.youtube_id,
                     title=v.get("title", ""),
-                    description=v.get("description", ""),
                     thumbnail_url=thumb,
                     published_at=pub,
                     duration_seconds=duration,
