@@ -11,6 +11,8 @@ real video (muted, with custom captions and scrubbing).
 - **Time windows** — filter by last 1d / 3d / 1w / 1m / … (each a discrete bucket)
 - **Tag filtering** — group channels by topic and filter the feed by tag
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
+- **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
+  of leaving for youtube.com; browser back returns you to exactly where you were
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
 - **Search** — typo-tolerant, via a Meilisearch companion
@@ -31,7 +33,7 @@ real video (muted, with custom captions and scrubbing).
 ```
  yt-dlp ──► backend scan ──► SQLite ──► rank ──► FastAPI /api ──► React SPA
            (scheduler,                                              │
-            every 15 min)                              hover ───────┘──► YouTube IFrame
+            every 15 min)                    hover / watch ─────────┘──► YouTube IFrame
 ```
 
 A scheduler in the backend re-scans channels every 15 min into SQLite; the

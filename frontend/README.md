@@ -54,7 +54,8 @@ There is **no router library**. `App.tsx` holds essentially all page state and
 does client-side routing itself:
 
 - A `Page` union — `'feed' | 'channel' | 'channels' | 'playlist' | 'playlists' |
-  'downloads' | 'search' | 'watchlater'`.
+  'downloads' | 'search' | 'watchlater'`. Note there is deliberately **no
+  `'watch'`** — `/watch/:id` is an overlay, not a page (see below).
 - On navigation it calls `history.pushState` with a URL built by `buildPath(...)`;
   a `popstate` listener parses the URL back into state, so **back/forward work**
   and every view is deep-linkable.
@@ -98,9 +99,12 @@ YouTube IFrame player over the thumbnail and drives it directly:
   allow — an unmuted autoplay without a fresh gesture just wedges buffering.
 - **Click the video to unmute** *that* preview. A real click is the gesture the
   autoplay policy requires, so unmuting an already-playing muted video is
-  reliable (no spinner/wedge). A second click opens the video. Buttons, the
-  progress bar, the title, and the ⋮ menu keep their own behavior and never
-  unmute-or-open. Modifier/middle-clicks open in a new tab natively.
+  reliable (no spinner/wedge). Clicking before it has loaded arms the unmute so
+  it applies the moment playback starts (a second click while still loading
+  opens it instead, so a slow preview can't trap you). Once unmuted, a further
+  click **opens the watch overlay**. Buttons, the progress bar, the title, and
+  the ⋮ menu keep their own behavior and never unmute-or-open.
+  Modifier/middle-clicks open YouTube in a new tab natively.
 - **Mute is per-video**; only **volume** is shared and persisted, via
   `hooks/audioStore.ts` (a tiny `useSyncExternalStore`).
 - The thumbnail is held over the player until real frames render (avoids a blank
@@ -119,6 +123,47 @@ YouTube IFrame player over the thumbnail and drives it directly:
 > If you change the mute/preview logic, read the comments in `VideoCard.tsx`
 > first — most of them document a specific browser autoplay-policy constraint
 > that was found the hard way.
+
+---
+
+## The watch overlay (`WatchPage.tsx`)
+
+Opening a video plays it in-app at `/watch/:id`: a full-bleed YouTube embed with
+native fullscreen and captions, plus title / channel / stats / description below.
+
+**It's an overlay, not a page.** It renders outside the page switch as a
+`fixed inset-0` layer above everything, so the page you came from stays mounted
+underneath with its **scroll position and loaded videos intact**. Browser back
+just removes the overlay and you're exactly where you were — on any page, with
+no refetch. That's why `Page` has no `'watch'`: `selectedVideoId` drives the
+overlay and the underlying `page` is never touched when opening or closing it.
+`popstate` distinguishes three cases — open overlay / close overlay (leave the
+page alone) / real page navigation — and `syncUrl` leaves the `/watch` URL alone
+while it's open.
+
+Other details:
+
+- **Volume is shared with previews** both ways: the store's volume is applied on
+  ready, live changes follow, and using the embed's own volume control mirrors
+  back to the store.
+- **Autoplay**: unmuted when a page gesture allows it (so it plays with sound
+  immediately), muted otherwise (e.g. a cold-loaded `/watch` link). A *blocked*
+  unmuted autoplay doesn't error — it wedges on a buffering spinner — so a
+  watchdog notices playback never started within ~4s and rebuilds the player
+  muted, which always plays.
+- **Metadata**: renders instantly from the clicked card's `VideoItem`, then
+  enriches from `/api/feed/video/:id` (the only source on a cold load).
+- **Keyboard**: the embed is focused on load so its own shortcuts (space, arrows,
+  `f`) work without a click; a window-level `Space`/`k` handler covers the case
+  where focus has moved off the iframe (so Space doesn't just scroll the page).
+- Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
+
+> **Trap:** the hover preview must be destroyed *before* the watch player is
+> created. Both are YouTube players for the same video, and two live players for
+> one video wedge the new one on a buffering spinner (unmuted icon, no sound).
+> `VideoCard.openVideo()` therefore calls `teardownPlayer()` synchronously rather
+> than pausing and letting the ~600ms idle timer clean up. This looked exactly
+> like an autoplay-policy bug and wasn't.
 
 ---
 
