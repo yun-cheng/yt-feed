@@ -263,6 +263,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed` | ranked feed grouped by category (query: window, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues (rendered by the frontend) |
+| GET | `/api/feed/video/{id}` | one video's metadata (for the in-app watch page / deep links) |
 | GET | `/api/channels/{id}` | a channel's videos |
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
 | GET/POST | `/api/tags`, `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |

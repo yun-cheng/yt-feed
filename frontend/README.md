@@ -82,6 +82,7 @@ components/
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx
   SearchPage.tsx
+  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed + metadata
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
 ```

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import Channel, Video
-from app.ranking import TimeWindow, rank_videos
+from app.ranking import TimeWindow, rank_videos, score_video
 from app.categorizer import get_categories, get_channel_groups
 
 router = APIRouter(prefix="/feed")
@@ -300,6 +300,33 @@ async def get_storyboard(video_id: str):
         lambda: _fetch_storyboard(video_id), _SB_TTL,
     )
     return data or {}
+
+
+@router.get("/video/{video_id}")
+async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
+    """Single video's metadata for the in-app watch page (deep links / refresh).
+
+    Returns {} if the id isn't in the DB — the watch page still plays the embed
+    from the id alone, just with minimal chrome.
+    """
+    v = await db.get(Video, video_id)
+    if not v:
+        return {}
+    chan = await db.get(Channel, v.channel_id)
+    return {
+        "youtube_id": v.youtube_id,
+        "title": v.title,
+        "channel_id": v.channel_id,
+        "channel_name": chan.title if chan else "",
+        "thumbnail_url": v.thumbnail_url,
+        "published_at": v.published_at.isoformat(),
+        "view_count": v.view_count,
+        "like_count": v.like_count,
+        "duration_seconds": v.duration_seconds,
+        "is_short": bool(v.is_short),
+        "description": v.description or "",
+        "score": round(score_video(v.view_count, v.published_at), 2),
+    }
 
 
 @router.get("/captions/{video_id}")

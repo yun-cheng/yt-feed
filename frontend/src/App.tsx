@@ -10,6 +10,7 @@ import { preloadYouTubeApi } from './components/VideoCard'
 import PlaylistsPage from './components/PlaylistsPage'
 import type { PlaylistSummary } from './components/PlaylistsPage'
 import PlaylistPage from './components/PlaylistPage'
+import WatchPage from './components/WatchPage'
 
 export type DownloadItem = {
   youtube_id: string
@@ -64,20 +65,29 @@ export type FeedResponse = {
 
 // ── URL helpers ─────────────────────────────────────────────
 
+// NB: there's no 'watch' page — /watch/:id is a full-screen overlay rendered on
+// top of whichever page you were on (see selectedVideoId), so that page stays
+// mounted underneath with its scroll and loaded videos intact.
 type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist'
 
-function parsePath(): { page: Page; channelId: string | null; playlistId: number | null } {
+function parsePath(): { page: Page; channelId: string | null; playlistId: number | null; videoId: string | null } {
   const path = window.location.pathname
-  if (path === '/channels') return { page: 'channels', channelId: null, playlistId: null }
-  if (path === '/watchlater') return { page: 'watchlater', channelId: null, playlistId: null }
-  if (path === '/downloads') return { page: 'downloads', channelId: null, playlistId: null }
-  if (path === '/search') return { page: 'search', channelId: null, playlistId: null }
-  if (path === '/playlists') return { page: 'playlists', channelId: null, playlistId: null }
+  const base = { channelId: null, playlistId: null, videoId: null }
+  if (path === '/channels') return { page: 'channels', ...base }
+  if (path === '/watchlater') return { page: 'watchlater', ...base }
+  if (path === '/downloads') return { page: 'downloads', ...base }
+  if (path === '/search') return { page: 'search', ...base }
+  if (path === '/playlists') return { page: 'playlists', ...base }
+  // /watch/:id is a full-screen OVERLAY, not a page — the underlying page stays
+  // mounted behind it. `page` is the underlying page (feed by default on a cold
+  // load); `videoId` drives the overlay.
+  const wm = path.match(/^\/watch\/([^/]+)/)
+  if (wm) return { page: 'feed', ...base, videoId: wm[1] }
   const pm = path.match(/^\/playlist\/(\d+)/)
-  if (pm) return { page: 'playlist', channelId: null, playlistId: Number(pm[1]) }
+  if (pm) return { page: 'playlist', ...base, playlistId: Number(pm[1]) }
   const m = path.match(/^\/channel\/([^/]+)/)
-  if (m) return { page: 'channel', channelId: m[1], playlistId: null }
-  return { page: 'feed', channelId: null, playlistId: null }
+  if (m) return { page: 'channel', ...base, channelId: m[1] }
+  return { page: 'feed', ...base }
 }
 
 function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string; channelsSort: string; shorts: boolean } {
@@ -176,6 +186,13 @@ export default function App() {
   const initQ = parseSearch()
   const [page, setPageRaw] = useState<Page>(initPath.page)
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(initPath.playlistId)
+  // In-app watch page: the video id from the URL, plus the VideoItem we arrived
+  // with (null on cold load / back-forward, where WatchPage fetches by id).
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(initPath.videoId)
+  const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null)
+  // Whether the watch overlay is currently open — lets popstate tell "closing
+  // the overlay" (leave the underlying page untouched) from a real page nav.
+  const overlayOpenRef = useRef<boolean>(!!initPath.videoId)
   const [searchInput, setSearchInput] = useState<string>(() => new URLSearchParams(window.location.search).get('q') || '')
   // True once we've pushed a /search history entry, so clearing the box can go
   // back() to the page (and its state) we were on before searching.
@@ -443,13 +460,14 @@ export default function App() {
   // ── URL sync ──────────────────────────────────────────
   // replaceState for reactive filter changes (tags, window, sort) — no new history entry
   const syncUrl = useCallback(() => {
+    if (selectedVideoId) return  // watch overlay owns the /watch/{id} URL
     if (page === 'search') return  // search URL (?q=) is managed by onSearchChange
     if (page === 'playlist') return  // /playlist/{id} is navigated directly
     const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts')
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
     }
-  }, [page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode])
+  }, [selectedVideoId, page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode])
 
   // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
@@ -458,6 +476,23 @@ export default function App() {
   useEffect(() => {
     const onPop = () => {
       const p = parsePath()
+      if (p.videoId) {
+        // Show/keep the watch overlay; the underlying page stays mounted and
+        // untouched (no scroll reset, no refetch).
+        setSelectedVideo(null)  // refetch metadata by id
+        setSelectedVideoId(p.videoId)
+        overlayOpenRef.current = true
+        return
+      }
+      if (overlayOpenRef.current) {
+        // Just closing the overlay onto the page we came from — it's already
+        // correct and mounted, so leave its scroll and data exactly as they were.
+        overlayOpenRef.current = false
+        setSelectedVideoId(null)
+        setSelectedVideo(null)
+        return
+      }
+      // A genuine page navigation (back/forward between real pages).
       const q = parseSearch()
       setPageRaw(p.page)
       setSearchInput(new URLSearchParams(window.location.search).get('q') || '')
@@ -474,6 +509,15 @@ export default function App() {
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  // A card was opened (VideoCard dispatches 'app:watch' rather than drilling a
+  // nav callback through every feed surface). openWatch only calls stable
+  // setters, so capturing it once is fine.
+  useEffect(() => {
+    const onWatch = (e: Event) => openWatch((e as CustomEvent<VideoItem>).detail)
+    window.addEventListener('app:watch', onWatch)
+    return () => window.removeEventListener('app:watch', onWatch)
   }, [])
 
   // ── Auto-refresh via Page Visibility API ────────────────
@@ -754,6 +798,26 @@ export default function App() {
     mainRef.current?.scrollTo({ top: 0 })
   }
 
+  // Open a video as a full-screen overlay (from a card's plain-click, via the
+  // 'app:watch' event). We DON'T touch the underlying page or its scroll — it
+  // stays mounted behind the overlay, so closing returns you exactly where you
+  // were. We carry the VideoItem so the overlay renders instantly.
+  function openWatch(video: VideoItem) {
+    history.pushState(null, '', `/watch/${video.youtube_id}`)
+    setSelectedVideo(video)
+    setSelectedVideoId(video.youtube_id)
+    overlayOpenRef.current = true
+  }
+
+  // Clicking the channel from the watch overlay: close the overlay and navigate
+  // to the channel page (a forward navigation).
+  function selectChannelFromWatch(channelId: string) {
+    overlayOpenRef.current = false
+    setSelectedVideoId(null)
+    setSelectedVideo(null)
+    selectChannel(channelId)
+  }
+
   function goHome() {
     history.pushState(null, '', '/')
     setSelectedTags([])
@@ -781,7 +845,7 @@ export default function App() {
         />
       )}
 
-      {/* Sidebar — full height (contains the logo); overlay on mobile */}
+      {/* Sidebar — full height (contains the logo); overlay on mobile. */}
       <div className={`${mobileMenuOpen ? 'fixed inset-y-0 left-0 z-40' : 'hidden'} md:flex md:relative md:z-auto`}>
         <Sidebar
           tags={tags}
@@ -1078,6 +1142,20 @@ export default function App() {
           )}
         </button>
       </nav>
+
+      {/* Watch overlay — full-screen, above everything (sidebar z-40, nav z-50).
+          Rendered outside the page switch so the page underneath stays mounted
+          with its scroll and loaded data intact; closing returns you there. */}
+      {selectedVideoId && (
+        <div className="fixed inset-0 z-[60] bg-[#0f0f0f] overflow-y-auto">
+          <WatchPage
+            key={selectedVideoId}
+            videoId={selectedVideoId}
+            video={selectedVideo}
+            onChannelClick={selectChannelFromWatch}
+          />
+        </div>
+      )}
     </div>
   )
 }
