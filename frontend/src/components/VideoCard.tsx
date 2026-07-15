@@ -19,6 +19,7 @@ interface YTPlayerConfig {
     onReady?: (e: { target: YTPlayerInstance }) => void
     onStateChange?: (e: { data: number; target: YTPlayerInstance }) => void
     onApiChange?: (e: { target: YTPlayerInstance }) => void
+    onError?: (e: { data: number; target: YTPlayerInstance }) => void
   }
 }
 interface YTPlayerInstance {
@@ -43,7 +44,7 @@ interface YTPlayerInstance {
 
 let _ytReady = false
 const _ytQ: Array<() => void> = []
-function ensureYTApi(): Promise<void> {
+export function ensureYTApi(): Promise<void> {
   return new Promise(resolve => {
     if (_ytReady) return resolve()
     // After HMR, _ytReady resets but window.YT may already be loaded
@@ -243,6 +244,9 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [actualMuted, setActualMuted] = useState<boolean | null>(null)
   const stallSinceRef = useRef<number | null>(null)   // when the preview stopped progressing
   const fallbackTriedRef = useRef(false)              // one muted-rebuild rescue per hover
+  // Set when you click to unmute before the preview has finished loading — the
+  // unmute is applied the moment it starts playing (see createPlayer's PLAYING).
+  const wantsUnmuteRef = useRef(false)
   // What the sound controls show/toggle. Defaults muted (every preview starts muted).
   const displayMuted = actualMuted ?? true
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
@@ -374,6 +378,13 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               // only display:none, which doesn't stop iframe audio). If we're no
               // longer hovered when playback actually begins, pause it now.
               if (!isHoveredRef.current) { e.target.pauseVideo(); return }
+              // You clicked to unmute before this finished loading — apply it now
+              // that it's actually playing (see handleVideoActivate).
+              if (wantsUnmuteRef.current) {
+                wantsUnmuteRef.current = false
+                e.target.unMute()
+                setActualMuted(false)
+              }
               // Muted start always plays — reveal the video (hide the thumbnail)
               // as soon as frames render. No audio transition to wait on.
               setPlaying(true)
@@ -536,6 +547,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       setActualMuted(null)  // next hover starts muted again
       stallSinceRef.current = null
       fallbackTriedRef.current = false
+      wantsUnmuteRef.current = false
     }
   }, [isHovered])
 
@@ -673,14 +685,21 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     }
   }, [hoverTime, localSrc])
 
-  // Opening the video navigates away (new tab / modal). Stop the hover preview
-  // first, otherwise it keeps playing (with sound) in the background because the
-  // card is still "hovered".
+  // Opening the video navigates away (new tab / modal / watch page). DESTROY the
+  // preview player now rather than pausing it and letting the idle timer clean up
+  // ~600ms later: the watch page immediately creates its own player for the SAME
+  // video, and two live players for one video wedge the new one on a buffering
+  // spinner (unmuted but silent). Worst when the preview was already playing with
+  // sound. Tearing down first leaves the watch player alone with the video.
   const openVideo = () => {
-    playerRef.current?.pauseVideo()
+    teardownPlayer()
     onHover(null)
-    if (onOpen) onOpen(video)
-    else window.open(videoUrl, '_blank')
+    if (onOpen) { onOpen(video); return }
+    // Navigate to the in-app watch page. Dispatched as an app-level event rather
+    // than threaded as a callback through every feed surface (VideoRow / Channel /
+    // Search / Playlist). cmd/middle-click still opens YouTube natively via the
+    // card's real anchor; this only handles the plain-click "open" path.
+    window.dispatchEvent(new CustomEvent<VideoItem>('app:watch', { detail: video }))
   }
 
   // Left-click on the video preview itself. First click on a muted, playing
@@ -691,11 +710,22 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   // propagation and keep their own behaviour, so they never unmute or open.
   const handleVideoActivate = () => {
     const p = playerRef.current
-    if (isHoveredRef.current && p && playerReadyRef.current && displayMuted) {
-      p.unMute()
-      setActualMuted(false)
-      if (volume === 0) { p.setVolume(100); setAudioVolume(100) }
-      return
+    if (isHoveredRef.current && displayMuted) {
+      if (p && playerReadyRef.current) {
+        p.unMute()
+        setActualMuted(false)
+        if (volume === 0) { p.setVolume(100); setAudioVolume(100) }
+        return
+      }
+      // Clicked before the preview finished loading. Arm the unmute so it applies
+      // the moment playback starts, instead of skipping straight to the watch page
+      // — that keeps "first click = sound" consistent however fast you click.
+      // Only the FIRST such click arms it; click again and you get the watch page,
+      // so a slow-loading preview can never trap you.
+      if (!wantsUnmuteRef.current) {
+        wantsUnmuteRef.current = true
+        return
+      }
     }
     openVideo()
   }
