@@ -32,6 +32,12 @@ _SB_TTL = 3600  # 1 hour
 _cc_cache: dict[str, tuple[float, Optional[list[dict]]]] = {}
 _CC_TTL = 86400  # 24 hours
 
+# In-memory description cache: video_id -> (timestamp, text-or-None). Descriptions
+# are only ever fetched on demand for the watch page and deliberately NOT stored in
+# the DB — they're multi-KB blobs nothing else in the app reads.
+_desc_cache: dict[str, tuple[float, Optional[str]]] = {}
+_DESC_TTL = 3600  # 1 hour
+
 # Empty/failed results are cached too (so a caption-less video isn't re-fetched on
 # every hover) but with a short TTL, so a transient network failure retries soon.
 _NEG_TTL = 300  # 5 min
@@ -40,6 +46,7 @@ _NEG_TTL = 300  # 5 min
 # a quick re-hover) share ONE yt-dlp call instead of each launching their own.
 _sb_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 _cc_inflight: dict[str, "asyncio.Future[Optional[list[dict]]]"] = {}
+_desc_inflight: dict[str, "asyncio.Future[Optional[str]]"] = {}
 
 _T = TypeVar("_T")
 
@@ -76,41 +83,67 @@ async def _cached_fetch(
     return await task
 
 
+def _storyboard_from_info(info: dict) -> dict | None:
+    """Pick the best storyboard format out of a yt-dlp info dict."""
+    # Find highest-quality storyboard format (sb0 is highest, then sb1, sb2, sb3)
+    sb_fmts = [f for f in info.get("formats", []) if f.get("format_id", "").startswith("sb")]
+    if not sb_fmts:
+        return None
+    # Pick the best (lowest sb number = highest quality)
+    sb_fmts.sort(key=lambda f: f.get("format_id", "sb9"))
+    best = sb_fmts[0]
+    fragments = best.get("fragments", [])
+    if not fragments:
+        return None
+    return {
+        "rows": best.get("rows", 10),
+        "cols": best.get("columns", 10),
+        "frame_width": best.get("width", 160),
+        "frame_height": best.get("height", 90),
+        "fragment_urls": [fr["url"] for fr in fragments],
+        "fragment_duration": fragments[0].get("duration", 0) if fragments else 0,
+    }
+
+
+def _extract_info(video_id: str) -> dict:
+    """Blocking full yt-dlp extraction for one video. Runs in `_preview_pool`."""
+    import yt_dlp
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+
+
 async def _fetch_storyboard(video_id: str) -> dict | None:
-    """Run yt-dlp in a thread to get storyboard fragment URLs."""
+    """Run yt-dlp in a thread to get storyboard fragment URLs.
+
+    The same extraction also carries the description, so stash it on the way past:
+    hovering a card is what triggers this, and hovering is almost always how you
+    reach the watch page — so the description is usually already warm by then.
+    """
     def _run():
-        import yt_dlp
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "extract_flat": False,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-        # Find highest-quality storyboard format (sb0 is highest, then sb1, sb2, sb3)
-        sb_fmts = [f for f in info.get("formats", []) if f.get("format_id", "").startswith("sb")]
-        if not sb_fmts:
-            return None
-        # Pick the best (lowest sb number = highest quality)
-        sb_fmts.sort(key=lambda f: f.get("format_id", "sb9"))
-        best = sb_fmts[0]
-        fragments = best.get("fragments", [])
-        if not fragments:
-            return None
-        return {
-            "rows": best.get("rows", 10),
-            "cols": best.get("columns", 10),
-            "frame_width": best.get("width", 160),
-            "frame_height": best.get("height", 90),
-            "fragment_urls": [fr["url"] for fr in fragments],
-            "fragment_duration": fragments[0].get("duration", 0) if fragments else 0,
-        }
+        info = _extract_info(video_id)
+        return _storyboard_from_info(info), info.get("description") or None
 
     try:
-        return await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
+        sb, desc = await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
     except Exception:
         return None
+    _desc_cache[video_id] = (time.time(), desc)
+    return sb
+
+
+async def _fetch_description(video_id: str) -> str | None:
+    """Fetch a video's description via yt-dlp. Only used when no hover warmed it."""
+    try:
+        info = await asyncio.get_event_loop().run_in_executor(_preview_pool, _extract_info, video_id)
+    except Exception:
+        return None
+    return info.get("description") or None
 
 
 async def _fetch_captions(video_id: str, lang: str = "en") -> list[dict] | None:
@@ -336,6 +369,20 @@ async def get_captions(video_id: str, lang: str = "en"):
         lambda: _fetch_captions(video_id, lang), _CC_TTL,
     )
     return {"cues": cues or []}
+
+
+@router.get("/description/{video_id}")
+async def get_description(video_id: str):
+    """Return a video's description for the watch page, or {description: ""}.
+
+    Fetched on demand rather than stored: descriptions are multi-KB and nothing
+    else reads them, so they live only in a TTL cache.
+    """
+    text = await _cached_fetch(
+        video_id, _desc_cache, _desc_inflight,
+        lambda: _fetch_description(video_id), _DESC_TTL,
+    )
+    return {"description": text or ""}
 
 
 @router.get("/statistics")
