@@ -1154,6 +1154,8 @@ export default function App() {
             videoId={selectedVideoId}
             video={selectedVideo}
             onChannelClick={selectChannelFromWatch}
+            onDownload={startDownload}
+            isDownloaded={downloadIds.has(selectedVideoId)}
           />
         </div>
       )}

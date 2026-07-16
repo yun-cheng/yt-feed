@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
+import SaveToPlaylist from './SaveToPlaylist'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 
 type Props = {
@@ -9,6 +11,8 @@ type Props = {
   // Absent on a cold load / back-forward, where we fetch by id instead.
   video?: VideoItem | null
   onChannelClick: (channelId: string) => void
+  onDownload: (video: VideoItem) => void
+  isDownloaded: boolean
 }
 
 function formatCount(n: number): string {
@@ -29,8 +33,36 @@ function timeAgo(iso: string): string {
   return `${Math.floor(months / 12)}y ago`
 }
 
-/** Render a description as text with its URLs turned into links. */
-function linkify(text: string) {
+// H:MM:SS, MM:SS, or M:SS timestamps in a description → clickable seeks.
+const TIMESTAMP_RE = /(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)/g
+
+/** Split a plain (non-URL) chunk, turning timestamps into seek buttons. */
+function withTimestamps(text: string, keyBase: string, onSeek: (s: number) => void): ReactNode[] {
+  const nodes: ReactNode[] = []
+  let last = 0
+  TIMESTAMP_RE.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = TIMESTAMP_RE.exec(text)) !== null) {
+    const [full, hh, mm, ss] = m
+    const total = (hh ? Number(hh) * 3600 : 0) + Number(mm) * 60 + Number(ss)
+    if (m.index > last) nodes.push(text.slice(last, m.index))
+    nodes.push(
+      <button
+        key={`${keyBase}-${m.index}`}
+        onClick={() => onSeek(total)}
+        className="text-blue-400 hover:underline"
+      >
+        {full}
+      </button>
+    )
+    last = m.index + full.length
+  }
+  if (last < text.length) nodes.push(text.slice(last))
+  return nodes
+}
+
+/** Render a description with URLs as links and timestamps as seek buttons. */
+function linkify(text: string, onSeek: (s: number) => void) {
   return text.split(/(https?:\/\/\S+)/g).map((part, i) =>
     /^https?:\/\//.test(part) ? (
       <a
@@ -38,69 +70,27 @@ function linkify(text: string) {
         href={part}
         target="_blank"
         rel="noreferrer noopener"
-        // Following a link shouldn't also expand the box behind it.
-        onClick={(e) => e.stopPropagation()}
         className="text-blue-400 hover:underline [overflow-wrap:anywhere]"
       >
         {part}
       </a>
     ) : (
-      part
+      <span key={i}>{withTimestamps(part, String(i), onSeek)}</span>
     )
   )
 }
 
-function Description({ text }: { text: string }) {
-  const [expanded, setExpanded] = useState(false)
-  const [clipped, setClipped] = useState(false)
-  const bodyRef = useRef<HTMLDivElement>(null)
-
-  // Only offer the toggle when the text actually overflows the clamp.
-  useEffect(() => {
-    const el = bodyRef.current
-    if (el) setClipped(el.scrollHeight > el.clientHeight + 1)
-  }, [text])
-
-  // While collapsed, the whole box expands on click (YouTube does the same).
-  // Collapsing again is the button's job only, so a click inside long text can't
-  // yank it shut under you.
-  const expandOnClick = clipped && !expanded
-
-  return (
-    <div
-      onClick={expandOnClick ? () => {
-        // A click that ends a text selection is a drag, not an expand.
-        if (window.getSelection()?.toString()) return
-        setExpanded(true)
-      } : undefined}
-      className={`mt-4 rounded-xl bg-[#1a1a1a] p-4 text-sm leading-relaxed text-[#ccc] transition-colors ${
-        expandOnClick ? 'cursor-pointer hover:bg-[#222]' : ''
-      }`}
-    >
-      <div
-        ref={bodyRef}
-        className={`whitespace-pre-wrap [overflow-wrap:anywhere] ${expanded ? '' : 'line-clamp-4'}`}
-      >
-        {linkify(text)}
-      </div>
-      {(clipped || expanded) && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v) }}
-          className="mt-2 font-medium text-white hover:text-blue-400 transition-colors"
-        >
-          {expanded ? 'Show less' : '...more'}
-        </button>
-      )}
-    </div>
-  )
-}
-
-export default function WatchPage({ videoId, video, onChannelClick }: Props) {
+export default function WatchPage({ videoId, video, onChannelClick, onDownload, isDownloaded }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
   const [description, setDescription] = useState('')
   const [embedError, setEmbedError] = useState(false)
+  const [showSavePanel, setShowSavePanel] = useState(false)
+  const saveRef = useRef<HTMLDivElement>(null)
+  // Pinned (default): the player holds its place and only the details below
+  // scroll. Unpinned: the whole page scrolls, so a tall video can move away.
+  const [pinned, setPinned] = useState(true)
   // Set by the stall watchdog when an unmuted autoplay gets blocked (it doesn't
   // error — it wedges on a buffering spinner). Flipping this recreates the
   // player muted, which always plays. Resets per video (overlay is keyed by id).
@@ -120,7 +110,26 @@ export default function WatchPage({ videoId, video, onChannelClick }: Props) {
     playVideo: () => void
     pauseVideo: () => void
     getPlayerState: () => number
+    seekTo: (seconds: number, allowSeekAhead: boolean) => void
   } | null>(null)
+
+  // Jump to a description timestamp and play from there.
+  const seekTo = (seconds: number) => {
+    const p = playerRef.current
+    if (!p) return
+    p.seekTo(seconds, true)
+    p.playVideo()
+  }
+
+  // Close the save-to-playlist popover on an outside click.
+  useEffect(() => {
+    if (!showSavePanel) return
+    const onDown = (e: MouseEvent) => {
+      if (saveRef.current && !saveRef.current.contains(e.target as Node)) setShowSavePanel(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showSavePanel])
 
   // Show whatever we arrived with instantly, then enrich from the endpoint
   // (description + fresh stats). On a cold load `video` is null and this is the
@@ -249,11 +258,34 @@ export default function WatchPage({ videoId, video, onChannelClick }: Props) {
   }, [])
 
   return (
-    <div className="w-full">
-      {/* Full-bleed player: full width, square corners, no side padding. Height
-          capped so the metadata below stays reachable on a wide screen. */}
-      <div className="relative w-full aspect-video max-h-[calc(100vh-4rem)] bg-black">
+    // Pinned: a fixed column where the player stays put and the details scroll on
+    // their own. Unpinned: a plain block, so the overlay scrolls the whole thing.
+    <div className={pinned ? 'flex h-full flex-col' : 'w-full'}>
+      {/* Full-bleed player: full width, square corners, no side padding. Keeps its
+          natural 16:9 height in both modes (shrink-0 so the flex column can't
+          squash it while pinned). */}
+      <div className={`relative w-full bg-black aspect-video ${pinned ? 'shrink-0' : ''}`}>
         <div ref={hostRef} className="absolute inset-0" />
+
+        {/* Pin toggle, bottom-right corner — equal 8px gap on the bottom and
+            right, sat on the button-row line so it clears the progress scrubber. */}
+        <button
+          onClick={() => setPinned((p) => !p)}
+          className="absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white hover:bg-black/80 transition-colors"
+          title={pinned ? 'Unpin — scroll the whole page' : 'Pin — keep the video in view'}
+          aria-pressed={pinned}
+        >
+          {pinned ? (
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M16 3a1 1 0 0 1 .117 1.993L16 5v4.764l1.447 2.895c.55 1.098-.2 2.38-1.41 2.34L16 15h-3v5a1 1 0 0 1-1.993.117L11 20v-5H8c-1.23.05-2.02-1.2-1.51-2.28l.063-.125L8 9.764V5a1 1 0 0 1-.117-1.993L8 3h8z" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v5M8 9.5V5h8v4.5l1.5 3H6.5L8 9.5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
+            </svg>
+          )}
+        </button>
 
         {embedError && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/95 px-6 text-center">
@@ -270,36 +302,104 @@ export default function WatchPage({ videoId, video, onChannelClick }: Props) {
         )}
       </div>
 
+      {/* Details. While pinned this is the only scroll region (min-h-0 lets it
+          shrink inside the flex column); the title, meta row, and description all
+          scroll together. Unpinned, it's plain flow and the page scrolls. */}
+      <div className={pinned ? 'min-h-0 flex-1 overflow-y-auto' : ''}>
+
       {/* Metadata — padded + width-limited for readability under the full player. */}
       <div className="max-w-[1100px] px-4 py-4 md:px-6">
         <h1 className="text-lg md:text-xl font-semibold leading-snug text-white [overflow-wrap:anywhere]">
           {meta?.title ?? '…'}
         </h1>
-        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
+        {/* Stats on the left, action pills on the right of the same row. */}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
+            {meta && (
+              <>
+                {meta.channel_thumbnail && (
+                  <a
+                    href={`/channel/${meta.channel_id}`}
+                    onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
+                    className="flex-shrink-0"
+                    title={meta.channel_name || 'Channel'}
+                  >
+                    <img
+                      src={meta.channel_thumbnail}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover bg-[#3a3a3a]"
+                    />
+                  </a>
+                )}
+                <a
+                  href={`/channel/${meta.channel_id}`}
+                  onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
+                  className="font-medium text-white hover:text-blue-400 transition-colors"
+                >
+                  {meta.channel_name || 'Unknown'}
+                </a>
+                <span className="text-[#444]">·</span>
+                <span>{formatCount(meta.view_count)} views</span>
+                <span className="text-[#444]">·</span>
+                <span>{timeAgo(meta.published_at)}</span>
+                {meta.view_count > 0 && (
+                  <>
+                    <span className="text-[#444]">·</span>
+                    <span>{formatCount(meta.like_count)} likes</span>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Action pills — Save to playlist / Download, mirroring the card menu. */}
           {meta && (
-            <>
-              <a
-                href={`/channel/${meta.channel_id}`}
-                onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
-                className="font-medium text-white hover:text-blue-400 transition-colors"
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative" ref={saveRef}>
+              <button
+                onClick={() => setShowSavePanel((o) => !o)}
+                className="flex items-center gap-2 rounded-full bg-[#272727] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f3f3f] transition-colors"
               >
-                {meta.channel_name || 'Unknown'}
-              </a>
-              <span className="text-[#444]">·</span>
-              <span>{formatCount(meta.view_count)} views</span>
-              <span className="text-[#444]">·</span>
-              <span>{timeAgo(meta.published_at)}</span>
-              {meta.view_count > 0 && (
-                <>
-                  <span className="text-[#444]">·</span>
-                  <span>{formatCount(meta.like_count)} likes</span>
-                </>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
+                </svg>
+                Save
+              </button>
+              {showSavePanel && (
+                <div className="absolute left-0 top-full mt-2 z-40 rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2">
+                  <SaveToPlaylist video={meta} onBack={() => setShowSavePanel(false)} />
+                </div>
               )}
-            </>
+            </div>
+
+            <button
+              onClick={() => onDownload(meta)}
+              disabled={isDownloaded}
+              className="flex items-center gap-2 rounded-full bg-[#272727] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f3f3f] transition-colors disabled:opacity-50 disabled:hover:bg-[#272727]"
+            >
+              {isDownloaded ? (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+                </svg>
+              )}
+              {isDownloaded ? 'Downloaded' : 'Download'}
+            </button>
+            </div>
           )}
         </div>
 
-        {description && <Description text={description} />}
+        {/* No own scroll here: the details wrapper above owns scrolling, so the
+            description flows at full height and scrolls with the rest. */}
+        {description && (
+          <div className="mt-4 whitespace-pre-wrap rounded-xl bg-[#1a1a1a] p-4 text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
+            {linkify(description, seekTo)}
+          </div>
+        )}
+        </div>
       </div>
     </div>
   )
