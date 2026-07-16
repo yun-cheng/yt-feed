@@ -88,7 +88,7 @@ def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "
     return result
 
 
-def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str, str] | None = None, sort: str = "likes", time_mode: str = "wide") -> list[dict]:
+def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str, str] | None = None, sort: str = "likes", time_mode: str = "wide", channel_thumbnails: dict[str, str] | None = None) -> list[dict]:
     """
     Rank videos filtered by time window, sorted by the given criteria.
 
@@ -111,6 +111,7 @@ def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str
             "title": v.title,
             "channel_id": v.channel_id,
             "channel_name": (channel_names or {}).get(v.channel_id, ""),
+            "channel_thumbnail": (channel_thumbnails or {}).get(v.channel_id, ""),
             "thumbnail_url": v.thumbnail_url,
             "published_at": v.published_at.isoformat(),
             "view_count": v.view_count,

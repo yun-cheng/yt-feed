@@ -275,10 +275,11 @@ async def get_feed(
     all_videos = result.scalars().all()
 
     # 4. Build channel_id → channel_title + group_name map
-    chan_stmt = select(Channel.youtube_id, Channel.title, Channel.group_name)
+    chan_stmt = select(Channel.youtube_id, Channel.title, Channel.group_name, Channel.thumbnail_url)
     chan_result = await db.execute(chan_stmt)
-    channel_map = {r.youtube_id: {"title": r.title, "group": r.group_name} for r in chan_result}
+    channel_map = {r.youtube_id: {"title": r.title, "group": r.group_name, "thumbnail": r.thumbnail_url} for r in chan_result}
     chan_titles = {cid: info["title"] for cid, info in channel_map.items()}
+    chan_thumbs = {cid: info["thumbnail"] for cid, info in channel_map.items()}
 
     # 5. Group and rank
     response_groups = []
@@ -294,7 +295,7 @@ async def get_feed(
         if not group_videos:
             continue
 
-        ranked = rank_videos(group_videos, window, chan_titles, sort=sort)
+        ranked = rank_videos(group_videos, window, chan_titles, sort=sort, channel_thumbnails=chan_thumbs)
         response_groups.append({
             "name": name,
             "icon": cat.get("icon", ""),
@@ -306,7 +307,7 @@ async def get_feed(
     if not group:
         uncategorized = [v for v in all_videos if v.channel_id not in channel_groups]
         if uncategorized:
-            ranked_uncat = rank_videos(uncategorized, window, chan_titles, sort=sort)
+            ranked_uncat = rank_videos(uncategorized, window, chan_titles, sort=sort, channel_thumbnails=chan_thumbs)
             if ranked_uncat:
                 response_groups.append({
                     "name": "其他",
@@ -351,6 +352,7 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
         "title": v.title,
         "channel_id": v.channel_id,
         "channel_name": chan.title if chan else "",
+        "channel_thumbnail": chan.thumbnail_url if chan else "",
         "thumbnail_url": v.thumbnail_url,
         "published_at": v.published_at.isoformat(),
         "view_count": v.view_count,

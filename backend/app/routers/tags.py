@@ -399,10 +399,12 @@ async def feed_by_tags(
     all_videos = result.scalars().all()
 
     # Include channel names
-    chan_result = await db.execute(select(Channel.youtube_id, Channel.title))
-    chan_titles = {r.youtube_id: r.title for r in chan_result}
+    chan_result = await db.execute(select(Channel.youtube_id, Channel.title, Channel.thumbnail_url))
+    chan_rows = chan_result.all()
+    chan_titles = {r.youtube_id: r.title for r in chan_rows}
+    chan_thumbs = {r.youtube_id: r.thumbnail_url for r in chan_rows}
 
-    ranked = rank_videos(list(all_videos), tw, chan_titles, sort=sort, time_mode=time_mode)
+    ranked = rank_videos(list(all_videos), tw, chan_titles, sort=sort, time_mode=time_mode, channel_thumbnails=chan_thumbs)
     return {
         "window": window,
         "sort": sort,

@@ -110,7 +110,7 @@ async def channel_videos(
     )
     videos = list(vid_result.scalars().all())
 
-    ranked = rank_videos(videos, TimeWindow(window), {channel_id: channel.title}, sort=sort, time_mode=time_mode)
+    ranked = rank_videos(videos, TimeWindow(window), {channel_id: channel.title}, sort=sort, time_mode=time_mode, channel_thumbnails={channel_id: channel.thumbnail_url})
 
     return {
         "channel": {
