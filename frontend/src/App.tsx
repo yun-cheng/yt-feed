@@ -34,6 +34,7 @@ export type VideoItem = {
   title: string
   channel_id: string
   channel_name?: string
+  channel_thumbnail?: string
   thumbnail_url: string
   published_at: string
   view_count: number

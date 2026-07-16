@@ -1049,6 +1049,22 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
 
       {/* Info row */}
       <div className="flex gap-3 mt-2">
+        {/* Channel avatar (left of the title, YouTube-style). Links to the channel. */}
+        {video.channel_thumbnail && (
+          <a
+            href={`/channel/${video.channel_id}`}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChannelClick(video.channel_id) }}
+            className="flex-shrink-0 self-start mt-0.5"
+            title={video.channel_name || 'Channel'}
+          >
+            <img
+              src={video.channel_thumbnail}
+              alt=""
+              loading="lazy"
+              className="w-9 h-9 rounded-full object-cover bg-[#3a3a3a]"
+            />
+          </a>
+        )}
         <div className="flex-1 min-w-0">
           {onOpen ? (
             <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{video.title}</h3>
