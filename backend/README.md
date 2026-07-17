@@ -163,7 +163,9 @@ never overlap.
 `run_update()` has four phases:
 
 1. **Scan** — for each channel, yt-dlp *flat mode* over `/videos` and `/shorts`
-   to collect video IDs and upsert rows (fast, no JS challenges).
+   to collect video IDs and upsert rows (fast, no JS challenges). On a channel's
+   **first** scan (`last_video_fetched is None`) it also runs a **1-year backfill**
+   (see below) so high-volume channels aren't stuck with just the latest ~50.
 2. **New-video stats** — batch-fetch real view/like counts for newly-seen
    videos via the YouTube Data API (yt-dlp fallback if the token is dead).
 3. **Stale-video refresh** — re-fetch stats for recent videos on an age-based
@@ -173,6 +175,23 @@ never overlap.
 yt-dlp is configured to **fail fast** (`fetcher.py`: `socket_timeout` 10,
 `retries` 1) — its default ~10× retries over 130+ channels used to exhaust the
 process's sockets.
+
+The scanner only ever walks channels **already in the DB** — it never re-reads
+your YouTube subscription list. New subscribes and unsubscribes are picked up
+only when you run a resync (see below).
+
+### History backfill — date-aware, so a full year is guaranteed
+
+The flat scan is **count-bounded** (newest ~50/tab) and yt-dlp flat mode returns
+no dates, so "latest 50" can be as little as a few days for a firehose channel.
+To keep **a year of history**, `backfill_channel()` instead pages the channel's
+uploads playlist via the **YouTube Data API** (`fetch_uploads_since`), which is
+date-native — it stops exactly at the cutoff and reliably covers even ~20-uploads/day
+channels. It only inserts videos not already stored (idempotent); Shorts are
+flagged via the `/shorts` tab. It runs automatically on a channel's first scan
+(1-year window) and on demand via `POST /api/channels/{id}/backfill?years=N`
+(`years<=0` = entire history) — the primitive a "load older videos" UI can call.
+No retention prune: older videos are kept once fetched.
 
 ---
 
@@ -233,7 +252,13 @@ are added by the tiny additive-migration list in `database.py`.
 ## Config (`config/`)
 
 - **`subscriptions.yaml`** — the channels to follow (imported via the OAuth flow
-  in `auth_google.py`, or edited by hand).
+  in `auth_google.py`, or edited by hand). `POST /api/subscriptions/resync`
+  reconciles this against your live YouTube subscriptions: it **fully deletes**
+  channels you've unsubscribed from (their videos, tags, hidden/category entries,
+  and search docs) and adds any new ones. Your saved data — downloads,
+  watch-later, playlists — is snapshot-keyed by video id and left untouched.
+  Preview first with `?dry_run=true`; an empty subscription response aborts the
+  prune rather than wiping the DB.
 - **`categories.yaml`** — keyword rules that sort each channel into **one** feed
   category (the section headers, e.g. 科技 / 音樂). `categorizer.py` picks the
   best-matching category from the channel's title/description.
@@ -282,6 +307,8 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
 | GET/POST | `/api/tags`, `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
+| POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview) |
+| POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |
 | POST | `/api/refresh` | manually trigger a scan (normally the scheduler handles it) |
 | GET | `/api/refresh/status` | `{running: bool}` |
 | GET | `/api/health` | liveness |

@@ -130,6 +130,46 @@ async def channel_videos(
     }
 
 
+@router.post("/{channel_id}/backfill")
+async def backfill_channel_history(
+    channel_id: str,
+    years: float = Query(default=1.0, description="how far back to fetch; <=0 = entire history"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch older videos for a channel via the date-aware uploads pager.
+
+    Adds any uploads from the last `years` years (or the whole history when
+    `years<=0`) that aren't stored yet, then fills their stats. Idempotent —
+    re-running only adds what's missing. This is the primitive a "load more
+    history" UI action can call with whatever depth the user picks.
+    """
+    from datetime import datetime, timezone, timedelta
+
+    from app.cron_update import backfill_channel, batch_update_stats
+
+    channel = (
+        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
+    ).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+
+    since = None if years <= 0 else datetime.now(timezone.utc) - timedelta(days=365 * years)
+    new_ids = await backfill_channel(channel, since)
+    await batch_update_stats(new_ids, ytdlp_fallback=True)
+    if new_ids:
+        try:
+            from app import search_index
+            await search_index.reindex_all()
+        except Exception:
+            pass
+
+    return {
+        "channel": channel.title,
+        "since": since.isoformat() if since else "all",
+        "added": len(new_ids),
+    }
+
+
 @router.post("/{channel_id}/group")
 async def set_group(channel_id: str, group_name: str):
     """Manually assign a channel to a group."""

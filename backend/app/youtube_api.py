@@ -189,6 +189,88 @@ def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
     return results
 
 
+def fetch_uploads_since(
+    channel_id: str,
+    since: datetime | None = None,
+    max_pages: int = 400,
+) -> list[dict[str, Any]]:
+    """List a channel's uploads (newest-first) via the Data API uploads playlist.
+
+    Returns [{"youtube_id", "published_at" (datetime)}] for every upload published
+    on/after `since`. `since=None` walks the whole history (bounded by max_pages,
+    ~50 videos/page). Unlike the flat yt-dlp scan this is date-native, so it
+    reliably covers a full year even for high-volume channels. Reused by the
+    initial 1-year backfill and any on-demand "fetch older videos" action.
+    """
+    # A channel's uploads live in a playlist whose id is the channel id with the
+    # "UC" prefix swapped for "UU".
+    uploads_id = "UU" + channel_id[2:]
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping uploads fetch: {e}")
+        return []
+    global _quota_used
+
+    out: list[dict[str, Any]] = []
+    page_token: str | None = None
+    with httpx.Client(timeout=30.0) as client:
+        for _ in range(max_pages):
+            params = {
+                "part": "contentDetails",
+                "playlistId": uploads_id,
+                "maxResults": 50,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            try:
+                resp = client.get(
+                    "https://www.googleapis.com/youtube/v3/playlistItems",
+                    headers={"Authorization": f"Bearer {creds.token}"},
+                    params=params,
+                )
+            except httpx.HTTPError as e:
+                # A flaky page shouldn't sink the whole fetch — stop and return
+                # what we have (the caller's backfill is idempotent, so a later
+                # run picks up the rest).
+                print(f"[youtube_api] uploads page failed ({e!r}); returning {len(out)} so far")
+                break
+            _quota_used += 1
+
+            if resp.status_code == 403:
+                # Token expired — refresh once and retry the same page.
+                try:
+                    creds.refresh(GoogleRequest())
+                    continue
+                except Exception:
+                    break
+            if resp.status_code != 200:
+                break  # 404 = no uploads playlist; anything else = give up
+
+            data = resp.json()
+            crossed = False
+            for item in data.get("items", []):
+                cd = item.get("contentDetails", {})
+                vid = cd.get("videoId")
+                raw = cd.get("videoPublishedAt", "")
+                if not vid:
+                    continue
+                try:
+                    pub = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                except (ValueError, AttributeError):
+                    # Private/deleted items lack a publish date — skip them.
+                    continue
+                if since and pub < since:
+                    crossed = True  # older than the cutoff; stop after this page
+                    continue
+                out.append({"youtube_id": vid, "published_at": pub})
+
+            page_token = data.get("nextPageToken")
+            if crossed or not page_token:
+                break
+    return out
+
+
 def get_quota_used() -> int:
     """Return total YouTube Data API quota units used this session."""
     return _quota_used

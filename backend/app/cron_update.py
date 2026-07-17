@@ -22,10 +22,18 @@ from sqlalchemy import select
 from app.database import async_session, init_db
 from app.models import Channel, Video
 from app.fetcher import fetch_latest_videos, fetch_video_details
-from app.youtube_api import batch_fetch_video_stats, get_quota_used
+from app.youtube_api import batch_fetch_video_stats, fetch_uploads_since, get_quota_used
 
 
 YOUTUBE_THUMB = "https://i.ytimg.com/vi/{vid}/mqdefault.jpg"
+
+# How many Shorts to pull from the /shorts tab when labelling a backfill. Shorts
+# have no Data API playlist of their own, so we flag uploads as Shorts by tab
+# membership. Shorts older than this cap fall back to long-form (rare tail).
+SHORTS_LABEL_CAP = 500
+
+# Default history depth for a channel's first-ever scan.
+BACKFILL_WINDOW = timedelta(days=365)
 
 
 def _publication_time(entry: dict) -> datetime:
@@ -101,7 +109,14 @@ async def scan_channel_videos(
                 ))
                 new_ids.append(vid)
 
-        channel.last_video_fetched = datetime.now(timezone.utc)
+        # `channel` was loaded in another (now-closed) session, so it's detached
+        # here — mutating it wouldn't persist. Update the row attached to THIS
+        # session instead, and mirror it back onto the passed-in object.
+        now_ts = datetime.now(timezone.utc)
+        ch_row = await session.get(Channel, channel.youtube_id)
+        if ch_row:
+            ch_row.last_video_fetched = now_ts
+        channel.last_video_fetched = now_ts
         await session.commit()
 
     return new_ids
@@ -169,6 +184,99 @@ async def batch_update_stats(new_ids: list[str], ytdlp_fallback: bool = False):
         print(f"  [stats] YouTube API: {updated} videos updated")
 
 
+async def backfill_channel(channel: Channel, since: datetime | None) -> list[str]:
+    """Insert a channel's uploads back to `since` (None = entire history).
+
+    Uses the Data API uploads playlist (date-accurate, so it covers a full year
+    even for firehose channels — the flat scan can't). Only inserts videos not
+    already stored; Shorts are flagged via the /shorts tab. Returns the newly
+    inserted IDs so the caller can run `batch_update_stats` to fill in
+    titles/stats/durations. Does NOT touch `last_video_fetched`.
+
+    Shared by the first-scan deep fetch and the on-demand "fetch older" endpoint.
+    """
+    loop = asyncio.get_event_loop()
+    uploads = await loop.run_in_executor(
+        None, fetch_uploads_since, channel.youtube_id, since
+    )
+    if not uploads:
+        return []
+
+    # Flag which of these uploads are Shorts (separate tab; no Data API listing).
+    url = f"https://www.youtube.com/channel/{channel.youtube_id}"
+    shorts_data = await loop.run_in_executor(
+        None,
+        lambda: fetch_latest_videos(
+            url, max_results=SHORTS_LABEL_CAP, detailed=False, tab="shorts"
+        ),
+    )
+    short_ids = {v["youtube_id"] for v in shorts_data if v.get("youtube_id")}
+
+    new_ids: list[str] = []
+    async with async_session() as session:
+        for u in uploads:
+            vid = u["youtube_id"]
+            existing = (
+                await session.execute(select(Video).where(Video.youtube_id == vid))
+            ).scalar_one_or_none()
+            if existing:
+                # Correct a previously mislabelled Short if the tab now shows it.
+                if vid in short_ids and not existing.is_short:
+                    existing.is_short = True
+                continue
+            session.add(Video(
+                youtube_id=vid,
+                channel_id=channel.youtube_id,
+                title="",  # filled by batch_update_stats
+                thumbnail_url=YOUTUBE_THUMB.format(vid=vid),
+                published_at=u["published_at"],
+                duration_seconds=0,
+                is_short=vid in short_ids,
+                view_count=0,
+                like_count=0,
+                last_updated=datetime.now(timezone.utc),
+            ))
+            new_ids.append(vid)
+        await session.commit()
+
+    return new_ids
+
+
+async def backfill_all_channels(since: datetime | None) -> dict:
+    """One-time helper: backfill every channel to `since`, then fetch stats.
+
+    Idempotent — only inserts videos not already stored. Used to give existing
+    high-volume channels their missing history after the date-aware backfill
+    landed. Reindexes search at the end.
+    """
+    await init_db()
+    async with async_session() as session:
+        channels = list((await session.execute(select(Channel))).scalars().all())
+
+    all_new: list[str] = []
+    for ch in channels:
+        try:
+            new_ids = await backfill_channel(ch, since)
+            all_new.extend(new_ids)
+            if new_ids:
+                print(f"  [{ch.title[:30]:30s}] +{len(new_ids):4d} backfilled")
+        except Exception as e:
+            print(f"  [ERROR] {ch.title[:30]:30s}: {e}")
+
+    if all_new:
+        print(f"Fetching stats for {len(all_new)} backfilled videos...")
+        await batch_update_stats(all_new, ytdlp_fallback=True)
+        try:
+            from app import search_index
+            await search_index.reindex_all()
+        except Exception as e:
+            print(f"  [search] reindex skipped: {e}")
+
+    print(f"Backfill done: {len(all_new)} videos across {len(channels)} channels; "
+          f"~{get_quota_used()} quota units")
+    return {"added": len(all_new), "channels": len(channels)}
+
+
 async def run_update():
     """Main cron task: update all channels and batch-fetch stats."""
     await init_db()
@@ -184,12 +292,17 @@ async def run_update():
 
     print(f"Scanning {len(channels)} channels (yt-dlp flat mode)...")
     for ch in channels:
-        since = None
-        if ch.last_video_fetched:
-            since = ch.last_video_fetched - timedelta(hours=12)
-
         try:
-            new_ids = await scan_channel_videos(ch, since=since)
+            if ch.last_video_fetched is None:
+                # First time we've seen this channel. The cheap flat scan gets
+                # recent videos + Shorts labels (and works without the Data API);
+                # the date-aware backfill then fills a full year of history.
+                new_ids = await scan_channel_videos(ch, since=None)
+                new_ids += await backfill_channel(ch, since=start - BACKFILL_WINDOW)
+            else:
+                since = ch.last_video_fetched - timedelta(hours=12)
+                new_ids = await scan_channel_videos(ch, since=since)
+
             count = len(new_ids)
             all_new_ids.extend(new_ids)
             total += count
