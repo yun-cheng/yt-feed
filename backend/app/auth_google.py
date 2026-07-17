@@ -28,8 +28,6 @@ SCOPES = [
 
 CLIENT_SECRET_PATH = os.path.expanduser("~/.hermes/google_client_secret.json")
 TOKEN_PATH = str(Path(settings.config_dir) / "youtube_oauth_token.json")
-HERMES_TOKEN_PATH = os.path.expanduser("~/.hermes/google_token.json")
-PERSONAL_TOKEN_PATH = os.path.expanduser("~/.hermes/google_tokens/personal.json")
 
 
 def _make_flow(redirect_uri: str | None = None) -> Flow:
@@ -45,15 +43,12 @@ _pending_verifiers: dict[str, str] = {}
 
 
 def _get_token() -> Credentials | None:
-    """Load saved OAuth token. Tries personal (J7 brand), then project, then Hermes."""
-    for path in (PERSONAL_TOKEN_PATH, TOKEN_PATH, HERMES_TOKEN_PATH):
-        try:
-            with open(path) as f:
-                creds = Credentials.from_authorized_user_info(json.load(f), SCOPES)
-            return creds
-        except (FileNotFoundError, ValueError):
-            continue
-    return None
+    """Load the saved OAuth token written by the in-app login flow."""
+    try:
+        with open(TOKEN_PATH) as f:
+            return Credentials.from_authorized_user_info(json.load(f), SCOPES)
+    except (FileNotFoundError, ValueError):
+        return None
 
 
 def _save_token(creds: Credentials):

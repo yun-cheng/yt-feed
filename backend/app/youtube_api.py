@@ -1,9 +1,9 @@
 """
 YouTube Data API v3 helper — batch video stats lookups.
 
-Uses the work OAuth token (~/.hermes/google_token.json) which has
-youtube.readonly scope. This is MUCH faster than yt-dlp full extraction
-for getting view counts, timestamps, and durations.
+Uses the app's OAuth token (config/youtube_oauth_token.json, youtube.readonly
+scope) written by the in-app login flow. This is MUCH faster than yt-dlp full
+extraction for getting view counts, timestamps, and durations.
 
 Usage:
     stats = batch_fetch_video_stats(["id1", "id2", ...])
@@ -15,7 +15,6 @@ This module is used by cron_update.py for incremental stats updates.
 from __future__ import annotations
 
 import json
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,11 +27,9 @@ from google.oauth2.credentials import Credentials
 from app.config import settings
 
 # Token written by the app's own OAuth flow (/api/auth/login) — this is what the
-# in-app "Re-authenticate" link refreshes, so prefer it. Fall back to the external
-# "work" token for backwards compatibility.
+# in-app "Re-authenticate" link refreshes.
 APP_TOKEN_PATH = str(Path(settings.config_dir) / "youtube_oauth_token.json")
-WORK_TOKEN_PATH = os.path.expanduser("~/.hermes/google_token.json")
-_TOKEN_PATHS = [APP_TOKEN_PATH, WORK_TOKEN_PATH]
+_TOKEN_PATHS = [APP_TOKEN_PATH]
 SCOPES = ["https://www.googleapis.com/auth/youtube.readonly"]
 BATCH_SIZE = 50  # max IDs per videos.list request
 CACHE_TTL = 3600  # 1 hour cache for recently-fetched video IDs
