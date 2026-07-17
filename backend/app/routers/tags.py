@@ -233,56 +233,75 @@ async def list_tagged_channels(db: AsyncSession = Depends(get_db)):
     return tags_map
 
 
+def derive_tags(title: str, description: str, tags_config: dict) -> list[str]:
+    """Derive auto-tags for a channel from its name/description.
+
+    A language tag (chinese/japanese/english) from script detection, plus every
+    keyword-rule tag whose keywords appear in the name+description. Pure \u2014 no DB.
+    """
+    import re
+
+    title = title or ""
+    text = f"{title} {description or ''}".lower()
+    tags: list[str] = []
+
+    # Smart language detection (from the title's script).
+    has_cjk = bool(re.search(r'[\u4e00-\u9fff\u3400-\u4dbf]', title))
+    has_hiragana = bool(re.search(r'[\u3040-\u309f]', title))
+    has_katakana = bool(re.search(r'[\u30a0-\u30ff]', title))
+    is_ascii = all(ord(c) < 128 for c in title if not c.isspace())
+
+    if has_cjk:
+        tags.append("chinese")
+    elif has_hiragana or has_katakana:
+        tags.append("japanese")
+    elif is_ascii and len(title) > 3:
+        tags.append("english")
+
+    # Keyword-based tags (language tags already handled above).
+    for tag_name, tag_data in tags_config.items():
+        if tag_name in ("chinese", "english", "japanese"):
+            continue
+        if any(kw.lower() in text for kw in tag_data.get("keywords", [])):
+            tags.append(tag_name)
+
+    return tags
+
+
+async def assign_auto_tags(db: AsyncSession, channels, tags_config: dict | None = None) -> int:
+    """Re-derive auto-assigned tags for the given channels.
+
+    Clears each channel's existing auto tags (leaving manual ones intact), then
+    adds the freshly-derived set. Used by the full re-tag endpoint and by
+    subscription resync to tag newly-added channels. Caller commits.
+    """
+    if tags_config is None:
+        tags_config = _load_tags_config().get("tags", {})
+
+    from sqlalchemy import delete as sa_delete
+
+    assigned = 0
+    for ch in channels:
+        await db.execute(
+            sa_delete(ChannelTag).where(
+                ChannelTag.channel_id == ch.youtube_id,
+                ChannelTag.auto_assigned == 1,
+            )
+        )
+        for tag_name in derive_tags(ch.title, ch.description, tags_config):
+            db.add(ChannelTag(
+                channel_id=ch.youtube_id, tag_name=tag_name, auto_assigned=1
+            ))
+            assigned += 1
+    return assigned
+
+
 @router.post("/auto-assign")
 async def auto_assign_tags(db: AsyncSession = Depends(get_db)):
     """Auto-tag all channels based on name/description keyword matching."""
     config = _load_tags_config()
-    tags_config = config.get("tags", {})
-
-    result = await db.execute(select(Channel))
-    channels = result.scalars().all()
-
-    # Clear existing auto-assigned tags
-    from sqlalchemy import delete as sa_delete
-    await db.execute(sa_delete(ChannelTag).where(ChannelTag.auto_assigned == 1))
-
-    assigned = 0
-    for ch in channels:
-        title = ch.title or ""
-        desc = ch.description or ""
-        text = f"{title} {desc}".lower()
-
-        # Smart language detection
-        import re
-        has_cjk = bool(re.search(r'[\u4e00-\u9fff\u3400-\u4dbf]', title))
-        has_hiragana = bool(re.search(r'[\u3040-\u309f]', title))
-        has_katakana = bool(re.search(r'[\u30a0-\u30ff]', title))
-        is_ascii = all(ord(c) < 128 for c in title if not c.isspace())
-
-        if has_cjk:
-            db.add(ChannelTag(channel_id=ch.youtube_id, tag_name="chinese", auto_assigned=1))
-            assigned += 1
-        elif has_hiragana or has_katakana:
-            db.add(ChannelTag(channel_id=ch.youtube_id, tag_name="japanese", auto_assigned=1))
-            assigned += 1
-        elif is_ascii and len(title) > 3:
-            db.add(ChannelTag(channel_id=ch.youtube_id, tag_name="english", auto_assigned=1))
-            assigned += 1
-
-        # Keyword-based tag matching
-        for tag_name, tag_data in tags_config.items():
-            # Skip language tags (already handled above)
-            if tag_name in ("chinese", "english", "japanese"):
-                continue
-            keywords = tag_data.get("keywords", [])
-            if any(kw.lower() in text for kw in keywords):
-                db.add(ChannelTag(
-                    channel_id=ch.youtube_id,
-                    tag_name=tag_name,
-                    auto_assigned=1,
-                ))
-                assigned += 1
-
+    channels = (await db.execute(select(Channel))).scalars().all()
+    assigned = await assign_auto_tags(db, channels, config.get("tags", {}))
     await db.commit()
 
     # Save default tags config

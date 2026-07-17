@@ -95,6 +95,26 @@ def set_channel_group(channel_id: str, group_name: str, auto: bool = False):
     _save_config(config)
 
 
+def remove_channels(channel_ids: list[str]) -> int:
+    """Drop legacy per-channel group assignments for the given channels.
+
+    Called when pruning unsubscribed channels so categories.yaml doesn't keep
+    stale keys. Returns how many entries were removed.
+    """
+    if not channel_ids:
+        return 0
+    config = _load_config()
+    channels = config.get("channels", {})
+    removed = 0
+    for cid in channel_ids:
+        if channels.pop(cid, None) is not None:
+            removed += 1
+    if removed:
+        config["channels"] = channels
+        _save_config(config)
+    return removed
+
+
 def auto_categorize(channels: list[dict[str, str]]) -> dict[str, list[str]]:
     """
     Auto-assign each channel to a category based on keyword matching.

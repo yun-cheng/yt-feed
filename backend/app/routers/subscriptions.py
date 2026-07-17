@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import yaml
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import search_index
+from app.categorizer import remove_channels as _remove_channel_groups
 from app.database import async_session
-from app.models import Channel
+from app.models import Channel, ChannelTag, HiddenChannel, Video
 from app.config import settings
 
 router = APIRouter(prefix="/subscriptions")
@@ -127,3 +129,125 @@ async def sync_all_from_subscriptions(db: AsyncSession = Depends(get_db)):
                 ))
 
     return await import_subscriptions(channels, db)
+
+
+async def _prune_channels(db: AsyncSession, channel_ids: list[str]) -> dict:
+    """Fully delete channels the user is no longer subscribed to.
+
+    Removes each channel's feed data — videos, tag assignments, hidden-channel
+    entry, legacy category grouping, the channel row itself, and the matching
+    Meilisearch docs. Deliberately leaves the user's own saved data alone
+    (downloads / watch-later / playlist items are snapshots keyed by video id,
+    with a download row also pointing at a file on disk).
+    """
+    if not channel_ids:
+        return {"channels": [], "videos": 0}
+
+    video_ids = list(
+        (
+            await db.execute(
+                select(Video.youtube_id).where(Video.channel_id.in_(channel_ids))
+            )
+        ).scalars().all()
+    )
+
+    await db.execute(delete(Video).where(Video.channel_id.in_(channel_ids)))
+    await db.execute(delete(ChannelTag).where(ChannelTag.channel_id.in_(channel_ids)))
+    await db.execute(delete(HiddenChannel).where(HiddenChannel.channel_id.in_(channel_ids)))
+    await db.execute(delete(Channel).where(Channel.youtube_id.in_(channel_ids)))
+    await db.commit()
+
+    _remove_channel_groups(channel_ids)
+    await search_index.remove_documents(channel_ids=channel_ids, video_ids=video_ids)
+
+    return {"channels": channel_ids, "videos": len(video_ids)}
+
+
+@router.post("/resync")
+async def resync_subscriptions(
+    dry_run: bool = Query(default=False, description="preview the prune without deleting"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync the DB to your live YouTube subscriptions.
+
+    Fetches the current subscription list over OAuth, then:
+    - fully deletes channels (and their videos) you've unsubscribed from,
+    - adds/refreshes metadata for everything you're still subscribed to.
+
+    Pass ?dry_run=true to see what would be pruned without touching anything.
+    """
+    from google.auth.exceptions import GoogleAuthError
+
+    from app.auth_google import fetch_subscriptions as _fetch_live_subs
+
+    try:
+        live = (await _fetch_live_subs())["channels"]
+    except GoogleAuthError:
+        raise HTTPException(
+            401, "YouTube auth expired. Re-authenticate at /api/auth/login, then retry."
+        )
+    live_ids = {c["youtube_id"] for c in live if c.get("youtube_id")}
+    # Guard against an API hiccup returning an empty list and wiping everything.
+    if not live_ids:
+        raise HTTPException(400, "YouTube returned no subscriptions; refusing to prune.")
+
+    existing_rows = (
+        await db.execute(select(Channel.youtube_id, Channel.title))
+    ).all()
+    existing_ids = {r.youtube_id for r in existing_rows}
+    titles = {r.youtube_id: r.title for r in existing_rows}
+
+    stale_ids = sorted(existing_ids - live_ids)
+    new_ids = sorted(live_ids - existing_ids)
+
+    if dry_run:
+        video_count = 0
+        if stale_ids:
+            video_count = (
+                await db.execute(
+                    select(func.count())
+                    .select_from(Video)
+                    .where(Video.channel_id.in_(stale_ids))
+                )
+            ).scalar_one()
+        return {
+            "dry_run": True,
+            "live_subscriptions": len(live_ids),
+            "would_prune_channels": [
+                {"youtube_id": cid, "title": titles.get(cid, "")} for cid in stale_ids
+            ],
+            "would_delete_videos": video_count,
+            "would_add_channels": len(new_ids),
+        }
+
+    pruned = await _prune_channels(db, stale_ids)
+
+    # Persist the live set, then refresh metadata (incl. subscriber counts for
+    # brand-new channels) via the existing channels.list-with-stats path.
+    ids = sorted(live_ids)
+    with open(settings.subscriptions_path, "w") as f:
+        yaml.dump({"subscriptions": ids}, f, allow_unicode=True)
+    sync_result = await sync_all_from_subscriptions(db)
+
+    # Auto-tag newly-added channels (sidebar filters) now that sync_all has
+    # populated their titles/descriptions.
+    tagged = 0
+    if new_ids:
+        from app.routers.tags import assign_auto_tags
+
+        new_channels = (
+            await db.execute(select(Channel).where(Channel.youtube_id.in_(new_ids)))
+        ).scalars().all()
+        tagged = await assign_auto_tags(db, new_channels)
+        await db.commit()
+
+    await search_index.reindex_all()
+
+    return {
+        "pruned_channels": len(pruned["channels"]),
+        "deleted_videos": pruned["videos"],
+        "added_channels": len(new_ids),
+        "tags_assigned": tagged,
+        "live_subscriptions": len(live_ids),
+        "metadata_refresh": sync_result,
+    }

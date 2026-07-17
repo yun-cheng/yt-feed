@@ -123,6 +123,32 @@ async def reindex_all() -> dict[str, int]:
         return {"channels": 0, "videos": 0}
 
 
+async def remove_documents(
+    channel_ids: list[str] | None = None, video_ids: list[str] | None = None
+) -> None:
+    """Delete specific channel + video docs from Meilisearch.
+
+    reindex_all() only ever upserts, so removed rows would otherwise linger as
+    stale search hits. Call this when pruning unsubscribed channels. Best-effort.
+    """
+    channel_ids = list(channel_ids or [])
+    video_ids = list(video_ids or [])
+    if not channel_ids and not video_ids:
+        return
+    try:
+        async with await _client(_ADMIN_TIMEOUT) as c:
+            if video_ids:
+                await c.post(
+                    f"/indexes/{VIDEOS_INDEX}/documents/delete-batch", json=video_ids
+                )
+            if channel_ids:
+                await c.post(
+                    f"/indexes/{CHANNELS_INDEX}/documents/delete-batch", json=channel_ids
+                )
+    except Exception as e:  # never let a prune fail on search bookkeeping
+        print(f"[search] remove_documents skipped: {e}")
+
+
 async def _search_raw(index: str, q: str, limit: int, offset: int = 0) -> dict:
     async with await _client(_SEARCH_TIMEOUT) as c:
         r = await c.post(
