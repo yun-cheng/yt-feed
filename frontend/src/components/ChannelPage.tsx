@@ -52,6 +52,9 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [descExpanded, setDescExpanded] = useState(false)
+  const [descOverflows, setDescOverflows] = useState(false)
+  const descRef = useRef<HTMLParagraphElement>(null)
   const loadingMoreRef = useRef(false)
 
   // Fetch one page; append unless replacing.
@@ -72,12 +75,20 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
   // Reset to the first page when the channel or filters change.
   useEffect(() => {
     let cancelled = false
-    setLoading(true); setNotFound(false); setVideos([]); setTotal(0)
+    setLoading(true); setNotFound(false); setVideos([]); setTotal(0); setDescExpanded(false)
     fetchPage(0, true)
       .catch(() => { if (!cancelled) setNotFound(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [fetchPage])
+
+  // Only offer a Show more/less toggle when the clamped text is actually clipped.
+  // Measured off the (initially clamped) element, so it must run before expansion.
+  useEffect(() => {
+    const el = descRef.current
+    if (!el) { setDescOverflows(false); return }
+    setDescOverflows(el.scrollHeight > el.clientHeight + 1)
+  }, [channel?.description, loading])
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || videos.length >= total) return
@@ -128,9 +139,22 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
             }
           />
           {ch.description && (
-            <p className="text-xs text-[#555] mt-2 line-clamp-2 leading-relaxed max-w-xl">
-              {ch.description}
-            </p>
+            <div className="max-w-xl">
+              <p
+                ref={descRef}
+                className={`text-xs text-[#555] mt-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${descExpanded ? '' : 'line-clamp-2'}`}
+              >
+                {ch.description}
+              </p>
+              {(descOverflows || descExpanded) && (
+                <button
+                  onClick={() => setDescExpanded((v) => !v)}
+                  className="mt-1 text-xs font-medium text-[#777] hover:text-[#aaa]"
+                >
+                  {descExpanded ? 'Show less' : 'Show more'}
+                </button>
+              )}
+            </div>
           )}
           <a
             href={`https://www.youtube.com/channel/${ch.youtube_id}`}
