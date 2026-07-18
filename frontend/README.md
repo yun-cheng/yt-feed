@@ -76,6 +76,8 @@ data refresh, no scraping on the client.
 ```
 components/
   Sidebar.tsx / TopBar.tsx        chrome: nav, search box, tag filters
+                                  (on a channel page the sidebar swaps the
+                                  global taxonomy for that channel's topic chips)
   TimeSortControls.tsx            time-window + sort pills
   VideoCard.tsx                   the card + hover preview (the complex one)
   VideoRow.tsx                    list-row variant
@@ -84,7 +86,7 @@ components/
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx
   SearchPage.tsx
-  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed, metadata, description
+  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed, metadata, description, topic chips
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
 ```

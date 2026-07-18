@@ -13,6 +13,9 @@ real video (muted, with custom captions and scrubbing).
   filter the feed by tag, and edit a channel's labels on its page
 - **AI categorization** — an LLM (via OpenRouter) reads each channel and assigns
   topic + language labels; needs `OPENROUTER_API_KEY` (see `backend/README.md`)
+- **Video topics** — inside a channel, the LLM labels its videos by topic (a
+  vocabulary tailored per channel) so you can filter the channel by topic; the
+  labels also show on the watch page
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were

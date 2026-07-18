@@ -58,12 +58,13 @@ app/
   ranking.py       score = views / hours-since-published; time-window buckets
   categorizer.py   legacy keyword → feed-category rules (config/categories.yaml)
   llm.py           OpenRouter chat client, shared by AI features
+  video_labels.py  LLM per-video topic labeling (see "Video topics")
   search_index.py  Meilisearch push + query (best-effort)
   auth_google.py   OAuth login flow (only needed to import subscriptions)
 
   routers/         one file per resource, all mounted under /api
     feed.py        the main feed, storyboards, captions, statistics
-    channels.py    channel pages
+    channels.py    channel pages + video-topic chips/filtering (see "Video topics")
     search.py      proxies to search_index
     tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
     watch_later.py / playlists.py / downloads.py / subscriptions.py
@@ -272,12 +273,48 @@ never hard-fails.
 
 ---
 
+## Video topics (`video_labels.py`, `routers/channels.py`)
+
+Separate from the channel tags above: each **video** is labeled by topic from
+its title, with a **vocabulary tailored per channel** (not the shared taxonomy).
+A sports channel gets `baseball` / `MLB` / `football` / `FIFA世界盃`; a travel
+vlog gets `travel` / `紐西蘭`. These are the **TOPICS** chips the sidebar shows
+in place of the global taxonomy while you're on a channel page; clicking one
+filters that channel's videos.
+
+- **Build** (`build_channel_vocab`) — labels the whole channel and derives the
+  vocabulary (labels landing on ≥2 videos). Two passes for recall: an
+  open-ended pass discovers labels, then a **constrained** pass re-labels only
+  the videos that came back empty against the now-known vocab (the model just
+  matches a list, which the free model does far more reliably than inventing).
+  The model also gets the **channel name + taxonomy themes** as grounding, and a
+  **denylist** strips language / whole-channel words (`chinese`, `vlog`,
+  `entertainment`) it tends to echo back. Runs in a background thread, 8 batches
+  at a time, with progress; poll `.../labels/status`.
+- **Full per-video labels** — each video stores *all* its labels (not just the
+  vocab ones), so a specific one-off like `紐西蘭` survives on the video (and its
+  watch page) even though it's too rare to be a channel-wide chip.
+- **Chips** are tallied from the videos actually in view, scoped to the current
+  **window + videos/shorts mode**, so a chip's count equals what filtering by it
+  shows. Adaptive declutter: single-video topics are dropped only once ≥30
+  topics have 2+ videos in view (big channels stay tidy, sparse ones keep
+  everything). `?label=` filters server-side, before pagination.
+- **Versioning** — `LABEL_VERSION` stamps each build; bump it and every channel
+  re-labels itself on its next visit. A stale channel reads as unbuilt, so the
+  channel page rebuilds it automatically.
+- **New uploads** — `assign_labels` labels videos added after the build, lazily,
+  as the channel page renders them.
+
+Same OpenRouter client/model as tagging; unset key ⇒ no topics, never a crash.
+
+---
+
 ## Data model (`models.py`)
 
 | Table | Purpose |
 |---|---|
-| `channels` | subscribed channels (id, title, `last_video_fetched`, `topics`, `llm_labels`) |
-| `videos` | scraped videos (stats, `published_at`, `is_short`, `last_updated`) |
+| `channels` | subscribed channels (id, title, `last_video_fetched`, `topics`, `llm_labels`, `video_label_vocab` + `video_label_version`) |
+| `videos` | scraped videos (stats, `published_at`, `is_short`, `title_labels`, `last_updated`) |
 | `channel_tags` | channel↔tag assignments (`auto_assigned`: 1 = LLM, 0 = manual) |
 | `channel_tag_rejections` | auto tags the user removed, so re-tagging won't re-add them |
 | `watch_later` | saved-for-later videos (server-side, syncs across devices) |
@@ -342,9 +379,12 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed` | ranked feed grouped by category (query: window, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues (rendered by the frontend) |
-| GET | `/api/feed/video/{id}` | one video's metadata (for the in-app watch page / deep links) |
+| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links) |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
-| GET | `/api/channels/{id}` | a channel's videos |
+| GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
+| POST | `/api/channels/{id}/labels/build` | build this channel's video-topic vocabulary (background; `?force=1` rebuilds) |
+| GET | `/api/channels/{id}/labels/status` | `{building, built, progress}` for the topic build |
+| POST | `/api/channels/{id}/labels/assign` | label the given (rendered) videos against the vocab |
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
 | GET | `/api/tags` | tags in use with per-tag counts (`?include_empty=1` = full taxonomy, for the picker) |
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
