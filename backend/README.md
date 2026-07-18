@@ -48,7 +48,7 @@ All three services (frontend, backend, meilisearch) are also defined in
 ```
 app/
   main.py          FastAPI app, lifespan, the scan SCHEDULER, /api/refresh
-  config.py        Settings (paths, OAuth, Meili) via pydantic-settings
+  config.py        Settings (paths, OAuth, Meili, OpenRouter) via pydantic-settings
   database.py      Async engine + session factory, schema create, tiny migrations
   models.py        SQLAlchemy tables (see "Data model")
 
@@ -56,7 +56,8 @@ app/
   fetcher.py       yt-dlp wrappers (channel listings, video details)
   youtube_api.py   YouTube Data API v3 batch stats (+ token handling)
   ranking.py       score = views / hours-since-published; time-window buckets
-  categorizer.py   keyword → category/tag rules (from config/*.yaml)
+  categorizer.py   legacy keyword → feed-category rules (config/categories.yaml)
+  llm.py           OpenRouter chat client, shared by AI features
   search_index.py  Meilisearch push + query (best-effort)
   auth_google.py   OAuth login flow (only needed to import subscriptions)
 
@@ -64,10 +65,11 @@ app/
     feed.py        the main feed, storyboards, captions, statistics
     channels.py    channel pages
     search.py      proxies to search_index
-    tags.py        channel tag CRUD + per-tag counts
+    tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
-config/            categories.yaml, tags.yaml, subscriptions.yaml, oauth token
+config/            categories.yaml, subscriptions.yaml, oauth token
+.env               secrets (OPENROUTER_API_KEY); gitignored
 scripts/           one-off maintenance scripts (backfills, fixes)
 ```
 
@@ -230,13 +232,54 @@ the YouTube embed — so downloaded videos preview and play fully offline.
 
 ---
 
+## Channel tagging (`routers/tags.py`, `llm.py`)
+
+Channels are tagged by an **LLM**, not keyword rules. Tags drive the sidebar
+filters and the per-channel label editor.
+
+- **Seed taxonomy** (`SEED_TAXONOMY`) — 9 fixed groups (Language, Entertainment,
+  Music, Gaming, Sports, Lifestyle, Tech, Knowledge, Society), each with broad
+  **main** labels (auto-applied) and specific **sub** labels (offered as
+  suggestions). Groups are the sidebar's navigation frame; empty ones are hidden
+  per user, so the same universal taxonomy shows a different slice for everyone.
+- **Labeling** (`llm_label_channel`) — the model gets the channel's name,
+  description, and YouTube topic hints (`channels.topics`, fetched during resync)
+  and returns `{main, suggested}`. Only seed main/language labels can be
+  *applied*; anything else it returns — a misplaced label, or a new sub it
+  invents when a topic isn't covered — is demoted to a **suggestion**. It never
+  invents new main labels or groups. Language falls back to the deterministic
+  video-title script detector when the model omits one.
+- **Caching** — each verdict is stored on `channels.llm_labels` so suggestions
+  and re-runs don't re-hit the API. `POST /api/tags/auto-assign` re-tags every
+  channel and runs in a **background thread** (one API call per channel takes
+  minutes); poll `/api/tags/auto-assign/status`. Resync tags only newly-added
+  channels, inline.
+- **Editing** — `POST/DELETE /api/tags/{channel_id}/tag/{tag}` apply/remove a
+  label on one channel. Accepting a suggestion stores it as **manual**
+  (`auto_assigned=0`) so re-tagging never clobbers it. Removing an auto label
+  writes a **rejection** (`channel_tag_rejections`) so re-tagging doesn't
+  resurrect it, and demotes it back to a suggestion. Machine does the bulk; the
+  user makes the per-channel calls only they can judge.
+
+> Why LLM over keywords: keyword matching couldn't tell "a channel *about* X"
+> from one that merely *mentions* X — a bio "I used to work at Intel" read as
+> tech; descriptions that enumerate topics matched everything — and it leaned on
+> per-channel name hardcodes that rotted silently.
+
+Uses OpenRouter (`llm.py`, model `settings.llm_tagging_model`). If
+`OPENROUTER_API_KEY` is unset the call degrades to language-only, so tagging
+never hard-fails.
+
+---
+
 ## Data model (`models.py`)
 
 | Table | Purpose |
 |---|---|
-| `channels` | subscribed channels (id, title, `last_video_fetched`) |
+| `channels` | subscribed channels (id, title, `last_video_fetched`, `topics`, `llm_labels`) |
 | `videos` | scraped videos (stats, `published_at`, `is_short`, `last_updated`) |
-| `tags` / `channel_tags` | topic tags and channel↔tag assignments |
+| `channel_tags` | channel↔tag assignments (`auto_assigned`: 1 = LLM, 0 = manual) |
+| `channel_tag_rejections` | auto tags the user removed, so re-tagging won't re-add them |
 | `watch_later` | saved-for-later videos (server-side, syncs across devices) |
 | `playlists` / `playlist_items` | user playlists |
 | `downloads` | videos downloaded to disk for offline viewing |
@@ -259,18 +302,16 @@ are added by the tiny additive-migration list in `database.py`.
   watch-later, playlists — is snapshot-keyed by video id and left untouched.
   Preview first with `?dry_run=true`; an empty subscription response aborts the
   prune rather than wiping the DB.
-- **`categories.yaml`** — keyword rules that sort each channel into **one** feed
-  category (the section headers, e.g. 科技 / 音樂). `categorizer.py` picks the
-  best-matching category from the channel's title/description.
-- **`tags.yaml`** — tag definitions. A channel can carry **many** tags
-  (`channel_tags` table); auto-assigned by keyword rules in `routers/tags.py`.
+- **`categories.yaml`** — legacy keyword rules that sort each channel into **one**
+  feed category (`categorizer.py`). Superseded by the LLM tag system for the
+  sidebar; still read by the resync prune when cleaning up removed channels.
 - **`youtube_oauth_token.json`** — the Data API token refreshed by the in-app
   "Re-authenticate" link. Stats fall back to yt-dlp if it's missing/expired, so
   OAuth is **optional**.
-
-> **Categories vs. tags** are independent systems: categories **group** the feed
-> into sections (one per channel); tags **filter** it via the sidebar chips
-> (many per channel).
+- **`.env`** (in `backend/`, gitignored) — secrets. `OPENROUTER_API_KEY` powers
+  LLM channel tagging; without it, tagging degrades to language-only. See
+  "Channel tagging". The tag taxonomy itself lives in code (`SEED_TAXONOMY`), not
+  a config file.
 
 ---
 
@@ -305,7 +346,10 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}` | a channel's videos |
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
-| GET/POST | `/api/tags`, `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
+| GET | `/api/tags` | tags in use with per-tag counts (`?include_empty=1` = full taxonomy, for the picker) |
+| POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
+| POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
+| GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview) |
 | POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |

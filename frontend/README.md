@@ -80,6 +80,7 @@ components/
   VideoCard.tsx                   the card + hover preview (the complex one)
   VideoRow.tsx                    list-row variant
   ChannelPage.tsx / ChannelsPage.tsx
+  ChannelTags.tsx                 per-channel label editor (apply/remove/suggest)
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx
   SearchPage.tsx

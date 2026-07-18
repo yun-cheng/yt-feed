@@ -9,7 +9,10 @@ real video (muted, with custom captions and scrubbing).
 
 - **Custom ranking** — score videos by views/hour, likes, like rate, or recency
 - **Time windows** — filter by last 1d / 3d / 1w / 1m / … (each a discrete bucket)
-- **Tag filtering** — group channels by topic and filter the feed by tag
+- **Tag filtering** — channels are auto-tagged by an LLM into a topic taxonomy;
+  filter the feed by tag, and edit a channel's labels on its page
+- **AI categorization** — an LLM (via OpenRouter) reads each channel and assigns
+  topic + language labels; needs `OPENROUTER_API_KEY` (see `backend/README.md`)
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were
@@ -79,6 +82,18 @@ meilisearch --db-path data/meili --http-addr 127.0.0.1:7700 --no-analytics
 
 If Meilisearch isn't running, search returns nothing and everything else works.
 All three are also defined in [`.claude/launch.json`](.claude/launch.json).
+
+### AI tagging (optional)
+
+LLM channel tagging needs an [OpenRouter](https://openrouter.ai) key in
+`backend/.env`:
+
+```bash
+echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> backend/.env
+```
+
+Without it, channels are tagged by language only. See
+[`backend/README.md`](backend/README.md#channel-tagging-routerstagspy-llmpy).
 
 ## Channels
 
