@@ -33,6 +33,10 @@ _COLUMN_MIGRATIONS = [
     ("videos", "is_short", "BOOLEAN NOT NULL DEFAULT 0"),
     ("channels", "topics", "TEXT DEFAULT ''"),
     ("channels", "llm_labels", "TEXT DEFAULT ''"),
+    # No default → existing rows become NULL, which means "not labeled yet".
+    ("channels", "video_label_vocab", "TEXT"),
+    ("channels", "video_label_version", "INTEGER"),
+    ("videos", "title_labels", "TEXT"),
 ]
 
 

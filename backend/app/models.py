@@ -18,6 +18,15 @@ class Channel(Base):
     # Cached LLM tagging verdict: {"main": [...], "suggested": [...]}. Stored so
     # re-tagging and suggestion lookups don't re-hit the API on every request.
     llm_labels = Column(Text, default="")
+    # Per-channel video-label vocabulary: JSON list of labels the LLM extracted
+    # from this channel's video titles (e.g. ["baseball","football","MLB"] or
+    # ["T1","HLE","BLG"]). These are the filter chips shown on the channel page.
+    # NULL = not built yet (built once, lazily, on first channel-page view).
+    video_label_vocab = Column(Text, nullable=True)
+    # The video_labels.LABEL_VERSION the vocab was built with. When it's behind
+    # the current version (e.g. after a prompt change), the channel is re-labeled
+    # automatically on its next visit. NULL = pre-versioning / needs rebuild.
+    video_label_version = Column(Integer, nullable=True)
     last_video_fetched = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -137,4 +146,8 @@ class Video(Base):
     comment_count = Column(BigInteger, default=0)
     # True for videos pulled from the channel's /shorts tab (vertical short-form).
     is_short = Column(Boolean, nullable=False, default=False, server_default="0", index=True)
+    # JSON list of channel-specific labels drawn from this video's title (from the
+    # channel's video_label_vocab). NULL = not labeled yet; labels are assigned
+    # lazily, only for videos actually rendered on the channel page.
+    title_labels = Column(Text, nullable=True)
     last_updated = Column(DateTime, default=datetime.utcnow)
