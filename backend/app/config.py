@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     meili_url: str = "http://127.0.0.1:7700"
     meili_master_key: str = ""  # empty = dev mode (no auth), fine for localhost
 
+    # --- LLM (OpenRouter — shared by AI features like channel tagging) ---
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    llm_tagging_model: str = "tencent/hy3:free"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property
