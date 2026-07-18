@@ -22,26 +22,22 @@ type Props = {
   onContentModeChange?: (mode: 'videos' | 'shorts') => void
 }
 
-const GROUP_NAMES: Record<string, string> = {
-  '開發': 'Dev',
-  '語言': 'Language',
-  '音樂': 'Music',
-  '財經': 'Finance',
-  '知識': 'Knowledge',
-  '生活': 'Lifestyle',
-  '娛樂': 'Entertainment',
-  '其他': 'Other',
-}
-
+// Sidebar sections, in render order. Keys match the `group` field the backend
+// taxonomy assigns (app/routers/tags.py); a group with no matching tags is
+// skipped, so this can list every section the taxonomy defines.
+//
+// Language leads (it cuts across everything), then the rest run chill → serious.
 const GROUP_ORDER = [
-  { key: '開發', icon: '⚙️' },
-  { key: '語言', icon: '🌐' },
-  { key: '音樂', icon: '🎵' },
-  { key: '財經', icon: '📈' },
-  { key: '知識', icon: '📚' },
-  { key: '生活', icon: '☕' },
-  { key: '娛樂', icon: '🎬' },
-  { key: '其他', icon: '🏷️' },
+  { key: 'Language', icon: '🌐' },
+  { key: 'Entertainment', icon: '🎬' },
+  { key: 'Music', icon: '🎵' },
+  { key: 'Gaming', icon: '🎮' },
+  { key: 'Sports', icon: '🏅' },
+  { key: 'Lifestyle', icon: '☕' },
+  { key: 'Tech', icon: '💻' },
+  { key: 'Knowledge', icon: '📚' },
+  { key: 'Society', icon: '🏛️' },
+  { key: 'Other', icon: '🏷️' },
 ]
 
 const HomeIcon = () => (
@@ -380,7 +376,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
                     }`}
                   >
                     <span>{icon}</span>
-                    <span>{GROUP_NAMES[key] || key}</span>
+                    <span>{key}</span>
                     <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
                       {allSelected ? 'deselect all' : 'select all'}
                     </span>

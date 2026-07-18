@@ -12,15 +12,14 @@ class Channel(Base):
     thumbnail_url = Column(String, default="")
     subscriber_count = Column(Integer, default=0)
     group_name = Column(String, default="")  # legacy, will be replaced by tags
+    # JSON list of YouTube topicDetails categories (e.g. ["Sport", "Baseball"]).
+    # A hint fed to the LLM tagger.
+    topics = Column(Text, default="")
+    # Cached LLM tagging verdict: {"main": [...], "suggested": [...]}. Stored so
+    # re-tagging and suggestion lookups don't re-hit the API on every request.
+    llm_labels = Column(Text, default="")
     last_video_fetched = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class Tag(Base):
-    __tablename__ = "tags"
-
-    name = Column(String, primary_key=True)
-    icon = Column(String, default="")
 
 
 class ChannelTag(Base):
@@ -29,6 +28,21 @@ class ChannelTag(Base):
     channel_id = Column(String, ForeignKey("channels.youtube_id"), primary_key=True)
     tag_name = Column(String, ForeignKey("tags.name"), primary_key=True)
     auto_assigned = Column(Integer, default=1)  # boolean
+
+
+class ChannelTagRejection(Base):
+    """An auto-derived tag the user removed from a channel.
+
+    Kept out of `channel_tags` on purpose: every query there reads "a row exists"
+    as "the channel has this tag" (feed filters, sidebar counts), so a tombstone
+    living in that table would leak into all of them. Instead, re-tagging skips
+    these, and they resurface as suggestions so the user can put them back.
+    """
+    __tablename__ = "channel_tag_rejections"
+
+    channel_id = Column(String, primary_key=True)
+    tag_name = Column(String, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Download(Base):

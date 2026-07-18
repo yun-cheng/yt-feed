@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -9,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import search_index
 from app.categorizer import remove_channels as _remove_channel_groups
 from app.database import async_session
-from app.models import Channel, ChannelTag, HiddenChannel, Video
+from app.models import Channel, ChannelTag, ChannelTagRejection, HiddenChannel, Video
 from app.config import settings
 
 router = APIRouter(prefix="/subscriptions")
@@ -21,6 +23,8 @@ class ImportChannel(BaseModel):
     description: str = ""
     thumbnail_url: str = ""
     subscriber_count: int = 0
+    # YouTube topicDetails categories — the backbone for auto-tagging.
+    topics: list[str] = []
 
 
 async def get_db():
@@ -54,10 +58,15 @@ async def import_subscriptions(
             select(Channel).where(Channel.youtube_id == ch.youtube_id)
         )
         exists = existing.scalar_one_or_none()
+        topics_json = json.dumps(ch.topics) if ch.topics else ""
         if exists:
             exists.title = ch.title
             exists.description = ch.description
             exists.thumbnail_url = ch.thumbnail_url
+            # Only overwrite topics when we actually got some — the plain
+            # subscriptions.list import doesn't carry them.
+            if topics_json:
+                exists.topics = topics_json
         else:
             db.add(Channel(
                 youtube_id=ch.youtube_id,
@@ -65,6 +74,7 @@ async def import_subscriptions(
                 description=ch.description,
                 thumbnail_url=ch.thumbnail_url,
                 subscriber_count=ch.subscriber_count,
+                topics=topics_json,
             ))
         # Always update subscriber count on re-import
         if exists:
@@ -111,7 +121,8 @@ async def sync_all_from_subscriptions(db: AsyncSession = Depends(get_db)):
             resp = await client.get(
                 f"https://www.googleapis.com/youtube/v3/channels",
                 headers=headers,
-                params={"part": "snippet,statistics", "id": ",".join(batch)},
+                # topicDetails rides along free — same 1 quota unit as snippet.
+                params={"part": "snippet,statistics,topicDetails", "id": ",".join(batch)},
             )
             if resp.status_code != 200:
                 print(f"  API error {resp.status_code} for batch {i // 50}")
@@ -120,12 +131,16 @@ async def sync_all_from_subscriptions(db: AsyncSession = Depends(get_db)):
             for item in data.get("items", []):
                 s = item.get("snippet", {})
                 stats = item.get("statistics", {})
+                # topicCategories are Wikipedia URLs; keep just the article name.
+                cats = item.get("topicDetails", {}).get("topicCategories", [])
+                topics = [u.rsplit("/", 1)[-1].replace("_", " ") for u in cats]
                 channels.append(ImportChannel(
                     youtube_id=item["id"],
                     title=s.get("title", ""),
                     description=s.get("description", ""),
                     thumbnail_url=s.get("thumbnails", {}).get("default", {}).get("url", ""),
                     subscriber_count=int(stats.get("subscriberCount", 0)),
+                    topics=topics,
                 ))
 
     return await import_subscriptions(channels, db)
@@ -153,6 +168,9 @@ async def _prune_channels(db: AsyncSession, channel_ids: list[str]) -> dict:
 
     await db.execute(delete(Video).where(Video.channel_id.in_(channel_ids)))
     await db.execute(delete(ChannelTag).where(ChannelTag.channel_id.in_(channel_ids)))
+    await db.execute(
+        delete(ChannelTagRejection).where(ChannelTagRejection.channel_id.in_(channel_ids))
+    )
     await db.execute(delete(HiddenChannel).where(HiddenChannel.channel_id.in_(channel_ids)))
     await db.execute(delete(Channel).where(Channel.youtube_id.in_(channel_ids)))
     await db.commit()

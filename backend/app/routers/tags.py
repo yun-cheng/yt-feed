@@ -4,14 +4,14 @@ Tag router — channels can have multiple tags. Tags are used for filtering in t
 
 from __future__ import annotations
 
-import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
-from app.models import Channel, Tag, ChannelTag, Video, HiddenChannel
-from app.config import settings
+from app.models import (
+    Channel, ChannelTag, ChannelTagRejection, Video, HiddenChannel,
+)
 
 router = APIRouter(prefix="/tags")
 
@@ -21,206 +21,185 @@ async def get_db():
         yield session
 
 
-# ── Default tags with keyword rules ──────────────────────────────────
+# ── Taxonomy ─────────────────────────────────────────────────────────
+#
+# A curated seed: fixed GROUPS (the sidebar's navigation frame), each with
+# `main` labels (broad, auto-applied) and `sub` labels (specific, offered as
+# suggestions). An LLM (app.llm) classifies each channel into this vocabulary;
+# it may invent new *sub* labels when a specific topic isn't covered, but never
+# new main labels or groups. See llm_label_channel().
+TAXONOMY_VERSION = 10
 
-DEFAULT_TAGS = {
-    # ── Coding / Tech ──
-    "coding": {"group": "開發", "icon": "💻", "keywords": [
-        "code", "programming", "developer", "software", "engineering",
-        "coding", "程式", "程式設計", "開發者", "coding", "web dev",
-        "app dev", "mobile dev", "system design", "cs dojo",
-        "developedbyed", "epcdiy", "fireship", "coding tech",
-        "academind", "philipp lackner", "very good ventures",
-        "theo", "t3.gg", "convex", "web dev simplified",
-        "the coding sloth", "cloud tech",
-    ]},
-    "flutter": {"group": "開發", "icon": "🐦", "keywords": [
-        "flutter", "dart", "resocoder", "filledstacks",
-        "flutter community", "flutter explained",
-    ]},
-    "AI": {"group": "開發", "icon": "🤖", "keywords": [
-        "artificial intelligence", "machine learning", "deep learning",
-        "deepmind", "anthropic", "claude", "openai", "gpt",
-        "llm", "large language model", "generative ai", "gen ai",
-        "ai safety", "ai assistant", "ai code editor", "ai nerd",
-        "firebase", "google deepmind", "google for developers",
-        "visual studio code",
-    ]},
-    "backend": {"group": "開發", "icon": "⚙️", "keywords": [
-        "backend", "server", "api", "database", "firebase",
-        "google cloud", "cloud", "雲端", "serverless",
-        "infrastructure", "devops", "linux",
-    ]},
-    "frontend": {"group": "開發", "icon": "🎨", "keywords": [
-            "frontend", "front-end", "front end",
-            "css", "html", "javascript",
-            "react", "vue", "angular",
-            "web dev", "web development", "web developer",
-            "網頁",
-        ]},
-    "google": {"group": "開發", "icon": "🔵", "keywords": [
-        "google", "firebase", "google cloud", "google for developers",
-        "google deepmind", "gdg", "line developers",
-    ]},
-    "tech-review": {"group": "開發", "icon": "📱", "keywords": [
-        "review", "評測", "開箱", "tech review", "terry chen",
-        "泰瑞", "先看评测", "作业本", "爱否", "极创意",
-        "mediastorm", "影视飓风", "曲博",
-    ]},
-    "diy": {"group": "開發", "icon": "🔧", "keywords": [
-        "diy", "水電", "宅水電", "超認真少年", "超認真",
-        "arduino", "maker", "自造",
-    ]},
-
-    # ── Language ──
-    "chinese": {"group": "語言", "icon": "🀄", "keywords": [
-        "中文", "chinese", "普通話", "mandarin",
-    ]},
-    "english": {"group": "語言", "icon": "🇬🇧", "keywords": [
-        "english", "英文", "英語", "st english", "esl",
-    ]},
-    "japanese": {"group": "語言", "icon": "🇯🇵", "keywords": [
-        "japanese", "日文", "日語", "日本語", "秋山耀平",
-        "秋山燿平", "出口日語", "日本", "東京",
-    ]},
-
-    # ── Music ──
-    "piano": {"group": "音樂", "icon": "🎹", "keywords": [
-        "piano", "鋼琴", "marasy", "pianist", "ピアノ",
-        "めいぷる", "maple piano", "演奏",
-    ]},
-    "music": {"group": "音樂", "icon": "🎵", "keywords": [
-        "music", "song", "cover", "guitar", "composer",
-        "音樂", "吉他", "樂團", "歌手", "作曲",
-        "nicechord", "好和弦", "musecow", "音樂家",
-    ]},
-
-    # ── Finance / News ──
-    "finance": {"group": "財經", "icon": "📈", "keywords": [
-        "finance", "invest", "stock", "股票", "投資", "理財",
-        "財經", "經濟", "caven", "成長家", "卡爾先生",
-        "小新新講", "艾爾文", "錢進前十趴", "這leo人",
-        "美股", "nick 美股", "春哥", "acquired", "startup",
-        "商業", "創業", "allen lab", "bill gates",
-    ]},
-    "news": {"group": "財經", "icon": "📰", "keywords": [
-        "news", "politics", "時事", "新聞", "政治",
-        "公視", "新聞實驗室", "dcard報報", "cheap",
-        "黃國昌", "曾博恩", "博恩",
-    ]},
-
-    # ── 知識 ──
-    "science": {"group": "知識", "icon": "🔬", "keywords": [
-        "science", "scientific", "physics", "biology", "chemistry",
-        "科學", "科普", "nature video", "scishow",
-        "pansi", "泛科學", "kurzgesagt", "nutshell",
-        "crashcourse", "big think", "mark rober",
-        "reallifelore", "geography now",
-    ]},
-    "education": {"group": "知識", "icon": "📚", "keywords": [
-        "education", "learn", "tutorial", "教學", "課程",
-        "知識", "history", "歷史", "回形针", "paperclip",
-        "下一本", "讀什麼", "阅部客", "閱讀", "罗振宇",
-        "罗辑思维", "邏輯思維", "老師好", "何同学",
-    ]},
-    "documentary": {"group": "知識", "icon": "🎥", "keywords": [
-        "documentary", "紀錄片", "discovery", "國家地理",
-        "national geographic", "nature video",
-    ]},
-    "art": {"group": "知識", "icon": "🎨", "keywords": [
-        "drawing", "painting", "illustration", "procreate",
-        "proko", "sketch",
-        "素描", "水彩", "油畫", "插畫",
-        "有點艺思", "刘采翎", "創意",
-    ]},
-    "health": {"group": "知識", "icon": "🏥", "keywords": [
-        "health", "medical", "medicine", "健康", "醫療",
-        "醫學", "醫生", "蒼藍鴿", "滄瀾教主", "漢醫",
-        "中醫", "當代漢醫苑", "保健", "養生",
-    ]},
-
-    # ── 生活 ──
-    "lifestyle": {"group": "生活", "icon": "☕", "keywords": [
-        "lifestyle", "vlog", "日常", "生活", "ace moment",
-        "gq taiwan", "穿搭", "時尚", "居家", "lo-fi house",
-        "living big", "tiny house", "erik van conover",
-        "我是老爸", "跳脫", "嘟式圈",
-    ]},
-    "travel": {"group": "生活", "icon": "✈️", "keywords": [
-        "travel", "旅遊", "旅行", "lonely planet", "景點",
-        "背包客", "出國", "the dodo men", "嘟嘟人",
-        "paolo fromtokyo", "台客不在家", "台客劇場",
-        "一条", "張修修", "真奈特", "茶里",
-    ]},
-    "real-estate": {"group": "生活", "icon": "🏠", "keywords": [
-        "real estate", "房地產", "買房", "賞屋", "房屋",
-        "不動產", "移民", "東京購屋", "看房", "租寓",
-        "南投買好房", "美國房地產",
-    ]},
-    "fitness": {"group": "生活", "icon": "💪", "keywords": [
-        "fitness", "workout", "gym", "健身", "運動", "訓練",
-        "肌肉", "增重", "卓叔", "減脂", "拳擊",
-        "hu boxing", "古月拳館", "拳擊小潘", "james tripp",
-    ]},
-
-    # ── 娛樂 ──
-    "entertainment": {"group": "娛樂", "icon": "🎬", "keywords": [
-        "entertainment", "comedy", "funny", "搞笑", "娛樂",
-        "綜藝", "迷因", "onion man", "洋蔥", "反正我很閒",
-        "啾啾鞋", "steven he", "zack d films", "蔡阿嘎",
-        "jordan has no life", "j-bao", "賤葆", "dcard video",
-    ]},
-    "gaming": {"group": "娛樂", "icon": "🎮", "keywords": [
-        "game", "gaming", "遊戲", "電玩", "實況",
-        "最強聯盟", "teogaming",
-    ]},
-    "podcast": {"group": "娛樂", "icon": "🎙️", "keywords": [
-        "podcast", "pod cast", "廣播", "音頻", "音頻節目",
-        "博音", "滄瀾教主", "知識長", "國威", "錢進前十趴",
-        "pocast", "audio", "電台", "訪談節目",
-    ]},
+SEED_TAXONOMY: dict[str, dict] = {
+    "Language": {
+        "icon": "🌐",
+        "main": {"chinese": "🀄", "english": "🇬🇧", "japanese": "🇯🇵",
+                 "korean": "🇰🇷", "spanish": "🇪🇸", "indonesian": "🇮🇩"},
+        "sub": [],
+    },
+    "Entertainment": {
+        "icon": "🎬",
+        "main": {"entertainment": "🎬", "comedy": "😂", "film-tv": "🍿",
+                 "anime": "🌸", "podcast": "🎙️", "vlog": "📹",
+                 "variety": "🎪", "documentary": "🎥"},
+        "sub": ["reaction", "skits", "talk-show", "storytelling", "vtuber",
+                "drama", "celebrity", "behind-the-scenes"],
+    },
+    "Music": {
+        "icon": "🎵",
+        "main": {"music": "🎵"},
+        "sub": ["pop", "rock", "classical", "hip-hop", "jazz", "electronic",
+                "k-pop", "j-pop", "piano", "guitar", "covers", "vocaloid",
+                "music-theory"],
+    },
+    "Gaming": {
+        "icon": "🎮",
+        "main": {"gaming": "🎮", "esports": "🏆"},
+        "sub": ["rpg", "fps", "strategy", "simulation", "mmo",
+                "league-of-legends", "speedrun", "game-dev", "retro-games"],
+    },
+    "Sports": {
+        "icon": "🏅",
+        "main": {"sports": "🏅"},
+        "sub": ["football", "basketball", "baseball", "boxing", "mma",
+                "motorsport", "tennis", "golf", "combat-sports"],
+    },
+    "Lifestyle": {
+        "icon": "☕",
+        "main": {"food": "🍜", "travel": "✈️", "fitness": "💪", "fashion": "👗",
+                 "beauty": "💄", "home": "🏠", "health": "🏥", "diy": "🔧",
+                 "pets": "🐾", "art": "🎨", "autos": "🚗", "productivity": "⚡"},
+        "sub": ["cooking", "recipes", "tourism", "backpacking", "bodybuilding",
+                "nutrition", "weight-loss", "makeup", "skincare",
+                "interior-design", "home-renovation", "minimalism", "drawing",
+                "illustration", "design", "parenting", "relationships"],
+    },
+    "Tech": {
+        "icon": "💻",
+        "main": {"tech": "📱", "coding": "💻", "ai": "🤖"},
+        "sub": ["gadgets", "reviews", "unboxing", "web-dev", "mobile-dev",
+                "data-science", "devops", "cybersecurity", "cloud", "python",
+                "hardware", "tech-news"],
+    },
+    "Knowledge": {
+        "icon": "📚",
+        "main": {"science": "🔬", "education": "📚", "history": "📜",
+                 "books": "📖", "language-learning": "🗣️"},
+        "sub": ["physics", "biology", "chemistry", "space", "psychology",
+                "philosophy", "geography", "nature", "wildlife", "engineering",
+                "explainer"],
+    },
+    "Society": {
+        "icon": "🏛️",
+        "main": {"news": "📰", "politics": "🏛️", "finance": "📈",
+                 "business": "💼", "real-estate": "🏘️", "career": "🧑‍💼"},
+        "sub": ["investing", "stocks", "crypto", "economics", "entrepreneurship",
+                "culture", "law", "geopolitics", "commentary", "retirement"],
+    },
 }
 
-TAGS_PATH = str(settings.project_root) + "/backend/config/tags.yaml"
+
+def _derive_maps():
+    group_of, icon_of, kind_of = {}, {}, {}
+    for grp, d in SEED_TAXONOMY.items():
+        for lbl, ic in d["main"].items():
+            group_of[lbl] = grp
+            icon_of[lbl] = ic
+            kind_of[lbl] = "language" if grp == "Language" else "main"
+        for lbl in d["sub"]:
+            group_of[lbl] = grp
+            icon_of[lbl] = d["icon"]  # subs inherit the group icon until promoted
+            kind_of[lbl] = "sub"
+    return group_of, icon_of, kind_of
 
 
-def _load_tags_config() -> dict:
-    import os
-    if os.path.exists(TAGS_PATH):
-        with open(TAGS_PATH) as f:
-            return yaml.safe_load(f) or {"tags": {}}
-    return {"tags": DEFAULT_TAGS}
+TAG_GROUP, TAG_ICON, TAG_KIND = _derive_maps()
+# Labels the LLM is allowed to APPLY (everything else it returns becomes a
+# suggestion): the main labels plus the language labels.
+MAIN_LABELS = {l for l, k in TAG_KIND.items() if k in ("main", "language")}
+LANGUAGE_LABELS = {l for l, k in TAG_KIND.items() if k == "language"}
 
 
-def _save_tags_config(config: dict):
-    with open(TAGS_PATH, "w") as f:
-        yaml.dump(config, f, allow_unicode=True, sort_keys=False)
+def tag_meta(name: str) -> tuple[str, str, str]:
+    """(group, icon, kind) for a label, defaulting to Other for invented ones."""
+    return (
+        TAG_GROUP.get(name, "Other"),
+        TAG_ICON.get(name, "🏷️"),
+        TAG_KIND.get(name, "sub"),
+    )
+
+
+def _vocab_text() -> str:
+    lines = []
+    for grp, d in SEED_TAXONOMY.items():
+        line = f"{grp} — main: {', '.join(d['main'])}"
+        if d["sub"]:
+            line += f"; sub: {', '.join(d['sub'])}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _label_system_prompt() -> str:
+    return (
+        "We want to give these YouTube channels labels describing what each "
+        "channel is about.\n\n"
+        "You get a channel's name, its self-written description, and any YouTube "
+        "topic hints. Use those together with what you already know about the "
+        "channel to choose labels from the vocabulary below.\n\n"
+        "- \"main\": the broad categories the channel is substantially about — "
+        "choose from the MAIN labels only. Include the channel's main "
+        "language(s) here too (one or more).\n"
+        "- \"suggested\": more specific sub-genres or minor recurring themes — "
+        "choose from the SUB labels. If a clear, specific topic has no matching "
+        "sub label, you may add a new one (single word or hyphenated, "
+        "lowercase). Never invent new main labels or new groups.\n"
+        "- Judge by what the channel is actually about, not incidental bio "
+        "mentions — ignore past jobs, one-off anecdotes, certifications, and "
+        "links to other platforms. \"I used to work at Intel\" isn't tech.\n"
+        "- Prefer precision. Most channels have 1–3 main labels besides the "
+        "language. If nothing fits, return empty lists.\n\n"
+        "Vocabulary:\n" + _vocab_text() + "\n\n"
+        'Return JSON: {"main": ["..."], "suggested": ["..."]}'
+    )
+
 
 
 # ── API endpoints ─────────────────────────────────────────────
 
 @router.get("")
-async def list_tags(db: AsyncSession = Depends(get_db)):
-    """List all tags with channel counts."""
-    config = _load_tags_config()
-    tags_config = config.get("tags", {})
+async def list_tags(
+    include_empty: bool = Query(
+        default=False, description="include tags no channel has (for the tag picker)"
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """List tags with channel counts.
 
-    # Get tag counts from DB
+    Defaults to only tags in use — the taxonomy is universal (every music genre,
+    every sport), so the sidebar shows just the user's slice of it. The tag
+    picker passes include_empty=true, since you must be able to add a label
+    nobody has yet.
+    """
     result = await db.execute(
         select(ChannelTag.tag_name, func.count(ChannelTag.channel_id))
         .group_by(ChannelTag.tag_name)
     )
     counts = dict(result.all())
 
-    return [
-        {
-            "name": name,
-            "group": data.get("group", "其他"),
-            "icon": data.get("icon", "🏷️"),
-            "channel_count": counts.get(name, 0),
-        }
-        for name, data in tags_config.items()
-    ]
+    # Names to consider: everything in use, plus (for the picker) the whole seed.
+    names = set(counts)
+    if include_empty:
+        names |= set(TAG_GROUP)
+
+    out = []
+    for name in names:
+        c = counts.get(name, 0)
+        if not include_empty and not c:
+            continue
+        group, icon, kind = tag_meta(name)
+        out.append({"name": name, "group": group, "icon": icon,
+                    "kind": kind, "channel_count": c})
+    return out
 
 
 @router.get("/channels")
@@ -233,81 +212,324 @@ async def list_tagged_channels(db: AsyncSession = Depends(get_db)):
     return tags_map
 
 
-def derive_tags(title: str, description: str, tags_config: dict) -> list[str]:
-    """Derive auto-tags for a channel from its name/description.
+def _channel_topics(channel) -> list[str]:
+    """The channel's stored YouTube topicCategories (empty if never fetched)."""
+    import json
 
-    A language tag (chinese/japanese/english) from script detection, plus every
-    keyword-rule tag whose keywords appear in the name+description. Pure \u2014 no DB.
+    try:
+        return json.loads(channel.topics) if channel.topics else []
+    except (ValueError, TypeError):
+        return []
+
+
+# How many recent video titles to sample when detecting a channel's language.
+_LANG_SAMPLE = 40
+
+
+def _language_from_titles(titles: list[str]) -> str | None:
+    """Language from what the channel actually publishes.
+
+    Much more reliable than the channel's own name: plenty of Chinese and
+    Japanese channels use a romanised name \u2014 "Dcard Video", "GQ Taiwan",
+    "Taiwan Bar", "marasy8" \u2014 and reading the name alone tags them English
+    despite every video being CJK. Japanese is told apart by kana, which Chinese
+    doesn't use.
     """
     import re
 
-    title = title or ""
-    text = f"{title} {description or ''}".lower()
-    tags: list[str] = []
-
-    # Smart language detection (from the title's script).
-    has_cjk = bool(re.search(r'[\u4e00-\u9fff\u3400-\u4dbf]', title))
-    has_hiragana = bool(re.search(r'[\u3040-\u309f]', title))
-    has_katakana = bool(re.search(r'[\u30a0-\u30ff]', title))
-    is_ascii = all(ord(c) < 128 for c in title if not c.isspace())
-
-    if has_cjk:
-        tags.append("chinese")
-    elif has_hiragana or has_katakana:
-        tags.append("japanese")
-    elif is_ascii and len(title) > 3:
-        tags.append("english")
-
-    # Keyword-based tags (language tags already handled above).
-    for tag_name, tag_data in tags_config.items():
-        if tag_name in ("chinese", "english", "japanese"):
-            continue
-        if any(kw.lower() in text for kw in tag_data.get("keywords", [])):
-            tags.append(tag_name)
-
-    return tags
+    if not titles:
+        return None
+    kana = sum(1 for t in titles if re.search(r'[\u3040-\u309f\u30a0-\u30ff]', t)) / len(titles)
+    if kana > 0.5:
+        return "japanese"
+    cjk = sum(1 for t in titles if re.search(r'[\u4e00-\u9fff\u3400-\u4dbf]', t)) / len(titles)
+    if cjk > 0.5:
+        return "chinese"
+    return "english"
 
 
-async def assign_auto_tags(db: AsyncSession, channels, tags_config: dict | None = None) -> int:
-    """Re-derive auto-assigned tags for the given channels.
+def _language_tag(title: str) -> str | None:
+    """Language from the channel name's script.
 
-    Clears each channel's existing auto tags (leaving manual ones intact), then
-    adds the freshly-derived set. Used by the full re-tag endpoint and by
-    subscription resync to tag newly-added channels. Caller commits.
+    Only a fallback for channels with no videos yet \u2014 see _language_from_titles.
     """
-    if tags_config is None:
-        tags_config = _load_tags_config().get("tags", {})
+    import re
+
+    if re.search(r'[\u4e00-\u9fff\u3400-\u4dbf]', title):
+        return "chinese"
+    if re.search(r'[\u3040-\u309f\u30a0-\u30ff]', title):
+        return "japanese"
+    if all(ord(c) < 128 for c in title if not c.isspace()) and len(title) > 3:
+        return "english"
+    return None
+
+
+def llm_label_channel(
+    title: str,
+    description: str,
+    topics: list[str] | None,
+    video_titles: list[str] | None = None,
+) -> dict:
+    """Ask the LLM to label a channel against the seed vocabulary.
+
+    Returns {"main": [...], "suggested": [...]}. Only seed main/language labels
+    are allowed in "main"; anything else the model returns (a seed sub, or an
+    invented one) is demoted to a suggestion. Language falls back to the
+    deterministic video-title detector if the model omits one or the call fails.
+    """
+    from app import llm
+
+    user = (
+        f"Channel name: {title}\n"
+        f"YouTube topic hints: {', '.join(topics) if topics else 'none'}\n"
+        f"Description:\n{description or '(no description)'}"
+    )
+    raw_main: list[str] = []
+    raw_sug: list[str] = []
+    try:
+        out = llm.chat_json(_label_system_prompt(), user)
+        raw_main = [str(x).lower().strip() for x in out.get("main", []) if str(x).strip()]
+        raw_sug = [str(x).lower().strip() for x in out.get("suggested", []) if str(x).strip()]
+    except Exception as e:  # missing key / API error / bad JSON — degrade, don't crash
+        print(f"[tags] LLM labelling failed for {title!r}: {e}")
+
+    # Only real main/language labels get applied; the rest become suggestions.
+    main = [l for l in raw_main if l in MAIN_LABELS]
+    demoted = [l for l in raw_main if l not in MAIN_LABELS]
+
+    # Language fallback: if the model gave no language, detect it deterministically.
+    if not any(l in LANGUAGE_LABELS for l in main):
+        lang = _language_from_titles(video_titles or []) or _language_tag(title or "")
+        if lang:
+            main.append(lang)
+
+    main = list(dict.fromkeys(main))
+    suggested = [l for l in dict.fromkeys(raw_sug + demoted) if l not in main]
+    return {"main": main, "suggested": suggested}
+
+
+def _stored_labels(channel) -> dict | None:
+    import json
+    try:
+        return json.loads(channel.llm_labels) if channel.llm_labels else None
+    except (ValueError, TypeError):
+        return None
+
+
+async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> int:
+    """(Re)label the given channels via the LLM and write their applied tags.
+
+    For each channel: reuse the stored LLM verdict unless `force` (then re-call
+    the API and re-store it). Main labels become applied auto tags, skipping any
+    the user removed (rejections) or added by hand (manual). Suggestions live in
+    the stored verdict and are surfaced by channel_suggestions(). Commits per
+    channel so a long batch saves progress. Returns applied-tag count.
+    """
+    import asyncio
+    import json
 
     from sqlalchemy import delete as sa_delete
 
+    rejected: dict[str, set[str]] = {}
+    for r in (await db.execute(select(ChannelTagRejection))).scalars().all():
+        rejected.setdefault(r.channel_id, set()).add(r.tag_name)
+    manual: dict[str, set[str]] = {}
+    for r in (
+        await db.execute(select(ChannelTag).where(ChannelTag.auto_assigned == 0))
+    ).scalars().all():
+        manual.setdefault(r.channel_id, set()).add(r.tag_name)
+
+    loop = asyncio.get_event_loop()
     assigned = 0
     for ch in channels:
+        labels = None if force else _stored_labels(ch)
+        if labels is None:
+            sample = [
+                r[0] for r in (
+                    await db.execute(
+                        select(Video.title)
+                        .where(Video.channel_id == ch.youtube_id)
+                        .order_by(Video.published_at.desc())
+                        .limit(_LANG_SAMPLE)
+                    )
+                ).all()
+            ]
+            labels = await loop.run_in_executor(
+                None, llm_label_channel, ch.title, ch.description,
+                _channel_topics(ch), sample,
+            )
+
+        row = await db.get(Channel, ch.youtube_id)
+        if row is None:
+            continue
+        row.llm_labels = json.dumps(labels, ensure_ascii=False)
+
         await db.execute(
             sa_delete(ChannelTag).where(
                 ChannelTag.channel_id == ch.youtube_id,
                 ChannelTag.auto_assigned == 1,
             )
         )
-        for tag_name in derive_tags(ch.title, ch.description, tags_config):
+        skip = rejected.get(ch.youtube_id, set()) | manual.get(ch.youtube_id, set())
+        for tag_name in labels.get("main", []):
+            if tag_name in skip:
+                continue
             db.add(ChannelTag(
                 channel_id=ch.youtube_id, tag_name=tag_name, auto_assigned=1
             ))
             assigned += 1
+        await db.commit()
+
     return assigned
 
 
+# Background re-tag: labelling all channels calls the LLM once each, which takes
+# minutes — far too long for a request. Run it in a thread like the scanner.
+_retagging = False
+
+
+async def _retag_all(force: bool):
+    from app.database import async_session
+    async with async_session() as db:
+        channels = list((await db.execute(select(Channel))).scalars().all())
+        await assign_auto_tags(db, channels, force=force)
+
+
 @router.post("/auto-assign")
-async def auto_assign_tags(db: AsyncSession = Depends(get_db)):
-    """Auto-tag all channels based on name/description keyword matching."""
-    config = _load_tags_config()
-    channels = (await db.execute(select(Channel))).scalars().all()
-    assigned = await assign_auto_tags(db, channels, config.get("tags", {}))
+async def auto_assign_tags(force: bool = Query(default=True)):
+    """Kick off a background re-tag of every channel via the LLM.
+
+    force=true re-calls the API for all channels; force=false only labels ones
+    without a stored verdict.
+    """
+    import asyncio
+    import threading
+
+    global _retagging
+    if _retagging:
+        return {"status": "already_running"}
+
+    def _run():
+        global _retagging
+        try:
+            asyncio.run(_retag_all(force=force))
+        finally:
+            _retagging = False
+
+    _retagging = True
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "started"}
+
+
+@router.get("/auto-assign/status")
+async def auto_assign_status():
+    return {"running": _retagging}
+
+
+async def channel_suggestions(db: AsyncSession, channel: Channel) -> list[str]:
+    """Tags offered for one-click add on a channel.
+
+    Two sources: the LLM's suggested sub-labels for this channel (from the stored
+    verdict), plus any tag the user removed — removing demotes a tag back to a
+    suggestion rather than burying it. Applied tags are excluded.
+    """
+    applied = {
+        r[0] for r in (
+            await db.execute(
+                select(ChannelTag.tag_name).where(
+                    ChannelTag.channel_id == channel.youtube_id
+                )
+            )
+        ).all()
+    }
+    rejected = {
+        r[0] for r in (
+            await db.execute(
+                select(ChannelTagRejection.tag_name).where(
+                    ChannelTagRejection.channel_id == channel.youtube_id
+                )
+            )
+        ).all()
+    }
+    stored = _stored_labels(channel) or {}
+    qualifies = set(stored.get("suggested", []))
+    return sorted((qualifies | rejected) - applied)
+
+
+@router.post("/{channel_id}/tag/{tag_name}")
+async def add_channel_tag(
+    channel_id: str, tag_name: str, db: AsyncSession = Depends(get_db)
+):
+    """Apply a tag to a channel (accepting a suggestion, or adding any label).
+
+    Stored as manual (auto_assigned=0) so re-tagging never clobbers it, and any
+    prior removal of this tag is cleared.
+    """
+    from sqlalchemy import delete as sa_delete
+
+    channel = (
+        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
+    ).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+
+    await db.execute(
+        sa_delete(ChannelTagRejection).where(
+            ChannelTagRejection.channel_id == channel_id,
+            ChannelTagRejection.tag_name == tag_name,
+        )
+    )
+    exists = (
+        await db.execute(
+            select(ChannelTag).where(
+                ChannelTag.channel_id == channel_id, ChannelTag.tag_name == tag_name
+            )
+        )
+    ).scalar_one_or_none()
+    if not exists:
+        db.add(ChannelTag(channel_id=channel_id, tag_name=tag_name, auto_assigned=0))
     await db.commit()
 
-    # Save default tags config
-    _save_tags_config(config)
+    return {"status": "ok", "suggested": await channel_suggestions(db, channel)}
 
-    return {"assigned": assigned, "channels": len(channels)}
+
+@router.delete("/{channel_id}/tag/{tag_name}")
+async def remove_channel_tag(
+    channel_id: str, tag_name: str, db: AsyncSession = Depends(get_db)
+):
+    """Remove a tag from a channel; it becomes a suggestion again.
+
+    Auto-derived tags get a rejection tombstone so the next re-tag doesn't just
+    put them back. Manual tags need none — they're only there because the user
+    added them.
+    """
+    from sqlalchemy import delete as sa_delete
+
+    channel = (
+        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
+    ).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+
+    row = (
+        await db.execute(
+            select(ChannelTag).where(
+                ChannelTag.channel_id == channel_id, ChannelTag.tag_name == tag_name
+            )
+        )
+    ).scalar_one_or_none()
+    if row:
+        was_auto = row.auto_assigned == 1
+        await db.execute(
+            sa_delete(ChannelTag).where(
+                ChannelTag.channel_id == channel_id, ChannelTag.tag_name == tag_name
+            )
+        )
+        if was_auto:
+            db.add(ChannelTagRejection(channel_id=channel_id, tag_name=tag_name))
+        await db.commit()
+
+    return {"status": "ok", "suggested": await channel_suggestions(db, channel)}
 
 
 @router.post("/{channel_id}")
@@ -370,12 +592,10 @@ async def feed_by_tags(
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
     if tag_list:
-        # Group selected tags by their section (group field in config)
-        config = _load_tags_config()
-        tags_config = config.get("tags", {})
+        # Group selected tags by their section (OR within a group, AND across).
         groups: dict[str, list[str]] = {}
         for tag in tag_list:
-            group = tags_config.get(tag, {}).get("group", "__ungrouped__")
+            group = TAG_GROUP.get(tag, "__ungrouped__")
             groups.setdefault(group, []).append(tag)
 
         # For each group: union of channel IDs (OR within group)

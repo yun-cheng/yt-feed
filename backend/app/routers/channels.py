@@ -112,6 +112,8 @@ async def channel_videos(
 
     ranked = rank_videos(videos, TimeWindow(window), {channel_id: channel.title}, sort=sort, time_mode=time_mode, channel_thumbnails={channel_id: channel.thumbnail_url})
 
+    from app.routers.tags import channel_suggestions
+
     return {
         "channel": {
             "youtube_id": channel.youtube_id,
@@ -120,6 +122,7 @@ async def channel_videos(
             "thumbnail_url": channel.thumbnail_url,
             "subscriber_count": channel.subscriber_count,
             "tags": tags,
+            "suggested_tags": await channel_suggestions(db, channel),
         },
         "window": window,
         "sort": sort,

@@ -31,6 +31,8 @@ class Base(DeclarativeBase):
 # COLUMNS to existing ones. Each entry: (table, column, DDL type + default).
 _COLUMN_MIGRATIONS = [
     ("videos", "is_short", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("channels", "topics", "TEXT DEFAULT ''"),
+    ("channels", "llm_labels", "TEXT DEFAULT ''"),
 ]
 
 
