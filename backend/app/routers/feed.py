@@ -3,6 +3,7 @@ Feed endpoints — ranked videos grouped by category.
 """
 
 import asyncio
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, Callable, Optional, TypeVar
@@ -347,6 +348,10 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
     if not v:
         return {}
     chan = await db.get(Channel, v.channel_id)
+    try:
+        title_labels = json.loads(v.title_labels) if v.title_labels else None
+    except (ValueError, TypeError):
+        title_labels = None
     return {
         "youtube_id": v.youtube_id,
         "title": v.title,
@@ -360,6 +365,7 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
         "duration_seconds": v.duration_seconds,
         "is_short": bool(v.is_short),
         "score": round(score_video(v.view_count, v.published_at), 2),
+        "title_labels": title_labels,
     }
 
 
