@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import TimeSortControls from './TimeSortControls'
 import type { VideoItem } from '../App'
 import VideoRow from './VideoRow'
+import ChannelTags from './ChannelTags'
 
 type ChannelInfo = {
   youtube_id: string
@@ -10,6 +11,7 @@ type ChannelInfo = {
   thumbnail_url: string
   subscriber_count: number
   tags: string[]
+  suggested_tags: string[]
 }
 
 type ChannelResponse = {
@@ -117,15 +119,14 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
           <p className="text-sm text-[#777] mt-1">
             {formatSubs(ch.subscriber_count)} subscribers
           </p>
-          {ch.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {ch.tags.map((tag) => (
-                <span key={tag} className="px-2 py-0.5 text-[11px] bg-[#272727] text-[#999] rounded-full">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
+          <ChannelTags
+            channelId={ch.youtube_id}
+            tags={ch.tags}
+            suggested={ch.suggested_tags ?? []}
+            onChange={({ tags, suggested }) =>
+              setChannel((c) => (c ? { ...c, tags, suggested_tags: suggested } : c))
+            }
+          />
           {ch.description && (
             <p className="text-xs text-[#555] mt-2 line-clamp-2 leading-relaxed max-w-xl">
               {ch.description}
