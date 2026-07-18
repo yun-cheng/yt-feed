@@ -1,4 +1,4 @@
-import type { TagInfo } from '../App'
+import type { TagInfo, LabelCount } from '../App'
 
 type Props = {
   tags: TagInfo[]
@@ -20,6 +20,15 @@ type Props = {
   onToggleShowHidden?: () => void
   contentMode?: 'videos' | 'shorts'
   onContentModeChange?: (mode: 'videos' | 'shorts') => void
+  // Channel-page mode: replace the global taxonomy with this channel's own
+  // video-title labels (see ChannelPage). Single-select filtering.
+  channelMode?: boolean
+  channelLabels?: LabelCount[] | null
+  channelLabelsBuilding?: boolean
+  channelLabelsProgress?: { done: number; total: number } | null
+  channelHasTopics?: boolean
+  selectedLabel?: string | null
+  onToggleLabel?: (label: string) => void
 }
 
 // Sidebar sections, in render order. Keys match the `group` field the backend
@@ -130,7 +139,7 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelLabelsProgress, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -339,7 +348,61 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
 
       <div className="border-t border-[#272727] mx-4 hidden md:block" />
 
-      {/* Tag groups */}
+      {/* Channel page: this channel's own topic labels (drawn from video titles),
+          replacing the global taxonomy, which is meaningless when already scoped
+          to one channel. */}
+      {channelMode ? (
+        <div className="p-4 flex-1 overflow-y-auto">
+          <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#717171]">
+            <span>🏷️</span>
+            <span>Topics</span>
+            {!!selectedLabel && (
+              <button
+                onClick={() => onToggleLabel?.(selectedLabel)}
+                className="ml-auto text-[10px] normal-case tracking-normal font-normal text-[#717171] hover:text-white"
+              >
+                clear
+              </button>
+            )}
+          </div>
+          {channelLabels === null || channelLabels === undefined ? (
+            <p className="text-xs text-[#555] animate-pulse">
+              {channelLabelsBuilding
+                ? channelLabelsProgress && channelLabelsProgress.total
+                  ? `Finding topics… ${Math.floor((channelLabelsProgress.done / channelLabelsProgress.total) * 100)}%`
+                  : 'Finding topics…'
+                : 'Loading…'}
+            </p>
+          ) : channelLabels.length === 0 ? (
+            <p className="text-xs text-[#555]">
+              {channelHasTopics ? 'No topics in this time range.' : 'No topics found for this channel.'}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {channelLabels.map(({ name, count }) => {
+                const active = selectedLabel === name
+                return (
+                  <button
+                    key={name}
+                    onClick={() => onToggleLabel?.(name)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
+                      active
+                        ? 'bg-white text-black font-medium'
+                        : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+                    }`}
+                  >
+                    <span>{name}</span>
+                    <span className={`text-[10px] ${active ? 'text-black/50' : 'text-[#555]'}`}>
+                      {count}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+      /* Tag groups */
       <div className="p-4 space-y-5 flex-1 overflow-y-auto">
         {!!hiddenCount && (
           <button
@@ -409,6 +472,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           )
         })}
       </div>
+      )}
     </aside>
   )
 }

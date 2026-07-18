@@ -392,6 +392,20 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
           )}
         </div>
 
+        {/* This video's topics — the channel-page labels derived from its title. */}
+        {meta?.title_labels && meta.title_labels.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            {meta.title_labels.map((label) => (
+              <span
+                key={label}
+                className="inline-flex items-center rounded-full bg-[#272727] px-2.5 py-1 text-xs text-[#ddd]"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+
         {/* No own scroll here: the details wrapper above owns scrolling, so the
             description flows at full height and scrolls with the rest. */}
         {description && (

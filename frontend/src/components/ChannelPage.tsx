@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import TimeSortControls from './TimeSortControls'
-import type { VideoItem } from '../App'
+import type { VideoItem, LabelCount } from '../App'
 import VideoRow from './VideoRow'
 import ChannelTags from './ChannelTags'
 
@@ -12,6 +12,10 @@ type ChannelInfo = {
   subscriber_count: number
   tags: string[]
   suggested_tags: string[]
+  // This channel's video-label vocabulary with counts; null = not built yet.
+  label_vocab: LabelCount[] | null
+  // Whether the channel has any topics at all, independent of the window.
+  has_topics: boolean
 }
 
 type ChannelResponse = {
@@ -36,6 +40,16 @@ type Props = {
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
   shorts?: boolean
+  // Selected sidebar label to filter this channel's videos by (null = none).
+  labelFilter?: string | null
+  // Report the channel's label vocabulary (the sidebar chips) up to App.
+  onVocabChange?: (vocab: LabelCount[] | null) => void
+  // Report whether phase-1 vocab building is in progress (sidebar spinner).
+  onBuildingChange?: (building: boolean) => void
+  // Report build progress ({done,total}) while labeling, or null when idle.
+  onBuildProgress?: (progress: { done: number; total: number } | null) => void
+  // Report whether the channel has any topics at all (window-independent).
+  onHasTopicsChange?: (has: boolean) => void
 }
 
 function formatSubs(n: number): string {
@@ -46,7 +60,7 @@ function formatSubs(n: number): string {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false }: Props) {
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onBuildProgress, onHasTopicsChange }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -57,20 +71,109 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
   const descRef = useRef<HTMLParagraphElement>(null)
   const loadingMoreRef = useRef(false)
 
-  // Fetch one page; append unless replacing.
+  // ── Video labels ──────────────────────────────────────────────
+  // vocabReady gates lazy per-video labeling: true once phase-1 built a
+  // non-empty vocabulary for this channel.
+  const [vocabReady, setVocabReady] = useState(false)
+  const labelBuildRef = useRef<string | null>(null)   // channel we've kicked build for
+  const pollTimerRef = useRef<number | undefined>(undefined)
+  const requestedRef = useRef<Set<string>>(new Set())  // video ids already sent to assign
+  const fetchPageRef = useRef<(offset: number, replace: boolean) => Promise<void>>(async () => {})
+
+  // Phase 1: report the vocabulary up to App, and build it (once) if missing.
+  const initChannelLabels = useCallback((chan: ChannelInfo) => {
+    if (chan.youtube_id !== channelId) return
+    onVocabChange?.(chan.label_vocab)
+    onHasTopicsChange?.(chan.has_topics)
+    if (chan.label_vocab != null) {
+      setVocabReady(chan.label_vocab.length > 0)
+      return
+    }
+    if (labelBuildRef.current === channelId) return  // build already in flight
+    labelBuildRef.current = channelId
+    onBuildingChange?.(true)
+
+    // On completion, refetch page 0 so the vocab arrives with view-scoped counts
+    // (the build/status endpoints don't know the current window).
+    const finish = () => {
+      if (labelBuildRef.current !== channelId) return  // switched away
+      onBuildingChange?.(false)
+      onBuildProgress?.(null)
+      fetchPageRef.current(0, true)
+    }
+    const poll = async () => {
+      try {
+        const s = await (await fetch(`/api/channels/${channelId}/labels/status`)).json()
+        if (labelBuildRef.current !== channelId) return
+        onBuildProgress?.(s.progress ?? null)
+        if (!s.building) { finish(); return }
+      } catch { /* keep polling */ }
+      pollTimerRef.current = window.setTimeout(poll, 2500)
+    }
+    fetch(`/api/channels/${channelId}/labels/build`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (labelBuildRef.current !== channelId) return
+        if (d.status === 'ready') { finish(); return }
+        pollTimerRef.current = window.setTimeout(poll, 2500)
+      })
+      .catch(() => { if (labelBuildRef.current === channelId) onBuildingChange?.(false) })
+  }, [channelId, onVocabChange, onBuildingChange, onHasTopicsChange])
+
+  // Fetch one page; append unless replacing. The selected label is filtered
+  // server-side so it spans the whole channel, not just loaded videos.
   const fetchPage = useCallback(async (offset: number, replace: boolean) => {
     const params = new URLSearchParams({
       window: timeWindow, sort, time_mode: timeMode,
       shorts: String(shorts),
       offset: String(offset), limit: String(CHANNEL_PAGE_SIZE),
     })
+    if (labelFilter) params.set('label', labelFilter)
     const res = await fetch(`/api/channels/${channelId}/videos?${params}`)
     if (!res.ok) throw new Error('Not found')
     const d: ChannelResponse = await res.json()
     setChannel(d.channel)
     setTotal(d.total || 0)
     setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
-  }, [channelId, timeWindow, sort, timeMode, shorts])
+    if (replace) initChannelLabels(d.channel)
+  }, [channelId, timeWindow, sort, timeMode, shorts, labelFilter, initChannelLabels])
+  fetchPageRef.current = fetchPage
+
+  // Stop polling and clear per-channel label state when leaving the channel.
+  useEffect(() => {
+    return () => {
+      labelBuildRef.current = null
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current)
+      requestedRef.current.clear()
+      setVocabReady(false)
+    }
+  }, [channelId])
+
+  // Phase 2: lazily label the currently-loaded videos that aren't labeled yet.
+  useEffect(() => {
+    if (!vocabReady) return
+    const ids = videos
+      .filter((v) => v.title_labels == null && !requestedRef.current.has(v.youtube_id))
+      .map((v) => v.youtube_id)
+    if (ids.length === 0) return
+    ids.forEach((id) => requestedRef.current.add(id))
+    let cancelled = false
+    fetch(`/api/channels/${channelId}/labels/assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_ids: ids }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        const map: Record<string, string[]> = d.labels || {}
+        setVideos((prev) => prev.map((v) =>
+          ids.includes(v.youtube_id) ? { ...v, title_labels: map[v.youtube_id] ?? [] } : v
+        ))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [videos, vocabReady, channelId])
 
   // Reset to the first page when the channel or filters change.
   useEffect(() => {
@@ -168,10 +271,23 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
       </div>
 
 
+      {/* Active label filter indicator */}
+      {labelFilter && (
+        <div className="flex items-center gap-2 mb-4 text-sm text-[#aaa]">
+          <span>Filtering by</span>
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white text-black font-medium">
+            {labelFilter}
+          </span>
+          <span className="text-[#555]">· {total} {total === 1 ? 'video' : 'videos'}</span>
+        </div>
+      )}
+
       {/* Video grid */}
       {videos.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#aaaaaa] text-sm">
-          No videos in this time range.
+          {labelFilter
+            ? `No "${labelFilter}" videos in this time range.`
+            : 'No videos in this time range.'}
         </div>
       ) : (
         <VideoRow

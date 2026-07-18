@@ -42,6 +42,9 @@ export type VideoItem = {
   duration_seconds: number
   is_short?: boolean
   score: number
+  // Channel-specific labels drawn from the title (channel page only).
+  // undefined = not present in payload; null = not labeled yet; [] = no labels.
+  title_labels?: string[] | null
 }
 
 export type TagInfo = {
@@ -49,6 +52,12 @@ export type TagInfo = {
   group: string
   icon: string
   channel_count: number
+}
+
+// A channel-page topic chip: a title-derived label and its whole-channel count.
+export type LabelCount = {
+  name: string
+  count: number
 }
 
 export type FeedGroup = {
@@ -205,6 +214,15 @@ export default function App() {
   const [tags, setTags] = useState<TagInfo[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(initPath.channelId)
+  // Channel-page video-label filtering: the current channel's label vocabulary
+  // (its sidebar chips) and the single selected label. Owned here because the
+  // sidebar (which renders the chips) lives in App while ChannelPage does the
+  // filtering. null vocab = not built yet.
+  const [channelLabelVocab, setChannelLabelVocab] = useState<LabelCount[] | null>(null)
+  const [channelLabelsBuilding, setChannelLabelsBuilding] = useState(false)
+  const [channelLabelsProgress, setChannelLabelsProgress] = useState<{ done: number; total: number } | null>(null)
+  const [channelHasTopics, setChannelHasTopics] = useState(false)
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeWindow, setTimeWindow] = useState(initQ.window)
   const [sort, setSort] = useState(initQ.sort)
@@ -398,6 +416,16 @@ export default function App() {
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [checkToken])
+
+  // Reset channel-label chips/selection whenever the viewed channel changes, so
+  // one channel's topics never leak onto another's sidebar.
+  useEffect(() => {
+    setChannelLabelVocab(null)
+    setChannelLabelsBuilding(false)
+    setChannelLabelsProgress(null)
+    setChannelHasTopics(false)
+    setSelectedLabel(null)
+  }, [selectedChannelId])
 
   // ── Sidebar state ─────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -874,6 +902,13 @@ export default function App() {
           onToggleShowHidden={() => setShowHidden(v => !v)}
           contentMode={contentMode}
           onContentModeChange={setContentMode}
+          channelMode={page === 'channel'}
+          channelLabels={channelLabelVocab}
+          channelLabelsBuilding={channelLabelsBuilding}
+          channelLabelsProgress={channelLabelsProgress}
+          channelHasTopics={channelHasTopics}
+          selectedLabel={selectedLabel}
+          onToggleLabel={(l) => setSelectedLabel((cur) => (cur === l ? null : l))}
         />
       </div>
 
@@ -936,7 +971,7 @@ export default function App() {
         />
         </div>
 
-        {selectedTags.length > 0 && (
+        {selectedTags.length > 0 && page !== 'channel' && (
           <div className="sticky z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2" style={{ top: isMobile ? 0 : topbarHeight }}>
             <span className="text-xs text-[#555] font-medium">Filters:</span>
             <div className="flex flex-wrap gap-1.5">
@@ -1047,6 +1082,11 @@ export default function App() {
             downloadIds={downloadIds}
             onHideChannel={hideChannel}
             shorts={contentMode === 'shorts'}
+            labelFilter={selectedLabel}
+            onVocabChange={setChannelLabelVocab}
+            onBuildingChange={setChannelLabelsBuilding}
+            onBuildProgress={setChannelLabelsProgress}
+            onHasTopicsChange={setChannelHasTopics}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">
