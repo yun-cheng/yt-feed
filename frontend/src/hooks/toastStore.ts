@@ -21,8 +21,8 @@ export function pushToast(message: string, kind: Toast['kind'] = 'error'): numbe
   const id = nextId++
   toasts = [...toasts, { id, message, kind }]
   listeners.forEach((l) => l())
-  // Auto-dismiss; errors linger a little so they're readable.
-  if (typeof window !== 'undefined') window.setTimeout(() => dismissToast(id), 6000)
+  // Auto-dismiss; errors linger long enough to read (and are click-dismissable).
+  if (typeof window !== 'undefined') window.setTimeout(() => dismissToast(id), 15000)
   return id
 }
 
