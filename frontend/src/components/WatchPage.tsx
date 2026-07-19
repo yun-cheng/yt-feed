@@ -96,7 +96,22 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // error — it wedges on a buffering spinner). Flipping this recreates the
   // player muted, which always plays. Resets per video (overlay is keyed by id).
   const [forcedMuted, setForcedMuted] = useState(false)
+  // Transient volume HUD shown while adjusting with the keyboard, YouTube-style.
+  const [volHint, setVolHint] = useState<{ vol: number; muted: boolean } | null>(null)
+  const volHintTimer = useRef<number | undefined>(undefined)
+  const showVolHint = (vol: number, muted: boolean) => {
+    setVolHint({ vol, muted })
+    if (volHintTimer.current) window.clearTimeout(volHintTimer.current)
+    volHintTimer.current = window.setTimeout(() => setVolHint(null), 900)
+  }
+  useEffect(() => () => { if (volHintTimer.current) window.clearTimeout(volHintTimer.current) }, [])
   const hostRef = useRef<HTMLDivElement>(null)
+  // The player box wraps the iframe AND our overlays (HUD, pin). It is both the
+  // fullscreen target — so the HUD is inside the fullscreen layer and the video
+  // still fills the screen — and the keyboard-focus target, so our shortcut
+  // handler owns the keyboard instead of the cross-origin iframe (which would
+  // otherwise swallow its own key events, in fullscreen especially).
+  const playerBoxRef = useRef<HTMLDivElement>(null)
   const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
 
   // Share the preview volume: apply it to the watch player, follow live changes,
@@ -108,11 +123,21 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     setVolume: (v: number) => void
     getVolume: () => number
     isMuted: () => boolean
+    mute: () => void
+    unMute: () => void
     playVideo: () => void
     pauseVideo: () => void
     getPlayerState: () => number
+    getCurrentTime: () => number
     seekTo: (seconds: number, allowSeekAhead: boolean) => void
+    // Undocumented caption module controls (see the `c` shortcut).
+    loadModule: (name: string) => void
+    setOption: (module: string, option: string, value: unknown) => void
+    getOption: (module: string, option: string) => unknown
   } | null>(null)
+  // Our own record of caption on/off — the embed's getOption('captions','track')
+  // returns the last track's metadata either way, so it can't be read back.
+  const ccOnRef = useRef(false)
 
   // Jump to a description timestamp and play from there.
   const seekTo = (seconds: number) => {
@@ -192,10 +217,13 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         events: {
           onReady: (e) => {
             playerRef.current = e.target
+            ccOnRef.current = false  // fresh player starts with captions off
             e.target.setVolume(volumeRef.current)
-            // Focus the player so its own keyboard shortcuts (space, arrows, f)
-            // work immediately without a click.
-            hostRef.current?.querySelector('iframe')?.focus()
+            // Focus the player box (not the iframe) so OUR shortcut handler
+            // owns the keyboard from the start — including ArrowUp/Down for
+            // volume, which the embedded iframe doesn't handle, and f/m, which
+            // otherwise only work while the iframe holds focus.
+            playerBoxRef.current?.focus()
             // Stall watchdog for the unmuted attempt: if we're not actually
             // PLAYING within 4s of ready, the autoplay was blocked → rebuild
             // muted rather than spinning forever.
@@ -241,21 +269,86 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => clearInterval(id)
   }, [])
 
-  // Space / k toggles play-pause. The embed handles this itself while focused;
-  // this covers the case where focus has moved off the iframe (so Space would
-  // otherwise just scroll the page). Ignored while typing in an input.
+  // Player keyboard shortcuts, handled at the window level so they work wherever
+  // focus is on the page (the details below, the action pills, empty space) —
+  // not only while the cross-origin iframe holds focus. We drive the player
+  // through the IFrame API and preventDefault so keys don't scroll the page.
+  //
+  // ArrowUp/Down (volume) is implemented here on purpose: YouTube's *embedded*
+  // iframe doesn't bind them to volume the way youtube.com does, so focusing the
+  // video can't help — we adjust the shared volume ourselves. (Any of these can
+  // only fire while focus isn't trapped inside the iframe, since a cross-origin
+  // iframe swallows its own key events; that's why we focus the container above.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (e.code !== 'Space' && e.key !== 'k') return
+      const t = e.target
+      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement
+        || (t instanceof HTMLElement && t.isContentEditable)) return
       const p = playerRef.current
       if (!p) return
-      e.preventDefault()
-      if (p.getPlayerState() === 1) p.pauseVideo()
-      else p.playVideo()
+      const k = e.key
+      if (e.code === 'Space' || k === 'k') {
+        e.preventDefault()
+        if (p.getPlayerState() === 1) p.pauseVideo(); else p.playVideo()
+      } else if (k === 'm') {
+        e.preventDefault()
+        const willMute = !p.isMuted()
+        if (willMute) p.mute(); else p.unMute()
+        showVolHint(volumeRef.current, willMute)
+      } else if (k === 'f') {
+        e.preventDefault()
+        if (document.fullscreenElement) document.exitFullscreen()
+        else playerBoxRef.current?.requestFullscreen?.()
+      } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+        e.preventDefault()
+        const next = Math.max(0, Math.min(100, Math.round(volumeRef.current + (k === 'ArrowUp' ? 5 : -5))))
+        if (k === 'ArrowUp' && p.isMuted()) p.unMute()  // raising volume unmutes, like YouTube
+        volumeRef.current = next  // update now so key-repeat bursts accumulate (ref lags a render)
+        setAudioVolume(next)  // shared store → applies to the player and previews
+        showVolHint(next, k !== 'ArrowUp' && p.isMuted())
+      } else if (k === 'c') {
+        // Toggle captions. YouTube's native `c` only works while the iframe is
+        // focused (which we deliberately avoid), so drive the embed's caption
+        // module via the API. State can't be read back reliably, so we track it.
+        e.preventDefault()
+        const next = !ccOnRef.current
+        ccOnRef.current = next
+        try {
+          if (next) {
+            p.loadModule('captions')
+            const list = p.getOption('captions', 'tracklist') as Array<{ languageCode?: string }> | undefined
+            const lang = (Array.isArray(list) && list[0]?.languageCode) || 'en'
+            p.setOption('captions', 'track', { languageCode: lang })
+          } else {
+            p.setOption('captions', 'track', {})
+          }
+        } catch { /* video has no captions / module unavailable */ }
+      } else if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'j' || k === 'l') {
+        e.preventDefault()
+        const step = (k === 'j' || k === 'l' ? 10 : 5) * (k === 'ArrowLeft' || k === 'j' ? -1 : 1)
+        p.seekTo(Math.max(0, p.getCurrentTime() + step), true)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Keep the keyboard on our handler even after the user clicks the video.
+  // Clicking a cross-origin iframe moves focus into it, and it then swallows its
+  // own key events — so ArrowUp/Down (and f/m) would stop working. When we see
+  // the iframe has taken focus, pull it back to the player box; the click's own
+  // action (play/pause) has already happened. This runs in fullscreen too — the
+  // player box IS the fullscreen element, so refocusing it is allowed and is
+  // what lets `f` reliably exit after a click landed in the video.
+  useEffect(() => {
+    const onBlur = () => {
+      window.setTimeout(() => {
+        const iframe = hostRef.current?.querySelector('iframe')
+        if (iframe && document.activeElement === iframe) playerBoxRef.current?.focus()
+      }, 0)
+    }
+    window.addEventListener('blur', onBlur)
+    return () => window.removeEventListener('blur', onBlur)
   }, [])
 
   return (
@@ -264,9 +357,36 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     <div className={pinned ? 'flex h-full flex-col' : 'w-full'}>
       {/* Full-bleed player: full width, square corners, no side padding. Keeps its
           natural 16:9 height in both modes (shrink-0 so the flex column can't
-          squash it while pinned). */}
-      <div className={`relative w-full bg-black aspect-video ${pinned ? 'shrink-0' : ''}`}>
+          squash it while pinned). Focusable + the fullscreen target (see refs). */}
+      <div
+        ref={playerBoxRef}
+        tabIndex={-1}
+        className={`relative w-full bg-black outline-none aspect-video [&:fullscreen]:aspect-auto ${pinned ? 'shrink-0' : ''}`}
+      >
         <div ref={hostRef} className="absolute inset-0" />
+
+        {/* Volume HUD — a brief overlay while adjusting volume / mute by keyboard. */}
+        {volHint && (
+          <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/75 px-3 py-1.5 text-white shadow-lg">
+            <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              {volHint.muted || volHint.vol === 0 ? (
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3 2.7-2.7a1 1 0 0 0-1.4-1.4L14.1 10.6l-.1.1V13.4l2.9 2.9a1 1 0 0 0 1.4-1.4L16.5 12z" />
+              ) : (
+                <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />
+              )}
+            </svg>
+            {volHint.muted ? (
+              <span className="text-sm font-medium">Muted</span>
+            ) : (
+              <>
+                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/25">
+                  <div className="h-full rounded-full bg-white" style={{ width: `${volHint.vol}%` }} />
+                </div>
+                <span className="w-9 text-right text-sm font-medium tabular-nums">{volHint.vol}%</span>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Pin toggle, bottom-right corner — equal 8px gap on the bottom and
             right, sat on the button-row line so it clears the progress scrubber. */}
