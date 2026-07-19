@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { apiFetch } from './lib/api'
+import Toaster from './components/Toaster'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
@@ -239,7 +241,7 @@ export default function App() {
 
   const fetchWatchLater = useCallback(async () => {
     try {
-      const res = await fetch('/api/watch-later')
+      const res = await apiFetch('/api/watch-later')
       if (res.ok) setWatchLater(await res.json())
     } catch { /* ignore */ }
   }, [])
@@ -251,7 +253,7 @@ export default function App() {
         const legacy = JSON.parse(localStorage.getItem('watch_later') || '[]')
         if (Array.isArray(legacy) && legacy.length > 0) {
           await Promise.all(legacy.map((v: VideoItem) =>
-            fetch('/api/watch-later', {
+            apiFetch('/api/watch-later', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(v),
             }).catch(() => {})))
@@ -267,9 +269,9 @@ export default function App() {
     // optimistic update, then sync to the backend
     setWatchLater(prev => has ? prev.filter(v => v.youtube_id !== video.youtube_id) : [video, ...prev])
     if (has) {
-      fetch(`/api/watch-later/${video.youtube_id}`, { method: 'DELETE' }).catch(() => {})
+      apiFetch(`/api/watch-later/${video.youtube_id}`, { method: 'DELETE' }).catch(() => {})
     } else {
-      fetch('/api/watch-later', {
+      apiFetch('/api/watch-later', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(video),
       }).catch(() => {})
@@ -291,7 +293,7 @@ export default function App() {
         if (legacy !== null) {
           const ids: string[] = JSON.parse(legacy) || []
           if (ids.length > 0) {
-            await fetch('/api/hidden-channels/import', {
+            await apiFetch('/api/hidden-channels/import', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ channel_ids: ids }),
@@ -301,7 +303,7 @@ export default function App() {
         }
       } catch { /* ignore malformed legacy data */ }
       try {
-        const res = await fetch('/api/hidden-channels')
+        const res = await apiFetch('/api/hidden-channels')
         const data = await res.json()
         if (!cancelled) setHiddenChannels(new Set<string>(data.channel_ids ?? []))
       } catch { /* leave empty on failure */ }
@@ -313,7 +315,7 @@ export default function App() {
   function hideChannel(channelId: string) {
     if (hiddenChannels.has(channelId)) return
     setHiddenChannels(prev => { const next = new Set(prev); next.add(channelId); return next })
-    fetch(`/api/hidden-channels/${channelId}`, { method: 'POST' }).catch(() => {})
+    apiFetch(`/api/hidden-channels/${channelId}`, { method: 'POST' }).catch(() => {})
   }
   // From the Channels page: flip a channel's hidden state (optimistic).
   function toggleHiddenChannel(channelId: string) {
@@ -323,14 +325,14 @@ export default function App() {
       wasHidden ? next.delete(channelId) : next.add(channelId)
       return next
     })
-    fetch(`/api/hidden-channels/${channelId}`, { method: wasHidden ? 'DELETE' : 'POST' }).catch(() => {})
+    apiFetch(`/api/hidden-channels/${channelId}`, { method: wasHidden ? 'DELETE' : 'POST' }).catch(() => {})
   }
 
   // ── Playlists (server-side) ───────────────────────────
   const [playlists, setPlaylists] = useState<PlaylistSummary[]>([])
   const fetchPlaylists = useCallback(async () => {
     try {
-      const res = await fetch('/api/playlists')
+      const res = await apiFetch('/api/playlists')
       if (res.ok) setPlaylists(await res.json())
     } catch { /* ignore */ }
   }, [])
@@ -344,7 +346,7 @@ export default function App() {
 
   const deletePlaylist = useCallback(async (id: number) => {
     setPlaylists(prev => prev.filter(p => p.id !== id))
-    try { await fetch(`/api/playlists/${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+    try { await apiFetch(`/api/playlists/${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
     fetchPlaylists()
   }, [fetchPlaylists])
 
@@ -354,7 +356,7 @@ export default function App() {
 
   const fetchDownloads = useCallback(async () => {
     try {
-      const res = await fetch('/api/downloads')
+      const res = await apiFetch('/api/downloads')
       if (res.ok) setDownloads(await res.json())
     } catch { /* ignore */ }
   }, [])
@@ -383,7 +385,7 @@ export default function App() {
     setDownloads(prev => prev.some(d => d.youtube_id === video.youtube_id) ? prev
       : [{ ...meta, status: 'downloading', error: '', filesize: 0, created_at: new Date().toISOString() }, ...prev])
     try {
-      await fetch('/api/downloads', {
+      await apiFetch('/api/downloads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(meta),
@@ -394,7 +396,7 @@ export default function App() {
 
   const deleteDownload = useCallback(async (videoId: string) => {
     setDownloads(prev => prev.filter(d => d.youtube_id !== videoId))
-    try { await fetch(`/api/downloads/${videoId}`, { method: 'DELETE' }) } catch { /* ignore */ }
+    try { await apiFetch(`/api/downloads/${videoId}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }, [])
 
   // ── YouTube API token health (reminder to re-auth) ────
@@ -403,7 +405,7 @@ export default function App() {
     () => sessionStorage.getItem('yt_token_notice_dismissed') === '1'
   )
   const checkToken = useCallback((force = false) => {
-    fetch(`/api/youtube-token${force ? '?force=1' : ''}`)
+    apiFetch(`/api/youtube-token${force ? '?force=1' : ''}`, { quiet: true })
       .then(r => r.json())
       .then(d => setTokenBad(d && d.ok === false))
       .catch(() => {})
@@ -634,8 +636,8 @@ export default function App() {
   const fetchTags = useCallback(async () => {
     try {
       const [tagsRes, channelsRes] = await Promise.all([
-        fetch('/api/tags'),
-        fetch('/api/tags/channels'),
+        apiFetch('/api/tags'),
+        apiFetch('/api/tags/channels'),
       ])
       setTags(await tagsRes.json())
       const channelMap: Record<string, string[]> = await channelsRes.json()
@@ -671,7 +673,7 @@ export default function App() {
     })
     if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
     if (showHidden) params.set('include_hidden', 'true')
-    const res = await fetch(`/api/tags/feed?${params}`)
+    const res = await apiFetch(`/api/tags/feed?${params}`)
     const data = await res.json()
     setFeedTotal(data.total || 0)
     setFeed((prev) => {
@@ -1195,6 +1197,7 @@ export default function App() {
           />
         </div>
       )}
+      <Toaster />
     </div>
   )
 }

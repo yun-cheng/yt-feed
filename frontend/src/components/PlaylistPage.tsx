@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
 import type { VideoItem } from '../App'
 
@@ -23,7 +24,7 @@ export default function PlaylistPage({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/playlists/${playlistId}`)
+      const res = await apiFetch(`/api/playlists/${playlistId}`)
       if (!res.ok) { setNotFound(true); return }
       const d = await res.json()
       setName(d.name)
@@ -43,7 +44,7 @@ export default function PlaylistPage({
   }, [load])
 
   const deletePlaylist = async () => {
-    try { await fetch(`/api/playlists/${playlistId}`, { method: 'DELETE' }) } catch { /* ignore */ }
+    try { await apiFetch(`/api/playlists/${playlistId}`, { method: 'DELETE' }) } catch { /* ignore */ }
     window.dispatchEvent(new Event('playlists-changed'))
     onDeleted()
   }
@@ -51,7 +52,7 @@ export default function PlaylistPage({
   const removeFromPlaylist = async (video: VideoItem) => {
     setVideos((prev) => prev.filter((v) => v.youtube_id !== video.youtube_id))  // optimistic
     try {
-      await fetch(`/api/playlists/${playlistId}/items/${video.youtube_id}`, { method: 'DELETE' })
+      await apiFetch(`/api/playlists/${playlistId}/items/${video.youtube_id}`, { method: 'DELETE' })
     } catch { /* ignore */ }
     window.dispatchEvent(new Event('playlists-changed'))
   }

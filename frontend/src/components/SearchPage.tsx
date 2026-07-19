@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
 import type { VideoItem } from '../App'
 
@@ -32,7 +33,7 @@ export default function SearchPage({
 
   // Fetch one page of results; append video hits unless replacing.
   const fetchPage = useCallback(async (q: string, offset: number, replace: boolean, signal?: AbortSignal) => {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/search?q=${encodeURIComponent(q)}&offset=${offset}&limit=${SEARCH_PAGE_SIZE}`,
       signal ? { signal } : {},
     )

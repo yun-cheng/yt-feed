@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { apiFetch } from '../lib/api'
 import TimeSortControls from './TimeSortControls'
 import type { VideoItem, LabelCount } from '../App'
 import VideoRow from './VideoRow'
@@ -100,13 +101,13 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     }
     const poll = async () => {
       try {
-        const s = await (await fetch(`/api/channels/${channelId}/labels/status`)).json()
+        const s = await (await apiFetch(`/api/channels/${channelId}/labels/status`, { quiet: true })).json()
         if (labelBuildRef.current !== channelId) return
         if (!s.building) { finish(); return }
       } catch { /* keep polling */ }
       pollTimerRef.current = window.setTimeout(poll, 2500)
     }
-    fetch(`/api/channels/${channelId}/labels/build`, { method: 'POST' })
+    apiFetch(`/api/channels/${channelId}/labels/build`, { method: 'POST', quiet: true })
       .then((r) => r.json())
       .then((d) => {
         if (labelBuildRef.current !== channelId) return
@@ -125,7 +126,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
       offset: String(offset), limit: String(CHANNEL_PAGE_SIZE),
     })
     if (labelFilter) params.set('label', labelFilter)
-    const res = await fetch(`/api/channels/${channelId}/videos?${params}`)
+    const res = await apiFetch(`/api/channels/${channelId}/videos?${params}`)
     if (!res.ok) throw new Error('Not found')
     const d: ChannelResponse = await res.json()
     setChannel(d.channel)
@@ -154,10 +155,11 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     if (ids.length === 0) return
     ids.forEach((id) => requestedRef.current.add(id))
     let cancelled = false
-    fetch(`/api/channels/${channelId}/labels/assign`, {
+    apiFetch(`/api/channels/${channelId}/labels/assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ video_ids: ids }),
+      quiet: true,
     })
       .then((r) => r.json())
       .then((d) => {

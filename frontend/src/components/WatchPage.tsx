@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { apiFetch } from '../lib/api'
 import type { ReactNode } from 'react'
 import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
@@ -137,7 +138,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   useEffect(() => {
     setMeta(video ?? null)
     let cancelled = false
-    fetch(`/api/feed/video/${videoId}`)
+    apiFetch(`/api/feed/video/${videoId}`)
       .then((r) => r.json())
       .then((d) => { if (!cancelled && d && d.youtube_id) setMeta(d) })
       .catch(() => { /* keep the card metadata / minimal chrome */ })
@@ -147,7 +148,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   useEffect(() => {
     setDescription('')
     let cancelled = false
-    fetch(`/api/feed/description/${videoId}`)
+    apiFetch(`/api/feed/description/${videoId}`)
       .then((r) => r.json())
       .then((d) => { if (!cancelled) setDescription(d?.description || '') })
       .catch(() => { /* no description box */ })

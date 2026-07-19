@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { apiFetch } from '../lib/api'
 import type { VideoItem } from '../App'
 
 type Playlist = { id: number; name: string; item_count: number; thumbnail_url: string }
@@ -30,8 +31,8 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
     setLoading(true)
     try {
       const [pl, mem] = await Promise.all([
-        fetch('/api/playlists').then((r) => (r.ok ? r.json() : [])),
-        fetch(`/api/playlists/containing/${video.youtube_id}`).then((r) => (r.ok ? r.json() : [])),
+        apiFetch('/api/playlists').then((r) => (r.ok ? r.json() : [])),
+        apiFetch(`/api/playlists/containing/${video.youtube_id}`).then((r) => (r.ok ? r.json() : [])),
       ])
       setPlaylists(pl)
       setMemberIds(new Set(mem))
@@ -48,9 +49,9 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
     setPlaylists((prev) => prev.map((p) => p.id === pid ? { ...p, item_count: p.item_count + (has ? -1 : 1) } : p))
     try {
       if (has) {
-        await fetch(`/api/playlists/${pid}/items/${video.youtube_id}`, { method: 'DELETE' })
+        await apiFetch(`/api/playlists/${pid}/items/${video.youtube_id}`, { method: 'DELETE' })
       } else {
-        await fetch(`/api/playlists/${pid}/items`, {
+        await apiFetch(`/api/playlists/${pid}/items`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(video),
         })
       }
@@ -62,11 +63,11 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
     const name = newName.trim()
     if (!name) return
     try {
-      const res = await fetch('/api/playlists', {
+      const res = await apiFetch('/api/playlists', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
       })
       const p = await res.json()
-      await fetch(`/api/playlists/${p.id}/items`, {
+      await apiFetch(`/api/playlists/${p.id}/items`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(video),
       })
       notifyChanged()

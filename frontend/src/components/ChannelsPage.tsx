@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 type ChannelInfo = {
   youtube_id: string
@@ -51,7 +52,7 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
     try {
       const params = new URLSearchParams({ sort })
       if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
-      const res = await fetch(`/api/channels?${params}`)
+      const res = await apiFetch(`/api/channels?${params}`)
       setChannels(await res.json())
     } catch (e) {
       console.error('Failed to fetch channels:', e)

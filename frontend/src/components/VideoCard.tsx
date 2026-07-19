@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
+import { apiFetch } from '../lib/api'
 import type { VideoItem } from '../App'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import SaveToPlaylist from './SaveToPlaylist'
@@ -514,7 +515,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const fetchStoryboard = useCallback(async () => {
     if (storyboard) return
     try {
-      const res = await fetch(`/api/feed/storyboard/${video.youtube_id}`)
+      const res = await apiFetch(`/api/feed/storyboard/${video.youtube_id}`, { quiet: true })
       const data = await res.json()
       if (data?.fragment_urls?.length) setStoryboard(data)
     } catch { /* ignore */ }
@@ -618,7 +619,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const fetchCaptions = useCallback(() => {
     if (captionsFetchedRef.current) return
     captionsFetchedRef.current = true
-    fetch(`/api/feed/captions/${video.youtube_id}`)
+    apiFetch(`/api/feed/captions/${video.youtube_id}`, { quiet: true })
       .then((r) => r.json())
       .then((d) => setCaptions(Array.isArray(d?.cues) ? d.cues : []))
       .catch(() => setCaptions([]))

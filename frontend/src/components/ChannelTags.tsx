@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { apiFetch } from '../lib/api'
 
 type TagMeta = { name: string; group: string; icon: string; channel_count: number }
 
@@ -26,7 +27,7 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
   // The full taxonomy — include_empty, because the sidebar list only carries
   // tags someone already has, and you must be able to add one nobody has yet.
   useEffect(() => {
-    fetch('/api/tags?include_empty=true')
+    apiFetch('/api/tags?include_empty=true')
       .then((r) => r.json())
       .then(setAllTags)
       .catch(() => {})
@@ -52,7 +53,7 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
   const send = async (tag: string, method: 'POST' | 'DELETE') => {
     setBusy(tag)
     try {
-      const res = await fetch(`/api/tags/${channelId}/tag/${encodeURIComponent(tag)}`, { method })
+      const res = await apiFetch(`/api/tags/${channelId}/tag/${encodeURIComponent(tag)}`, { method })
       if (!res.ok) return
       const d = await res.json()
       onChange({

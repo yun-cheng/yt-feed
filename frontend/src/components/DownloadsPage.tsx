@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { apiFetch } from '../lib/api'
 import VideoCard from './VideoCard'
 import type { DownloadItem, VideoItem } from '../App'
 
@@ -39,7 +40,7 @@ export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
   const ensureBlob = useCallback((id: string) => {
     if (blobUrlsRef.current[id] || fetchingRef.current.has(id)) return
     fetchingRef.current.add(id)
-    fetch(`/api/downloads/${id}/file`)
+    apiFetch(`/api/downloads/${id}/file`)
       .then((r) => r.blob())
       .then((b) => setBlobUrls((prev) => prev[id] ? prev : { ...prev, [id]: URL.createObjectURL(b) }))
       .catch(() => {})
