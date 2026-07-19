@@ -222,8 +222,6 @@ async def build_channel_vocab(db, channel_id: str) -> list[str]:
     # Run batches CONCURRENCY at a time (each _label_batch is a blocking HTTP
     # call in a worker thread). The accumulated vocabulary is fed forward as a
     # hint between chunks so labels converge without going fully sequential.
-    _progress[channel_id] = (0, len(rows))
-    done = 0
     for i in range(0, len(batches), CONCURRENCY):
         chunk = batches[i:i + CONCURRENCY]
         hint = [d for d, _c in sorted(counts.values(), key=lambda x: -x[1])][:VOCAB_HINT_LIMIT]
@@ -238,8 +236,6 @@ async def build_channel_vocab(db, channel_id: str) -> list[str]:
                     if key not in counts:
                         counts[key] = [lb, 0]
                     counts[key][1] += 1
-        done += sum(len(b) for b in chunk)
-        _progress[channel_id] = (done, len(rows))
 
     vocab = [
         disp for disp, cnt in sorted(counts.values(), key=lambda x: -x[1])
@@ -281,7 +277,6 @@ async def build_channel_vocab(db, channel_id: str) -> list[str]:
         if row is not None:
             row.title_labels = json.dumps(final.get(vid, []), ensure_ascii=False)
     await db.commit()
-    _progress.pop(channel_id, None)
     return vocab
 
 
@@ -348,18 +343,10 @@ def _labels_or_empty(raw: str) -> list[str]:
 # (like the scanner / channel re-tagger) and let the page poll for completion.
 _building: set[str] = set()
 _build_lock = threading.Lock()
-# channel_id -> (videos_labeled_so_far, total) while a build runs.
-_progress: dict[str, tuple[int, int]] = {}
 
 
 def is_building(channel_id: str) -> bool:
     return channel_id in _building
-
-
-def build_progress(channel_id: str) -> dict | None:
-    """{done, total} for an in-flight build, or None when not building."""
-    p = _progress.get(channel_id)
-    return {"done": p[0], "total": p[1]} if p else None
 
 
 def start_build(channel_id: str, force: bool = False) -> dict:
@@ -375,7 +362,6 @@ def start_build(channel_id: str, force: bool = False) -> dict:
             print(f"[video_labels] build failed for {channel_id}: {e}")
         finally:
             _building.discard(channel_id)
-            _progress.pop(channel_id, None)
 
     threading.Thread(target=_run, daemon=True).start()
     return {"status": "started"}

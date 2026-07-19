@@ -220,7 +220,6 @@ export default function App() {
   // filtering. null vocab = not built yet.
   const [channelLabelVocab, setChannelLabelVocab] = useState<LabelCount[] | null>(null)
   const [channelLabelsBuilding, setChannelLabelsBuilding] = useState(false)
-  const [channelLabelsProgress, setChannelLabelsProgress] = useState<{ done: number; total: number } | null>(null)
   const [channelHasTopics, setChannelHasTopics] = useState(false)
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -422,7 +421,6 @@ export default function App() {
   useEffect(() => {
     setChannelLabelVocab(null)
     setChannelLabelsBuilding(false)
-    setChannelLabelsProgress(null)
     setChannelHasTopics(false)
     setSelectedLabel(null)
   }, [selectedChannelId])
@@ -905,7 +903,6 @@ export default function App() {
           channelMode={page === 'channel'}
           channelLabels={channelLabelVocab}
           channelLabelsBuilding={channelLabelsBuilding}
-          channelLabelsProgress={channelLabelsProgress}
           channelHasTopics={channelHasTopics}
           selectedLabel={selectedLabel}
           onToggleLabel={(l) => setSelectedLabel((cur) => (cur === l ? null : l))}
@@ -1085,7 +1082,6 @@ export default function App() {
             labelFilter={selectedLabel}
             onVocabChange={setChannelLabelVocab}
             onBuildingChange={setChannelLabelsBuilding}
-            onBuildProgress={setChannelLabelsProgress}
             onHasTopicsChange={setChannelHasTopics}
           />
         ) : page === 'feed' ? (

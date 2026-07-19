@@ -46,8 +46,6 @@ type Props = {
   onVocabChange?: (vocab: LabelCount[] | null) => void
   // Report whether phase-1 vocab building is in progress (sidebar spinner).
   onBuildingChange?: (building: boolean) => void
-  // Report build progress ({done,total}) while labeling, or null when idle.
-  onBuildProgress?: (progress: { done: number; total: number } | null) => void
   // Report whether the channel has any topics at all (window-independent).
   onHasTopicsChange?: (has: boolean) => void
 }
@@ -60,7 +58,7 @@ function formatSubs(n: number): string {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onBuildProgress, onHasTopicsChange }: Props) {
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -98,14 +96,12 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     const finish = () => {
       if (labelBuildRef.current !== channelId) return  // switched away
       onBuildingChange?.(false)
-      onBuildProgress?.(null)
       fetchPageRef.current(0, true)
     }
     const poll = async () => {
       try {
         const s = await (await fetch(`/api/channels/${channelId}/labels/status`)).json()
         if (labelBuildRef.current !== channelId) return
-        onBuildProgress?.(s.progress ?? null)
         if (!s.building) { finish(); return }
       } catch { /* keep polling */ }
       pollTimerRef.current = window.setTimeout(poll, 2500)

@@ -25,7 +25,6 @@ type Props = {
   channelMode?: boolean
   channelLabels?: LabelCount[] | null
   channelLabelsBuilding?: boolean
-  channelLabelsProgress?: { done: number; total: number } | null
   channelHasTopics?: boolean
   selectedLabel?: string | null
   onToggleLabel?: (label: string) => void
@@ -139,7 +138,7 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelLabelsProgress, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -367,11 +366,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           </div>
           {channelLabels === null || channelLabels === undefined ? (
             <p className="text-xs text-[#555] animate-pulse">
-              {channelLabelsBuilding
-                ? channelLabelsProgress && channelLabelsProgress.total
-                  ? `Finding topics… ${Math.floor((channelLabelsProgress.done / channelLabelsProgress.total) * 100)}%`
-                  : 'Finding topics…'
-                : 'Loading…'}
+              {channelLabelsBuilding ? 'Finding topics…' : 'Loading…'}
             </p>
           ) : channelLabels.length === 0 ? (
             <p className="text-xs text-[#555]">

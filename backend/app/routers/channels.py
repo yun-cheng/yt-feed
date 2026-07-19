@@ -229,7 +229,6 @@ async def video_labels_status(channel_id: str, db: AsyncSession = Depends(get_db
     return {
         "building": video_labels.is_building(channel_id),
         "built": video_labels.is_current(channel),
-        "progress": video_labels.build_progress(channel_id),
     }
 
 
