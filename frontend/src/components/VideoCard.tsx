@@ -1040,7 +1040,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
 
         {/* Duration badge — shows remaining time while hovered, hides when preview scrubbing */}
         {video.duration_seconds > 0 && !hoverRatio && (
-          <div className={`absolute right-1 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium transition-all ${isHovered ? 'bottom-6' : 'bottom-1'}`}>
+          <div className={`absolute right-1 z-[6] bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium transition-all ${isHovered ? 'bottom-6' : 'bottom-1'}`}>
             {isHovered && duration > 0
               ? formatDuration(Math.max(0, Math.round(duration - currentTime)))
               : formatDuration(video.duration_seconds)}
