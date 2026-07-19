@@ -227,10 +227,24 @@ async def _fetch_captions(video_id: str, lang: str = "en") -> list[dict] | None:
             text = "".join(s.get("utf8", "") for s in segs).replace("\n", " ").strip()
             if not text:
                 continue
+            start_ms = ev.get("tStartMs", 0)
+            # Per-word timing: auto-caption segments carry a tOffsetMs from the
+            # event start, which lets the client reveal words one at a time (the
+            # rolling effect the YouTube player shows). Manual subs have no offset,
+            # so every word lands at the cue start = whole line at once.
+            words = [
+                {
+                    "t": round((start_ms + (s.get("tOffsetMs") or 0)) / 1000, 3),
+                    "text": s.get("utf8", "").replace("\n", " "),
+                }
+                for s in segs
+                if s.get("utf8", "").strip()
+            ]
             cues.append({
-                "start": round(ev.get("tStartMs", 0) / 1000, 3),
+                "start": round(start_ms / 1000, 3),
                 "dur": round(ev.get("dDurationMs", 0) / 1000, 3),
                 "text": text,
+                "words": words,
             })
         return cues or None
 

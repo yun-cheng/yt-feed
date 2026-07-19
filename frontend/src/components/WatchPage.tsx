@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import type { ReactNode } from 'react'
 import type { VideoItem } from '../App'
@@ -33,6 +33,12 @@ function timeAgo(iso: string): string {
   if (months < 12) return `${months}mo ago`
   return `${Math.floor(months / 12)}y ago`
 }
+
+// A timed caption cue from /feed/captions. `words` carries per-word timing (for
+// auto-generated tracks) so we can reveal a line word-by-word; manual subs get a
+// single word = the whole line.
+type CaptionWord = { t: number; text: string }
+type Cue = { start: number; dur: number; text: string; words?: CaptionWord[] }
 
 // H:MM:SS, MM:SS, or M:SS timestamps in a description → clickable seeks.
 const TIMESTAMP_RE = /(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)/g
@@ -96,6 +102,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // error — it wedges on a buffering spinner). Flipping this recreates the
   // player muted, which always plays. Resets per video (overlay is keyed by id).
   const [forcedMuted, setForcedMuted] = useState(false)
+  // Our own captions, rendered from the transcript so we control position/size
+  // (the embed's are locked inside the iframe). `c` toggles them; curTime drives
+  // the word-by-word reveal. Resets per video (the overlay is keyed by id).
+  const [captions, setCaptions] = useState<Cue[] | null>(null)
+  const [showCaptions, setShowCaptions] = useState(false)
+  const [curTime, setCurTime] = useState(0)
   // Transient volume HUD shown while adjusting with the keyboard, YouTube-style.
   const [volHint, setVolHint] = useState<{ vol: number; muted: boolean } | null>(null)
   const volHintTimer = useRef<number | undefined>(undefined)
@@ -130,14 +142,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     getPlayerState: () => number
     getCurrentTime: () => number
     seekTo: (seconds: number, allowSeekAhead: boolean) => void
-    // Undocumented caption module controls (see the `c` shortcut).
-    loadModule: (name: string) => void
-    setOption: (module: string, option: string, value: unknown) => void
-    getOption: (module: string, option: string) => unknown
   } | null>(null)
-  // Our own record of caption on/off — the embed's getOption('captions','track')
-  // returns the last track's metadata either way, so it can't be read back.
-  const ccOnRef = useRef(false)
 
   // Jump to a description timestamp and play from there.
   const seekTo = (seconds: number) => {
@@ -180,6 +185,51 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => { cancelled = true }
   }, [videoId])
 
+  // Prefetch the transcript so `c` toggles instantly. [] = no captions available.
+  useEffect(() => {
+    setCaptions(null)
+    let cancelled = false
+    apiFetch(`/api/feed/captions/${videoId}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setCaptions(Array.isArray(d?.cues) ? d.cues : []) })
+      .catch(() => { if (!cancelled) setCaptions([]) })
+    return () => { cancelled = true }
+  }, [videoId])
+
+  // While captions are on, sample the play position to drive the word reveal.
+  useEffect(() => {
+    if (!showCaptions) return
+    const id = window.setInterval(() => {
+      const p = playerRef.current
+      if (p) setCurTime(p.getCurrentTime())
+    }, 120)
+    return () => window.clearInterval(id)
+  }, [showCaptions])
+
+  // The caption lines to show now. Auto-caption cues overlap in time (the next
+  // line starts while the previous is still up), which is how YouTube's rolling
+  // 2-line effect is encoded — so we show EVERY cue spanning curTime, oldest
+  // first, not just the latest. Each cue reveals its words up to the play head (a
+  // hair of lookahead hides the 120ms poll lag). `wordByWord` marks a cue that
+  // has per-word timing (auto captions): it reveals a word at a time, so it's
+  // left-aligned (below) to keep appended words from shoving earlier ones. A cue
+  // without per-word timing (manual subs) shows its whole line at once, so it's
+  // centered like YouTube's manual captions.
+  const captionLines = useMemo(() => {
+    if (!showCaptions || !captions?.length) return []
+    return captions
+      .filter((c) => c.start <= curTime && curTime < c.start + c.dur)
+      .sort((a, b) => a.start - b.start)
+      .map((c) => {
+        const wordByWord = !!c.words && c.words.length > 1
+        const text = wordByWord
+          ? c.words!.filter((w) => w.t <= curTime + 0.15).map((w) => w.text).join('').trim()
+          : c.text
+        return { text, wordByWord }
+      })
+      .filter((l) => l.text)
+  }, [showCaptions, captions, curTime])
+
   // Create the full-size player. Opening the page is a click (a page gesture), so
   // we FIRST try unmuted autoplay — when the browser honors it, the video plays
   // with sound immediately (no muted-start, no audio-refetch spinner). But the
@@ -217,7 +267,6 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         events: {
           onReady: (e) => {
             playerRef.current = e.target
-            ccOnRef.current = false  // fresh player starts with captions off
             e.target.setVolume(volumeRef.current)
             // Focus the player box (not the iframe) so OUR shortcut handler
             // owns the keyboard from the start — including ArrowUp/Down for
@@ -297,6 +346,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         showVolHint(volumeRef.current, willMute)
       } else if (k === 'f') {
         e.preventDefault()
+        // Fullscreen OUR box, not the iframe. A fullscreen cross-origin iframe
+        // traps keyboard focus (our shortcuts die, YouTube's native ones take
+        // over) and still doesn't give a clean pause — so the box wins: our
+        // overlays and shortcuts keep working, at the cost of YouTube's inline
+        // pause UI showing the control bar.
         if (document.fullscreenElement) document.exitFullscreen()
         else playerBoxRef.current?.requestFullscreen?.()
       } else if (k === 'ArrowUp' || k === 'ArrowDown') {
@@ -307,22 +361,10 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         setAudioVolume(next)  // shared store → applies to the player and previews
         showVolHint(next, k !== 'ArrowUp' && p.isMuted())
       } else if (k === 'c') {
-        // Toggle captions. YouTube's native `c` only works while the iframe is
-        // focused (which we deliberately avoid), so drive the embed's caption
-        // module via the API. State can't be read back reliably, so we track it.
+        // Toggle OUR caption overlay (rendered from the transcript). YouTube's
+        // native `c` only works while the iframe is focused, which we avoid.
         e.preventDefault()
-        const next = !ccOnRef.current
-        ccOnRef.current = next
-        try {
-          if (next) {
-            p.loadModule('captions')
-            const list = p.getOption('captions', 'tracklist') as Array<{ languageCode?: string }> | undefined
-            const lang = (Array.isArray(list) && list[0]?.languageCode) || 'en'
-            p.setOption('captions', 'track', { languageCode: lang })
-          } else {
-            p.setOption('captions', 'track', {})
-          }
-        } catch { /* video has no captions / module unavailable */ }
+        setShowCaptions((v) => !v)
       } else if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'j' || k === 'l') {
         e.preventDefault()
         const step = (k === 'j' || k === 'l' ? 10 : 5) * (k === 'ArrowLeft' || k === 'j' ? -1 : 1)
@@ -351,6 +393,100 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => window.removeEventListener('blur', onBlur)
   }, [])
 
+  // A video's captions are all one kind (the backend picks a single track), so
+  // if none are word-by-word they're manual subs — centered and free to use the
+  // full width. Word-by-word needs the fixed narrow box for its stable left edge.
+  const manualCaptions = captionLines.length > 0 && captionLines.every((l) => !l.wordByWord)
+
+  // The caption + volume overlays. Rendered inside the player box, which is also
+  // the fullscreen target, so they show in both windowed and fullscreen modes.
+  const overlays = (
+    <>
+      {/* Caption overlay — from the transcript, cloning YouTube's rolling
+          captions: per-line rgba(8,8,8,.75) box hugging the text, white
+          sans-serif scaled to the player, stacked oldest-on-top, LEFT-aligned in
+          a fixed-width box so a building line grows without shoving earlier
+          words, and bottom-anchored so new lines push the stack upward. */}
+      {showCaptions && captionLines.length > 0 && (
+        <div
+          className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-[5%]"
+          // Sit above the control bar. 11% of the player height tracks the bar
+          // on big players, but on a short player the embed scales the bar UP
+          // ("big mode"), so it dips into 11% — the 5.5rem floor clears the
+          // scrubber (measured ~73px above the bottom on a 281px-tall player).
+          style={{ bottom: 'max(11%, 5.5rem)' }}
+        >
+          <div
+            style={{
+              // Manual (centered) captions use the full width; word-by-word gets
+              // a fixed ≈40-char box so its left edge stays put as words append.
+              width: manualCaptions ? '100%' : 'min(90%, 20em)',
+              // Measured from youtube.com's own player: 2.5%-of-width font,
+              // weight 400, normal line-height, its exact font stack.
+              fontFamily: '"YouTube Noto", Roboto, Arial, Helvetica, Verdana, "PT Sans Caption", sans-serif',
+              fontSize: '2.5cqw',
+              fontWeight: 400,
+              lineHeight: 'normal',
+              // YouTube renders captions with grayscale smoothing, which on
+              // macOS looks lighter than the default subpixel — a big part of
+              // why ours read as "bolder".
+              WebkitFontSmoothing: 'antialiased',
+              MozOsxFontSmoothing: 'grayscale',
+            }}
+          >
+            {captionLines.map((line, i) => (
+              // display:flex blockifies the span so its background fills the whole
+              // line box (leading included) — stacked lines then abut with no gap,
+              // like YouTube. Word-by-word lines pin left (justify-start) so
+              // appended words don't shift; whole-line (manual) captions center.
+              <div
+                key={i}
+                style={{
+                  display: 'flex',
+                  justifyContent: line.wordByWord ? 'flex-start' : 'center',
+                }}
+              >
+                <span
+                  style={{
+                    color: '#fff',
+                    background: 'rgba(8, 8, 8, 0.75)',
+                    padding: '0 0.25em',  // YouTube: 0 vertical, ~6px horizontal
+                    textAlign: line.wordByWord ? 'left' : 'center',
+                  }}
+                >
+                  {line.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Volume HUD — a brief overlay while adjusting volume / mute by keyboard. */}
+      {volHint && (
+        <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/75 px-3 py-1.5 text-white shadow-lg">
+          <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            {volHint.muted || volHint.vol === 0 ? (
+              <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3 2.7-2.7a1 1 0 0 0-1.4-1.4L14.1 10.6l-.1.1V13.4l2.9 2.9a1 1 0 0 0 1.4-1.4L16.5 12z" />
+            ) : (
+              <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />
+            )}
+          </svg>
+          {volHint.muted ? (
+            <span className="text-sm font-medium">Muted</span>
+          ) : (
+            <>
+              <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/25">
+                <div className="h-full rounded-full bg-white" style={{ width: `${volHint.vol}%` }} />
+              </div>
+              <span className="w-9 text-right text-sm font-medium tabular-nums">{volHint.vol}%</span>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  )
+
   return (
     // Pinned: a fixed column where the player stays put and the details scroll on
     // their own. Unpinned: a plain block, so the overlay scrolls the whole thing.
@@ -361,32 +497,16 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       <div
         ref={playerBoxRef}
         tabIndex={-1}
+        // container-type so captions can size by player width (2.5cqw ≈ YouTube's
+        // 2.5%-of-player-width caption size), matching at any player scale.
+        style={{ containerType: 'inline-size' }}
         className={`relative w-full bg-black outline-none aspect-video [&:fullscreen]:aspect-auto ${pinned ? 'shrink-0' : ''}`}
       >
         <div ref={hostRef} className="absolute inset-0" />
 
-        {/* Volume HUD — a brief overlay while adjusting volume / mute by keyboard. */}
-        {volHint && (
-          <div className="pointer-events-none absolute left-1/2 top-4 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-black/75 px-3 py-1.5 text-white shadow-lg">
-            <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              {volHint.muted || volHint.vol === 0 ? (
-                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3 2.7-2.7a1 1 0 0 0-1.4-1.4L14.1 10.6l-.1.1V13.4l2.9 2.9a1 1 0 0 0 1.4-1.4L16.5 12z" />
-              ) : (
-                <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />
-              )}
-            </svg>
-            {volHint.muted ? (
-              <span className="text-sm font-medium">Muted</span>
-            ) : (
-              <>
-                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/25">
-                  <div className="h-full rounded-full bg-white" style={{ width: `${volHint.vol}%` }} />
-                </div>
-                <span className="w-9 text-right text-sm font-medium tabular-nums">{volHint.vol}%</span>
-              </>
-            )}
-          </div>
-        )}
+        {/* Caption + volume-HUD overlays (defined above). They stay inside the
+            box, which is also the fullscreen target, so they show in fullscreen. */}
+        {overlays}
 
         {/* Pin toggle, bottom-right corner — equal 8px gap on the bottom and
             right, sat on the button-row line so it clears the progress scrubber. */}
