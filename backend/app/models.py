@@ -35,7 +35,10 @@ class ChannelTag(Base):
     __tablename__ = "channel_tags"
 
     channel_id = Column(String, ForeignKey("channels.youtube_id"), primary_key=True)
-    tag_name = Column(String, ForeignKey("tags.name"), primary_key=True)
+    # The taxonomy lives in code (SEED_TAXONOMY in routers/tags.py), not a DB
+    # table — so tag_name is a plain string, not an FK. A ForeignKey("tags.name")
+    # here has no table to resolve and makes every insert flush 500.
+    tag_name = Column(String, primary_key=True)
     auto_assigned = Column(Integer, default=1)  # boolean
 
 
