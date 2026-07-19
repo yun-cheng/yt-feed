@@ -16,6 +16,17 @@ class LLMError(Exception):
     pass
 
 
+# Process-wide token tally, accumulated from each response's `usage`. Cheap
+# observability for the LLM features (channel tagging, video labeling); read it
+# after a batch of calls to see how many tokens they cost.
+usage_totals = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+
+def reset_usage() -> None:
+    for k in usage_totals:
+        usage_totals[k] = 0
+
+
 def chat(
     system: str,
     user: str,
@@ -50,7 +61,13 @@ def chat(
         raise LLMError(f"request failed: {e!r}")
     if resp.status_code != 200:
         raise LLMError(f"OpenRouter {resp.status_code}: {resp.text[:200]}")
-    return resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    u = data.get("usage") or {}
+    usage_totals["calls"] += 1
+    usage_totals["prompt_tokens"] += u.get("prompt_tokens", 0)
+    usage_totals["completion_tokens"] += u.get("completion_tokens", 0)
+    usage_totals["total_tokens"] += u.get("total_tokens", 0)
+    return data["choices"][0]["message"]["content"]
 
 
 def chat_json(system: str, user: str, **kw) -> dict:
