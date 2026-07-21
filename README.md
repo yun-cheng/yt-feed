@@ -18,7 +18,9 @@ real video (muted, with custom captions and scrubbing).
   labels also show on the watch page
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
-  of leaving for youtube.com; browser back returns you to exactly where you were
+  of leaving for youtube.com; browser back returns you to exactly where you were.
+  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c) and our
+  own captions, rendered from the transcript and styled like YouTube's
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
 - **Search** — typo-tolerant, via a Meilisearch companion

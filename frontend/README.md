@@ -64,6 +64,10 @@ does client-side routing itself:
   be bookmarked.
 - Data is fetched from `/api/*` into React state (`fetchFeed`, `fetchTags`, …);
   the feed is paged by `offset`/`limit` with a load-more trigger (`loadMoreFeed`).
+  Every call goes through `apiFetch` (`lib/api.ts`) — a drop-in `fetch` wrapper
+  that shows an error toast on a failed request, so nothing fails silently.
+  High-frequency background calls (hover captions/storyboards, the topic-build
+  poll) opt out with `{ quiet: true }`.
 
 ### Auto-refresh
 
@@ -86,9 +90,15 @@ components/
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx
   SearchPage.tsx
-  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed, metadata, description, topic chips
+  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed,
+                                  keyboard controls, our own captions, metadata,
+                                  description, topic chips
+  Toaster.tsx                     the app's single error-toast surface
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
+  toastStore.ts                   tiny global toast store (API errors)
+lib/
+  api.ts                          apiFetch — fetch wrapper that surfaces failures
 ```
 
 ---
@@ -132,7 +142,8 @@ YouTube IFrame player over the thumbnail and drives it directly:
 ## The watch overlay (`WatchPage.tsx`)
 
 Opening a video plays it in-app at `/watch/:id`: a full-bleed YouTube embed with
-native fullscreen and captions, plus title / channel / stats / description below.
+page-level keyboard controls and our own captions, plus title / channel / stats /
+description below.
 
 **It's an overlay, not a page.** It renders outside the page switch as a
 `fixed inset-0` layer above everything, so the page you came from stays mounted
@@ -163,9 +174,21 @@ Other details:
   the collapsed box expands it, the way YouTube does; collapsing is the button's
   job alone, so a stray click while reading can't shut it. Links are clickable
   and stop propagation, and a click that ends a text selection counts as a drag.
-- **Keyboard**: the embed is focused on load so its own shortcuts (space, arrows,
-  `f`) work without a click; a window-level `Space`/`k` handler covers the case
-  where focus has moved off the iframe (so Space doesn't just scroll the page).
+- **Keyboard**: a single window-level handler drives the player through the
+  IFrame API, so shortcuts work wherever focus is on the page — not only while
+  the iframe holds focus. `space`/`k` play-pause, `m` mute, `f` fullscreen (of
+  our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
+  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions. We focus our
+  box, not the iframe, and pull focus back whenever a click lands in the video —
+  a cross-origin iframe otherwise swallows its own keys. A brief volume HUD shows
+  while adjusting.
+- **Captions**: rendered by us from the `/api/feed/captions` transcript (the
+  embed's own captions can't be positioned or styled). The style is cloned from
+  youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
+  grayscale smoothing, size scaled to the player via container queries. Auto
+  tracks reveal word-by-word from the per-word timing and roll two lines
+  (overlapping cues), pinned left so words don't shift; manual subs appear whole,
+  centered, full-width. Positioned above the control bar on any player size.
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is
