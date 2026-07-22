@@ -20,7 +20,8 @@ real video (muted, with custom captions and scrubbing).
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were.
   Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c) and our
-  own captions, rendered from the transcript and styled like YouTube's
+  own captions, rendered from the transcript and styled like YouTube's —
+  switchable between English / Chinese / Japanese / Korean when offered
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
 - **Search** — typo-tolerant, via a Meilisearch companion
@@ -33,7 +34,7 @@ real video (muted, with custom captions and scrubbing).
 |-------|------|
 | Frontend | React 19 + TypeScript + Tailwind v4 + Vite |
 | Backend | FastAPI (async) + yt-dlp + SQLAlchemy |
-| Storage | SQLite (WAL) for all data; localStorage only for preview volume |
+| Storage | SQLite (WAL) for all data; localStorage for preview volume + caption prefs |
 | Search | Meilisearch (optional companion service) |
 
 ## Architecture

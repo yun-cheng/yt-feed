@@ -189,6 +189,29 @@ Other details:
   tracks reveal word-by-word from the per-word timing and roll two lines
   (overlapping cues), pinned left so words don't shift; manual subs appear whole,
   centered, full-width. Positioned above the control bar on any player size.
+- **Caption language**: a CC button sits in the player's bottom-left row, as a
+  third button next to the embed's built-in share / watch-later, and opens a
+  switcher listing the languages this video actually **provides** among English /
+  中文 / 日本語 / 한국어 (`/api/feed/caption-langs`) — uploaded subs or the original
+  ASR track, not YouTube's on-the-fly auto-translations. Picking one turns captions
+  on and re-renders from that track (`?lang=`); "Off" hides them, same as `c`.
+- **Dual subtitles**: the same menu has a "Second subtitles" section (shown once
+  the main track is on, excluding the main language) that overlays a second track
+  stacked beneath the first — e.g. original + translation for language learning.
+  Both tracks share one renderer (`CaptionBlock`); the menu stays open so both can
+  be set in one pass.
+- **Caption style**: a "Word by word" / "Whole line" toggle that only affects
+  **word-segment** tracks — auto captions that reveal word-by-word (some cue
+  carries per-word timing). Word-by-word shows them as spoken (left-aligned);
+  whole-line stitches their rolling fragments into complete **sentences**
+  (`toSentences` flattens cues to a word stream — sentence ends fall mid-cue — and
+  breaks at `. ! ? 。 ！ ？`), centered, each shown until the next begins. Whole-cue
+  tracks (manual/translated subs, word-less ASR) are already whole lines authored
+  by the source, so the toggle is a no-op for them — their cues render as-is in
+  both modes. Applies to both the main and second tracks.
+- **Persisted**: on/off, main + second language, and style are saved to
+  localStorage (`ytfeed:caption-prefs`) and re-applied on the next video/session —
+  the overlay seeds its state from them on mount.
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is

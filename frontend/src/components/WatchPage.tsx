@@ -87,6 +87,165 @@ function linkify(text: string, onSeek: (s: number) => void) {
   )
 }
 
+// A rendered caption line: its text and whether it came from a word-by-word
+// (auto) track — which drives left-alignment vs centering.
+type CaptionLine = { text: string; wordByWord: boolean }
+
+// Caption preferences persist in localStorage so they carry across videos and
+// sessions — the watch overlay remounts per video, re-reading these on mount.
+const CAPTION_PREFS_KEY = 'ytfeed:caption-prefs'
+type CaptionPrefs = { on: boolean; lang: string; lang2: string; mode: 'word' | 'line' }
+function loadCaptionPrefs(): CaptionPrefs {
+  try {
+    const p = JSON.parse(localStorage.getItem(CAPTION_PREFS_KEY) || '{}')
+    return {
+      on: p.on === true,
+      lang: typeof p.lang === 'string' ? p.lang : '',
+      lang2: typeof p.lang2 === 'string' ? p.lang2 : '',
+      mode: p.mode === 'line' ? 'line' : 'word',
+    }
+  } catch {
+    return { on: false, lang: '', lang2: '', mode: 'word' }
+  }
+}
+
+// The caption lines to show at `curTime` for one cue list. Auto-caption cues
+// overlap in time (the next line starts while the previous is still up), which
+// is how YouTube's rolling 2-line effect is encoded — so we show EVERY cue
+// spanning curTime, oldest first. Each cue reveals its words up to the play head
+// (a hair of lookahead hides the 120ms poll lag); a cue without per-word timing
+// (manual subs) shows its whole line at once. Shared by the main + second tracks.
+function linesAt(cues: Cue[] | null, curTime: number): CaptionLine[] {
+  if (!cues?.length) return []
+  return cues
+    .filter((c) => c.start <= curTime && curTime < c.start + c.dur)
+    .sort((a, b) => a.start - b.start)
+    .map((c) => {
+      // Reveal word-by-word only when the track carries per-word timing (auto
+      // captions); manual/translated subs are one "word" = the whole cue.
+      const wordByWord = !!c.words && c.words.length > 1
+      const text = wordByWord
+        ? c.words!.filter((w) => w.t <= curTime + 0.15).map((w) => w.text).join('').trim()
+        : c.text
+      return { text, wordByWord }
+    })
+    .filter((l) => l.text)
+}
+
+// A token whose text ends a sentence (Latin or CJK terminals, optional closing quote).
+const SENTENCE_END = /[.!?。！？][")'”’」』]?\s*$/
+const CJK = /[　-鿿＀-￯]/
+// Group a cue list into whole SENTENCES for "Whole line" mode. Sentence ends fall
+// *mid-cue* (tracks break lines at phrase boundaries, and rolling auto captions
+// pack several phrases per cue), so we segment on the WORD stream, not on cues.
+// Cue order is reading order and word times run sequentially even though the
+// display cues overlap (the rolling 2-line effect), so flattening is safe. Each
+// sentence shows until the next one begins. Memoize per cue list.
+function toSentences(cues: Cue[] | null): { start: number; end: number; text: string }[] {
+  if (!cues?.length) return []
+  // Does this track even use sentence punctuation? Chinese ASR often has none, so
+  // there's nothing to merge on — showing one line per cue (each is already a
+  // short phrase) beats collapsing the whole video into one block. Latin tracks
+  // split sentences across cues, so they cross this bar and get merged below.
+  const punctuated = cues.reduce((n, c) => n + (/[.!?。！？]/.test(c.text) ? 1 : 0), 0) / cues.length >= 0.05
+  if (!punctuated) {
+    return cues
+      .map((c, i) => ({ start: c.start, end: i + 1 < cues.length ? cues[i + 1].start : Number.POSITIVE_INFINITY, text: c.text.trim() }))
+      .filter((s) => s.text)
+  }
+
+  const toks: { t: number; text: string }[] = []
+  for (const c of cues) {
+    if (c.words && c.words.length) for (const w of c.words) toks.push({ t: w.t, text: w.text })
+    else toks.push({ t: c.start, text: c.text })  // manual sub = one token (whole cue)
+  }
+
+  const sents: { start: number; text: string }[] = []
+  let buf: { t: number; text: string }[] = []
+  const flush = () => {
+    if (!buf.length) return
+    let s = ''
+    for (const w of buf) {
+      const t = w.text
+      if (!t) continue
+      if (!s) { s = t; continue }
+      // Auto-word tokens carry their own leading space; add one only when neither
+      // side already has whitespace and it isn't a CJK boundary (which needs none).
+      const gap = !/\s$/.test(s) && !/^\s/.test(t) && !(CJK.test(s.slice(-1)) && CJK.test(t[0]))
+      s += gap ? ' ' + t : t
+    }
+    s = s.trim()
+    if (s) sents.push({ start: buf[0].t, text: s })
+    buf = []
+  }
+  for (const w of toks) {
+    buf.push(w)
+    if (SENTENCE_END.test(w.text)) flush()
+  }
+  flush()  // trailing run with no terminal punctuation
+
+  return sents.map((s, i) => ({
+    start: s.start,
+    end: i + 1 < sents.length ? sents[i + 1].start : Number.POSITIVE_INFINITY,
+    text: s.text,
+  }))
+}
+
+// The whole-sentence line(s) to show now — one centered block per active sentence.
+function sentenceLinesAt(sentences: { start: number; end: number; text: string }[], curTime: number): CaptionLine[] {
+  return sentences
+    .filter((s) => s.start <= curTime && curTime < s.end)
+    .map((s) => ({ text: s.text, wordByWord: false }))
+}
+
+// One language's caption block, cloning youtube.com's rolling captions: per-line
+// rgba(8,8,8,.75) box hugging the text, white sans-serif scaled to the player,
+// stacked oldest-on-top. Word-by-word lines pin LEFT in a fixed-width box so a
+// building line grows without shoving earlier words; whole-line (manual) subs
+// center and use the full width. Rendered once for the main track and, with dual
+// subtitles on, again for the second — the two blocks stack.
+function CaptionBlock({ lines }: { lines: CaptionLine[] }) {
+  // A track is all one kind, so if none are word-by-word they're manual subs.
+  const manual = lines.every((l) => !l.wordByWord)
+  return (
+    <div
+      style={{
+        // Manual (centered) captions use the full width; word-by-word gets a
+        // fixed ≈40-char box so its left edge stays put as words append.
+        width: manual ? '100%' : 'min(90%, 20em)',
+        // Measured from youtube.com's own player: 2.5%-of-width font, weight 400,
+        // normal line-height, its exact font stack.
+        fontFamily: '"YouTube Noto", Roboto, Arial, Helvetica, Verdana, "PT Sans Caption", sans-serif',
+        fontSize: '2.5cqw',
+        fontWeight: 400,
+        lineHeight: 'normal',
+        // YouTube renders captions with grayscale smoothing, which on macOS looks
+        // lighter than the default subpixel — a big part of why ours read "bolder".
+        WebkitFontSmoothing: 'antialiased',
+        MozOsxFontSmoothing: 'grayscale',
+      }}
+    >
+      {lines.map((line, i) => (
+        // display:flex blockifies the span so its background fills the whole line
+        // box (leading included) — stacked lines then abut with no gap, like
+        // YouTube. Word-by-word lines pin left; whole-line (manual) captions center.
+        <div key={i} style={{ display: 'flex', justifyContent: line.wordByWord ? 'flex-start' : 'center' }}>
+          <span
+            style={{
+              color: '#fff',
+              background: 'rgba(8, 8, 8, 0.75)',
+              padding: '0 0.25em',  // YouTube: 0 vertical, ~6px horizontal
+              textAlign: line.wordByWord ? 'left' : 'center',
+            }}
+          >
+            {line.text}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function WatchPage({ videoId, video, onChannelClick, onDownload, isDownloaded }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
@@ -105,9 +264,31 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // Our own captions, rendered from the transcript so we control position/size
   // (the embed's are locked inside the iframe). `c` toggles them; curTime drives
   // the word-by-word reveal. Resets per video (the overlay is keyed by id).
+  // Seed caption UI state from the persisted prefs (read once per mount).
+  const prefsRef = useRef<CaptionPrefs | undefined>(undefined)
+  if (!prefsRef.current) prefsRef.current = loadCaptionPrefs()
+  const savedPrefs = prefsRef.current
   const [captions, setCaptions] = useState<Cue[] | null>(null)
-  const [showCaptions, setShowCaptions] = useState(false)
+  const [showCaptions, setShowCaptions] = useState(savedPrefs.on)
   const [curTime, setCurTime] = useState(0)
+  // Language switcher for our captions. `captionLangs` = what this video offers
+  // (empty until fetched / when none); `captionLang` = the user's pick ('' =
+  // native default); `activeLang` = the base code the backend actually served,
+  // so the menu can tick the right row even when native resolved to a language.
+  const [captionLangs, setCaptionLangs] = useState<{ code: string; label: string }[]>([])
+  const [captionLang, setCaptionLang] = useState(savedPrefs.lang)
+  const [activeLang, setActiveLang] = useState<string | null>(null)
+  // Dual subtitles: an optional SECOND track rendered stacked under the main one
+  // (e.g. original + translation, for language learning). '' = none.
+  const [captions2, setCaptions2] = useState<Cue[] | null>(null)
+  const [captionLang2, setCaptionLang2] = useState(savedPrefs.lang2)
+  const [activeLang2, setActiveLang2] = useState<string | null>(null)
+  // Caption display mode: 'word' reveals word-by-word when the track carries
+  // per-word timing (the default); 'line' always shows each cue's whole line at
+  // once, centered. Applies to both the main and second tracks.
+  const [captionMode, setCaptionMode] = useState<'word' | 'line'>(savedPrefs.mode)
+  const [showCaptionMenu, setShowCaptionMenu] = useState(false)
+  const captionMenuRef = useRef<HTMLDivElement>(null)
   // Transient volume HUD shown while adjusting with the keyboard, YouTube-style.
   const [volHint, setVolHint] = useState<{ vol: number; muted: boolean } | null>(null)
   const volHintTimer = useRef<number | undefined>(undefined)
@@ -186,15 +367,69 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   }, [videoId])
 
   // Prefetch the transcript so `c` toggles instantly. [] = no captions available.
+  // Refetches when the chosen language changes; the response's `lang` is the base
+  // code actually served (native resolves to a real language), tracked for the menu.
   useEffect(() => {
     setCaptions(null)
     let cancelled = false
-    apiFetch(`/api/feed/captions/${videoId}`, { quiet: true })
+    const q = captionLang ? `?lang=${captionLang}` : ''
+    apiFetch(`/api/feed/captions/${videoId}${q}`, { quiet: true })
       .then((r) => r.json())
-      .then((d) => { if (!cancelled) setCaptions(Array.isArray(d?.cues) ? d.cues : []) })
+      .then((d) => {
+        if (cancelled) return
+        setCaptions(Array.isArray(d?.cues) ? d.cues : [])
+        setActiveLang(d?.lang ?? null)
+      })
       .catch(() => { if (!cancelled) setCaptions([]) })
     return () => { cancelled = true }
+  }, [videoId, captionLang])
+
+  // The second (dual-subtitle) track. Only fetched once a secondary language is
+  // picked; rendered stacked beneath the main captions.
+  useEffect(() => {
+    if (!captionLang2) { setCaptions2(null); setActiveLang2(null); return }
+    setCaptions2(null)
+    let cancelled = false
+    apiFetch(`/api/feed/captions/${videoId}?lang=${captionLang2}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        setCaptions2(Array.isArray(d?.cues) ? d.cues : [])
+        setActiveLang2(d?.lang ?? null)
+      })
+      .catch(() => { if (!cancelled) setCaptions2([]) })
+    return () => { cancelled = true }
+  }, [videoId, captionLang2])
+
+  // Persist caption prefs so they carry to the next video and next session.
+  useEffect(() => {
+    try {
+      localStorage.setItem(CAPTION_PREFS_KEY, JSON.stringify({
+        on: showCaptions, lang: captionLang, lang2: captionLang2, mode: captionMode,
+      }))
+    } catch { /* storage disabled — prefs just won't persist */ }
+  }, [showCaptions, captionLang, captionLang2, captionMode])
+
+  // Which of English/Chinese/Japanese/Korean this video offers (native, uploaded,
+  // or auto-translated) — populates the caption language switcher.
+  useEffect(() => {
+    let cancelled = false
+    apiFetch(`/api/feed/caption-langs/${videoId}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setCaptionLangs(Array.isArray(d?.langs) ? d.langs : []) })
+      .catch(() => { if (!cancelled) setCaptionLangs([]) })
+    return () => { cancelled = true }
   }, [videoId])
+
+  // Close the caption menu on an outside click (mirrors the save popover).
+  useEffect(() => {
+    if (!showCaptionMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (captionMenuRef.current && !captionMenuRef.current.contains(e.target as Node)) setShowCaptionMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showCaptionMenu])
 
   // While captions are on, sample the play position to drive the word reveal.
   useEffect(() => {
@@ -206,29 +441,36 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => window.clearInterval(id)
   }, [showCaptions])
 
-  // The caption lines to show now. Auto-caption cues overlap in time (the next
-  // line starts while the previous is still up), which is how YouTube's rolling
-  // 2-line effect is encoded — so we show EVERY cue spanning curTime, oldest
-  // first, not just the latest. Each cue reveals its words up to the play head (a
-  // hair of lookahead hides the 120ms poll lag). `wordByWord` marks a cue that
-  // has per-word timing (auto captions): it reveals a word at a time, so it's
-  // left-aligned (below) to keep appended words from shoving earlier ones. A cue
-  // without per-word timing (manual subs) shows its whole line at once, so it's
-  // centered like YouTube's manual captions.
-  const captionLines = useMemo(() => {
-    if (!showCaptions || !captions?.length) return []
-    return captions
-      .filter((c) => c.start <= curTime && curTime < c.start + c.dur)
-      .sort((a, b) => a.start - b.start)
-      .map((c) => {
-        const wordByWord = !!c.words && c.words.length > 1
-        const text = wordByWord
-          ? c.words!.filter((w) => w.t <= curTime + 0.15).map((w) => w.text).join('').trim()
-          : c.text
-        return { text, wordByWord }
-      })
-      .filter((l) => l.text)
-  }, [showCaptions, captions, curTime])
+  // The main and (dual-subtitle) second caption lines to show now — see linesAt.
+  // Sentence groupings for "Whole line" mode (independent of curTime, so memoize
+  // per cue list rather than recomputing every poll tick).
+  const sentences = useMemo(() => toSentences(captions), [captions])
+  const sentences2 = useMemo(() => toSentences(captions2), [captions2])
+
+  // "Whole line" ONLY transforms word-segment tracks — auto captions that reveal
+  // word-by-word (some cue carries per-word timing). It stitches their rolling
+  // fragments back into whole sentences. Whole-cue tracks (manual/translated subs,
+  // and word-less ASR) are already whole lines authored by the source, so the mode
+  // is a no-op for them: we render their cues as-is in both modes.
+  const captionLines = useMemo(
+    () => {
+      if (!showCaptions) return []
+      const wordSegment = !!captions?.some((c) => c.words && c.words.length > 1)
+      return captionMode === 'line' && wordSegment ? sentenceLinesAt(sentences, curTime) : linesAt(captions, curTime)
+    },
+    [showCaptions, captionMode, sentences, captions, curTime]
+  )
+  const captionLines2 = useMemo(
+    () => {
+      if (!showCaptions || !captionLang2) return []
+      // A persisted second language can coincide with the main once the main
+      // resolves (e.g. native → zh, saved second also zh) — don't show it twice.
+      if (activeLang2 && activeLang2 === activeLang) return []
+      const wordSegment = !!captions2?.some((c) => c.words && c.words.length > 1)
+      return captionMode === 'line' && wordSegment ? sentenceLinesAt(sentences2, curTime) : linesAt(captions2, curTime)
+    },
+    [showCaptions, captionLang2, sentences2, captions2, curTime, captionMode, activeLang, activeLang2]
+  )
 
   // Create the full-size player. Opening the page is a click (a page gesture), so
   // we FIRST try unmuted autoplay — when the browser honors it, the video plays
@@ -386,79 +628,37 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     const onBlur = () => {
       window.setTimeout(() => {
         const iframe = hostRef.current?.querySelector('iframe')
-        if (iframe && document.activeElement === iframe) playerBoxRef.current?.focus()
+        if (iframe && document.activeElement === iframe) {
+          // A click landed in the video. document-level "outside click" listeners
+          // never fire for it (the cross-origin iframe swallows the mousedown), so
+          // dismiss the caption menu here instead, then reclaim keyboard focus.
+          setShowCaptionMenu(false)
+          playerBoxRef.current?.focus()
+        }
       }, 0)
     }
     window.addEventListener('blur', onBlur)
     return () => window.removeEventListener('blur', onBlur)
   }, [])
 
-  // A video's captions are all one kind (the backend picks a single track), so
-  // if none are word-by-word they're manual subs — centered and free to use the
-  // full width. Word-by-word needs the fixed narrow box for its stable left edge.
-  const manualCaptions = captionLines.length > 0 && captionLines.every((l) => !l.wordByWord)
-
   // The caption + volume overlays. Rendered inside the player box, which is also
   // the fullscreen target, so they show in both windowed and fullscreen modes.
   const overlays = (
     <>
-      {/* Caption overlay — from the transcript, cloning YouTube's rolling
-          captions: per-line rgba(8,8,8,.75) box hugging the text, white
-          sans-serif scaled to the player, stacked oldest-on-top, LEFT-aligned in
-          a fixed-width box so a building line grows without shoving earlier
-          words, and bottom-anchored so new lines push the stack upward. */}
-      {showCaptions && captionLines.length > 0 && (
+      {/* Caption overlay — the main track, plus the optional second (dual-
+          subtitle) track stacked beneath it. Bottom-anchored above the control
+          bar so new lines push the stack upward; see CaptionBlock for styling. */}
+      {showCaptions && (captionLines.length > 0 || captionLines2.length > 0) && (
         <div
-          className="pointer-events-none absolute inset-x-0 z-10 flex justify-center px-[5%]"
+          className="pointer-events-none absolute inset-x-0 z-10 flex flex-col items-center gap-[2px] px-[5%]"
           // Sit above the control bar. 11% of the player height tracks the bar
           // on big players, but on a short player the embed scales the bar UP
           // ("big mode"), so it dips into 11% — the 5.5rem floor clears the
           // scrubber (measured ~73px above the bottom on a 281px-tall player).
           style={{ bottom: 'max(11%, 5.5rem)' }}
         >
-          <div
-            style={{
-              // Manual (centered) captions use the full width; word-by-word gets
-              // a fixed ≈40-char box so its left edge stays put as words append.
-              width: manualCaptions ? '100%' : 'min(90%, 20em)',
-              // Measured from youtube.com's own player: 2.5%-of-width font,
-              // weight 400, normal line-height, its exact font stack.
-              fontFamily: '"YouTube Noto", Roboto, Arial, Helvetica, Verdana, "PT Sans Caption", sans-serif',
-              fontSize: '2.5cqw',
-              fontWeight: 400,
-              lineHeight: 'normal',
-              // YouTube renders captions with grayscale smoothing, which on
-              // macOS looks lighter than the default subpixel — a big part of
-              // why ours read as "bolder".
-              WebkitFontSmoothing: 'antialiased',
-              MozOsxFontSmoothing: 'grayscale',
-            }}
-          >
-            {captionLines.map((line, i) => (
-              // display:flex blockifies the span so its background fills the whole
-              // line box (leading included) — stacked lines then abut with no gap,
-              // like YouTube. Word-by-word lines pin left (justify-start) so
-              // appended words don't shift; whole-line (manual) captions center.
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  justifyContent: line.wordByWord ? 'flex-start' : 'center',
-                }}
-              >
-                <span
-                  style={{
-                    color: '#fff',
-                    background: 'rgba(8, 8, 8, 0.75)',
-                    padding: '0 0.25em',  // YouTube: 0 vertical, ~6px horizontal
-                    textAlign: line.wordByWord ? 'left' : 'center',
-                  }}
-                >
-                  {line.text}
-                </span>
-              </div>
-            ))}
-          </div>
+          {captionLines.length > 0 && <CaptionBlock lines={captionLines} />}
+          {captionLines2.length > 0 && <CaptionBlock lines={captionLines2} />}
         </div>
       )}
 
@@ -507,6 +707,109 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         {/* Caption + volume-HUD overlays (defined above). They stay inside the
             box, which is also the fullscreen target, so they show in fullscreen. */}
         {overlays}
+
+        {/* Caption language switcher — a third button in the player's bottom-left
+            row, sitting just right of the embed's built-in share / watch-later
+            buttons (which live at a fixed offset inside the iframe) and matching
+            their ~44px size. Only shown when the video offers a track in one of our
+            languages. Picking a language turns captions on and re-renders from that
+            track; "Off" hides them (same as the `c` shortcut). */}
+        {captionLangs.length > 0 && (
+          <div ref={captionMenuRef} className="absolute bottom-[14px] left-[8.25rem] z-20">
+            {showCaptionMenu && (
+              <div className="absolute bottom-full left-0 mb-2 min-w-[10rem] overflow-hidden rounded-lg bg-[#282828] py-1 text-sm text-white shadow-2xl ring-1 ring-white/10">
+                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">Subtitles</div>
+                <button
+                  onClick={() => setShowCaptions(false)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                >
+                  <span className="w-4 shrink-0">{!showCaptions && '✓'}</span>
+                  Off
+                </button>
+                {captionLangs.map((l) => {
+                  const active = showCaptions && (activeLang === l.code || captionLang === l.code)
+                  return (
+                    <button
+                      key={l.code}
+                      onClick={() => { setCaptionLang(l.code); setShowCaptions(true) }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                    >
+                      <span className="w-4 shrink-0">{active && '✓'}</span>
+                      {l.label}
+                    </button>
+                  )
+                })}
+
+                {/* Second subtitles (dual) — shown once the main track is on and
+                    the video offers another language. Excludes the main language
+                    so the same track can't be picked twice. */}
+                {showCaptions && captionLangs.some((l) => l.code !== (activeLang || captionLang)) && (
+                  <>
+                    <div className="mt-1 border-t border-white/10 px-3 pb-1.5 pt-2 text-xs font-medium uppercase tracking-wide text-[#888]">Second subtitles</div>
+                    <button
+                      onClick={() => setCaptionLang2('')}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                    >
+                      <span className="w-4 shrink-0">{!captionLang2 && '✓'}</span>
+                      Off
+                    </button>
+                    {captionLangs
+                      .filter((l) => l.code !== (activeLang || captionLang))
+                      .map((l) => {
+                        const active = activeLang2 === l.code || captionLang2 === l.code
+                        return (
+                          <button
+                            key={l.code}
+                            onClick={() => setCaptionLang2(l.code)}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                          >
+                            <span className="w-4 shrink-0">{active && '✓'}</span>
+                            {l.label}
+                          </button>
+                        )
+                      })}
+                  </>
+                )}
+
+                {/* Caption style — reveal word-by-word (when the track has per-word
+                    timing) or show each whole line at once. A persistent display
+                    preference, so it's always shown (not gated on captions being on).
+                    Applies to both tracks. */}
+                <div className="mt-1 border-t border-white/10 px-3 pb-1.5 pt-2 text-xs font-medium uppercase tracking-wide text-[#888]">Caption style</div>
+                {([['word', 'Word by word'], ['line', 'Whole line']] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    onClick={() => setCaptionMode(mode)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                  >
+                    <span className="w-4 shrink-0">{captionMode === mode && '✓'}</span>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={() => setShowCaptionMenu((o) => !o)}
+              className="group relative flex h-11 w-11 items-center justify-center text-white"
+              title="Subtitles / captions"
+              aria-pressed={showCaptions}
+            >
+              {/* 40px Material-style hover circle, centered in the 44px hit area. */}
+              <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
+              {/* YouTube's exact CC glyph (filled), sized to match the embed's
+                  own bottom-left buttons. A stroke-drawn version reads thinner and
+                  smaller even at the same 24px viewBox. */}
+              <svg className="relative h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2ZM3 19V5h18v14H3ZM6.972 8.346c-.631.336-1.131.881-1.466 1.526A4.6 4.6 0 005 12c-.004.74.17 1.47.506 2.128.336.645.835 1.191 1.466 1.526a2.86 2.86 0 002.066.257c.697-.178 1.294-.606 1.737-1.176a1 1 0 00-1.578-1.228c-.21.27-.444.413-.654.467a.86.86 0 01-.632-.085c-.222-.119-.453-.342-.631-.684A2.64 2.64 0 017 12a2.6 2.6 0 01.281-1.205c.177-.342.408-.565.63-.684a.86.86 0 01.632-.085c.209.054.444.197.654.467a1 1 0 001.578-1.228c-.443-.57-1.04-.998-1.737-1.176a2.86 2.86 0 00-2.066.257Zm8 0c-.631.336-1.131.881-1.466 1.526A4.6 4.6 0 0013 12c-.004.74.17 1.47.506 2.128.336.645.835 1.191 1.466 1.526a2.86 2.86 0 002.066.257c.697-.178 1.294-.606 1.737-1.176a1 1 0 00-1.578-1.228c-.21.27-.444.413-.654.467a.86.86 0 01-.632-.085c-.222-.119-.453-.342-.631-.684A2.64 2.64 0 0115 12a2.6 2.6 0 01.281-1.205c.177-.342.408-.565.63-.684a.86.86 0 01.632-.085c.209.054.444.197.654.467a1 1 0 001.578-1.228c-.443-.57-1.04-.998-1.737-1.176a2.86 2.86 0 00-2.066.257Z" />
+              </svg>
+              {/* Active indicator: a YouTube-style underline (no background
+                  circle, to match the embed's bare share / watch-later buttons). */}
+              {showCaptions && (
+                <span className="pointer-events-none absolute bottom-[7px] left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white" />
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Pin toggle, bottom-right corner — equal 8px gap on the bottom and
             right, sat on the button-row line so it clears the progress scrubber. */}
