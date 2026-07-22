@@ -28,10 +28,15 @@ _preview_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="preview")
 _sb_cache: dict[str, tuple[float, Optional[dict]]] = {}
 _SB_TTL = 3600  # 1 hour
 
-# In-memory caption cache: video_id -> (timestamp, cues-or-None). Captions never
+# In-memory caption cache: "video_id::lang" -> (timestamp, {cues, lang}-or-None).
+# Keyed by language too, so switching tracks doesn't collide. Captions never
 # change; the TTL only bounds memory growth over a long-running process.
-_cc_cache: dict[str, tuple[float, Optional[list[dict]]]] = {}
+_cc_cache: dict[str, tuple[float, Optional[dict]]] = {}
 _CC_TTL = 86400  # 24 hours
+
+# The available caption TRACKS (subtitles + automatic_captions) per video, cached
+# so the language list and every per-language fetch share ONE yt-dlp extraction.
+_ct_cache: dict[str, tuple[float, Optional[tuple]]] = {}
 
 # In-memory description cache: video_id -> (timestamp, text-or-None). Descriptions
 # are only ever fetched on demand for the watch page and deliberately NOT stored in
@@ -46,8 +51,19 @@ _NEG_TTL = 300  # 5 min
 # In-flight fetches, so concurrent requests for the same video (multiple cards, or
 # a quick re-hover) share ONE yt-dlp call instead of each launching their own.
 _sb_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
-_cc_inflight: dict[str, "asyncio.Future[Optional[list[dict]]]"] = {}
+_cc_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
+_ct_inflight: dict[str, "asyncio.Future[Optional[tuple]]"] = {}
 _desc_inflight: dict[str, "asyncio.Future[Optional[str]]"] = {}
+
+# Caption languages we expose in the watch-page switcher, in menu order. A track
+# whose code starts with one of these prefixes (e.g. "zh-Hant" → "zh") counts.
+# YouTube's auto-translate makes most of these available on any captioned video.
+CAPTION_LANG_OPTIONS = [
+    ("en", "English"),
+    ("zh", "中文"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+]
 
 _T = TypeVar("_T")
 
@@ -147,111 +163,202 @@ async def _fetch_description(video_id: str) -> str | None:
     return info.get("description") or None
 
 
-async def _fetch_captions(video_id: str, lang: str = "en") -> list[dict] | None:
+def _extract_caption_tracks(video_id: str) -> tuple[dict, dict, str | None]:
+    """Blocking yt-dlp extraction of a video's caption tracks. Runs in the pool.
+
+    Returns (subtitles, automatic_captions, source_language) — the two maps of
+    {lang_code: [track, …]} yt-dlp reports plus the video's own spoken language,
+    which is what both the language list and every per-language fetch derive from.
     """
-    Fetch a video's timed caption track via yt-dlp and parse it into cues.
+    import yt_dlp
 
-    Serves the video's NATIVE captions (e.g. Chinese for a Chinese video), not a
-    forced language: prefers human-uploaded subtitles, then the original ASR track.
-    `lang` is only a soft preference used to break ties. Returns a list of
-    {start, dur, text} (seconds), or None if none available. Rendering the transcript
-    ourselves avoids the embedded player's tiny/unreliable caption rendering.
-    """
-    def _run():
-        import json
-        import urllib.request
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(
+            f"https://www.youtube.com/watch?v={video_id}", download=False
+        )
+    return info.get("subtitles") or {}, info.get("automatic_captions") or {}, info.get("language")
 
-        import yt_dlp
 
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(
-                f"https://www.youtube.com/watch?v={video_id}", download=False
-            )
-
-        subs = info.get("subtitles") or {}
-        auto = info.get("automatic_captions") or {}
-        # The video's own language (e.g. "zh", "en") is the native caption we want;
-        # fall back to the requested `lang` only when yt-dlp doesn't report it.
-        prefs = [p for p in (info.get("language"), lang, "en") if p]
-
-        def json3(tracks: list | None) -> dict | None:
-            return next((t for t in (tracks or []) if t.get("ext") == "json3"), None)
-
-        def pick_lang(source: dict) -> list | None:
-            for p in prefs:
-                if p in source:
-                    return source[p]
-            for p in prefs:  # regional variant, e.g. zh-TW for zh, en-US for en
-                base = p.split("-")[0]
-                for key, tracks in source.items():
-                    if key.split("-")[0] == base:
-                        return tracks
-            return None
-
-        j3 = None
-        # 1. Human-uploaded subtitles are cleanest — prefer the native language,
-        #    else just take whatever the creator uploaded (usually the native one).
-        if subs:
-            j3 = json3(pick_lang(subs) or next(iter(subs.values())))
-        # 2. Otherwise auto-captions. Prefer a preferred-language track, but if none
-        #    matches, use the ORIGINAL ASR track (the spoken language) rather than a
-        #    machine translation — the translated tracks carry `tlang=` in their URL.
-        if j3 is None and auto:
-            j3 = json3(pick_lang(auto))
-            if j3 is None:
-                for tracks in auto.values():
-                    t = json3(tracks)
-                    if t and "tlang=" not in t.get("url", ""):
-                        j3 = t
-                        break
-                j3 = j3 or json3(next(iter(auto.values())))
-        if j3 is None:
-            return None
-
-        req = urllib.request.Request(j3["url"], headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read())
-
-        cues: list[dict] = []
-        for ev in data.get("events", []):
-            segs = ev.get("segs")
-            if not segs:
-                continue
-            text = "".join(s.get("utf8", "") for s in segs).replace("\n", " ").strip()
-            if not text:
-                continue
-            start_ms = ev.get("tStartMs", 0)
-            # Per-word timing: auto-caption segments carry a tOffsetMs from the
-            # event start, which lets the client reveal words one at a time (the
-            # rolling effect the YouTube player shows). Manual subs have no offset,
-            # so every word lands at the cue start = whole line at once.
-            words = [
-                {
-                    "t": round((start_ms + (s.get("tOffsetMs") or 0)) / 1000, 3),
-                    "text": s.get("utf8", "").replace("\n", " "),
-                }
-                for s in segs
-                if s.get("utf8", "").strip()
-            ]
-            cues.append({
-                "start": round(start_ms / 1000, 3),
-                "dur": round(ev.get("dDurationMs", 0) / 1000, 3),
-                "text": text,
-                "words": words,
-            })
-        return cues or None
-
+async def _fetch_caption_tracks(video_id: str) -> tuple | None:
     try:
-        return await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
+        return await asyncio.get_event_loop().run_in_executor(
+            _preview_pool, _extract_caption_tracks, video_id
+        )
     except Exception:
         return None
+
+
+def _caption_tracks(video_id: str) -> "Awaitable[Optional[tuple]]":
+    """The cached (subs, auto, source_lang) tuple for a video — one extraction
+    shared by the language list and every per-language caption fetch."""
+    return _cached_fetch(
+        video_id, _ct_cache, _ct_inflight,
+        lambda: _fetch_caption_tracks(video_id), _CC_TTL,
+    )
+
+
+def _json3(tracks: list | None) -> dict | None:
+    return next((t for t in (tracks or []) if t.get("ext") == "json3"), None)
+
+
+def _pick_track(subs: dict, auto: dict, source_lang: str | None, lang: str):
+    """Choose the json3 caption track to render, returning (track, resolved_code).
+
+    With an explicit `lang` the user's choice wins: a human subtitle in that
+    language, else the original ASR track, else an auto-TRANSLATED track (YouTube
+    can translate any captioned video). With no `lang` we serve the video's native
+    captions — uploaded subs first, then the original ASR track — matching the
+    long-standing default.
+    """
+    if lang:
+        base = lang.split("-")[0].lower()
+
+        def in_lang(source: dict, *, original_only: bool = False) -> tuple[dict, str] | None:
+            for key, tracks in source.items():
+                if key.split("-")[0].lower() != base:
+                    continue
+                t = _json3(tracks)
+                if t and (not original_only or "tlang=" not in t.get("url", "")):
+                    return t, key
+            return None
+
+        hit = (in_lang(subs) or in_lang(auto, original_only=True) or in_lang(auto))
+        if hit:
+            return hit
+        # Requested language unavailable → fall through to the native default.
+
+    prefs = [p for p in (source_lang, "en") if p]
+
+    def pick_lang(source: dict) -> tuple[list, str] | None:
+        for p in prefs:
+            if p in source:
+                return source[p], p
+        for p in prefs:  # regional variant, e.g. zh-TW for zh, en-US for en
+            b = p.split("-")[0]
+            for key, tracks in source.items():
+                if key.split("-")[0] == b:
+                    return tracks, key
+        return None
+
+    # 1. Human-uploaded subtitles are cleanest — prefer native, else whatever the
+    #    creator uploaded (usually the native one).
+    if subs:
+        picked = pick_lang(subs)
+        key = picked[1] if picked else next(iter(subs))
+        tracks = picked[0] if picked else subs[key]
+        t = _json3(tracks)
+        if t:
+            return t, key
+    # 2. Otherwise auto-captions: preferred language, else the ORIGINAL ASR track
+    #    (no `tlang=`) rather than a machine translation.
+    if auto:
+        picked = pick_lang(auto)
+        if picked:
+            t = _json3(picked[0])
+            if t:
+                return t, picked[1]
+        for key, tracks in auto.items():
+            t = _json3(tracks)
+            if t and "tlang=" not in t.get("url", ""):
+                return t, key
+        key = next(iter(auto))
+        t = _json3(auto[key])
+        if t:
+            return t, key
+    return None
+
+
+def _parse_json3(url: str) -> list[dict] | None:
+    """Download a json3 caption track and parse it into timed cues."""
+    import json
+    import urllib.request
+
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+
+    cues: list[dict] = []
+    for ev in data.get("events", []):
+        segs = ev.get("segs")
+        if not segs:
+            continue
+        text = "".join(s.get("utf8", "") for s in segs).replace("\n", " ").strip()
+        if not text:
+            continue
+        start_ms = ev.get("tStartMs", 0)
+        # Per-word timing: auto-caption segments carry a tOffsetMs from the event
+        # start, which lets the client reveal words one at a time (the rolling
+        # effect the YouTube player shows). Manual subs have no offset, so every
+        # word lands at the cue start = whole line at once.
+        words = [
+            {
+                "t": round((start_ms + (s.get("tOffsetMs") or 0)) / 1000, 3),
+                "text": s.get("utf8", "").replace("\n", " "),
+            }
+            for s in segs
+            if s.get("utf8", "").strip()
+        ]
+        cues.append({
+            "start": round(start_ms / 1000, 3),
+            "dur": round(ev.get("dDurationMs", 0) / 1000, 3),
+            "text": text,
+            "words": words,
+        })
+    return cues or None
+
+
+async def _fetch_captions(video_id: str, lang: str = "") -> dict | None:
+    """Timed caption cues for a video, as {cues, lang}, or None if none.
+
+    `lang` picks the track language (one of CAPTION_LANG_OPTIONS' codes); empty
+    means the video's native captions. `lang` in the result is the resolved base
+    code (e.g. "zh"), so the client can highlight the active choice.
+    """
+    tracks = await _caption_tracks(video_id)
+    if not tracks:
+        return None
+    subs, auto, source_lang = tracks
+    picked = _pick_track(subs, auto, source_lang, lang)
+    if not picked or not picked[0].get("url"):
+        return None
+    try:
+        cues = await asyncio.get_event_loop().run_in_executor(
+            _preview_pool, _parse_json3, picked[0]["url"]
+        )
+    except Exception:
+        return None
+    if not cues:
+        return None
+    resolved = picked[1].split("-")[0].lower() if picked[1] else None
+    return {"cues": cues, "lang": resolved}
+
+
+async def _available_caption_langs(video_id: str) -> list[dict]:
+    """The subset of CAPTION_LANG_OPTIONS this video genuinely PROVIDES, in menu
+    order — for the watch-page language switcher.
+
+    Only real tracks count: human-uploaded subtitles and the original ASR track.
+    YouTube can auto-*translate* into ~100 languages (those carry `tlang=` in the
+    URL), but those aren't offered by the video — including them would show all
+    four on nearly every video — so they're excluded.
+    """
+    tracks = await _caption_tracks(video_id)
+    if not tracks:
+        return []
+    subs, auto, _ = tracks
+    prefixes = {k.split("-")[0].lower() for k in subs}
+    for key, tk in auto.items():
+        t = _json3(tk)
+        if t and "tlang=" not in t.get("url", ""):  # original ASR, not a translation
+            prefixes.add(key.split("-")[0].lower())
+    return [{"code": code, "label": label} for code, label in CAPTION_LANG_OPTIONS if code in prefixes]
 
 
 async def get_db():
@@ -383,14 +490,23 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/caption-langs/{video_id}")
+async def get_caption_langs(video_id: str):
+    """Return the caption languages this video offers, e.g. [{code, label}, …]."""
+    return {"langs": await _available_caption_langs(video_id)}
+
+
 @router.get("/captions/{video_id}")
-async def get_captions(video_id: str, lang: str = "en"):
-    """Return timed caption cues [{start, dur, text}] for a video, or {cues: []}."""
-    cues = await _cached_fetch(
-        video_id, _cc_cache, _cc_inflight,
+async def get_captions(video_id: str, lang: str = ""):
+    """Return timed caption cues for a video as {cues, lang}, or {cues: []}.
+
+    `lang` selects the track language (empty = the video's native captions).
+    """
+    data = await _cached_fetch(
+        f"{video_id}::{lang}", _cc_cache, _cc_inflight,
         lambda: _fetch_captions(video_id, lang), _CC_TTL,
     )
-    return {"cues": cues or []}
+    return data or {"cues": []}
 
 
 @router.get("/description/{video_id}")

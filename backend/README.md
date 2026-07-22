@@ -207,12 +207,19 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   thumbnails, so the scrub bar can show a frame at the hovered timestamp.
 - **Captions** (`/api/feed/captions/{id}`) — the timed transcript, which the
   frontend renders itself (the hover preview and the watch page both style their
-  own captions). `_fetch_captions` deliberately serves the video's **native
+  own captions). With no `lang`, `_fetch_captions` serves the video's **native
   language**: it prefers human-uploaded subtitles, then the original ASR track,
-  and skips machine-*translated* tracks (which carry `tlang=` in their URL). Each
-  cue returns the joined `text` plus a `words` array — per-segment text with
-  `tOffsetMs`-derived absolute times — so the watch page can reveal auto captions
-  word-by-word (manual subs have one word = the whole line).
+  and skips machine-*translated* tracks (which carry `tlang=` in their URL). Pass
+  `?lang=en|zh|ja|ko` and it honors that choice instead — uploaded sub → original
+  ASR → auto-*translated* track — and reports the resolved base code back as
+  `lang`. Each cue returns the joined `text` plus a `words` array — per-segment
+  text with `tOffsetMs`-derived absolute times — so the watch page can reveal auto
+  captions word-by-word (manual subs have one word = the whole line). One yt-dlp
+  extraction (`_caption_tracks`, cached) backs both this and the language list.
+- **Caption languages** (`/api/feed/caption-langs/{id}`) — which of English /
+  中文 / 日本語 / 한국어 the video genuinely **provides** (uploaded subs or the
+  original ASR track — *not* YouTube's auto-translations, which would list all four
+  on nearly every video), for the watch page's caption-language switcher.
 - **Descriptions** (`/api/feed/description/{id}`) — the watch page's description
   box. Kept out of the DB deliberately: they run a few KB each and only one page
   ever wants one, so a TTL cache is the whole storage story.
@@ -381,7 +388,8 @@ These are the design decisions most likely to bite if you touch them:
 |---|---|---|
 | GET | `/api/feed` | ranked feed grouped by category (query: window, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
-| GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (rendered by the frontend) |
+| GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
+| GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links) |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
