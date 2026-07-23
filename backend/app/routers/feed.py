@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session
-from app.models import CaptionTranslation, Channel, Video
+from app.models import CaptionLangs, CaptionTranslation, Channel, Video
 from app.ranking import TimeWindow, rank_videos, score_video
 from app.categorizer import get_categories, get_channel_groups
 
@@ -369,6 +369,20 @@ async def _available_caption_langs(video_id: str) -> list[dict]:
     return [{"code": code, "label": label} for code, label in CAPTION_LANG_OPTIONS if code in prefixes]
 
 
+async def _native_caption_lang(video_id: str) -> str:
+    """The base code of the track served when no language is asked for.
+
+    Read off the track list rather than the served captions, so the caption menu
+    can learn it without waiting for a track to download and parse.
+    """
+    tracks = await _caption_tracks(video_id)
+    if not tracks:
+        return ""
+    subs, auto, source_lang = tracks
+    picked = _pick_track(subs, auto, source_lang, "")
+    return picked[1].split("-")[0].lower() if picked else ""
+
+
 def _captions_cached(video_id: str, lang: str) -> "Awaitable[Optional[dict]]":
     """The cached {cues, lang} for one video+language (what /captions serves)."""
     return _cached_fetch(
@@ -711,9 +725,32 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/caption-langs/{video_id}")
-async def get_caption_langs(video_id: str):
-    """Return the caption languages this video offers, e.g. [{code, label}, …]."""
-    return {"langs": await _available_caption_langs(video_id)}
+async def get_caption_langs(video_id: str, db: AsyncSession = Depends(get_db)):
+    """The caption languages this video offers, plus the code of its native track.
+
+    Served from SQLite when we've seen the video before: deriving it costs a
+    yt-dlp extraction, and the caption menu's "Second subtitles" section waits on
+    this call. A video's caption languages never change, so the row never needs
+    invalidating — and it's derived codes, not the signed URLs, which expire.
+    """
+    stored = await db.get(CaptionLangs, video_id)
+    if stored:
+        try:
+            return {"langs": json.loads(stored.langs), "native": stored.native_lang or ""}
+        except ValueError:
+            pass  # corrupt row — fall through and rebuild it
+
+    langs = await _available_caption_langs(video_id)
+    native = await _native_caption_lang(video_id) if langs else ""
+    if langs:  # a failed extraction must not be cached as "no captions"
+        try:
+            await db.merge(CaptionLangs(
+                video_id=video_id, langs=json.dumps(langs, ensure_ascii=False), native_lang=native,
+            ))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+    return {"langs": langs, "native": native}
 
 
 @router.get("/captions/{video_id}")

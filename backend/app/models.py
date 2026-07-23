@@ -79,6 +79,27 @@ class CaptionTranslation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class CaptionLangs(Base):
+    """Which caption languages a video offers, and which track is its native one.
+
+    Persisted because deriving it costs a yt-dlp extraction (~1s idle, worse when
+    the preview pool is busy), and the watch page's caption menu can't render its
+    "Second subtitles" section until it lands. The in-memory cache already covers
+    a session; this survives restarts, and a video's caption languages never
+    change, so there's nothing to invalidate.
+
+    Deliberately NOT the raw track info: that's ~512KB of JSON per video, and
+    every URL in it is signed with a ~7h expiry, so it would be both fat and
+    stale. These derived codes are a few dozen bytes and immutable.
+    """
+    __tablename__ = "caption_langs"
+
+    video_id = Column(String, primary_key=True)
+    langs = Column(Text, nullable=False, default="[]")  # JSON [{"code","label"}, …]
+    native_lang = Column(String, default="")  # base code of the track served by default
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Download(Base):
     """A video the user has downloaded for offline viewing (server-side file)."""
     __tablename__ = "downloads"
