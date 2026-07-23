@@ -514,7 +514,7 @@ def _translate_batch(batch: list[str], header: str) -> dict[int, str] | None:
                 max_tokens=4000,
                 timeout=120,
                 reasoning=False,
-                provider_sort="throughput",
+                provider_sort="latency",
             )
         except Exception:
             continue

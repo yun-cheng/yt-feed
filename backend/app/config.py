@@ -22,10 +22,15 @@ class Settings(BaseSettings):
     # --- LLM (OpenRouter — shared by AI features like channel tagging) ---
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Channel/video tagging runs in the background, so latency doesn't matter.
     llm_tagging_model: str = "deepseek/deepseek-v4-flash"
-    # Subtitle translation (watch page "AI translate"). Separate knob so it can
-    # diverge from tagging later; same model by default.
-    llm_translate_model: str = "deepseek/deepseek-v4-flash"
+    # Subtitle translation (watch page "AI translate") is read while the video
+    # plays, so it's picked for speed instead: measured over 4 runs of the same
+    # 10-line batch, gemini-2.5-flash-lite held a 1.6s median against 5.0s for
+    # deepseek-v4-flash at the same ~$0.0001 per batch. Gemini mangled batches
+    # when it was first tried, but that was our input (cue fragments, not whole
+    # sentences) — see _to_sentences — and it went 10/10 once that was fixed.
+    llm_translate_model: str = "google/gemini-2.5-flash-lite"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

@@ -48,11 +48,17 @@ def chat(
     dominant cost and the dominant latency. Whether it fires at all is provider-
     dependent, so leaving it on also makes timings unpredictable.
 
-    `provider_sort="throughput"` pins OpenRouter to the model's fastest provider
-    instead of spreading across all of them. That spread is the single biggest
-    source of latency variance here: the same 40-line request measured 5s on
-    Baidu and 212s on Ambient. Sorting took a 8.1s median / 15.4s max down to a
-    5.0s median / 5.4s max.
+    `provider_sort` pins OpenRouter to one provider instead of spreading across
+    all of them. That spread is the single biggest source of latency variance
+    here: the same 40-line request measured 5s on Baidu and 212s on Ambient.
+
+    Prefer `"latency"` over `"throughput"` for short bursts like a caption batch
+    (~170 output tokens), where time-to-first-token dominates and tokens/sec
+    barely matters. Which provider each sort lands on drifts day to day, and
+    "fastest at streaming a long answer" is not "quickest to answer": measured
+    over 5 calls of the same batch, throughput sorting (StreamLake / Novita) ran
+    a 10.2s median / 20.5s max, while latency sorting (Parasail) held 4.4s /
+    9.5s.
 
     Raises LLMError if the key is missing or the API doesn't return 200.
     """
