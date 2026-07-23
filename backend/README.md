@@ -219,7 +219,12 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
 - **Caption languages** (`/api/feed/caption-langs/{id}`) — which of English /
   中文 / 日本語 / 한국어 the video genuinely **provides** (uploaded subs or the
   original ASR track — *not* YouTube's auto-translations, which would list all four
-  on nearly every video), for the watch page's caption-language switcher.
+  on nearly every video), plus the `native` track code, for the watch page's
+  caption-language switcher. **Persisted** in the `caption_langs` table after the
+  first extraction: deriving it costs a yt-dlp call the caption menu waits on, and
+  a video's languages never change. Stores the derived codes, not the raw track
+  info — that blob is ~512KB with ~7h-signed URLs, so it would be both fat and
+  stale.
 - **AI-translated captions**
   (`/api/feed/captions-translate/{id}?lang=<source>&at=<seconds>&count=<n>`) — a run
   of **whole sentences** around playback position `at`, translated into
@@ -252,19 +257,27 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   falls back to its source text and everything else stays aligned to its timing.
   A batch gets one retry; a batch that fails outright degrades to source text.
 
-  Three things make it fast, in descending order of impact — all measured on the
-  same 40-line request:
-  1. `provider_sort="throughput"` — OpenRouter's default spread is the biggest
-     source of variance (5s on Baidu vs **212s** on Ambient). Pinning throughput
-     took the median 8.1s → 5.0s and the max 15.4s → 5.4s.
-  2. `reasoning=False` — `deepseek-v4-flash` otherwise spends 4-6x its output
-     budget thinking (2,769 reasoning tokens to produce 480 of translation), and
-     whether it does is provider-dependent.
-  3. Batches run **concurrently** on their own pool (`_translate_pool`, so a long
-     video can't hog `_preview_pool` and starve hover previews).
+  Results merge into `caption_translations` keyed by the **resolved** source
+  track, not the requested code, so `""` (native) and `"en"` on an English video
+  don't translate — and pay — twice.
+
+  Things that make it fast, in descending order of impact:
+  1. Model: `llm_translate_model` is `google/gemini-2.5-flash-lite`. Read while
+     the video plays, so it's picked for speed — a 1.6s median against 5.0s for
+     deepseek at the same ~$0.0001/batch. (Tagging stays on deepseek, where
+     background latency doesn't matter.)
+  2. `provider_sort="latency"`, not `"throughput"` — a batch is ~170 output
+     tokens, so time-to-first-token dominates and tokens/sec barely matters.
+     Over 5 calls, throughput ran a 10.2s median / 20.5s max vs latency's 4.4s /
+     9.5s. (OpenRouter's default spread is the biggest source of variance at all:
+     5s on Baidu vs **212s** on Ambient.)
+  3. `reasoning=False` — a reasoning model otherwise spends 4-6x its output
+     budget thinking (2,769 reasoning tokens to produce 480 of translation).
+  4. Batches run **concurrently** on their own pool (`_translate_pool`), so a long
+     video can't hog `_preview_pool` and starve hover previews.
 
   Batch size is *not* a latency lever: it's set by provider choice, not payload —
-  12 lines measured a 7.3s median against 5.7s for 40. Uses `llm_translate_model`.
+  12 lines measured a 7.3s median against 5.7s for 40.
 - **Descriptions** (`/api/feed/description/{id}`) — the watch page's description
   box. Kept out of the DB deliberately: they run a few KB each and only one page
   ever wants one, so a TTL cache is the whole storage story.
@@ -310,10 +323,13 @@ Three behaviours here are not obvious and were each paid for in debugging:
   latency. Whether it fires is provider-dependent, so leaving it on also makes
   timings unpredictable.
 
-- **`provider_sort="throughput"` pins the fastest provider.** OpenRouter's
-  default spread across providers was the single biggest source of latency
-  variance: the *same* 40-line request measured **5s on Baidu and 212s on
-  Ambient**. Sorting took an 8.1s median / 15.4s max down to 5.0s / 5.4s.
+- **`provider_sort` pins one provider.** OpenRouter's default spread across
+  providers is the single biggest source of latency variance: the *same* 40-line
+  request measured **5s on Baidu and 212s on Ambient**. Prefer `"latency"` over
+  `"throughput"` for short bursts like a caption batch (~170 output tokens), where
+  time-to-first-token dominates: over 5 calls, throughput ran a 10.2s median /
+  20.5s max while latency held 4.4s / 9.5s. Which provider each lands on drifts
+  day to day.
 
 Callers that skip these get correct-but-slow-and-erratic behaviour, which is
 easy to misread as a model or network problem.

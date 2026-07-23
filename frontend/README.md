@@ -196,6 +196,10 @@ Other details:
   中文 / 日本語 / 한국어 (`/api/feed/caption-langs`) — uploaded subs or the original
   ASR track, not YouTube's on-the-fly auto-translations. Picking one turns captions
   on and re-renders from that track (`?lang=`); "Off" hides them, same as `c`.
+  A saved language is only honoured on a video that actually offers it
+  (`effCaptionLang`) — otherwise the backend hands back a machine *translation* of
+  another track, which once surfaced as a Japanese transcript on a video with no
+  Japanese captions. The pref itself is kept for the next video that does have it.
 - **Dual subtitles**: the same menu has a "Second subtitles" section (shown once
   the main track is on, excluding the main language) that overlays a second track
   stacked beneath the first — e.g. original + translation for language learning.
@@ -271,6 +275,18 @@ Other details:
   fight a reader), and raises a floating **Sync to video** pill that re-centres and
   resumes. Because our own centering leaves the row centred, that check needs no
   flag to tell programmatic scrolls from real ones.
+
+  A **globe** button in the panel header opens the languages the video provides
+  (the `/caption-langs` list) plus an AI 中文（繁體）option, the same offer the caption
+  menu makes. The transcript's track is **independent of the on-video captions** —
+  reading along in one language while the video subtitles in another is the point —
+  so picking a real language fetches that track into its own buffer, defaulting to
+  the caption cues when they match (no extra request). The **AI transcript**
+  differs from the AI captions in one way: it translates the *whole* video rather
+  than staying ahead of the play head, since a transcript is read and searched end
+  to end. It streams in batches (rendered as they land, `翻譯中…` while more is
+  coming, a batch cap as a runaway guard), resumes from what's already translated
+  on reopen rather than replaying from 0:00, and stops once the video is covered.
 
   **Search** filters the lines rather than merely marking them — the point is to
   find a moment and click into it — with the match highlighted in each surviving
