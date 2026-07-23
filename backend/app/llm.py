@@ -6,6 +6,7 @@ default model) lives in app.config.settings.
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 
@@ -35,26 +36,46 @@ def chat(
     temperature: float = 0,
     max_tokens: int = 2000,
     timeout: float = 90,
+    reasoning: bool = True,
+    provider_sort: str | None = None,
 ) -> str:
     """One-shot chat completion. Returns the assistant message text.
+
+    `reasoning=False` asks the provider to skip chain-of-thought. Worth setting
+    for mechanical work (translation, extraction): reasoning models otherwise
+    spend 4-6x the output budget thinking before they answer — measured 2,769
+    reasoning tokens to produce 480 tokens of translation — which is both the
+    dominant cost and the dominant latency. Whether it fires at all is provider-
+    dependent, so leaving it on also makes timings unpredictable.
+
+    `provider_sort="throughput"` pins OpenRouter to the model's fastest provider
+    instead of spreading across all of them. That spread is the single biggest
+    source of latency variance here: the same 40-line request measured 5s on
+    Baidu and 212s on Ambient. Sorting took a 8.1s median / 15.4s max down to a
+    5.0s median / 5.4s max.
 
     Raises LLMError if the key is missing or the API doesn't return 200.
     """
     if not settings.openrouter_api_key:
         raise LLMError("OPENROUTER_API_KEY is not set")
+    body: dict = {
+        "model": model or settings.llm_tagging_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if not reasoning:
+        body["reasoning"] = {"enabled": False}
+    if provider_sort:
+        body["provider"] = {"sort": provider_sort}
     try:
         resp = httpx.post(
             f"{settings.openrouter_base_url}/chat/completions",
             headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-            json={
-                "model": model or settings.llm_tagging_model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-            },
+            json=body,
             timeout=timeout,
         )
     except httpx.HTTPError as e:
@@ -73,11 +94,18 @@ def chat(
 def chat_json(system: str, user: str, **kw) -> dict:
     """chat() that returns parsed JSON.
 
-    Tolerant of code fences and surrounding prose — free models don't reliably
-    honour a JSON response format — by extracting the outermost {...}.
+    Tolerant of code fences and surrounding prose — models don't reliably honour
+    a JSON response format — by extracting the outermost {...}. Also repairs the
+    one malformation they emit often enough to matter: a trailing comma before a
+    closing brace/bracket. The repair only runs after a strict parse fails, so it
+    can't corrupt otherwise-valid replies.
     """
     text = chat(system, user, **kw)
     i, j = text.find("{"), text.rfind("}")
     if i < 0 or j <= i:
         raise LLMError(f"no JSON object in reply: {text[:160]!r}")
-    return json.loads(text[i:j + 1])
+    blob = text[i:j + 1]
+    try:
+        return json.loads(blob)
+    except json.JSONDecodeError:
+        return json.loads(re.sub(r",\s*([}\]])", r"\1", blob))

@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     # --- LLM (OpenRouter — shared by AI features like channel tagging) ---
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    llm_tagging_model: str = "tencent/hy3:free"
+    llm_tagging_model: str = "deepseek/deepseek-v4-flash"
+    # Subtitle translation (watch page "AI translate"). Separate knob so it can
+    # diverge from tagging later; same model by default.
+    llm_translate_model: str = "deepseek/deepseek-v4-flash"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
