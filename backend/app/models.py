@@ -57,6 +57,28 @@ class ChannelTagRejection(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class CaptionTranslation(Base):
+    """LLM translations of one video's captions, stored SPARSELY.
+
+    Translation runs a block at a time as playback approaches it (like video
+    buffering), so a video is usually only partly translated — `lines` is a JSON
+    map of {cue index: translated text} that each block merges into, rather than
+    a whole-video blob. Worth persisting at all because, unlike the other caption
+    caches (in-memory, TTL'd), a rebuild costs real tokens.
+
+    Keyed by the SOURCE track — translating a video's English vs. its Japanese
+    track gives different results — with the target language recorded alongside
+    so a future second target doesn't collide.
+    """
+    __tablename__ = "caption_translations"
+
+    video_id = Column(String, primary_key=True)
+    src_lang = Column(String, primary_key=True, default="")  # "" = the native track
+    target_lang = Column(String, primary_key=True, default="zh-Hant")
+    lines = Column(Text, nullable=False, default="{}")  # JSON {"<cue index>": "text"}
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Download(Base):
     """A video the user has downloaded for offline viewing (server-side file)."""
     __tablename__ = "downloads"

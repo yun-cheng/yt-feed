@@ -220,6 +220,51 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   中文 / 日本語 / 한국어 the video genuinely **provides** (uploaded subs or the
   original ASR track — *not* YouTube's auto-translations, which would list all four
   on nearly every video), for the watch page's caption-language switcher.
+- **AI-translated captions**
+  (`/api/feed/captions-translate/{id}?lang=<source>&at=<seconds>&count=<n>`) — a run
+  of **whole sentences** around playback position `at`, translated into
+  **Traditional Chinese**. Returns `{lang, sentences: [{start, end, text}]}`,
+  ready to render as-is.
+
+  **Sentences, not cues** — this is the whole trick. A cue is an arbitrary
+  mid-clause fragment, and its split point does *not* survive translation: English
+  trails its modifiers where Chinese leads them, so `…create time and space / for
+  her own exploration` has to come out as `為她自己的探索/創造時間和空間` — the halves
+  swap. Demanding a 1:1 mapping over fragments forces the model to choose between
+  natural Chinese and the line count, and it silently merges lines: measured
+  30/40, 36/40, 23/28 returned. Feeding it whole sentences (`_to_sentences`)
+  removes the conflict — the same models then return 10/10 every time, and the
+  Chinese reads properly instead of being chopped mid-clause.
+
+  Requests are position-based so the watch page can translate **as playback
+  approaches**, like video buffering: a long video is never translated past where
+  it's watched (a 37-min podcast used to mean ~2min of waiting), and a seek
+  translates where you *landed* rather than restarting from 0:00. Results merge
+  into the sparse per-sentence `caption_translations` map, so they survive a
+  restart and a re-watch is free. Grouping also shrinks the job — 158 cues become
+  49 sentences.
+
+  The video's **channel and title go in as context** so the model picks
+  domain-appropriate terminology instead of guessing from a few stray lines.
+  Lines go out numbered and come back numbered — *not* JSON: the model reliably
+  drops a quote or comma somewhere in a 40-element array, killing the whole batch,
+  whereas a numbered list is addressable per line, so a mangled or skipped line
+  falls back to its source text and everything else stays aligned to its timing.
+  A batch gets one retry; a batch that fails outright degrades to source text.
+
+  Three things make it fast, in descending order of impact — all measured on the
+  same 40-line request:
+  1. `provider_sort="throughput"` — OpenRouter's default spread is the biggest
+     source of variance (5s on Baidu vs **212s** on Ambient). Pinning throughput
+     took the median 8.1s → 5.0s and the max 15.4s → 5.4s.
+  2. `reasoning=False` — `deepseek-v4-flash` otherwise spends 4-6x its output
+     budget thinking (2,769 reasoning tokens to produce 480 of translation), and
+     whether it does is provider-dependent.
+  3. Batches run **concurrently** on their own pool (`_translate_pool`, so a long
+     video can't hog `_preview_pool` and starve hover previews).
+
+  Batch size is *not* a latency lever: it's set by provider choice, not payload —
+  12 lines measured a 7.3s median against 5.7s for 40. Uses `llm_translate_model`.
 - **Descriptions** (`/api/feed/description/{id}`) — the watch page's description
   box. Kept out of the DB deliberately: they run a few KB each and only one page
   ever wants one, so a TTL cache is the whole storage story.
@@ -331,6 +376,7 @@ Same OpenRouter client/model as tagging; unset key ⇒ no topics, never a crash.
 | `playlists` / `playlist_items` | user playlists |
 | `downloads` | videos downloaded to disk for offline viewing |
 | `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
+| `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
 
 `watch_later`, `playlist_items`, and `downloads` each store a **metadata
 snapshot** of the video so a card still renders even after the video ages out
@@ -390,6 +436,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
+| GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese (query: `lang` = source track) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links) |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
