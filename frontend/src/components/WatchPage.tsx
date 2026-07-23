@@ -783,15 +783,21 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const twoCol = showTranscript && !!captions?.length
   const fillsPane = pinned && twoCol
 
-  // The transcript reads as sentences whatever the on-video caption mode is: the
-  // rolling word-segment fragments a player shows make for terrible prose. Unlike
-  // the caption block it keeps each sentence whole (no display-width chunking).
-  // The AI rows arrive already split into whole sentences with the span each
-  // covers (the backend does its own sentence pass), so they render as-is.
-  const transcript = useMemo(
-    () => (transcriptIsAI ? aiTranscript : toSentences(transcriptCues ?? captions, false)),
-    [transcriptIsAI, aiTranscript, transcriptCues, captions]
-  )
+  // Word-segment tracks (auto captions) reveal word-by-word and split sentences
+  // mid-clause across cues, so stitching them into whole sentences reads far
+  // better as prose. Whole-cue tracks (manual/translated subs) are already
+  // author-written lines — stitching only glues together lines that happen not to
+  // end in punctuation — so those render one row per cue, like the caption block.
+  // AI rows arrive pre-split into sentences (the backend does its own pass).
+  const transcript = useMemo(() => {
+    if (transcriptIsAI) return aiTranscript
+    const src = transcriptCues ?? captions
+    if (!src?.length) return []
+    if (src.some((c) => c.words && c.words.length > 1)) return toSentences(src, false)
+    return src
+      .map((c, i) => ({ start: c.start, end: i + 1 < src.length ? src[i + 1].start : Number.POSITIVE_INFINITY, text: c.text.trim() }))
+      .filter((s) => s.text)
+  }, [transcriptIsAI, aiTranscript, transcriptCues, captions])
   const activeRow = useMemo(() => {
     if (!showTranscript) return -1
     let i = -1
