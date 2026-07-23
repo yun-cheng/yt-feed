@@ -370,6 +370,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // native default); `activeLang` = the base code the backend actually served,
   // so the menu can tick the right row even when native resolved to a language.
   const [captionLangs, setCaptionLangs] = useState<{ code: string; label: string }[]>([])
+  // The native track's code, reported by /caption-langs. It's the same answer
+  // /captions gives as `activeLang`, but arrives a round-trip earlier — the menu
+  // would otherwise wait for a caption track to download before it could tell
+  // whether the source is already Chinese (i.e. whether to offer AI translation).
+  const [nativeLang, setNativeLang] = useState('')
   const [captionLang, setCaptionLang] = useState(savedPrefs.lang)
   const [activeLang, setActiveLang] = useState<string | null>(null)
   // Dual subtitles: an optional SECOND track rendered stacked under the main one
@@ -377,6 +382,16 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const [captions2, setCaptions2] = useState<Cue[] | null>(null)
   const [captionLang2, setCaptionLang2] = useState(savedPrefs.lang2)
   const [activeLang2, setActiveLang2] = useState<string | null>(null)
+  // A saved pick is only honoured on a video that actually offers that language.
+  // Asking the backend for one it doesn't have gets YouTube's machine TRANSLATION
+  // of some other track — which is how a video with no Japanese captions ended up
+  // showing a Japanese transcript, carried over from the last video watched. The
+  // pref itself is left alone: it still applies to the next video that has it.
+  const offersLang = (code: string) => captionLangs.some((l) => l.code === code)
+  const effCaptionLang = !captionLang || !captionLangs.length || offersLang(captionLang) ? captionLang : ''
+  const effCaptionLang2 = !captionLang2 || captionLang2 === AI_ZH || !captionLangs.length || offersLang(captionLang2)
+    ? captionLang2
+    : ''
   // AI translation is a slow LLM round-trip on a cache miss, so the menu shows
   // progress instead of looking broken.
   const [translating, setTranslating] = useState(false)
@@ -386,6 +401,8 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // One request at a time, so the 120ms play-head tick can't pile up duplicates.
   // A ref: this must not trigger a re-render.
   const aiBusy = useRef(false)
+  // Play-head positions already asked about, so an uncoverable one is tried once.
+  const aiTried = useRef<Set<number>>(new Set())
   // Caption display mode: 'word' reveals word-by-word when the track carries
   // per-word timing (the default); 'sentence' stitches cues into whole sentences
   // and shows each at once, centered. Applies to both the main and second tracks.
@@ -497,7 +514,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   useEffect(() => {
     setCaptions(null)
     let cancelled = false
-    const q = captionLang ? `?lang=${captionLang}` : ''
+    const q = effCaptionLang ? `?lang=${effCaptionLang}` : ''
     apiFetch(`/api/feed/captions/${videoId}${q}`, { quiet: true })
       .then((r) => r.json())
       .then((d) => {
@@ -507,15 +524,15 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       })
       .catch(() => { if (!cancelled) setCaptions([]) })
     return () => { cancelled = true }
-  }, [videoId, captionLang])
+  }, [videoId, effCaptionLang])
 
   // The second (dual-subtitle) track, for a real language the video provides.
   // AI translation doesn't come through here — it streams in blocks below.
   useEffect(() => {
-    if (!captionLang2 || captionLang2 === AI_ZH) { setCaptions2(null); setActiveLang2(null); return }
+    if (!effCaptionLang2 || effCaptionLang2 === AI_ZH) { setCaptions2(null); setActiveLang2(null); return }
     setCaptions2(null)
     let cancelled = false
-    apiFetch(`/api/feed/captions/${videoId}?lang=${captionLang2}`, { quiet: true })
+    apiFetch(`/api/feed/captions/${videoId}?lang=${effCaptionLang2}`, { quiet: true })
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return
@@ -524,14 +541,15 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       })
       .catch(() => { if (!cancelled) setCaptions2([]) })
     return () => { cancelled = true }
-  }, [videoId, captionLang2])
+  }, [videoId, effCaptionLang2])
 
   // Reset the translation buffer whenever the video or the source track changes.
   useEffect(() => {
     setAiSents([])
     aiBusy.current = false
+    aiTried.current = new Set()
     setTranslating(false)
-  }, [videoId, captionLang, captionLang2])
+  }, [videoId, effCaptionLang, captionLang2])
 
   // Translate ahead of the play head, like a video buffering. Runs on the caption
   // tick: walks the contiguous translated span forward from the play head and, if
@@ -551,10 +569,20 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       if (at >= target) return  // buffered far enough ahead
     }
 
+    // Some positions can never be covered: past the last sentence (the final
+    // AI_LOOKAHEAD_SEC of every video walks off the end), or a gap the model left
+    // empty. Without this the walk breaks, we refetch the same spot, the response
+    // doesn't extend coverage, and the effect fires again — an endless request
+    // loop that flickered the menu between "翻譯中…" and "AI" on a fully
+    // translated video. One attempt per position; a failure clears it to retry.
+    const spot = Math.round(at)
+    if (aiTried.current.has(spot)) return
+    aiTried.current.add(spot)
+
     aiBusy.current = true
     setTranslating(true)
     apiFetch(
-      `/api/feed/captions-translate/${videoId}?lang=${captionLang}&at=${at}&count=${AI_SENTENCES}`,
+      `/api/feed/captions-translate/${videoId}?lang=${effCaptionLang}&at=${at}&count=${AI_SENTENCES}`,
       { quiet: true }
     )
       .then((r) => r.json())
@@ -569,12 +597,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         }
         setActiveLang2(d?.lang ?? null)
       })
-      .catch(() => { /* leave the gap; a later tick retries */ })
+      .catch(() => { aiTried.current.delete(spot) /* transient — let a later tick retry */ })
       .finally(() => {
         aiBusy.current = false
         setTranslating(false)
       })
-  }, [captionLang2, showCaptions, captions, curTime, aiSents, videoId, captionLang])
+  }, [captionLang2, showCaptions, captions, curTime, aiSents, videoId, effCaptionLang])
 
   // Persist caption prefs so they carry to the next video and next session — but
   // never the AI selection. Restoring that would fire a translation (real tokens,
@@ -597,8 +625,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     let cancelled = false
     apiFetch(`/api/feed/caption-langs/${videoId}`, { quiet: true })
       .then((r) => r.json())
-      .then((d) => { if (!cancelled) setCaptionLangs(Array.isArray(d?.langs) ? d.langs : []) })
-      .catch(() => { if (!cancelled) setCaptionLangs([]) })
+      .then((d) => {
+        if (cancelled) return
+        setCaptionLangs(Array.isArray(d?.langs) ? d.langs : [])
+        setNativeLang(typeof d?.native === 'string' ? d.native : '')
+      })
+      .catch(() => { if (!cancelled) { setCaptionLangs([]); setNativeLang('') } })
     return () => { cancelled = true }
   }, [videoId])
 
@@ -736,9 +768,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // Second-subtitle choices: the video's other provided languages, plus an AI
   // translation into Traditional Chinese — offered only once we know the main
   // track's language and it isn't already Chinese.
-  const mainLang = activeLang || captionLang
+  const mainLang = activeLang || effCaptionLang || nativeLang
   const secondLangOptions = captionLangs.filter((l) => l.code !== mainLang)
-  const aiTranslateAvailable = !!activeLang && activeLang !== 'zh'
+  // `nativeLang` stands in until the track itself resolves, so the row appears
+  // with the rest of the menu rather than a round-trip later.
+  const aiSourceLang = activeLang || (effCaptionLang || nativeLang)
+  const aiTranslateAvailable = !!aiSourceLang && aiSourceLang !== 'zh'
 
   // The reveal toggle only means something for a word-segment track — a whole-cue
   // track is already whole lines, so it would be a control that does nothing. It
