@@ -122,6 +122,9 @@ const AI_ZH = 'ai-zh'
 // makes the model drop lines. See the backend's `_to_sentences`.
 const AI_SENTENCES = 10        // sentences per request
 const AI_LOOKAHEAD_SEC = 20    // keep this many seconds ahead of the play head translated
+// Runaway guard for the transcript's translate-everything loop: 40 x 10 sentences
+// covers a very long video, and a bug can't spend the API key past it.
+const AI_TRANSCRIPT_MAX_BATCHES = 40
 
 // Caption preferences persist in localStorage so they carry across videos and
 // sessions — the watch overlay remounts per video, re-reading these on mount.
@@ -421,6 +424,20 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // and raises the sync button; that button (or a row click) turns it back on.
   const [following, setFollowing] = useState(true)
   const [transcriptQuery, setTranscriptQuery] = useState('')
+  // The transcript's own track, independent of the on-video captions: reading
+  // along in one language while the video shows another is the whole point of
+  // having both. '' follows whatever the caption switcher resolved to.
+  const [transcriptLang, setTranscriptLang] = useState('')
+  const [transcriptCues, setTranscriptCues] = useState<Cue[] | null>(null)
+  // The AI-translated transcript, accumulated batch by batch across the whole video.
+  const [aiTranscript, setAiTranscript] = useState<{ start: number; end: number; text: string }[]>([])
+  const [aiTranscriptBusy, setAiTranscriptBusy] = useState(false)
+  // Mirrors of the above for the walk below, which must not re-run when they change.
+  const aiTranscriptRef = useRef<{ start: number; end: number; text: string }[]>([])
+  aiTranscriptRef.current = aiTranscript
+  const aiTranscriptDone = useRef(false)
+  const [showTranscriptLangMenu, setShowTranscriptLangMenu] = useState(false)
+  const transcriptLangRef = useRef<HTMLDivElement>(null)
   // Transient volume HUD shown while adjusting with the keyboard, YouTube-style.
   const [volHint, setVolHint] = useState<{ vol: number; muted: boolean } | null>(null)
   const volHintTimer = useRef<number | undefined>(undefined)
@@ -634,6 +651,91 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => { cancelled = true }
   }, [videoId])
 
+  // Same guard as the caption languages: only honour a pick this video offers.
+  // AI_ZH is exempt — it's a translation of the source track, not a track the
+  // video provides, so it appears in no video's language list.
+  const transcriptIsAI = transcriptLang === AI_ZH
+  const pickedTranscriptLang = transcriptIsAI || offersLang(transcriptLang) ? transcriptLang : ''
+
+  // The transcript's track, when it differs from the one already fetched for the
+  // captions. Null means "use the caption cues" — no second request for the
+  // common case where both are the same language.
+  useEffect(() => {
+    const same = !pickedTranscriptLang || pickedTranscriptLang === (activeLang || effCaptionLang)
+    if (!showTranscript || same || transcriptIsAI) { setTranscriptCues(null); return }
+    let cancelled = false
+    apiFetch(`/api/feed/captions/${videoId}?lang=${pickedTranscriptLang}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled) setTranscriptCues(Array.isArray(d?.cues) ? d.cues : []) })
+      .catch(() => { if (!cancelled) setTranscriptCues([]) })
+    return () => { cancelled = true }
+  }, [videoId, showTranscript, pickedTranscriptLang, activeLang, effCaptionLang, transcriptIsAI])
+
+  // The AI transcript translates the WHOLE video, unlike the caption version that
+  // only stays ahead of the play head: a transcript is for reading and searching
+  // end to end, so a half-translated one is barely useful. It still arrives in
+  // batches, rendered as they land, walking forward from the last covered end
+  // until a short response says we've run out of video.
+  useEffect(() => {
+    if (!showTranscript || !transcriptIsAI || !captions?.length) return
+    let cancelled = false
+    // Resume from the end of what's already here rather than restarting at 0:
+    // closing and reopening the panel would otherwise replay the whole walk as
+    // cache hits — harmless but a burst of pointless requests.
+    let resumeAt = 0
+    for (;;) {
+      const covering = aiTranscriptRef.current.find((s) => s.start <= resumeAt && resumeAt < s.end)
+      if (!covering) break
+      resumeAt = covering.end
+    }
+    if (aiTranscriptDone.current) return
+    setAiTranscriptBusy(true)
+    ;(async () => {
+      let at = resumeAt
+      for (let batch = 0; batch < AI_TRANSCRIPT_MAX_BATCHES; batch++) {
+        if (cancelled) return
+        try {
+          const r = await apiFetch(
+            `/api/feed/captions-translate/${videoId}?lang=${effCaptionLang}&at=${at}&count=${AI_SENTENCES}`,
+            { quiet: true }
+          )
+          const d = await r.json()
+          const got: { start: number; end: number; text: string }[] = Array.isArray(d?.sentences) ? d.sentences : []
+          if (cancelled) return
+          if (!got.length) break
+          setAiTranscript((prev) => {
+            const byStart = new Map(prev.map((s) => [s.start, s]))
+            got.forEach((s) => byStart.set(s.start, s))
+            return [...byStart.values()].sort((a, b) => a.start - b.start)
+          })
+          const end = got[got.length - 1].end
+          if (got.length < AI_SENTENCES || !(end > at)) {  // ran out of video
+            if (!cancelled) aiTranscriptDone.current = true
+            break
+          }
+          at = end
+        } catch {
+          break  // leave what we have; reopening the panel retries
+        }
+      }
+      if (!cancelled) setAiTranscriptBusy(false)
+    })()
+    return () => { cancelled = true; setAiTranscriptBusy(false) }
+  }, [videoId, showTranscript, transcriptIsAI, captions, effCaptionLang])
+
+  // A new video or a different source track invalidates the translation.
+  useEffect(() => { setAiTranscript([]); aiTranscriptDone.current = false }, [videoId, effCaptionLang])
+
+  // Close the transcript's language menu on an outside click.
+  useEffect(() => {
+    if (!showTranscriptLangMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (transcriptLangRef.current && !transcriptLangRef.current.contains(e.target as Node)) setShowTranscriptLangMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showTranscriptLangMenu])
+
   // Close the caption menu on an outside click (mirrors the save popover).
   useEffect(() => {
     if (!showCaptionMenu) return
@@ -684,7 +786,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // The transcript reads as sentences whatever the on-video caption mode is: the
   // rolling word-segment fragments a player shows make for terrible prose. Unlike
   // the caption block it keeps each sentence whole (no display-width chunking).
-  const transcript = useMemo(() => toSentences(captions, false), [captions])
+  // The AI rows arrive already split into whole sentences with the span each
+  // covers (the backend does its own sentence pass), so they render as-is.
+  const transcript = useMemo(
+    () => (transcriptIsAI ? aiTranscript : toSentences(transcriptCues ?? captions, false)),
+    [transcriptIsAI, aiTranscript, transcriptCues, captions]
+  )
   const activeRow = useMemo(() => {
     if (!showTranscript) return -1
     let i = -1
@@ -712,6 +819,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // The rows on screen, each carrying its index in the full transcript so the
   // active-row highlight survives filtering. A search narrows the list rather than
   // just marking hits: the point is to find a moment, then click into it.
+  // The track the transcript is actually showing, and its label for the button.
+  const transcriptTrackLang = pickedTranscriptLang || activeLang || effCaptionLang
+  const transcriptLangLabel = transcriptIsAI
+    ? '中文（繁體）'
+    : captionLangs.find((l) => l.code === transcriptTrackLang)?.label ?? 'Language'
+
   const searching = transcriptQuery.trim().length > 0
   const visibleRows = useMemo(() => {
     const q = transcriptQuery.trim().toLowerCase()
@@ -739,6 +852,9 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
 
   // A new video (or reopening the panel) starts back in sync, with a clean search.
   useEffect(() => { setFollowing(true); setTranscriptQuery('') }, [videoId, showTranscript])
+
+  // A different track is a different set of rows — re-centre on the play head.
+  useEffect(() => { setFollowing(true) }, [transcriptLang])
 
   // "Whole sentence" ONLY transforms word-segment tracks — auto captions that reveal
   // word-by-word (some cue carries per-word timing). It stitches their rolling
@@ -1329,8 +1445,54 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             menu in the action row. Below lg it just stacks under everything. */}
         {twoCol && (
           <div className={`mt-4 lg:mt-0 lg:grow-[999] lg:shrink-0 lg:basis-[26rem] lg:max-w-[56rem] ${fillsPane ? 'lg:flex lg:min-h-0 lg:flex-col' : ''}`}>
-            {/* Search the lines, and close the panel. */}
+            {/* Pick the language, search the lines, close the panel. */}
             <div className="mb-2 flex items-center gap-2">
+              {(captionLangs.length > 1 || aiTranslateAvailable) && (
+                <div className="relative shrink-0" ref={transcriptLangRef}>
+                  <button
+                    onClick={() => setShowTranscriptLangMenu((o) => !o)}
+                    aria-label="Transcript language"
+                    // The current language lives in the menu's tick; the header is
+                    // tight, so the button is just the icon, named on hover.
+                    title={`Transcript language: ${transcriptLangLabel}`}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
+                    </svg>
+                  </button>
+                  {showTranscriptLangMenu && (
+                    <div className="absolute left-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
+                      {captionLangs.map((l) => {
+                        const on = l.code === transcriptTrackLang
+                        return (
+                          <button
+                            key={l.code}
+                            onClick={() => { setTranscriptLang(l.code); setShowTranscriptLangMenu(false) }}
+                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${on ? 'text-white' : 'text-[#ccc]'}`}
+                          >
+                            <span className="w-3.5 text-[#3ea6ff]">{on ? '✓' : ''}</span>
+                            {l.label}
+                          </button>
+                        )
+                      })}
+                      {/* The AI translation, same offer the caption menu makes:
+                          only when the source isn't already Chinese. */}
+                      {aiTranslateAvailable && (
+                        <button
+                          onClick={() => { setTranscriptLang(AI_ZH); setShowTranscriptLangMenu(false) }}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-[#ccc]'}`}
+                        >
+                          <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
+                          中文（繁體）
+                          <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#888]">AI</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="relative flex-1">
                 <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#888]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <circle cx="11" cy="11" r="7" />
@@ -1398,6 +1560,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
                 ))}
                 {searching && !visibleRows.length && (
                   <p className="px-2 py-3 text-sm text-[#888]">No lines match “{transcriptQuery.trim()}”.</p>
+                )}
+                {/* The AI transcript fills in batch by batch, so say so rather than
+                    letting a partial read look like the whole thing. */}
+                {aiTranscriptBusy && (
+                  <p className="px-2 py-3 text-sm text-[#888]">翻譯中…</p>
                 )}
               </div>
 
