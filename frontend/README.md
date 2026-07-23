@@ -91,8 +91,9 @@ components/
   DownloadsPage.tsx
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — full-size embed,
-                                  keyboard controls, our own captions, metadata,
-                                  description, topic chips
+                                  keyboard controls, our own captions (language
+                                  switcher, dual subtitles, AI translation),
+                                  metadata, description, topic chips
   Toaster.tsx                     the app's single error-toast surface
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME

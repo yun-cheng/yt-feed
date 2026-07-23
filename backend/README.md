@@ -63,7 +63,7 @@ app/
   auth_google.py   OAuth login flow (only needed to import subscriptions)
 
   routers/         one file per resource, all mounted under /api
-    feed.py        the main feed, storyboards, captions, statistics
+    feed.py        the main feed, storyboards, captions + AI translation
     channels.py    channel pages + video-topic chips/filtering (see "Video topics")
     search.py      proxies to search_index
     tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
@@ -288,6 +288,38 @@ the YouTube embed — so downloaded videos preview and play fully offline.
 
 ---
 
+## LLM client (`llm.py`)
+
+A thin wrapper over OpenRouter's chat-completions API, shared by every AI
+feature (channel tagging, video topics, caption translation). Model, key and
+base URL come from `settings`; `llm_tagging_model` and `llm_translate_model`
+are separate knobs so translation can diverge from tagging.
+
+Three behaviours here are not obvious and were each paid for in debugging:
+
+- **`chat_json` repairs trailing commas.** Models emit `[... ,]` often enough to
+  matter, and strict `json.loads` rejects it — one stray comma used to kill a
+  whole 40-line batch. The repair only runs *after* a strict parse fails, so it
+  can't corrupt an otherwise-valid reply. If you need stricter output than this
+  can rescue, prefer a numbered-line format over JSON (see caption translation).
+
+- **`reasoning=False` skips chain-of-thought.** Worth setting for mechanical work
+  (translation, extraction). Reasoning models otherwise spend 4-6x their output
+  budget thinking first — measured **2,769 reasoning tokens to produce 480
+  tokens** of translation — which is both the dominant cost and the dominant
+  latency. Whether it fires is provider-dependent, so leaving it on also makes
+  timings unpredictable.
+
+- **`provider_sort="throughput"` pins the fastest provider.** OpenRouter's
+  default spread across providers was the single biggest source of latency
+  variance: the *same* 40-line request measured **5s on Baidu and 212s on
+  Ambient**. Sorting took an 8.1s median / 15.4s max down to 5.0s / 5.4s.
+
+Callers that skip these get correct-but-slow-and-erratic behaviour, which is
+easy to misread as a model or network problem.
+
+---
+
 ## Channel tagging (`routers/tags.py`, `llm.py`)
 
 Channels are tagged by an **LLM**, not keyword rules. Tags drive the sidebar
@@ -426,6 +458,15 @@ These are the design decisions most likely to bite if you touch them:
   so a burst of hover-previews can't saturate the executor, re-fetch the same
   video N times, or re-hit caption-less videos on every hover.
 
+- **Caption translation gets its OWN pool** (`_translate_pool`, 6 workers), not
+  `_preview_pool`. A long video is dozens of LLM batches, each occupying a worker
+  for seconds, so sharing would let one translation hog every worker and stall
+  hover previews and storyboards. The worker count doubles as the per-request
+  concurrency limit: batches run in parallel (wall time is the slowest batch, not
+  the sum) but queue rather than hitting the API all at once. A per-video
+  `asyncio.Lock` serialises the read-modify-write of the stored sentence map, so
+  two overlapping block requests can't clobber each other's merge.
+
 ---
 
 ## Key endpoints
@@ -436,7 +477,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
-| GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese (query: `lang` = source track) |
+| GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links) |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
