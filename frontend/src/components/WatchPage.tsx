@@ -40,6 +40,25 @@ function timeAgo(iso: string): string {
 type CaptionWord = { t: number; text: string }
 type Cue = { start: number; dur: number; text: string; words?: CaptionWord[] }
 
+/** A transcript line with the searched-for text marked. */
+function highlight(text: string, query: string): ReactNode {
+  const q = query.trim()
+  if (!q) return text
+  const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'))
+  return parts.map((p, i) =>
+    i % 2 ? <mark key={i} className="rounded bg-[#3ea6ff]/30 px-0.5 text-white">{p}</mark> : p
+  )
+}
+
+/** Seconds → M:SS (H:MM:SS past the hour), for transcript row stamps. */
+function formatTime(s: number): string {
+  const t = Math.max(0, Math.floor(s))
+  const mm = Math.floor(t / 60) % 60
+  const ss = t % 60
+  const hh = Math.floor(t / 3600)
+  return hh ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`
+}
+
 // H:MM:SS, MM:SS, or M:SS timestamps in a description → clickable seeks.
 const TIMESTAMP_RE = /(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)/g
 
@@ -182,7 +201,10 @@ function joinTokens(toks: { t: number; text: string }[], from: number, to: numbe
 // Cue order is reading order and word times run sequentially even though the
 // display cues overlap (the rolling 2-line effect), so flattening is safe. Each
 // sentence shows until the next one begins. Memoize per cue list.
-function toSentences(cues: Cue[] | null): { start: number; end: number; text: string }[] {
+// `chunk` splits an over-long sentence into display-sized pieces — right for an
+// on-video caption block, wrong for the transcript panel, which reads better as
+// whole sentences and has the width to hold them.
+function toSentences(cues: Cue[] | null, chunk = true): { start: number; end: number; text: string }[] {
   if (!cues?.length) return []
   // Does this track even use sentence punctuation? Chinese ASR often has none, so
   // there's nothing to merge on — showing one line per cue (each is already a
@@ -217,6 +239,11 @@ function toSentences(cues: Cue[] | null): { start: number; end: number; text: st
     // pieces are needed, then put each break as near its ideal length as possible,
     // treating a comma as a preference (a scoring bonus) rather than a command.
     const whole = joinTokens(buf, 0, buf.length)
+    if (!chunk) {
+      if (whole) sents.push({ start: buf[0].t, text: whole })
+      buf = []
+      return
+    }
     const limit = CJK.test(whole) ? MAX_CJK_LINE_CHARS : MAX_LINE_CHARS
     const pieces = Math.ceil(whole.length / limit)
     const target = whole.length / pieces
@@ -365,6 +392,18 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const [captionMode, setCaptionMode] = useState<'word' | 'sentence'>(savedPrefs.mode)
   const [showCaptionMenu, setShowCaptionMenu] = useState(false)
   const captionMenuRef = useRef<HTMLDivElement>(null)
+  // The transcript panel beside the video's details — closed until asked for,
+  // since it's a long read most visits don't want.
+  const [showTranscript, setShowTranscript] = useState(false)
+  // The "…" overflow menu next to Save, holding download + the transcript toggle.
+  const [showMoreMenu, setShowMoreMenu] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+  const activeRowRef = useRef<HTMLButtonElement>(null)
+  const transcriptRef = useRef<HTMLDivElement>(null)
+  // Whether the transcript still tracks the play head. Scrolling away turns it off
+  // and raises the sync button; that button (or a row click) turns it back on.
+  const [following, setFollowing] = useState(true)
+  const [transcriptQuery, setTranscriptQuery] = useState('')
   // Transient volume HUD shown while adjusting with the keyboard, YouTube-style.
   const [volHint, setVolHint] = useState<{ vol: number; muted: boolean } | null>(null)
   const volHintTimer = useRef<number | undefined>(undefined)
@@ -408,6 +447,16 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     p.seekTo(seconds, true)
     p.playVideo()
   }
+
+  // Close the "…" menu on an outside click.
+  useEffect(() => {
+    if (!showMoreMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setShowMoreMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [showMoreMenu])
 
   // Close the save-to-playlist popover on an outside click.
   useEffect(() => {
@@ -563,15 +612,17 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => document.removeEventListener('mousedown', onDown)
   }, [showCaptionMenu])
 
-  // While captions are on, sample the play position to drive the word reveal.
+  // While captions are on, sample the play position to drive the word reveal. The
+  // open transcript needs the same tick to follow along, at a lazier rate — its
+  // highlight moves once a sentence, so 120ms would be ~8 renders per useful change.
   useEffect(() => {
-    if (!showCaptions) return
+    if (!showCaptions && !showTranscript) return
     const id = window.setInterval(() => {
       const p = playerRef.current
       if (p) setCurTime(p.getCurrentTime())
-    }, 120)
+    }, showCaptions ? 120 : 500)
     return () => window.clearInterval(id)
-  }, [showCaptions])
+  }, [showCaptions, showTranscript])
 
   // The main and (dual-subtitle) second caption lines to show now — see linesAt.
   // The second track's cues. For a real language that's the fetched track; for AI
@@ -591,6 +642,71 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // per cue list rather than recomputing every poll tick).
   const sentences = useMemo(() => toSentences(captions), [captions])
   const sentences2 = useMemo(() => toSentences(secondCues), [secondCues])
+
+  // An open transcript on a wide screen turns the details pane into a fixed-height
+  // two-column layout. Only while pinned: unpinned, the page itself scrolls and
+  // there's no pane height to fill.
+  const twoCol = showTranscript && !!captions?.length
+  const fillsPane = pinned && twoCol
+
+  // The transcript reads as sentences whatever the on-video caption mode is: the
+  // rolling word-segment fragments a player shows make for terrible prose. Unlike
+  // the caption block it keeps each sentence whole (no display-width chunking).
+  const transcript = useMemo(() => toSentences(captions, false), [captions])
+  const activeRow = useMemo(() => {
+    if (!showTranscript) return -1
+    let i = -1
+    while (i + 1 < transcript.length && transcript[i + 1].start <= curTime + 0.05) i++
+    return i
+  }, [showTranscript, transcript, curTime])
+
+  // Centre the active row in the transcript's own box — scrollIntoView would drag
+  // the whole details column along with it. Measured from the rects rather than
+  // offsetTop: the row's offsetParent is an ancestor of the box, so its offsetTop
+  // is in the wrong coordinate space and lands the row off-centre.
+  // The jump is instant, not smooth: a smooth scroll emits scroll events the whole
+  // way, and for most of that trip the active row is still off-screen, so
+  // onTranscriptScroll would read it as the reader scrolling away and cancel the
+  // very scroll that's running. Instant lands in one event with the row already
+  // centred, and the hops are one sentence long anyway.
+  const centerActiveRow = () => {
+    const row = activeRowRef.current
+    const box = transcriptRef.current
+    if (!row || !box) return
+    const delta = row.getBoundingClientRect().top - box.getBoundingClientRect().top
+    box.scrollTo({ top: box.scrollTop + delta - (box.clientHeight - row.clientHeight) / 2 })
+  }
+
+  // The rows on screen, each carrying its index in the full transcript so the
+  // active-row highlight survives filtering. A search narrows the list rather than
+  // just marking hits: the point is to find a moment, then click into it.
+  const searching = transcriptQuery.trim().length > 0
+  const visibleRows = useMemo(() => {
+    const q = transcriptQuery.trim().toLowerCase()
+    const rows = transcript.map((s, i) => ({ s, i }))
+    return q ? rows.filter(({ s }) => s.text.toLowerCase().includes(q)) : rows
+  }, [transcript, transcriptQuery])
+
+  // Follow the play head, unless the reader has scrolled away (see
+  // onTranscriptScroll) or is searching — a filtered list is theirs to read.
+  useEffect(() => {
+    if (following && !searching) centerActiveRow()
+  }, [activeRow, showTranscript, following, searching])
+
+  // Reading somewhere else stops the auto-scroll fighting the reader. "Somewhere
+  // else" = the active row scrolled out of the box; our own centering leaves it
+  // centred, so this needs no flag to tell programmatic scrolls from real ones.
+  const onTranscriptScroll = () => {
+    const row = activeRowRef.current
+    const box = transcriptRef.current
+    if (!row || !box) return
+    const r = row.getBoundingClientRect()
+    const b = box.getBoundingClientRect()
+    setFollowing(r.bottom > b.top && r.top < b.bottom)
+  }
+
+  // A new video (or reopening the panel) starts back in sync, with a clean search.
+  useEffect(() => { setFollowing(true); setTranscriptQuery('') }, [videoId, showTranscript])
 
   // "Whole sentence" ONLY transforms word-segment tracks — auto captions that reveal
   // word-by-word (some cue carries per-word timing). It stitches their rolling
@@ -1020,11 +1136,24 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
 
       {/* Details. While pinned this is the only scroll region (min-h-0 lets it
           shrink inside the flex column); the title, meta row, and description all
-          scroll together. Unpinned, it's plain flow and the page scrolls. */}
-      <div className={pinned ? 'min-h-0 flex-1 overflow-y-auto' : ''}>
+          scroll together. Unpinned, it's plain flow and the page scrolls.
 
-      {/* Metadata — padded + width-limited for readability under the full player. */}
-      <div className="max-w-[1100px] px-4 py-4 md:px-6">
+          fillsPane flips that for an open transcript on a wide screen: the pane
+          stops scrolling as a whole and becomes a fixed-height column, so the
+          transcript can run its full height beside the description instead of
+          being a short box in the middle of a long scroll. */}
+      <div className={pinned ? `min-h-0 flex-1 overflow-y-auto${fillsPane ? ' lg:overflow-hidden' : ''}` : ''}>
+
+      {/* Metadata — padded + width-limited for readability under the full player.
+          With the transcript open this is the two-column split: everything about
+          the video on the left, the transcript as its own panel on the right. */}
+      <div className={`px-4 py-4 md:px-6 ${twoCol ? 'lg:flex lg:max-w-none lg:gap-4' : 'max-w-[1100px]'} ${fillsPane ? 'lg:h-full lg:min-h-0' : ''}`}>
+
+      {/* Left panel: title, stats, actions, description — scrolls on its own once
+          the pane is a fixed-height row. The readability cap lives here rather
+          than on the row, so the transcript gets its own width beside it instead
+          of the two sharing one 1100px budget. */}
+      <div className={`${twoCol ? 'lg:min-w-0 lg:grow lg:basis-[650px] lg:max-w-[1100px]' : ''} ${fillsPane ? 'lg:overflow-y-auto' : ''}`}>
         <h1 className="text-lg md:text-xl font-semibold leading-snug text-white [overflow-wrap:anywhere]">
           {meta?.title ?? '…'}
         </h1>
@@ -1088,22 +1217,52 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
               )}
             </div>
 
-            <button
-              onClick={() => onDownload(meta)}
-              disabled={isDownloaded}
-              className="flex items-center gap-2 rounded-full bg-[#272727] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f3f3f] transition-colors disabled:opacity-50 disabled:hover:bg-[#272727]"
-            >
-              {isDownloaded ? (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            {/* Overflow menu — home for the actions that don't earn a pill of
+                their own: download, and the transcript when there is one. */}
+            <div className="relative" ref={moreRef}>
+              <button
+                onClick={() => setShowMoreMenu((o) => !o)}
+                aria-label="More actions"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#272727] text-white transition-colors hover:bg-[#3f3f3f]"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                  <circle cx="5" cy="12" r="1.8" />
+                  <circle cx="12" cy="12" r="1.8" />
+                  <circle cx="19" cy="12" r="1.8" />
                 </svg>
-              ) : (
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
-                </svg>
+              </button>
+              {showMoreMenu && (
+                <div className="absolute right-0 top-full z-40 mt-2 min-w-[12rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
+                  <button
+                    onClick={() => { onDownload(meta); setShowMoreMenu(false) }}
+                    disabled={isDownloaded}
+                    className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent"
+                  >
+                    {isDownloaded ? (
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+                      </svg>
+                    )}
+                    {isDownloaded ? 'Downloaded' : 'Download'}
+                  </button>
+                  {!!captions?.length && (
+                    <button
+                      onClick={() => { setShowTranscript((v) => !v); setShowMoreMenu(false) }}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10"
+                    >
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+                      </svg>
+                      {showTranscript ? 'Hide transcript' : 'Show transcript'}
+                    </button>
+                  )}
+                </div>
               )}
-              {isDownloaded ? 'Downloaded' : 'Download'}
-            </button>
+            </div>
             </div>
           )}
         </div>
@@ -1122,11 +1281,108 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
           </div>
         )}
 
-        {/* No own scroll here: the details wrapper above owns scrolling, so the
-            description flows at full height and scrolls with the rest. */}
+        {/* No own scroll here: the left panel (or the details wrapper) owns it, so
+            the description flows at full height and scrolls with the rest. */}
         {description && (
           <div className="mt-4 whitespace-pre-wrap rounded-xl bg-[#1a1a1a] p-4 text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
             {linkify(description, seekTo)}
+          </div>
+        )}
+        </div>
+
+        {/* Right panel: the caption track as readable prose. Toggled from the "…"
+            menu in the action row. Below lg it just stacks under everything. */}
+        {twoCol && (
+          <div className={`mt-4 lg:mt-0 lg:grow-[999] lg:shrink-0 lg:basis-[26rem] lg:max-w-[56rem] ${fillsPane ? 'lg:flex lg:min-h-0 lg:flex-col' : ''}`}>
+            {/* Search the lines, and close the panel. */}
+            <div className="mb-2 flex items-center gap-2">
+              <div className="relative flex-1">
+                <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#888]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="11" cy="11" r="7" />
+                  <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+                </svg>
+                <input
+                  value={transcriptQuery}
+                  onChange={(e) => setTranscriptQuery(e.target.value)}
+                  // Esc clears the search; on an already-empty field it just gives
+                  // the keyboard back to the player instead of doing nothing.
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Escape') return
+                    e.stopPropagation()
+                    if (searching) setTranscriptQuery('')
+                    else e.currentTarget.blur()
+                  }}
+                  placeholder="Search transcript"
+                  className="w-full rounded-full bg-[#121212] py-1.5 pl-9 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
+                />
+                {searching && (
+                  <button
+                    onClick={() => setTranscriptQuery('')}
+                    aria-label="Clear search"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#888] transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => setShowTranscript(false)}
+                aria-label="Close transcript"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+
+            <div className={`relative ${fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
+              <div
+                ref={transcriptRef}
+                onScroll={onTranscriptScroll}
+                className={`max-h-[26rem] overflow-y-auto rounded-xl bg-[#1a1a1a] p-2 ${fillsPane ? 'lg:h-full lg:max-h-none' : 'lg:max-h-[34rem]'}`}
+              >
+                {visibleRows.map(({ s, i }) => (
+                  <button
+                    key={`${s.start}-${i}`}
+                    ref={i === activeRow ? activeRowRef : undefined}
+                    onClick={() => { setFollowing(true); seekTo(s.start) }}
+                    className={`flex w-full gap-3 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                      i === activeRow ? 'bg-white/10' : 'hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="shrink-0 pt-px font-mono text-xs tabular-nums text-[#3ea6ff]">
+                      {formatTime(s.start)}
+                    </span>
+                    <span className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-[#ccc]'}`}>
+                      {highlight(s.text, transcriptQuery)}
+                    </span>
+                  </button>
+                ))}
+                {searching && !visibleRows.length && (
+                  <p className="px-2 py-3 text-sm text-[#888]">No lines match “{transcriptQuery.trim()}”.</p>
+                )}
+              </div>
+
+              {/* Floats over the list (outside the scroll box, so it stays put)
+                  only while the reader has scrolled off the play head. */}
+              {!following && !searching && (
+                <button
+                  onClick={() => { setFollowing(true); centerActiveRow() }}
+                  className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#3ea6ff] px-3 py-1.5 text-xs font-medium text-black shadow-lg transition-colors hover:bg-[#65b8ff]"
+                >
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    {/* Crosshair: "put me back on the play head" — a directional
+                        arrow would be wrong half the time (it can be either way). */}
+                    <circle cx="12" cy="12" r="6" />
+                    <path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+                  </svg>
+                  Sync to video
+                </button>
+              )}
+            </div>
           </div>
         )}
         </div>
