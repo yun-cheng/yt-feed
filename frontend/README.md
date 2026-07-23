@@ -250,6 +250,46 @@ Other details:
   only appears when the track actually carries per-word timing: whole-cue tracks
   (manual/translated subs, word-less ASR) are already whole lines authored by the
   source, so the toggle would do nothing for them.
+- **Transcript**: the caption track as readable prose, in its own panel beside the
+  video's details. Opened from a "…" overflow menu next to Save (which also holds
+  Download), and offered only when the video has captions. Each row is a whole
+  **sentence** with its timestamp and seeks there on click — `toSentences(cues,
+  false)`, i.e. the same stitching the caption block uses but with the
+  display-width chunking off, since the panel has the width to hold a sentence and
+  the chunked pieces read like broken prose.
+
+  The row at the play head is highlighted and the panel **follows along**, but
+  scrolls only its own box (`scrollIntoView` would drag the whole details column
+  with it) and centres by measuring rects, not `offsetTop` — the row's
+  `offsetParent` is an ancestor of the box, so `offsetTop` is in the wrong
+  coordinate space. The jump is deliberately **instant**: a smooth scroll emits
+  scroll events the whole way down, and for most of that trip the active row is
+  off-screen, so the scroll-away detector below reads it as the reader moving and
+  cancels the scroll it just started.
+
+  Scrolling so the active row leaves the box stops the auto-scroll (nothing should
+  fight a reader), and raises a floating **Sync to video** pill that re-centres and
+  resumes. Because our own centering leaves the row centred, that check needs no
+  flag to tell programmatic scrolls from real ones.
+
+  **Search** filters the lines rather than merely marking them — the point is to
+  find a moment and click into it — with the match highlighted in each surviving
+  row. `Esc` clears the query (and on an empty field blurs, handing the keyboard
+  back to the player); an `×` in the panel header closes it. Following stands down
+  while searching.
+
+  **Layout**: below `lg` the panel stacks under everything at a fixed height. At
+  `lg` and up with the overlay pinned, the details pane stops scrolling as a whole
+  and becomes a fixed-height two-column row: everything about the video on the
+  left (title, stats, actions, description), the transcript full-height on the
+  right, each scrolling independently. The width caps are **per panel**, not
+  shared — the left prefers 650px and the transcript takes essentially all the
+  spare room (up to 56rem), with any leftover falling back to the left so the row
+  still fills the width.
+
+  The position ticker that drives the caption reveal also feeds the transcript, at
+  500ms instead of 120ms when only the transcript needs it: its highlight moves
+  once a sentence, so the caption rate would be ~8 renders per useful change.
 - **Persisted**: on/off, main + second language, and style are saved to
   localStorage (`ytfeed:caption-prefs`) and re-applied on the next video/session —
   the overlay seeds its state from them on mount. The AI-translate selection is
