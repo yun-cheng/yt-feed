@@ -200,18 +200,59 @@ Other details:
   stacked beneath the first — e.g. original + translation for language learning.
   Both tracks share one renderer (`CaptionBlock`); the menu stays open so both can
   be set in one pass.
-- **Caption style**: a "Word by word" / "Whole line" toggle that only affects
-  **word-segment** tracks — auto captions that reveal word-by-word (some cue
-  carries per-word timing). Word-by-word shows them as spoken (left-aligned);
-  whole-line stitches their rolling fragments into complete **sentences**
-  (`toSentences` flattens cues to a word stream — sentence ends fall mid-cue — and
-  breaks at `. ! ? 。 ！ ？`), centered, each shown until the next begins. Whole-cue
-  tracks (manual/translated subs, word-less ASR) are already whole lines authored
-  by the source, so the toggle is a no-op for them — their cues render as-is in
-  both modes. Applies to both the main and second tracks.
+- **AI translate**: a 中文（繁體）option in that same section, offered only when the
+  main track isn't already Chinese. It fills the second slot from
+  `/api/feed/captions-translate` — the main track run through an LLM into
+  Traditional Chinese. It streams **as playback approaches, like video
+  buffering**: a run of sentences is fetched when the translated span doesn't
+  reach `AI_LOOKAHEAD_SEC` past the play head, so the first lines land in seconds
+  regardless of video length and a stretch nobody watches is never translated (or
+  paid for). A seek needs no special case — it just lands somewhere uncovered, and
+  the same check fetches *there* instead of restarting at 0:00.
+
+  It arrives as whole **sentences** with the time span each covers, not per-cue
+  text, because a cue's mid-clause split point doesn't survive translation (see
+  the backend's `_to_sentences`) — so it renders one complete sentence at a time
+  against a source track that may still be rolling word-by-word. The row shows
+  "翻譯中…" while a request is in flight.
+
+  Two deliberate behaviours: the Chinese takes the **top (primary) line** with the
+  source underneath, since the translation is what you're actually reading; and it
+  is **never restored from saved prefs** — unlike the other caption settings, it's
+  an explicit per-video opt-in, because auto-firing it would spend tokens and
+  latency on every video you open without asking.
+- **As spoken**: a toggle nested under the selected language. **On**, words appear
+  as they're spoken (left-aligned, following the track's per-word timing). **Off**,
+  the cues are stitched into whole **sentences** — `toSentences` flattens them to a
+  word stream (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`, centered,
+  each shown until the next begins.
+
+  A stitched sentence can run far past what's readable in one block (183 characters
+  over 11s, in one measured case), so an over-long one is chunked to roughly two
+  subtitle lines' worth (~84 Latin / ~36 CJK, since CJK is much denser).
+
+  Pieces are sized **evenly**, not greedily filled to the cap. Greedy filling breaks
+  at the last comma before the cap, which emits a runt whenever a sentence's only
+  comma is near the start, and leaves a few stray words as the tail — on one video
+  that produced 10 pieces under 25 characters (`'If you or I did that,'`,
+  `'anything.'`, `'the tokens.'`). Instead `toSentences` decides up front how many
+  pieces are needed and places each break nearest its ideal length, with a comma
+  scoring a modest bonus rather than forcing the break. Same video: 0 runts.
+
+  Chunking only happens here, for word-segment tracks, so every piece takes an
+  **exact** start from its own token — no interpolation. Whole-cue tracks arrive
+  pre-split by their author, and the AI translation is deliberately left whole
+  (splitting it could only ever guess at timings, and whole sentences are what make
+  the translation read well).
+
+  It's nested rather than global because it's a property *of* that track, and it
+  only appears when the track actually carries per-word timing: whole-cue tracks
+  (manual/translated subs, word-less ASR) are already whole lines authored by the
+  source, so the toggle would do nothing for them.
 - **Persisted**: on/off, main + second language, and style are saved to
   localStorage (`ytfeed:caption-prefs`) and re-applied on the next video/session —
-  the overlay seeds its state from them on mount.
+  the overlay seeds its state from them on mount. The AI-translate selection is
+  deliberately excluded (see above).
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is

@@ -21,7 +21,8 @@ real video (muted, with custom captions and scrubbing).
   of leaving for youtube.com; browser back returns you to exactly where you were.
   Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c) and our
   own captions, rendered from the transcript and styled like YouTube's —
-  switchable between English / Chinese / Japanese / Korean when offered
+  switchable between English / Chinese / Japanese / Korean when offered, with
+  dual subtitles and an AI translation into Traditional Chinese
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
 - **Search** — typo-tolerant, via a Meilisearch companion
