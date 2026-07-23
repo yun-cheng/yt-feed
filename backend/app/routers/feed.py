@@ -754,10 +754,14 @@ async def get_translated_captions(
 
     idx = next((i for i, s in enumerate(sents) if at < s["end"]), len(sents) - 1)
     end = min(len(sents), idx + max(1, count))
-    lock = _tr_locks.setdefault(f"{video_id}::{lang}", asyncio.Lock())
+    # Cache under the track actually served, not the code asked for: '' (native)
+    # and 'en' are the same track on an English video, and keying by the request
+    # translated — and paid for — the same sentences twice.
+    src_key = (src or {}).get("lang") or ""
+    lock = _tr_locks.setdefault(f"{video_id}::{src_key}", asyncio.Lock())
 
     async with lock:
-        stored = await db.get(CaptionTranslation, (video_id, lang, _TRANSLATE_TARGET))
+        stored = await db.get(CaptionTranslation, (video_id, src_key, _TRANSLATE_TARGET))
         have: dict = {}
         if stored:
             try:
@@ -785,7 +789,7 @@ async def get_translated_captions(
                 # translation is returned either way.
                 try:
                     await db.merge(CaptionTranslation(
-                        video_id=video_id, src_lang=lang,
+                        video_id=video_id, src_lang=src_key,
                         target_lang=_TRANSLATE_TARGET,
                         lines=json.dumps(have, ensure_ascii=False),
                     ))
