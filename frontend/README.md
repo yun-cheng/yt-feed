@@ -190,51 +190,65 @@ Other details:
   tracks reveal word-by-word from the per-word timing and roll two lines
   (overlapping cues), pinned left so words don't shift; manual subs appear whole,
   centered, full-width. Positioned above the control bar on any player size.
-- **Caption language**: a CC button sits in the player's bottom-left row, as a
-  third button next to the embed's built-in share / watch-later, and opens a
-  switcher listing the languages this video actually **provides** among English /
-  中文 / 日本語 / 한국어 (`/api/feed/caption-langs`) — uploaded subs or the original
-  ASR track, not YouTube's on-the-fly auto-translations. Picking one turns captions
-  on and re-renders from that track (`?lang=`); "Off" hides them, same as `c`.
-  A saved language is only honoured on a video that actually offers it
-  (`effCaptionLang`) — otherwise the backend hands back a machine *translation* of
-  another track, which once surfaced as a Japanese transcript on a video with no
-  Japanese captions. The pref itself is kept for the next video that does have it.
-- **Dual subtitles**: the same menu has a "Second subtitles" section (shown once
-  the main track is on, excluding the main language) that overlays a second track
-  stacked beneath the first — e.g. original + translation for language learning.
-  Both tracks share one renderer (`CaptionBlock`); the menu stays open so both can
-  be set in one pass.
-- **AI translate**: a 中文（繁體）option in that same section, offered only when the
-  main track isn't already Chinese. It fills the second slot from
-  `/api/feed/captions-translate` — the main track run through an LLM into
-  Traditional Chinese. It streams **as playback approaches, like video
-  buffering**: a run of sentences is fetched when the translated span doesn't
-  reach `AI_LOOKAHEAD_SEC` past the play head, so the first lines land in seconds
-  regardless of video length and a stretch nobody watches is never translated (or
-  paid for). A seek needs no special case — it just lands somewhere uncovered, and
-  the same check fetches *there* instead of restarting at 0:00.
+- **Caption menu (two columns)**: a CC button sits in the player's bottom-left row,
+  as a third button next to the embed's built-in share / watch-later, and opens a
+  **two-column** picker — **Main** | **Second**. Each column lists every language
+  this video actually **provides** among English / 中文 / 日本語 / 한국어
+  (`/api/feed/caption-langs`) — uploaded subs or the original ASR track, not
+  YouTube's on-the-fly auto-translations — plus the AI translation (below). There's
+  no "Off" row: an empty slot **is** off, and clicking the active row toggles it off
+  (the `c` shortcut still hides everything). A saved language is only honoured on a
+  video that actually offers it (`effCaptionLang`) — otherwise the backend hands back
+  a machine *translation* of another track, which once surfaced as a Japanese
+  transcript on a video with no Japanese captions. The pref is kept for the next
+  video that does have it.
+- **Main + Second (dual subtitles)**: the two slots overlay two tracks stacked in the
+  player — e.g. original + translation for language learning. The **Main** track is
+  always the primary (top) line; the **Second** sits beneath it (the *slot*, not the
+  content, decides the order). Both share one renderer (`CaptionBlock`), and the menu
+  stays open so both can be set in one pass. A slot can't hold the same track as the
+  other, and there's never a Second without a Main, so the picks stay consistent
+  (`setSlots`): toggling the Main off promotes the Second up; picking the Second's
+  language as Main clears the Second; picking the Main's language as Second swaps the
+  two.
+- **AI translate**: a **Chinese** row (with an "AI" badge) in either column, offered
+  whenever the source track isn't already Chinese. Unlike a real track it can fill
+  **either slot** — as Main it shows the translation alone (the source track is still
+  fetched, to translate *from*, but not displayed); as Second it rides under whatever
+  Main shows. It comes from `/api/feed/captions-translate` — the source track run
+  through an LLM into Traditional Chinese — and streams **as playback approaches,
+  like video buffering**: a run of sentences is fetched when the translated span
+  doesn't reach `AI_LOOKAHEAD_SEC` past the play head, so the first lines land in
+  seconds regardless of video length and a stretch nobody watches is never translated
+  (or paid for). A seek needs no special case — it lands somewhere uncovered and the
+  same check fetches *there* instead of restarting at 0:00.
 
-  It arrives as whole **sentences** with the time span each covers, not per-cue
-  text, because a cue's mid-clause split point doesn't survive translation (see
-  the backend's `_to_sentences`) — so it renders one complete sentence at a time
-  against a source track that may still be rolling word-by-word. The row shows
-  "翻譯中…" while a request is in flight.
+  It arrives as whole **sentences** with the time span each covers, not per-cue text,
+  because a cue's mid-clause split point doesn't survive translation (see the
+  backend's `_to_sentences`) — so it renders one complete sentence at a time against a
+  source that may still be rolling word-by-word. The row shows "翻譯中…" while a
+  request is in flight.
 
-  Two deliberate behaviours: the Chinese takes the **top (primary) line** with the
-  source underneath, since the translation is what you're actually reading; and it
-  is **never restored from saved prefs** — unlike the other caption settings, it's
-  an explicit per-video opt-in, because auto-firing it would spend tokens and
-  latency on every video you open without asking.
-- **As spoken**: a toggle nested under the selected language. **On**, words appear
-  as they're spoken (left-aligned, following the track's per-word timing). **Off**,
-  the cues are stitched into whole **sentences** — `toSentences` flattens them to a
-  word stream (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`, centered,
-  each shown until the next begins.
+  It is **never restored from saved prefs** in either slot — unlike the other caption
+  settings it's an explicit per-video opt-in, because auto-firing it would spend
+  tokens and latency on every video you open without asking.
+- **Word-by-word vs whole sentences**: a word-segment track (auto captions, per-word
+  timing) shows as **two rows** in its column — the plain label renders whole
+  **sentences**, and **"… (word-by-word)"** reveals words as they're spoken
+  (left-aligned, following the per-word timing). Two rows rather than a nested toggle,
+  so both display modes read as ordinary picks. `captionMode` is global — it drives
+  whichever slot holds a word-segment track — so the split appears in **both** columns
+  for any language known to carry per-word timing (accumulated in `wordSegLangs` as
+  tracks load, so it stays available even when the track isn't the one displayed).
+  Whole-cue tracks (manual / translated subs, word-less ASR) and the AI translation
+  stay a single row — they're already whole lines, so word-by-word would do nothing.
 
-  A stitched sentence can run far past what's readable in one block (183 characters
-  over 11s, in one measured case), so an over-long one is chunked to roughly two
-  subtitle lines' worth (~84 Latin / ~36 CJK, since CJK is much denser).
+  Whole-sentence mode stitches cues: `toSentences` flattens them to a word stream
+  (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`, centered, each shown
+  until the next begins. A stitched sentence can run far past what's readable in one
+  block (183 characters over 11s, in one measured case), so an over-long one is
+  chunked to roughly two subtitle lines' worth (~84 Latin / ~36 CJK, since CJK is
+  much denser).
 
   Pieces are sized **evenly**, not greedily filled to the cap. Greedy filling breaks
   at the last comma before the cap, which emits a runt whenever a sentence's only
@@ -249,11 +263,6 @@ Other details:
   pre-split by their author, and the AI translation is deliberately left whole
   (splitting it could only ever guess at timings, and whole sentences are what make
   the translation read well).
-
-  It's nested rather than global because it's a property *of* that track, and it
-  only appears when the track actually carries per-word timing: whole-cue tracks
-  (manual/translated subs, word-less ASR) are already whole lines authored by the
-  source, so the toggle would do nothing for them.
 - **Transcript**: the caption track as readable prose, in its own panel beside the
   video's details. Opened from a "…" overflow menu next to Save (which also holds
   Download), and offered only when the video has captions. Each row is a whole
@@ -277,8 +286,8 @@ Other details:
   flag to tell programmatic scrolls from real ones.
 
   A **globe** button in the panel header opens the languages the video provides
-  (the `/caption-langs` list) plus an AI 中文（繁體）option, the same offer the caption
-  menu makes. The transcript's track is **independent of the on-video captions** —
+  (the `/caption-langs` list) plus an AI **Chinese** option, the same offer the
+  caption menu makes. The transcript's track is **independent of the on-video captions** —
   reading along in one language while the video subtitles in another is the point —
   so picking a real language fetches that track into its own buffer, defaulting to
   the caption cues when they match (no extra request). The **AI transcript**

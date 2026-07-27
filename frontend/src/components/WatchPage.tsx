@@ -135,9 +135,10 @@ function loadCaptionPrefs(): CaptionPrefs {
     const p = JSON.parse(localStorage.getItem(CAPTION_PREFS_KEY) || '{}')
     return {
       on: p.on === true,
-      lang: typeof p.lang === 'string' ? p.lang : '',
-      // AI translation is never restored (see the persist effect) — drop it here
-      // too, so a value saved before that rule can't auto-fire a translation.
+      // AI translation is never restored in EITHER slot (see the persist effect) —
+      // drop it here too, so a value saved before that rule can't auto-fire a
+      // translation (real tokens, real latency) on every video you open.
+      lang: typeof p.lang === 'string' && p.lang !== AI_ZH ? p.lang : '',
       lang2: typeof p.lang2 === 'string' && p.lang2 !== AI_ZH ? p.lang2 : '',
       // 'line' is the old name for this mode — keep reading it so a saved
       // preference doesn't silently reset.
@@ -410,6 +411,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // per-word timing (the default); 'sentence' stitches cues into whole sentences
   // and shows each at once, centered. Applies to both the main and second tracks.
   const [captionMode, setCaptionMode] = useState<'word' | 'sentence'>(savedPrefs.mode)
+  // Base codes observed to carry per-word timing (auto-caption tracks). A track only
+  // reveals this once loaded, so we accumulate it and keep it for the video — that's
+  // what lets the "word-by-word" variant show in BOTH columns, and even while the
+  // track isn't the one currently displayed. Reset per video.
+  const [wordSegLangs, setWordSegLangs] = useState<Set<string>>(() => new Set())
   const [showCaptionMenu, setShowCaptionMenu] = useState(false)
   const captionMenuRef = useRef<HTMLDivElement>(null)
   // The transcript panel beside the video's details — closed until asked for,
@@ -566,7 +572,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     aiBusy.current = false
     aiTried.current = new Set()
     setTranslating(false)
-  }, [videoId, effCaptionLang, captionLang2])
+  }, [videoId, effCaptionLang])
 
   // Translate ahead of the play head, like a video buffering. Runs on the caption
   // tick: walks the contiguous translated span forward from the play head and, if
@@ -574,7 +580,8 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // there. A seek needs no special case — it just lands somewhere uncovered, and
   // the same check fetches that spot next.
   useEffect(() => {
-    if (captionLang2 !== AI_ZH || !showCaptions || !captions?.length) return
+    const aiActive = captionLang === AI_ZH || captionLang2 === AI_ZH
+    if (!aiActive || !showCaptions || !captions?.length) return
     if (aiBusy.current) return
 
     const target = curTime + AI_LOOKAHEAD_SEC
@@ -612,14 +619,17 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             return [...byStart.values()].sort((a, b) => a.start - b.start)
           })
         }
-        setActiveLang2(d?.lang ?? null)
+        // `d.lang` is the AI target (zh-Hant). Only record it as the second
+        // track's active lang when AI actually IS the second track — otherwise a
+        // real second track owns activeLang2.
+        if (captionLang2 === AI_ZH) setActiveLang2(d?.lang ?? null)
       })
       .catch(() => { aiTried.current.delete(spot) /* transient — let a later tick retry */ })
       .finally(() => {
         aiBusy.current = false
         setTranslating(false)
       })
-  }, [captionLang2, showCaptions, captions, curTime, aiSents, videoId, effCaptionLang])
+  }, [captionLang, captionLang2, showCaptions, captions, curTime, aiSents, videoId, effCaptionLang])
 
   // Persist caption prefs so they carry to the next video and next session — but
   // never the AI selection. Restoring that would fire a translation (real tokens,
@@ -629,7 +639,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     try {
       localStorage.setItem(CAPTION_PREFS_KEY, JSON.stringify({
         on: showCaptions,
-        lang: captionLang,
+        lang: captionLang === AI_ZH ? '' : captionLang,
         lang2: captionLang2 === AI_ZH ? '' : captionLang2,
         mode: captionMode,
       }))
@@ -758,19 +768,21 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     return () => window.clearInterval(id)
   }, [showCaptions, showTranscript])
 
-  // The main and (dual-subtitle) second caption lines to show now — see linesAt.
-  // The second track's cues. For a real language that's the fetched track; for AI
-  // translation it's the MAIN track's timings zipped with whatever text has been
-  // translated so far (translation is 1:1 with the main cues), so partially
-  // buffered stretches simply render as far as they've got.
-  const secondCues = useMemo(() => {
-    if (captionLang2 !== AI_ZH) return captions2
-    // Each translated sentence is already a whole line covering its own span.
-    return aiSents.map((s) => ({
+  // The AI-translated sentences as whole-line cues. Shared by whichever slot picked
+  // AI (main or second): each translated sentence already covers its own span, and
+  // partially buffered stretches simply render as far as they've got.
+  const aiCues = useMemo<Cue[]>(
+    () => aiSents.map((s) => ({
       start: s.start, dur: s.end - s.start, text: s.text,
       words: [{ t: s.start, text: s.text }],
-    }))
-  }, [captionLang2, captions2, aiSents])
+    })),
+    [aiSents]
+  )
+  // The second (dual-subtitle) track's cues: a real fetched track, or the AI cues.
+  const secondCues = useMemo(
+    () => (captionLang2 === AI_ZH ? aiCues : captions2),
+    [captionLang2, aiCues, captions2]
+  )
 
   // Sentence groupings for "Whole sentence" mode (independent of curTime, so memoize
   // per cue list rather than recomputing every poll tick).
@@ -828,7 +840,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // The track the transcript is actually showing, and its label for the button.
   const transcriptTrackLang = pickedTranscriptLang || activeLang || effCaptionLang
   const transcriptLangLabel = transcriptIsAI
-    ? '中文（繁體）'
+    ? 'Chinese'
     : captionLangs.find((l) => l.code === transcriptTrackLang)?.label ?? 'Language'
 
   const searching = transcriptQuery.trim().length > 0
@@ -870,37 +882,101 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const captionLines = useMemo(
     () => {
       if (!showCaptions) return []
+      // AI as the main track: render the translated sentences directly (whole
+      // lines, no word-by-word mode). The source track is still fetched into
+      // `captions` — it feeds the translation — but isn't shown here.
+      if (captionLang === AI_ZH) return linesAt(aiCues, curTime)
       const wordSegment = !!captions?.some((c) => c.words && c.words.length > 1)
       return captionMode === 'sentence' && wordSegment ? sentenceLinesAt(sentences, curTime) : linesAt(captions, curTime)
     },
-    [showCaptions, captionMode, sentences, captions, curTime]
+    [showCaptions, captionLang, aiCues, captionMode, sentences, captions, curTime]
   )
   const captionLines2 = useMemo(
     () => {
       if (!showCaptions || !captionLang2) return []
       // A persisted second language can coincide with the main once the main
       // resolves (e.g. native → zh, saved second also zh) — don't show it twice.
-      if (activeLang2 && activeLang2 === activeLang) return []
+      // Only when the main slot actually SHOWS that track, though: with AI as the
+      // main, `activeLang` is its English source but the display is Chinese, so an
+      // English second is not a duplicate of anything on screen.
+      if (captionLang !== AI_ZH && activeLang2 && activeLang2 === activeLang) return []
       const wordSegment = !!secondCues?.some((c) => c.words && c.words.length > 1)
       return captionMode === 'sentence' && wordSegment ? sentenceLinesAt(sentences2, curTime) : linesAt(secondCues, curTime)
     },
-    [showCaptions, captionLang2, sentences2, secondCues, curTime, captionMode, activeLang, activeLang2]
+    [showCaptions, captionLang, captionLang2, sentences2, secondCues, curTime, captionMode, activeLang, activeLang2]
   )
 
-  // Second-subtitle choices: the video's other provided languages, plus an AI
-  // translation into Traditional Chinese — offered only once we know the main
-  // track's language and it isn't already Chinese.
-  const mainLang = activeLang || effCaptionLang || nativeLang
-  const secondLangOptions = captionLangs.filter((l) => l.code !== mainLang)
-  // `nativeLang` stands in until the track itself resolves, so the row appears
-  // with the rest of the menu rather than a round-trip later.
+  // AI translation into Traditional Chinese — offered only once we know the source
+  // track's language and it isn't already Chinese. `nativeLang` stands in until the
+  // track itself resolves, so the row appears with the rest of the menu rather than
+  // a round-trip later.
   const aiSourceLang = activeLang || (effCaptionLang || nativeLang)
   const aiTranslateAvailable = !!aiSourceLang && aiSourceLang !== 'zh'
 
-  // The reveal toggle only means something for a word-segment track — a whole-cue
-  // track is already whole lines, so it would be a control that does nothing. It
-  // hangs off the main track's row, so only that track decides whether it shows.
+  // The caption menu is two mirrored columns — Main and Second — each listing every
+  // track the video offers plus (when available) the AI translation. There's no
+  // "Off" row: an empty slot IS off. `curMain`/`curSecond` are the resolved codes
+  // each slot currently shows, so the menu can tick the right rows — the main slot's
+  // '' native default resolves through activeLang/nativeLang.
+  const curMain = showCaptions ? (captionLang || activeLang || nativeLang || '') : ''
+  // A restored second pick can coincide with the main once the main resolves (e.g.
+  // native → en, saved second also en). The overlay already dedupes it; treat it as
+  // off here too so the menu doesn't tick the same track in both columns.
+  const curSecond = captionLang2 && captionLang2 !== curMain ? captionLang2 : ''
+  // Commit a (main, second) pair. Invariant: no second without a main — an empty
+  // main with a second set promotes the second up. Slots can't hold the same track.
+  const setSlots = (main: string, second: string) => {
+    if (!main && second) { main = second; second = '' }
+    setShowCaptions(!!main)
+    if (main) setCaptionLang(main)
+    setCaptionLang2(second)
+  }
+  // Clicking a Main row: the active one toggles the slot off (promoting any second);
+  // a row already in the second slot moves up (clearing second); anything else just
+  // becomes the new main.
+  const pickMain = (code: string) =>
+    code === curMain ? setSlots(curSecond, '')
+      : code === curSecond ? setSlots(code, '')
+      : setSlots(code, curSecond)
+  // Clicking a Second row: the active one toggles off; picking the current main
+  // swaps the two; anything else becomes the new second.
+  const pickSecond = (code: string) =>
+    code === curSecond ? setSlots(curMain, '')
+      : code === curMain ? setSlots(curSecond, code)
+      : setSlots(curMain, code)
+  // A word-segment track shows two rows — whole sentences vs word-by-word — instead
+  // of a nested toggle. Picking a variant switches to that display mode and selects
+  // the track in the given slot (if it isn't already there); re-picking the active
+  // variant toggles the slot off, like any other active row. captionMode is global
+  // — it drives both slots' rendering — so the variant rows appear in whichever
+  // column holds a word-segment track.
+  const pickMode = (
+    pick: (code: string) => void,
+    cur: string,
+    code: string,
+    mode: 'word' | 'sentence',
+  ) => {
+    if (code === cur && captionMode === mode) { pick(code); return }
+    setCaptionMode(mode)
+    if (code !== cur) pick(code)
+  }
+
+  // Whether the currently-loaded main / second tracks carry per-word timing. Only a
+  // word-segment track (auto captions) supports the word-by-word reveal; a whole-cue
+  // track (manual/translated subs) is already whole lines, so the mode is a no-op.
   const mainIsWordSegment = !!captions?.some((c) => c.words && c.words.length > 1)
+  const secondIsWordSegment = !!captions2?.some((c) => c.words && c.words.length > 1)
+  // Remember which languages are word-segment as we load them, so the "word-by-word"
+  // variant shows for that language in both columns regardless of what's selected.
+  useEffect(() => {
+    setWordSegLangs((prev) => {
+      const next = new Set(prev)
+      if (mainIsWordSegment && activeLang) next.add(activeLang)
+      if (secondIsWordSegment && activeLang2) next.add(activeLang2)
+      return next.size === prev.size ? prev : next
+    })
+  }, [mainIsWordSegment, secondIsWordSegment, activeLang, activeLang2])
+  useEffect(() => { setWordSegLangs(new Set()) }, [videoId])
 
   // Create the full-size player. Opening the page is a click (a page gesture), so
   // we FIRST try unmuted autoplay — when the browser honors it, the video plays
@@ -1087,12 +1163,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
           // scrubber (measured ~73px above the bottom on a 281px-tall player).
           style={{ bottom: 'max(11%, 5.5rem)' }}
         >
-          {/* With AI translation on, the Chinese is what you're actually reading,
-              so it takes the top (primary) line and the source track sits under it
-              for reference. A real second-language track stays secondary. */}
-          {captionLang2 === AI_ZH && captionLines2.length > 0 && <CaptionBlock lines={captionLines2} />}
+          {/* The main track is the primary line (top); the second track sits under
+              it. Now that either slot can hold any language or the AI translation,
+              the pick — not the content — decides which reads on top. */}
           {captionLines.length > 0 && <CaptionBlock lines={captionLines} />}
-          {captionLang2 !== AI_ZH && captionLines2.length > 0 && <CaptionBlock lines={captionLines2} />}
+          {captionLines2.length > 0 && <CaptionBlock lines={captionLines2} />}
         </div>
       )}
 
@@ -1151,63 +1226,43 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         {captionLangs.length > 0 && (
           <div ref={captionMenuRef} className="absolute bottom-[14px] left-[8.25rem] z-20">
             {showCaptionMenu && (
-              <div className="absolute bottom-full left-0 mb-2 min-w-[10rem] overflow-hidden rounded-lg bg-[#282828] py-1 text-sm text-white shadow-2xl ring-1 ring-white/10">
-                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">Subtitles</div>
-                <button
-                  onClick={() => setShowCaptions(false)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                >
-                  <span className="w-4 shrink-0">{!showCaptions && '✓'}</span>
-                  Off
-                </button>
-                {captionLangs.map((l) => {
-                  const active = showCaptions && (activeLang === l.code || captionLang === l.code)
-                  return (
-                    <Fragment key={l.code}>
-                      <button
-                        onClick={() => { setCaptionLang(l.code); setShowCaptions(true) }}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                      >
-                        <span className="w-4 shrink-0">{active && '✓'}</span>
-                        {l.label}
-                      </button>
-                      {/* Reveal words as they're spoken. Nested under the track
-                          because it's a property OF that track, and only offered
-                          when the track actually carries per-word timing —
-                          otherwise it's a control that does nothing. Off = the
-                          cues are stitched into whole sentences instead. */}
-                      {active && mainIsWordSegment && (
-                        <button
-                          onClick={() => setCaptionMode(captionMode === 'word' ? 'sentence' : 'word')}
-                          className="flex w-full items-center gap-2 py-1.5 pl-9 pr-3 text-left text-[13px] text-[#bbb] hover:bg-white/10"
-                        >
-                          <span className="w-4 shrink-0">{captionMode === 'word' && '✓'}</span>
-                          As spoken
-                        </button>
-                      )}
-                    </Fragment>
-                  )
-                })}
-
-                {/* Second subtitles (dual) — shown once the main track is on and
-                    the video offers another language. Excludes the main language
-                    so the same track can't be picked twice. */}
-                {showCaptions && (secondLangOptions.length > 0 || aiTranslateAvailable) && (
-                  <>
-                    <div className="mt-1 border-t border-white/10 px-3 pb-1.5 pt-2 text-xs font-medium uppercase tracking-wide text-[#888]">Second subtitles</div>
-                    <button
-                      onClick={() => setCaptionLang2('')}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                    >
-                      <span className="w-4 shrink-0">{!captionLang2 && '✓'}</span>
-                      Off
-                    </button>
-                    {secondLangOptions.map((l) => {
-                      const active = captionLang2 === l.code
+              // Two mirrored columns: Main | Second. Each lists every track the
+              // video offers, plus the AI translation. No "Off" row — an empty slot
+              // is off (toggle by clicking the active row). The same track can't sit
+              // in both columns; picking it in the other slot moves/swaps it.
+              <div className="absolute bottom-full left-0 mb-2 flex overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
+                {([
+                  { title: 'Main', cur: curMain, pick: pickMain },
+                  { title: 'Second', cur: curSecond, pick: pickSecond },
+                ] as const).map((col, ci) => (
+                  <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
+                    <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
+                    {captionLangs.map((l) => {
+                      const active = col.cur === l.code
+                      // A word-segment track splits into two rows: the plain label for
+                      // whole sentences, and "(word-by-word)" for the reveal-as-spoken
+                      // mode. Shown in both columns for any language known to carry
+                      // per-word timing. Every other row is a single entry.
+                      if (wordSegLangs.has(l.code)) {
+                        return (
+                          <Fragment key={l.code}>
+                            {(['sentence', 'word'] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                onClick={() => pickMode(col.pick, col.cur, l.code, mode)}
+                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                              >
+                                <span className="w-4 shrink-0">{active && captionMode === mode && '✓'}</span>
+                                {mode === 'word' ? `${l.label} (word-by-word)` : l.label}
+                              </button>
+                            ))}
+                          </Fragment>
+                        )
+                      }
                       return (
                         <button
                           key={l.code}
-                          onClick={() => setCaptionLang2(l.code)}
+                          onClick={() => col.pick(l.code)}
                           className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
                         >
                           <span className="w-4 shrink-0">{active && '✓'}</span>
@@ -1215,22 +1270,21 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
                         </button>
                       )
                     })}
-                    {/* AI translation — only when the main track isn't Chinese. */}
+                    {/* AI translation — only when the source track isn't Chinese. */}
                     {aiTranslateAvailable && (
                       <button
-                        onClick={() => setCaptionLang2(AI_ZH)}
+                        onClick={() => col.pick(AI_ZH)}
                         className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
                       >
-                        <span className="w-4 shrink-0">{captionLang2 === AI_ZH && '✓'}</span>
-                        中文（繁體）
+                        <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
+                        Chinese
                         <span className="ml-auto pl-2 text-xs text-[#888]">
-                          {captionLang2 === AI_ZH && translating ? '翻譯中…' : 'AI'}
+                          {col.cur === AI_ZH && translating ? '翻譯中…' : 'AI'}
                         </span>
                       </button>
                     )}
-                  </>
-                )}
-
+                  </div>
+                ))}
               </div>
             )}
             <button
@@ -1491,7 +1545,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
                           className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-[#ccc]'}`}
                         >
                           <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
-                          中文（繁體）
+                          Chinese
                           <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#888]">AI</span>
                         </button>
                       )}
