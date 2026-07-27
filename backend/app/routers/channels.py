@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
-from app.models import Channel, ChannelTag, Video
+from app.models import Channel, ChannelTag, Video, WatchHistory
 from app.categorizer import get_categories, get_channel_groups, set_channel_group
 
 router = APIRouter(prefix="/channels")
@@ -94,6 +94,7 @@ async def channel_videos(
     time_mode: str = Query(default="wide", description="narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     label: str = Query(default="", description="filter to videos carrying this title-label"),
+    watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     offset: int = Query(default=0, description="pagination: index into the ranked list"),
     limit: int = Query(default=60, description="pagination: page size"),
     db: AsyncSession = Depends(get_db),
@@ -148,6 +149,21 @@ async def channel_videos(
     # returns all its videos in the window regardless of sort or scroll position.
     if label:
         ranked = [item for item in ranked if label in (item["title_labels"] or [])]
+
+    # Watch-status filter, likewise before pagination so `total` stays honest.
+    # Same three states as the feed's — see WATCH_STATUSES in routers/tags.py.
+    from app.routers.tags import WATCH_STATUSES
+
+    wanted = {w.strip() for w in watch.split(",") if w.strip()}
+    if wanted and not wanted.issuperset(WATCH_STATUSES):
+        hist = {
+            r[0]: ("watched" if r[1] else "in_progress")
+            for r in await db.execute(select(WatchHistory.youtube_id, WatchHistory.watched))
+        }
+        ranked = [
+            item for item in ranked
+            if hist.get(item["youtube_id"], "unwatched") in wanted
+        ]
 
     from app.routers.tags import channel_suggestions
 

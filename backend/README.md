@@ -67,6 +67,7 @@ app/
     channels.py    channel pages + video-topic chips/filtering (see "Video topics")
     search.py      proxies to search_index
     tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
+    history.py     watch positions — resume, the card's progress bar, History
     imported.py    videos added by pasting a YouTube link (metadata via yt-dlp)
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
@@ -335,6 +336,39 @@ the YouTube embed — so downloaded videos preview and play fully offline.
 
 ---
 
+## Watch history (`routers/history.py`)
+
+One row per video ever played, upserted by the watch page every ten seconds and
+once more on the way out. Three things read it: the watch page (resume), every
+video card (the red bar drawn before you hover), and the History page.
+
+The `watch=` filter on `/api/tags/feed` and `/api/channels/{id}/videos` reads
+the same table: `unwatched`
+is the absence of a row, `in_progress` a row, `watched` a row with the flag. It's
+applied **before ranking and paging**, so `total` and the offsets stay honest —
+filtering a page client-side would leave the count promising videos it then drops.
+
+**Watched** is decided in one place, server-side, so nothing downstream has to
+re-derive it: at 90% of the duration — past that it's credits and end cards — or
+within the last minute, which covers long videos where 90% still leaves a
+quarter of an hour. It's **sticky**: reaching the end once is enough, so a
+rewatch that stops halfway doesn't mark the video unfinished again.
+
+`watched` is the record that you finished it once; `position_seconds` is where
+you are *now*. They diverge during a rewatch, and everything that shows progress
+follows the position — so a rewatch resumes, and its card bar tracks the rewatch
+rather than staying pinned full from the first time round.
+
+Two guards keep the data honest:
+
+- Nothing is recorded below `MIN_POSITION_SECONDS` (5s), so a misclick or a card
+  you bounced off never lands in history.
+- A progress ping that carries no title doesn't overwrite the metadata snapshot.
+  The watch page can report a position before its metadata resolves, and without
+  this that ping would blank a row that already had one.
+
+---
+
 ## Imported videos (`routers/imported.py`)
 
 The feed only ever shows videos from channels you're subscribed to, so a link
@@ -477,9 +511,11 @@ Same OpenRouter client/model as tagging; unset key ⇒ no topics, never a crash.
 | `downloads` | videos downloaded to disk for offline viewing |
 | `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
 | `imported_videos` | one-off videos added by URL, from channels you don't follow |
+| `watch_history` | how far you got in each video, and whether you finished it |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
 
-`watch_later`, `playlist_items`, `downloads`, and `imported_videos` each store a
+`watch_later`, `playlist_items`, `downloads`, `imported_videos` and
+`watch_history` each store a
 **metadata snapshot** of the video so a card still renders even after the video
 ages out of the feed window. `imported_videos` is deliberately NOT `videos`:
 every feed query joins `videos` to the SUBSCRIBED channel set, and an imported
@@ -562,6 +598,7 @@ These are the design decisions most likely to bite if you touch them:
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
 | GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
+| GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview). Also runs daily on its own |
 | POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |

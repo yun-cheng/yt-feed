@@ -10,8 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import (
-    Channel, ChannelTag, ChannelTagRejection, Video, HiddenChannel,
+    Channel, ChannelTag, ChannelTagRejection, Video, HiddenChannel, WatchHistory,
 )
+
+# The three states a video can be in, derived from watch_history rather than
+# stored: no row = never opened, a row = started, a row with `watched` = finished.
+# (There's no "started but at 0" — the history endpoint ignores anything under a
+# few seconds, so every row means real playback.)
+WATCH_STATUSES = ("unwatched", "in_progress", "watched")
 
 router = APIRouter(prefix="/tags")
 
@@ -575,6 +581,7 @@ async def feed_by_tags(
     time_mode: str = Query(default="wide", description="narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     include_hidden: bool = Query(default=False, description="include channels hidden from home (peek mode)"),
+    watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     offset: int = 0,     # pagination: index into the ranked list
     limit: int = 60,     # pagination: page size
     db: AsyncSession = Depends(get_db),
@@ -643,12 +650,26 @@ async def feed_by_tags(
     chan_titles = {r.youtube_id: r.title for r in chan_rows}
     chan_thumbs = {r.youtube_id: r.thumbnail_url for r in chan_rows}
 
+    # Watch-status filter. Applied HERE, before ranking and paging, so `total`
+    # and the offsets stay honest — filtering the page client-side would leave the
+    # count promising videos that were then dropped.
+    wanted = {w.strip() for w in watch.split(",") if w.strip()}
+    if wanted and not wanted.issuperset(WATCH_STATUSES):
+        hist = {
+            r[0]: ("watched" if r[1] else "in_progress")
+            for r in await db.execute(
+                select(WatchHistory.youtube_id, WatchHistory.watched)
+            )
+        }
+        all_videos = [v for v in all_videos if hist.get(v.youtube_id, "unwatched") in wanted]
+
     ranked = rank_videos(list(all_videos), tw, chan_titles, sort=sort, time_mode=time_mode, channel_thumbnails=chan_thumbs)
     return {
         "window": window,
         "sort": sort,
         "time_mode": time_mode,
         "tags": tag_list,
+        "watch": sorted(wanted),
         "videos": ranked[offset:offset + limit],
         "total": len(ranked),
         "offset": offset,
