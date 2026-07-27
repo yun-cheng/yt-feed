@@ -1,7 +1,7 @@
 import TimeSortControls from './TimeSortControls'
 
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists'
+  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'imported'
   window: string
   onWindowChange: (w: string) => void
   sort: string
@@ -14,10 +14,18 @@ type Props = {
   searchQuery?: string
   onSearchChange?: (q: string) => void
   onSearchFocus?: () => void
+  // Set on the Imported page: renders the "Import" button at the top right.
+  onImport?: () => void
 }
 
-export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus }: Props) {
-  const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' ? null : variant === 'watchlater' ? (
+export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
+  const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' ? null : variant === 'imported' ? (
+    <TimeSortControls
+      variant="imported"
+      sort={sort}
+      onSortChange={onSortChange}
+    />
+  ) : variant === 'watchlater' ? (
     <TimeSortControls
       variant="watchlater"
       sort={sort}
@@ -92,6 +100,22 @@ export default function TopBar({ variant, window, onWindowChange, sort, onSortCh
               </span>
             )}
           </div>
+        </div>
+
+        {/* Right: page action. Only the Imported page has one, so the search box
+            stays centred everywhere else. */}
+        <div className="flex items-center px-4 flex-shrink-0">
+          {onImport && (
+            <button
+              onClick={onImport}
+              className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a]"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+              </svg>
+              <span className="hidden sm:inline">Import</span>
+            </button>
+          )}
         </div>
       </div>
 

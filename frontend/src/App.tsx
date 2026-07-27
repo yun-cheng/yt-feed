@@ -13,6 +13,9 @@ import PlaylistsPage from './components/PlaylistsPage'
 import type { PlaylistSummary } from './components/PlaylistsPage'
 import PlaylistPage from './components/PlaylistPage'
 import WatchPage from './components/WatchPage'
+import ImportedPage from './components/ImportedPage'
+import ImportDialog from './components/ImportDialog'
+import type { ImportResult } from './components/ImportDialog'
 
 export type DownloadItem = {
   youtube_id: string
@@ -80,7 +83,7 @@ export type FeedResponse = {
 // NB: there's no 'watch' page — /watch/:id is a full-screen overlay rendered on
 // top of whichever page you were on (see selectedVideoId), so that page stays
 // mounted underneath with its scroll and loaded videos intact.
-type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist'
+type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported'
 
 function parsePath(): { page: Page; channelId: string | null; playlistId: number | null; videoId: string | null } {
   const path = window.location.pathname
@@ -88,6 +91,7 @@ function parsePath(): { page: Page; channelId: string | null; playlistId: number
   if (path === '/channels') return { page: 'channels', ...base }
   if (path === '/watchlater') return { page: 'watchlater', ...base }
   if (path === '/downloads') return { page: 'downloads', ...base }
+  if (path === '/imported') return { page: 'imported', ...base }
   if (path === '/search') return { page: 'search', ...base }
   if (path === '/playlists') return { page: 'playlists', ...base }
   // /watch/:id is a full-screen OVERLAY, not a page — the underlying page stays
@@ -141,6 +145,7 @@ export function buildPath(
   if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
   if (page === 'watchlater') return '/watchlater'
   if (page === 'downloads') return '/downloads'
+  if (page === 'imported') return '/imported'
   if (page === 'search') return '/search'  // ?q= is appended by the search URL sync
   if (page === 'playlists') return '/playlists'
   // 'playlist' (single) is navigated directly with its id; syncUrl skips it
@@ -397,6 +402,41 @@ export default function App() {
   const deleteDownload = useCallback(async (videoId: string) => {
     setDownloads(prev => prev.filter(d => d.youtube_id !== videoId))
     try { await apiFetch(`/api/downloads/${videoId}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }, [])
+
+  // ── Imported videos ───────────────────────────────────
+  // Videos added by pasting a link, from channels you don't follow. They live in
+  // their own table server-side (the feed only ever queries subscribed channels),
+  // but arrive shaped like feed videos so the same cards and actions apply.
+  const [imported, setImported] = useState<VideoItem[]>([])
+  const [importOpen, setImportOpen] = useState(false)
+  // The Imported page has no time window, and its default order is import order
+  // — so it keeps its own sort rather than sharing the feed's.
+  const [importedSort, setImportedSort] = useState('added')
+
+  const fetchImported = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/imported')
+      if (res.ok) setImported(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { fetchImported() }, [fetchImported])
+
+  const importVideos = useCallback(async (urls: string): Promise<ImportResult> => {
+    const res = await apiFetch('/api/imported', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls }),
+    })
+    const data: ImportResult = await res.json()
+    if (data.added?.length) await fetchImported()
+    return { added: data.added ?? [], skipped: data.skipped ?? [], failed: data.failed ?? [] }
+  }, [fetchImported])
+
+  const removeImported = useCallback(async (video: VideoItem) => {
+    setImported(prev => prev.filter(v => v.youtube_id !== video.youtube_id))
+    try { await apiFetch(`/api/imported/${video.youtube_id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }, [])
 
   // ── YouTube API token health (reminder to re-auth) ────
@@ -726,7 +766,7 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
     setPageRaw(p)
@@ -892,6 +932,7 @@ export default function App() {
             }
           }}
           downloadsCount={downloads.length}
+          importedCount={imported.length}
           playlistsCount={playlists.length}
           onClearFilter={clearFilter}
           collapsed={sidebarCollapsed}
@@ -948,14 +989,15 @@ export default function App() {
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
         <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
+          onImport={page === 'imported' ? () => setImportOpen(true) : undefined}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
           window={page === 'channel' ? channelWindow : timeWindow}
           onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
-          sort={page === 'channel' ? channelSort : sort}
-          onSortChange={page === 'channel' ? setChannelSort : setSort}
+          sort={page === 'channel' ? channelSort : page === 'imported' ? importedSort : sort}
+          onSortChange={page === 'channel' ? setChannelSort : page === 'imported' ? setImportedSort : setSort}
           timeMode={page === 'channel' ? channelTimeMode : timeMode}
           onTimeModeChange={page === 'channel' ? setChannelTimeMode : setTimeMode}
           channelsSort={channelsSort}
@@ -1020,6 +1062,18 @@ export default function App() {
             downloadIds={downloadIds}
             onHideChannel={hideChannel}
             onDeleted={() => setPage('playlists')}
+          />
+        ) : page === 'imported' ? (
+          <ImportedPage
+            videos={imported}
+            sort={importedSort}
+            onChannelClick={selectChannel}
+            watchLaterIds={watchLaterIds}
+            onToggleWatchLater={toggleWatchLater}
+            onDownload={startDownload}
+            downloadIds={downloadIds}
+            onRemoveImported={removeImported}
+            onImport={() => setImportOpen(true)}
           />
         ) : page === 'downloads' ? (
           <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />
@@ -1196,6 +1250,9 @@ export default function App() {
             isDownloaded={downloadIds.has(selectedVideoId)}
           />
         </div>
+      )}
+      {importOpen && (
+        <ImportDialog onClose={() => setImportOpen(false)} onImport={importVideos} />
       )}
       <Toaster />
     </div>

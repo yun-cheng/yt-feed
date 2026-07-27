@@ -22,6 +22,14 @@ export const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
 ] as const
 
+// The Imported page has no time window: an import is an explicit pick, not a
+// stream of new uploads, so filtering it by publish date would hide most of what
+// you just added. 'added' (import order) is its default.
+export const IMPORTED_SORT_OPTIONS = [
+  { value: 'added', label: 'Added' },
+  ...SORT_OPTIONS,
+] as const
+
 export const CHANNEL_SORT_OPTIONS = [
   { value: 'subs', label: 'Subs' },
   { value: 'alpha', label: 'A-Z' },
@@ -30,7 +38,7 @@ export const CHANNEL_SORT_OPTIONS = [
 // ── Props ──────────────────────────────────────────────────
 
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel' | 'watchlater'
+  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'imported'
   window?: string
   onWindowChange?: (w: string) => void
   sort: string
@@ -43,11 +51,12 @@ type Props = {
 
 export default function TimeSortControls({ variant = 'feed', window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange }: Props) {
   const effectiveVariant = variant === 'watchlater' ? 'feed' : variant
-  if (effectiveVariant === 'channels') {
+  if (effectiveVariant === 'channels' || effectiveVariant === 'imported') {
+    const options = effectiveVariant === 'channels' ? CHANNEL_SORT_OPTIONS : IMPORTED_SORT_OPTIONS
     return (
       <div className="flex justify-end">
         <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5">
-          {CHANNEL_SORT_OPTIONS.map((opt) => (
+          {options.map((opt) => (
             <button
               key={opt.value}
               onClick={() => onSortChange(opt.value)}

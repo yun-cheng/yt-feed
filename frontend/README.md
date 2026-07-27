@@ -54,8 +54,8 @@ There is **no router library**. `App.tsx` holds essentially all page state and
 does client-side routing itself:
 
 - A `Page` union — `'feed' | 'channel' | 'channels' | 'playlist' | 'playlists' |
-  'downloads' | 'search' | 'watchlater'`. Note there is deliberately **no
-  `'watch'`** — `/watch/:id` is an overlay, not a page (see below).
+  'downloads' | 'search' | 'watchlater' | 'imported'`. Note there is deliberately
+  **no `'watch'`** — `/watch/:id` is an overlay, not a page (see below).
 - On navigation it calls `history.pushState` with a URL built by `buildPath(...)`;
   a `popstate` listener parses the URL back into state, so **back/forward work**
   and every view is deep-linkable.
@@ -68,6 +68,23 @@ does client-side routing itself:
   that shows an error toast on a failed request, so nothing fails silently.
   High-frequency background calls (hover captions/storyboards, the topic-build
   poll) opt out with `{ quiet: true }`.
+
+### The Imported page
+
+`/imported` lists videos added by pasting a link (`ImportedPage.tsx`), rendered
+by the **same `VideoRow`** the home feed uses — so the cards, the hover preview
+and every action (watch, download, save to playlist, watch later) are identical;
+only the source of the list differs. `ImportDialog.tsx` is the paste modal, and
+the TopBar grows an **Import** button at the top right on this page only.
+
+Two deliberate differences from the feed:
+
+- **No time window.** An import is an explicit pick, not a stream of new
+  uploads, so filtering it by publish date would hide most of what you just
+  added. It gets its own sort (`IMPORTED_SORT_OPTIONS`) defaulting to `added` —
+  import order, which is what the API already returns.
+- **Its own remove action.** The card menu shows "Remove from imported"
+  (`onRemoveImported`), alongside the existing playlist/download variants.
 
 ### Auto-refresh
 
@@ -89,6 +106,9 @@ components/
   ChannelTags.tsx                 per-channel label editor (apply/remove/suggest)
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx
+  ImportedPage.tsx                videos added by URL — the same VideoRow the
+                                  feed uses, so cards and actions are identical
+  ImportDialog.tsx                the paste-links modal (opened from TopBar)
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — full-size embed,
                                   keyboard controls, our own captions (language

@@ -5,8 +5,8 @@ type Props = {
   selectedTags: string[]
   onToggleTag: (tag: string) => void
   onSetTags: (tags: string[]) => void
-  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist'
-  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists') => void
+  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported'
+  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported') => void
   onHome: () => void
   onToggleCollapse: () => void
   onClearFilter: () => void
@@ -14,6 +14,7 @@ type Props = {
   watchLaterCount?: number
   downloadsCount?: number
   playlistsCount?: number
+  importedCount?: number
   tagFilteredCounts?: Map<string, number> | null
   hiddenCount?: number
   showHidden?: boolean
@@ -69,6 +70,12 @@ const WatchLaterIcon = () => (
 const DownloadsIcon = () => (
   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
     <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+  </svg>
+)
+
+const ImportedIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15V3m0 12l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
   </svg>
 )
 
@@ -138,7 +145,7 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -230,6 +237,20 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             {!!playlistsCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {playlistsCount > 9 ? '9+' : playlistsCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => onPageChange('imported')}
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
+              page === 'imported' ? 'text-white' : 'text-[#717171] hover:text-white'
+            }`}
+          >
+            <ImportedIcon />
+            <span className="text-[10px]">Imported</span>
+            {!!importedCount && (
+              <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {importedCount > 9 ? '9+' : importedCount}
               </span>
             )}
           </button>
@@ -340,6 +361,22 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           {!!playlistsCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {playlistsCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => onPageChange('imported')}
+          className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
+            page === 'imported'
+              ? 'bg-[#272727] text-white font-medium'
+              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+          }`}
+        >
+          <ImportedIcon />
+          Imported
+          {!!importedCount && (
+            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+              {importedCount}
             </span>
           )}
         </button>

@@ -25,6 +25,9 @@ real video (muted, with custom captions and scrubbing).
   dual subtitles and an AI translation into Traditional Chinese
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
+- **Imported videos** — paste any YouTube link to add a one-off video from a
+  channel you don't follow; it lands on its own page that looks and behaves
+  exactly like the home feed (watch, download, playlist, watch later)
 - **Search** — typo-tolerant, via a Meilisearch companion
 - **Backend-scheduled refresh** — the backend re-scans channels on its own
   interval (default 15 min); the UI just re-reads the results
