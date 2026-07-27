@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import async_session
-from app.models import CaptionLangs, CaptionTranslation, Channel, Video
+from app.models import CaptionLangs, CaptionTranslation, Channel, ImportedVideo, Video
 from app.ranking import TimeWindow, rank_videos, score_video
 from app.categorizer import get_categories, get_channel_groups
 
@@ -696,11 +696,17 @@ async def get_storyboard(video_id: str):
 async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
     """Single video's metadata for the in-app watch page (deep links / refresh).
 
-    Returns {} if the id isn't in the DB — the watch page still plays the embed
-    from the id alone, just with minimal chrome.
+    Falls back to the imported-videos snapshot, so opening (or reloading) an
+    imported video keeps its title/channel chrome even though it belongs to no
+    subscribed channel. Returns {} if the id is in neither — the watch page
+    still plays the embed from the id alone, just with minimal chrome.
     """
     v = await db.get(Video, video_id)
     if not v:
+        imp = await db.get(ImportedVideo, video_id)
+        if imp:
+            from app.routers.imported import _serialize as _serialize_imported
+            return _serialize_imported(imp)
         return {}
     chan = await db.get(Channel, v.channel_id)
     try:

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import feed, channels, subscriptions, downloads, hidden
+from app.routers import feed, channels, subscriptions, downloads, hidden, imported
 from app.routers import search as search_router
 from app.routers import watch_later as watch_later_router
 from app.routers import playlists as playlists_router
@@ -71,6 +71,7 @@ app.include_router(watch_later_router.router, prefix="/api")
 app.include_router(playlists_router.router, prefix="/api")
 app.include_router(subscriptions.router, prefix="/api")
 app.include_router(hidden.router, prefix="/api")
+app.include_router(imported.router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(tags_router, prefix="/api")
 

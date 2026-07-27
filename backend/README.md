@@ -67,6 +67,7 @@ app/
     channels.py    channel pages + video-topic chips/filtering (see "Video topics")
     search.py      proxies to search_index
     tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
+    imported.py    videos added by pasting a YouTube link (metadata via yt-dlp)
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 config/            categories.yaml, subscriptions.yaml, oauth token
@@ -301,6 +302,24 @@ the YouTube embed — so downloaded videos preview and play fully offline.
 
 ---
 
+## Imported videos (`routers/imported.py`)
+
+The feed only ever shows videos from channels you're subscribed to, so a link
+someone sends you has nowhere to live. `POST /api/imported` takes the pasted
+text verbatim, pulls every video id out of it (watch / `youtu.be` / shorts /
+live / embed URLs, or a bare 11-char id), and fetches each one's metadata with
+yt-dlp on a small bounded pool.
+
+Partial success is the normal case — one dead link among five — so nothing here
+raises: every input lands in exactly one of `added` / `skipped` (already
+imported) / `failed`, and the UI reports the tally and keeps the failures in
+the box for a retry. Duplicates inside one paste collapse to the first.
+
+`is_short` isn't something yt-dlp reports, so it's inferred the way the format
+is defined: portrait and at most 180s.
+
+---
+
 ## LLM client (`llm.py`)
 
 A thin wrapper over OpenRouter's chat-completions API, shared by every AI
@@ -424,11 +443,15 @@ Same OpenRouter client/model as tagging; unset key ⇒ no topics, never a crash.
 | `playlists` / `playlist_items` | user playlists |
 | `downloads` | videos downloaded to disk for offline viewing |
 | `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
+| `imported_videos` | one-off videos added by URL, from channels you don't follow |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
 
-`watch_later`, `playlist_items`, and `downloads` each store a **metadata
-snapshot** of the video so a card still renders even after the video ages out
-of the feed window. Schema is created by `Base.metadata.create_all`; new columns
+`watch_later`, `playlist_items`, `downloads`, and `imported_videos` each store a
+**metadata snapshot** of the video so a card still renders even after the video
+ages out of the feed window. `imported_videos` is deliberately NOT `videos`:
+every feed query joins `videos` to the SUBSCRIBED channel set, and an imported
+video's channel has no `channels` row, so a row there would be invisible anyway
+while polluting the scan and ranking paths. Schema is created by `Base.metadata.create_all`; new columns
 are added by the tiny additive-migration list in `database.py`.
 
 ---
@@ -494,7 +517,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
-| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links) |
+| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
 | POST | `/api/channels/{id}/labels/build` | build this channel's video-topic vocabulary (background; `?force=1` rebuilds) |
@@ -505,6 +528,7 @@ These are the design decisions most likely to bite if you touch them:
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
 | GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
+| GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview) |
 | POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |

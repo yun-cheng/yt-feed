@@ -140,6 +140,33 @@ class WatchLater(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ImportedVideo(Base):
+    """A one-off video the user imported by pasting its URL.
+
+    Kept out of `videos` on purpose: every feed query joins that table to the
+    SUBSCRIBED channel set (see routers/tags.feed_by_tags), and an imported
+    video's channel has no `channels` row — so a row there would be invisible
+    anyway, while polluting the scan/ranking paths. Instead this holds its own
+    metadata snapshot (like WatchLater / Download), fetched once at import time
+    via yt-dlp, which the same VideoCard renders.
+    """
+    __tablename__ = "imported_videos"
+
+    youtube_id = Column(String, primary_key=True)
+    title = Column(String, nullable=False, default="")
+    channel_id = Column(String, default="")
+    channel_name = Column(String, default="")
+    channel_thumbnail = Column(String, default="")
+    thumbnail_url = Column(String, default="")
+    duration_seconds = Column(Integer, default=0)
+    published_at = Column(String, default="")  # ISO string
+    view_count = Column(BigInteger, default=0)
+    like_count = Column(BigInteger, default=0)
+    is_short = Column(Boolean, nullable=False, default=False, server_default="0")
+    score = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Playlist(Base):
     """A user-created playlist (server-side)."""
     __tablename__ = "playlists"
