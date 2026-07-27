@@ -140,6 +140,42 @@ class WatchLater(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class WatchHistory(Base):
+    """How far you got in a video, and whether you finished it.
+
+    One row per video ever opened in the watch page, written every few seconds
+    while it plays. `position_seconds` is what makes a revisit resume where you
+    stopped, and what draws the red progress bar on the card before you hover.
+
+    Carries the same metadata snapshot as WatchLater so the History page renders
+    a card for a video that has since aged out of the feed — or was never in it
+    (an imported one-off).
+    """
+    __tablename__ = "watch_history"
+
+    youtube_id = Column(String, primary_key=True)
+    position_seconds = Column(Float, nullable=False, default=0.0)
+    # The player's own duration, which is authoritative — the feed's copy can be
+    # missing (0) on a video we only ever saw through a snapshot.
+    duration_seconds = Column(Integer, nullable=False, default=0)
+    # Sticky: once you've reached the end it stays set, so a rewatch that stops
+    # halfway doesn't un-finish the video.
+    watched = Column(Boolean, nullable=False, default=False, server_default="0")
+
+    title = Column(String, nullable=False, default="")
+    channel_id = Column(String, default="")
+    channel_name = Column(String, default="")
+    channel_thumbnail = Column(String, default="")
+    thumbnail_url = Column(String, default="")
+    published_at = Column(String, default="")  # ISO string
+    view_count = Column(BigInteger, default=0)
+    like_count = Column(BigInteger, default=0)
+    is_short = Column(Boolean, nullable=False, default=False, server_default="0")
+    score = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+
 class ImportedVideo(Base):
     """A one-off video the user imported by pasting its URL.
 
