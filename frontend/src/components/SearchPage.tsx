@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
-import type { VideoItem } from '../App'
+import type { VideoItem, WatchProgress } from '../App'
 
 type ChannelHit = {
   youtube_id: string
@@ -18,12 +18,13 @@ type Props = {
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
+  progressById?: Map<string, WatchProgress>
 }
 
 const SEARCH_PAGE_SIZE = 30
 
 export default function SearchPage({
-  query, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel,
+  query, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, progressById,
 }: Props) {
   const [channels, setChannels] = useState<ChannelHit[]>([])
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -121,6 +122,7 @@ export default function SearchPage({
           {/* Videos section — paginated (infinite scroll) */}
           {videos.length > 0 && (
             <VideoRow
+          progressById={progressById}
               group={{ name: 'Videos', icon: '', sort_order: 0, videos }}
               onChannelClick={onChannelClick}
               sort={sort}

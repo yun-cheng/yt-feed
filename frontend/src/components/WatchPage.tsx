@@ -126,6 +126,15 @@ const AI_LOOKAHEAD_SEC = 20    // keep this many seconds ahead of the play head 
 // covers a very long video, and a bug can't spend the API key past it.
 const AI_TRANSCRIPT_MAX_BATCHES = 40
 
+// Watch history. Ten seconds is often enough that closing the tab loses almost
+// nothing, and rare enough to be invisible next to the caption traffic.
+const HISTORY_REPORT_SEC = 10
+// Resuming below this isn't worth the jump — you'd re-watch it anyway.
+const RESUME_MIN_SEC = 10
+// Nor is resuming this close to the end: the video restarts instead, so a
+// finished video doesn't reopen onto its own credits.
+const RESUME_TAIL_SEC = 20
+
 // Caption preferences persist in localStorage so they carry across videos and
 // sessions — the watch overlay remounts per video, re-reading these on mount.
 const CAPTION_PREFS_KEY = 'ytfeed:caption-prefs'
@@ -477,6 +486,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     pauseVideo: () => void
     getPlayerState: () => number
     getCurrentTime: () => number
+    getDuration: () => number
     seekTo: (seconds: number, allowSeekAhead: boolean) => void
   } | null>(null)
 
@@ -520,6 +530,93 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       .catch(() => { /* keep the card metadata / minimal chrome */ })
     return () => { cancelled = true }
   }, [videoId, video])
+
+  // ── Watch history ─────────────────────────────────────
+  // Where we left off last time, fetched in parallel with the player's own
+  // startup; `resumeAt` stays null until we know, so the seek effect below can
+  // tell "not loaded yet" from "start at 0".
+  const [resumeAt, setResumeAt] = useState<number | null>(null)
+  const resumedRef = useRef(false)
+  useEffect(() => {
+    let cancelled = false
+    apiFetch(`/api/history/${videoId}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        const pos = Number(d?.position_seconds) || 0
+        const dur = Number(d?.duration_seconds) || 0
+        // Don't drop someone back onto the credits: a finished video (or one
+        // stopped within RESUME_TAIL_SEC of the end) restarts from the top.
+        const resumable = pos > RESUME_MIN_SEC && !(dur > 0 && dur - pos <= RESUME_TAIL_SEC)
+        setResumeAt(resumable ? pos : 0)
+      })
+      .catch(() => setResumeAt(0))
+    return () => { cancelled = true }
+  }, [videoId])
+
+  // Seek once, as soon as BOTH the position and a live player exist — either can
+  // land first, and the player has no ready event we can hang this off from out
+  // here (its onReady fires inside the creation effect, before this state may
+  // have arrived).
+  useEffect(() => {
+    if (resumeAt === null || resumedRef.current) return
+    if (resumeAt === 0) { resumedRef.current = true; return }
+    const id = window.setInterval(() => {
+      const p = playerRef.current
+      if (!p) return
+      window.clearInterval(id)
+      resumedRef.current = true
+      p.seekTo(resumeAt, true)
+    }, 100)
+    return () => window.clearInterval(id)
+  }, [resumeAt])
+
+  // Report progress on a timer while the video plays, and once more on the way
+  // out (closing the overlay, switching video, navigating away). The backend
+  // ignores anything under a few seconds, so a misclick never lands in history.
+  useEffect(() => {
+    const report = (keepalive = false) => {
+      const p = playerRef.current
+      if (!p) return
+      const position = p.getCurrentTime()
+      const duration = p.getDuration?.() || meta?.duration_seconds || 0
+      if (!position) return
+      apiFetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // keepalive lets the final report survive the page being torn down.
+        keepalive,
+        quiet: true,
+        body: JSON.stringify({
+          youtube_id: videoId,
+          position_seconds: position,
+          duration_seconds: Math.round(duration),
+          title: meta?.title ?? '',
+          channel_id: meta?.channel_id ?? '',
+          channel_name: meta?.channel_name ?? '',
+          channel_thumbnail: meta?.channel_thumbnail ?? '',
+          thumbnail_url: meta?.thumbnail_url ?? '',
+          published_at: meta?.published_at ?? '',
+          view_count: meta?.view_count ?? 0,
+          like_count: meta?.like_count ?? 0,
+          is_short: meta?.is_short ?? false,
+          score: meta?.score ?? 0,
+        }),
+      }).catch(() => { /* progress is best-effort */ })
+    }
+    const id = window.setInterval(() => {
+      // 1 = PLAYING. Paused or buffering means the position hasn't moved, so
+      // there's nothing new to say.
+      if (playerRef.current?.getPlayerState() === 1) report()
+    }, HISTORY_REPORT_SEC * 1000)
+    const onHide = () => { if (document.visibilityState === 'hidden') report(true) }
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onHide)
+      report(true)
+    }
+  }, [videoId, meta])
 
   useEffect(() => {
     setDescription('')

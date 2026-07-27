@@ -22,13 +22,13 @@ export const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
 ] as const
 
-// The Imported page has no time window: an import is an explicit pick, not a
-// stream of new uploads, so filtering it by publish date would hide most of what
-// you just added. 'added' (import order) is its default.
-export const IMPORTED_SORT_OPTIONS = [
-  { value: 'added', label: 'Added' },
-  ...SORT_OPTIONS,
-] as const
+// Imported and History have no time window: neither is a stream of new uploads,
+// and filtering by publish date would hide most of the list (you watch and
+// import old videos all the time). Both lead with 'recent' — the order the API
+// already returns them in — labelled for what that order means on each page.
+export function recentSortOptions(label: string) {
+  return [{ value: 'recent', label }, ...SORT_OPTIONS]
+}
 
 export const CHANNEL_SORT_OPTIONS = [
   { value: 'subs', label: 'Subs' },
@@ -38,7 +38,7 @@ export const CHANNEL_SORT_OPTIONS = [
 // ── Props ──────────────────────────────────────────────────
 
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'imported'
+  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'imported' | 'history'
   window?: string
   onWindowChange?: (w: string) => void
   sort: string
@@ -51,8 +51,10 @@ type Props = {
 
 export default function TimeSortControls({ variant = 'feed', window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange }: Props) {
   const effectiveVariant = variant === 'watchlater' ? 'feed' : variant
-  if (effectiveVariant === 'channels' || effectiveVariant === 'imported') {
-    const options = effectiveVariant === 'channels' ? CHANNEL_SORT_OPTIONS : IMPORTED_SORT_OPTIONS
+  if (effectiveVariant === 'channels' || effectiveVariant === 'imported' || effectiveVariant === 'history') {
+    const options = effectiveVariant === 'channels'
+      ? CHANNEL_SORT_OPTIONS
+      : recentSortOptions(effectiveVariant === 'history' ? 'Watched' : 'Added')
     return (
       <div className="flex justify-end">
         <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5">

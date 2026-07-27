@@ -54,7 +54,7 @@ There is **no router library**. `App.tsx` holds essentially all page state and
 does client-side routing itself:
 
 - A `Page` union — `'feed' | 'channel' | 'channels' | 'playlist' | 'playlists' |
-  'downloads' | 'search' | 'watchlater' | 'imported'`. Note there is deliberately
+  'downloads' | 'search' | 'watchlater' | 'imported' | 'history'`. Note there is deliberately
   **no `'watch'`** — `/watch/:id` is an overlay, not a page (see below).
 - On navigation it calls `history.pushState` with a URL built by `buildPath(...)`;
   a `popstate` listener parses the URL back into state, so **back/forward work**
@@ -68,6 +68,75 @@ does client-side routing itself:
   that shows an error toast on a failed request, so nothing fails silently.
   High-frequency background calls (hover captions/storyboards, the topic-build
   poll) opt out with `{ quiet: true }`.
+
+### Watch history
+
+Every video remembers where you stopped. `WatchPage` reports its position every
+10s while the player is actually PLAYING, and once more on the way out — through
+the effect cleanup, with `keepalive` so the last report survives the page being
+torn down. Reopening the video seeks straight back there.
+
+The pieces that aren't obvious:
+
+- **Two things race on open** — the saved position and the player itself, either
+  can land first. `resumeAt` stays `null` until the fetch answers (so "not loaded
+  yet" is distinct from "start at 0"), and a short poll does the seek as soon as
+  both exist. The player's `onReady` fires inside the creation effect, before the
+  position may have arrived, so it can't own this.
+- **A finished video restarts.** Resuming within `RESUME_TAIL_SEC` of the end
+  would drop you onto the credits, so that case seeks to 0 instead.
+- **The card's bar is `watchProgress`, not `progress`** — `VideoCard` already
+  uses `progress` for the hover preview's own playhead. The bar renders only
+  while the card is idle; hovering hands that strip to the preview's scrubber.
+  It always fills to the CURRENT position, never to `watched`: you rewatch
+  things, and a bar stuck full from the first time round would tell you nothing
+  about where you are in the rewatch. `watched` only fills it as a fallback when
+  the duration is unknown and there's no ratio to compute.
+- **A finished video gets a "Watched" badge** top-left, since the bar alone
+  can't say it: a rewatch pulls the bar back to wherever you are now, and a
+  video abandoned at 95% looks identical to one seen through. Idle-only, like
+  the bar.
+- **The page obeys the global controls**, like the feed does: the Videos/Shorts
+  toggle and the sidebar's tag selection, plus its own watch-status selection
+  (see below). Both are applied
+  client-side in `App` (`visibleHistory`) since the list is already loaded, and
+  the tag rule — OR within a group, AND across groups — is the exported
+  `filterByTags`, shared with Watch Later so a filtered library can't disagree
+  with a filtered feed. `HistoryPage` takes the filtered list plus `totalCount`,
+  which is what tells "nothing watched yet" from "nothing matches".
+- **`App` holds one `progressById` map** built from the history list and passed
+  to every grid, rather than each page fetching its own. It refetches whenever
+  the watch overlay closes, which is exactly when a position has changed — that's
+  what makes the card behind the overlay show its new bar immediately.
+
+### The watch-status filter
+
+A sidebar section — unwatched / in progress / watched — derived from watch
+history rather than stored: no entry means never opened, an entry means started,
+an entry with `watched` means finished. **Watched is off by default**: the home
+feed is for finding something to watch, and things you've already seen are noise
+there.
+
+- It lives in **localStorage**, not the URL. The URL carries the shareable view
+  (tags, window, sort); this is a standing viewing preference, and putting it
+  there would mean threading another argument through `buildPath`'s eight.
+- The **feed and a channel page apply it server-side** (`watch=` on
+  `/api/tags/feed` and `/api/channels/{id}/videos`) so `total` and the paging stay
+  honest. Watch Later and History are already-loaded lists, so they use
+  `filterByWatchStatus` on the client.
+- Selecting **every** status — or **none** — means "don't filter", matching both
+  the tag filter and the backend, so an empty selection can't leave you staring
+  at a blank page.
+- **A channel page gets its own selection too**, cleared per channel — you open a
+  channel to see what it has, not what's left of it, and one channel's filter
+  shouldn't follow you to the next. The sidebar swaps the global taxonomy for that
+  channel's topic chips there, but the watch-status section stays.
+- **History gets its own selection**, not the global one — which hides watched
+  videos, backwards on a page whose whole job is listing what you've watched.
+  `unwatched` can't match anything there either, so that chip isn't offered. The
+  selection starts **empty** (no filter) and is reset to empty on every visit, so
+  the page always opens showing everything and a filter you set last time can't
+  ambush you. Toggling it there leaves the feed's selection alone, and vice versa.
 
 ### The Imported page
 
@@ -109,6 +178,7 @@ components/
   ImportedPage.tsx                videos added by URL — the same VideoRow the
                                   feed uses, so cards and actions are identical
   ImportDialog.tsx                the paste-links modal (opened from TopBar)
+  HistoryPage.tsx                 what you've watched, same VideoRow again
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — full-size embed,
                                   keyboard controls, our own captions (language

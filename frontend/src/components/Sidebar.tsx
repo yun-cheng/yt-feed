@@ -1,12 +1,13 @@
 import type { TagInfo, LabelCount } from '../App'
+import { WATCH_STATUSES } from '../App'
 
 type Props = {
   tags: TagInfo[]
   selectedTags: string[]
   onToggleTag: (tag: string) => void
   onSetTags: (tags: string[]) => void
-  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported'
-  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported') => void
+  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history'
+  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history') => void
   onHome: () => void
   onToggleCollapse: () => void
   onClearFilter: () => void
@@ -16,6 +17,12 @@ type Props = {
   playlistsCount?: number
   importedCount?: number
   tagFilteredCounts?: Map<string, number> | null
+  // Watch-status filter: which of unwatched / in progress / watched to show.
+  watchStatuses?: string[]
+  onToggleWatchStatus?: (value: string) => void
+  // Which statuses this page can offer — History drops 'unwatched', which has
+  // nothing to match on a list of things you've started.
+  watchStatusOptions?: readonly { value: string; label: string; icon: string }[]
   hiddenCount?: number
   showHidden?: boolean
   onToggleShowHidden?: () => void
@@ -70,6 +77,12 @@ const WatchLaterIcon = () => (
 const DownloadsIcon = () => (
   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
     <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+  </svg>
+)
+
+const HistoryIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
   </svg>
 )
 
@@ -139,13 +152,68 @@ const EyeIcon = () => (
   </svg>
 )
 
+// Watch-status chips. Shown on the taxonomy sidebar AND the channel page (which
+// otherwise swaps the global taxonomy out) — filtering by what you've already
+// seen is just as useful inside one channel. Renders nothing without a handler.
+const WatchStatusSection = ({
+  options,
+  selected = [],
+  onToggle,
+}: {
+  options: readonly { value: string; label: string; icon: string }[]
+  selected?: string[]
+  onToggle?: (value: string) => void
+}) => {
+  if (!onToggle) return null
+  const allSelected = options.every(w => selected.includes(w.value))
+  return (
+    <div>
+      <button
+        onClick={() => options.forEach(w => {
+          if (allSelected || !selected.includes(w.value)) onToggle(w.value)
+        })}
+        className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
+          allSelected
+            ? 'text-white hover:bg-[#2a2a2a]'
+            : 'text-[#717171] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+        }`}
+      >
+        <span>👁️</span>
+        <span>Watch status</span>
+        <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
+          {allSelected ? 'deselect all' : 'select all'}
+        </span>
+      </button>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((w) => {
+          const active = selected.includes(w.value)
+          return (
+            <button
+              key={w.value}
+              onClick={() => onToggle(w.value)}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
+                active
+                  ? 'bg-white text-black font-medium'
+                  : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+              }`}
+            >
+              <span>{w.icon}</span>
+              <span>{w.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const ToggleSwitch = ({ on }: { on: boolean }) => (
   <span className={`relative inline-block w-9 h-5 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-blue-500' : 'bg-[#3f3f3f]'}`}>
     <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : ''}`} />
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -253,6 +321,15 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
                 {importedCount > 9 ? '9+' : importedCount}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => onPageChange('history')}
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
+              page === 'history' ? 'text-white' : 'text-[#717171] hover:text-white'
+            }`}
+          >
+            <HistoryIcon />
+            <span className="text-[10px]">History</span>
           </button>
           {!!hiddenCount && (
             <button
@@ -380,6 +457,17 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             </span>
           )}
         </button>
+        <button
+          onClick={() => onPageChange('history')}
+          className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
+            page === 'history'
+              ? 'bg-[#272727] text-white font-medium'
+              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+          }`}
+        >
+          <HistoryIcon />
+          History
+        </button>
       </div>
 
       <div className="border-t border-[#272727] mx-4 hidden md:block" />
@@ -388,7 +476,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           replacing the global taxonomy, which is meaningless when already scoped
           to one channel. */}
       {channelMode ? (
-        <div className="p-4 flex-1 overflow-y-auto">
+        <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+          <WatchStatusSection
+            options={watchStatusOptions}
+            selected={watchStatuses}
+            onToggle={onToggleWatchStatus}
+          />
+          <div>
           <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#717171]">
             <span>🏷️</span>
             <span>Topics</span>
@@ -432,6 +526,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
               })}
             </div>
           )}
+          </div>
         </div>
       ) : (
       /* Tag groups */
@@ -445,6 +540,11 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             <span className="text-sm">Show hidden channels</span>
           </button>
         )}
+        <WatchStatusSection
+          options={watchStatusOptions}
+          selected={watchStatuses}
+          onToggle={onToggleWatchStatus}
+        />
         {GROUP_ORDER.map(({ key, icon }) => {
           const groupTags = grouped.get(key)
           if (!groupTags?.length) return null

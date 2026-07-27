@@ -25,6 +25,11 @@ real video (muted, with custom captions and scrubbing).
   dual subtitles and an AI translation into Traditional Chinese
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
+- **Watch history** — every video remembers where you stopped: revisiting resumes
+  from that timestamp, cards show a red progress bar before you hover, and finished
+  videos get a "Watched" badge. All of it on its own History page
+- **Watch status filter** — a sidebar section for unwatched / in progress / watched;
+  the home feed excludes watched by default, so it's about what you haven't seen
 - **Imported videos** — paste any YouTube link to add a one-off video from a
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)

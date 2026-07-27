@@ -1,5 +1,5 @@
 import VideoRow from './VideoRow'
-import type { VideoItem } from '../App'
+import type { VideoItem, WatchProgress } from '../App'
 import { sortWatchLater } from '../App'
 
 type Props = {
@@ -11,12 +11,13 @@ type Props = {
   onDownload: (video: VideoItem) => void
   downloadIds: Set<string>
   onRemoveImported: (video: VideoItem) => void
+  progressById?: Map<string, WatchProgress>
   onImport: () => void
 }
 
 export default function ImportedPage({
   videos, sort, onChannelClick, watchLaterIds, onToggleWatchLater,
-  onDownload, downloadIds, onRemoveImported, onImport,
+  onDownload, downloadIds, onRemoveImported, onImport, progressById,
 }: Props) {
   if (videos.length === 0) {
     return (
@@ -32,10 +33,10 @@ export default function ImportedPage({
     )
   }
 
-  // 'added' keeps the server's order (most recently imported first); every other
+  // 'recent' keeps the server's order (most recently imported first); every other
   // mode is the same client-side sort the Watch Later page uses. No time window
-  // here — see IMPORTED_SORT_OPTIONS.
-  const ordered = sort === 'added' ? videos : sortWatchLater(videos, sort)
+  // here — see recentSortOptions.
+  const ordered = sort === 'recent' ? videos : sortWatchLater(videos, sort)
 
   return (
     <div className="px-6 py-4">
@@ -49,6 +50,7 @@ export default function ImportedPage({
         onDownload={onDownload}
         downloadIds={downloadIds}
         onRemoveImported={onRemoveImported}
+        progressById={progressById}
       />
     </div>
   )

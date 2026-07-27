@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
-import type { VideoItem } from '../App'
+import type { VideoItem, WatchProgress } from '../App'
 
 type Props = {
   playlistId: number
@@ -11,11 +11,12 @@ type Props = {
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
+  progressById?: Map<string, WatchProgress>
   onDeleted: () => void
 }
 
 export default function PlaylistPage({
-  playlistId, onChannelClick, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onDeleted,
+  playlistId, onChannelClick, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onDeleted, progressById,
 }: Props) {
   const [name, setName] = useState('')
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -88,6 +89,7 @@ export default function PlaylistPage({
         </div>
       ) : (
         <VideoRow
+          progressById={progressById}
           group={{ name: '', icon: '', sort_order: 0, videos }}
           onChannelClick={onChannelClick}
           watchLaterIds={watchLaterIds}

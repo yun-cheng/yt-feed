@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/api'
 import TimeSortControls from './TimeSortControls'
-import type { VideoItem, LabelCount } from '../App'
+import type { VideoItem, LabelCount, WatchProgress } from '../App'
 import VideoRow from './VideoRow'
 import ChannelTags from './ChannelTags'
 
@@ -40,6 +40,9 @@ type Props = {
   onDownload?: (video: VideoItem) => void
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
+  progressById?: Map<string, WatchProgress>
+  // Watch statuses to keep; empty = no filter. Applied server-side.
+  watchStatuses?: string[]
   shorts?: boolean
   // Selected sidebar label to filter this channel's videos by (null = none).
   labelFilter?: string | null
@@ -59,7 +62,7 @@ function formatSubs(n: number): string {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange }: Props) {
+export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -126,6 +129,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
       offset: String(offset), limit: String(CHANNEL_PAGE_SIZE),
     })
     if (labelFilter) params.set('label', labelFilter)
+    if (watchStatuses?.length) params.set('watch', watchStatuses.join(','))
     const res = await apiFetch(`/api/channels/${channelId}/videos?${params}`)
     if (!res.ok) throw new Error('Not found')
     const d: ChannelResponse = await res.json()
@@ -133,7 +137,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     setTotal(d.total || 0)
     setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
     if (replace) initChannelLabels(d.channel)
-  }, [channelId, timeWindow, sort, timeMode, shorts, labelFilter, initChannelLabels])
+  }, [channelId, timeWindow, sort, timeMode, shorts, labelFilter, watchStatuses, initChannelLabels])
   fetchPageRef.current = fetchPage
 
   // Stop polling and clear per-channel label state when leaving the channel.
@@ -289,6 +293,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
         </div>
       ) : (
         <VideoRow
+          progressById={progressById}
           group={{ name: ch.title, icon: '', sort_order: 0, videos }}
           onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')}
           sort={sort}

@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
-import type { VideoItem } from '../App'
+import type { VideoItem, WatchProgress } from '../App'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import SaveToPlaylist from './SaveToPlaylist'
 
@@ -124,6 +124,9 @@ type Props = {
   onRemoveDownload?: (video: VideoItem) => void  // when set, the menu shows "remove download"
   onRemoveFromPlaylist?: (video: VideoItem) => void  // when set (playlist page), the menu shows "remove from playlist"
   onRemoveImported?: (video: VideoItem) => void  // when set (imported page), the menu shows "remove from imported"
+  onRemoveHistory?: (video: VideoItem) => void  // when set (history page), the menu shows "remove from history"
+  // How far into this video you got, if at all — draws the resume bar.
+  watchProgress?: WatchProgress
   onHideChannel?: (channelId: string) => void    // when set, the menu shows "hide channel from home"
   localSrc?: string                              // preview a local file instead of the YouTube embed
   localOnly?: boolean                            // never fall back to YouTube; wait for localSrc (offline)
@@ -197,7 +200,7 @@ const ccPrefByVideo = new Map<string, boolean>()
 // idle players (and their audio) don't linger.
 const PLAYER_IDLE_TEARDOWN_MS = 600
 
-export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onRemoveImported, onHideChannel, localSrc, localOnly }: Props) {
+export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onRemoveImported, onRemoveHistory, watchProgress, onHideChannel, localSrc, localOnly }: Props) {
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
   // Shorts render as a vertical (9:16) card — YouTube's native Shorts ratio —
   // instead of 16:9 landscape.
@@ -236,6 +239,17 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(video.duration_seconds > 0 ? video.duration_seconds : 0)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
+  // How much of the resume bar to fill: always the CURRENT position, so a
+  // rewatch shows where you are in the rewatch rather than staying pinned full
+  // from the first time round. `watched` only fills the bar as a fallback for a
+  // video whose duration we don't know, since without it there's no ratio.
+  const watchedRatio = !watchProgress
+    ? 0
+    : video.duration_seconds > 0
+      ? Math.min(1, watchProgress.position_seconds / video.duration_seconds)
+      : watchProgress.watched
+        ? 1
+        : 0
   // Keep the thumbnail up until the preview is actually playing — the YouTube
   // embed takes ~1-2s to load, and hiding the thumbnail on hover would leave a
   // blank card during that gap. Flips true on the player's first PLAYING state.
@@ -591,6 +605,12 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const handleRemoveImported = (e: React.MouseEvent) => {
     e.stopPropagation()
     onRemoveImported?.(video)
+    setMenuOpen(false)
+  }
+
+  const handleRemoveHistory = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onRemoveHistory?.(video)
     setMenuOpen(false)
   }
 
@@ -1045,6 +1065,27 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           </div>
         )}
 
+        {/* Resume bar — how far you got, drawn before you hover (the hover preview
+            has its own scrubber, which takes over that strip). Sits flush with
+            the thumbnail's bottom edge, YouTube-style. */}
+        {!isHovered && watchedRatio > 0 && (
+          <div className="absolute bottom-0 inset-x-0 h-1 bg-black/60 z-[6]">
+            <div className="h-full bg-red-600" style={{ width: `${watchedRatio * 100}%` }} />
+          </div>
+        )}
+
+        {/* Watched badge — the bar alone can't say "finished": a rewatch pulls it
+            back to wherever you are now, and a video abandoned at 95% looks the
+            same as one seen through. Idle-only, like the bar. */}
+        {!isHovered && watchProgress?.watched && (
+          <div className="absolute left-1 top-1 z-[6] flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            Watched
+          </div>
+        )}
+
         {/* Duration badge — shows remaining time while hovered, hides when preview scrubbing */}
         {video.duration_seconds > 0 && !hoverRatio && (
           <div className={`absolute right-1 z-[6] bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium transition-all ${isHovered ? 'bottom-6' : 'bottom-1'}`}>
@@ -1157,6 +1198,17 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h11M4 12h11M4 18h7M15 15l6 6m0-6l-6 6" />
                   </svg>
                   Remove from playlist
+                </button>
+              )}
+              {onRemoveHistory && (
+                <button
+                  className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
+                  onClick={handleRemoveHistory}
+                >
+                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>
+                  </svg>
+                  Remove from history
                 </button>
               )}
               {onRemoveImported && (

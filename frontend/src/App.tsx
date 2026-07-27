@@ -14,6 +14,7 @@ import type { PlaylistSummary } from './components/PlaylistsPage'
 import PlaylistPage from './components/PlaylistPage'
 import WatchPage from './components/WatchPage'
 import ImportedPage from './components/ImportedPage'
+import HistoryPage from './components/HistoryPage'
 import ImportDialog from './components/ImportDialog'
 import type { ImportResult } from './components/ImportDialog'
 
@@ -52,6 +53,20 @@ export type VideoItem = {
   title_labels?: string[] | null
 }
 
+// A video you've watched (or started): a feed video plus where you got to.
+export type HistoryItem = VideoItem & {
+  position_seconds: number
+  watched: boolean
+  watched_at: string | null
+}
+
+// What a card needs to draw its resume bar — the subset of HistoryItem the
+// feed/grid pass around, keyed by video id.
+export type WatchProgress = {
+  position_seconds: number
+  watched: boolean
+}
+
 export type TagInfo = {
   name: string
   group: string
@@ -83,7 +98,7 @@ export type FeedResponse = {
 // NB: there's no 'watch' page — /watch/:id is a full-screen overlay rendered on
 // top of whichever page you were on (see selectedVideoId), so that page stays
 // mounted underneath with its scroll and loaded videos intact.
-type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported'
+type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history'
 
 function parsePath(): { page: Page; channelId: string | null; playlistId: number | null; videoId: string | null } {
   const path = window.location.pathname
@@ -92,6 +107,7 @@ function parsePath(): { page: Page; channelId: string | null; playlistId: number
   if (path === '/watchlater') return { page: 'watchlater', ...base }
   if (path === '/downloads') return { page: 'downloads', ...base }
   if (path === '/imported') return { page: 'imported', ...base }
+  if (path === '/history') return { page: 'history', ...base }
   if (path === '/search') return { page: 'search', ...base }
   if (path === '/playlists') return { page: 'playlists', ...base }
   // /watch/:id is a full-screen OVERLAY, not a page — the underlying page stays
@@ -146,6 +162,7 @@ export function buildPath(
   if (page === 'watchlater') return '/watchlater'
   if (page === 'downloads') return '/downloads'
   if (page === 'imported') return '/imported'
+  if (page === 'history') return '/history'
   if (page === 'search') return '/search'  // ?q= is appended by the search URL sync
   if (page === 'playlists') return '/playlists'
   // 'playlist' (single) is navigated directly with its id; syncUrl skips it
@@ -173,6 +190,73 @@ export function filterWatchLater(videos: VideoItem[], win: string, timeMode: str
     const t = new Date(v.published_at).getTime()
     return t >= cutoff && t <= now
   })
+}
+
+// The three states a video can be in. Derived from watch history, not stored:
+// no entry = never opened, an entry = started, an entry with `watched` = finished.
+export const WATCH_STATUSES = [
+  { value: 'unwatched', label: 'Unwatched', icon: '🆕' },
+  { value: 'in_progress', label: 'In progress', icon: '▶️' },
+  { value: 'watched', label: 'Watched', icon: '✅' },
+] as const
+
+// Watched is off by default: the home feed is for finding something to watch,
+// and things you've already seen are noise there.
+export const DEFAULT_WATCH_STATUSES = ['unwatched', 'in_progress']
+
+// The History page only ever lists videos you've started, so 'unwatched' has
+// nothing to match there and isn't offered.
+export const HISTORY_WATCH_OPTIONS = WATCH_STATUSES.filter(w => w.value !== 'unwatched')
+const WATCH_STATUS_KEY = 'watch_statuses'
+
+export function loadWatchStatuses(): string[] {
+  // A viewing preference rather than a shareable view, so it lives here and not
+  // in the URL (which carries tags, window and sort).
+  try {
+    const raw = JSON.parse(localStorage.getItem(WATCH_STATUS_KEY) || 'null')
+    if (Array.isArray(raw) && raw.every(v => typeof v === 'string')) return raw
+  } catch { /* fall through to the default */ }
+  return DEFAULT_WATCH_STATUSES
+}
+
+export function watchStatusOf(videoId: string, progressById: Map<string, WatchProgress>): string {
+  const p = progressById.get(videoId)
+  if (!p) return 'unwatched'
+  return p.watched ? 'watched' : 'in_progress'
+}
+
+// Selecting every status — or none — means "don't filter", matching both the tag
+// filter and the backend's `watch` param, so an empty selection can never leave
+// you staring at a blank page wondering why.
+export function filterByWatchStatus<T extends VideoItem>(
+  videos: T[],
+  statuses: string[],
+  progressById: Map<string, WatchProgress>,
+): T[] {
+  if (statuses.length === 0 || statuses.length >= WATCH_STATUSES.length) return videos
+  return videos.filter(v => statuses.includes(watchStatusOf(v.youtube_id, progressById)))
+}
+
+// Apply the sidebar's tag selection to an already-loaded list: OR within a tag
+// group (section), AND across groups — the same rule the backend's /tags/feed
+// uses, so a filtered feed and a filtered library agree.
+export function filterByTags<T extends VideoItem>(
+  videos: T[],
+  selectedTags: string[],
+  tags: TagInfo[],
+  tagChannels: Map<string, Set<string>>,
+): T[] {
+  if (selectedTags.length === 0) return videos
+  const byGroup = new Map<string, string[]>()
+  for (const t of selectedTags) {
+    const group = tags.find(x => x.name === t)?.group ?? '__ungrouped__'
+    byGroup.set(group, [...(byGroup.get(group) ?? []), t])
+  }
+  const allowed = [...byGroup.values()].reduce<Set<string> | null>((acc, groupTags) => {
+    const ids = new Set(groupTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
+    return acc === null ? ids : new Set([...acc].filter(id => ids.has(id)))
+  }, null) ?? new Set<string>()
+  return videos.filter(v => allowed.has(v.channel_id))
 }
 
 export function sortWatchLater(videos: VideoItem[], sort: string): VideoItem[] {
@@ -412,7 +496,7 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false)
   // The Imported page has no time window, and its default order is import order
   // — so it keeps its own sort rather than sharing the feed's.
-  const [importedSort, setImportedSort] = useState('added')
+  const [importedSort, setImportedSort] = useState('recent')
 
   const fetchImported = useCallback(async () => {
     try {
@@ -437,6 +521,38 @@ export default function App() {
   const removeImported = useCallback(async (video: VideoItem) => {
     setImported(prev => prev.filter(v => v.youtube_id !== video.youtube_id))
     try { await apiFetch(`/api/imported/${video.youtube_id}`, { method: 'DELETE' }) } catch { /* ignore */ }
+  }, [])
+
+  // ── Watch history ─────────────────────────────────────
+  // Where you got to in every video you've opened. Feeds three things: the
+  // History page, the resume bar drawn on every card, and the watch page's
+  // "continue where you left off". Written by WatchPage while a video plays.
+  const [watchHistory, setWatchHistory] = useState<HistoryItem[]>([])
+  const [historySort, setHistorySort] = useState('recent')
+
+  const fetchHistory = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/history', { quiet: true })
+      if (res.ok) setWatchHistory(await res.json())
+    } catch { /* ignore */ }
+  }, [])
+
+  // Load on mount, and again every time the watch overlay closes — that's when
+  // a position has just changed, and it's what makes the card behind it show
+  // its new resume bar immediately.
+  useEffect(() => { if (!selectedVideoId) fetchHistory() }, [selectedVideoId, fetchHistory])
+
+  // Card lookup: every grid gets this one map rather than the whole list.
+  const progressById = useMemo(
+    () => new Map<string, WatchProgress>(
+      watchHistory.map(h => [h.youtube_id, { position_seconds: h.position_seconds, watched: h.watched }])
+    ),
+    [watchHistory]
+  )
+
+  const removeHistory = useCallback(async (video: VideoItem) => {
+    setWatchHistory(prev => prev.filter(v => v.youtube_id !== video.youtube_id))
+    try { await apiFetch(`/api/history/${video.youtube_id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }, [])
 
   // ── YouTube API token health (reminder to re-auth) ────
@@ -632,6 +748,48 @@ export default function App() {
   // ── Data fetching ─────────────────────────────────────
   const [tagChannels, setTagChannels] = useState<Map<string, Set<string>>>(new Map())
 
+  // Watch-status filter (sidebar). Global, like the tag selection — the feed
+  // applies it server-side so paging stays honest; the already-loaded libraries
+  // apply it themselves below.
+  const [watchStatuses, setWatchStatuses] = useState<string[]>(loadWatchStatuses)
+  useEffect(() => {
+    try { localStorage.setItem(WATCH_STATUS_KEY, JSON.stringify(watchStatuses)) } catch { /* private mode */ }
+  }, [watchStatuses])
+  const toggleWatchStatus = useCallback((value: string) => {
+    setWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }, [])
+
+  // History keeps its own selection rather than sharing the global one, which
+  // hides watched videos — backwards on a page whose whole job is to list what
+  // you've watched. It starts EMPTY (no filter) and resets to empty on every
+  // visit: a filter you set last time is a surprise waiting for you, and the
+  // useful default here is simply "show me everything".
+  const [historyWatchStatuses, setHistoryWatchStatuses] = useState<string[]>([])
+  useEffect(() => { if (page === 'history') setHistoryWatchStatuses([]) }, [page])
+  const toggleHistoryWatchStatus = useCallback((value: string) => {
+    setHistoryWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }, [])
+
+  // A channel page filters its own list the same way, and likewise starts with
+  // nothing selected — you open a channel to see what it has, not what's left of
+  // it. Reset per channel, so one channel's filter doesn't follow you to the next.
+  const [channelWatchStatuses, setChannelWatchStatuses] = useState<string[]>([])
+  useEffect(() => { setChannelWatchStatuses([]) }, [selectedChannelId])
+  const toggleChannelWatchStatus = useCallback((value: string) => {
+    setChannelWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }, [])
+
+  // History obeys the same two global controls as the feed: the Videos/Shorts
+  // toggle and the sidebar's tag selection. Both are applied client-side — the
+  // list is already loaded, and it's small.
+  const visibleHistory = useMemo(() => {
+    const shorts = contentMode === 'shorts'
+    const byMode = watchHistory.filter(v => !!v.is_short === shorts)
+    const byStatus = filterByWatchStatus(byMode, historyWatchStatuses, progressById)
+    return filterByTags(byStatus, selectedTags, tags, tagChannels)
+  }, [watchHistory, contentMode, selectedTags, tags, tagChannels, historyWatchStatuses, progressById])
+
+
   // Per-tag channel count that updates as tags are selected.
   // For tags in a group that already has selections, count uses the filter from
   // ALL OTHER groups only (so sibling tags show how many would match if chosen instead).
@@ -712,6 +870,7 @@ export default function App() {
       offset: String(offset), limit: String(size),
     })
     if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
+    if (watchStatuses.length > 0) params.set('watch', watchStatuses.join(','))
     if (showHidden) params.set('include_hidden', 'true')
     const res = await apiFetch(`/api/tags/feed?${params}`)
     const data = await res.json()
@@ -724,7 +883,7 @@ export default function App() {
         window: data.window,
       }
     })
-  }, [timeWindow, sort, timeMode, selectedTags, contentMode, showHidden])
+  }, [timeWindow, sort, timeMode, selectedTags, contentMode, showHidden, watchStatuses])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
@@ -766,7 +925,7 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history') => {
     const newChannelId = p !== 'channel' ? null : selectedChannelId
     history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
     setPageRaw(p)
@@ -890,6 +1049,7 @@ export default function App() {
   function goHome() {
     history.pushState(null, '', '/')
     setSelectedTags([])
+    setWatchStatuses(DEFAULT_WATCH_STATUSES)
     setSelectedChannelId(null)
     setSelectedPlaylistId(null)
     setPageRaw('feed')
@@ -941,6 +1101,9 @@ export default function App() {
           hiddenCount={hiddenChannels.size}
           showHidden={showHidden}
           onToggleShowHidden={() => setShowHidden(v => !v)}
+          watchStatuses={page === 'history' ? historyWatchStatuses : page === 'channel' ? channelWatchStatuses : watchStatuses}
+          onToggleWatchStatus={page === 'history' ? toggleHistoryWatchStatus : page === 'channel' ? toggleChannelWatchStatus : toggleWatchStatus}
+          watchStatusOptions={page === 'history' ? HISTORY_WATCH_OPTIONS : WATCH_STATUSES}
           contentMode={contentMode}
           onContentModeChange={setContentMode}
           channelMode={page === 'channel'}
@@ -989,15 +1152,15 @@ export default function App() {
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
         <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'history' ? 'history' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
           onImport={page === 'imported' ? () => setImportOpen(true) : undefined}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
           window={page === 'channel' ? channelWindow : timeWindow}
           onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
-          sort={page === 'channel' ? channelSort : page === 'imported' ? importedSort : sort}
-          onSortChange={page === 'channel' ? setChannelSort : page === 'imported' ? setImportedSort : setSort}
+          sort={page === 'channel' ? channelSort : page === 'imported' ? importedSort : page === 'history' ? historySort : sort}
+          onSortChange={page === 'channel' ? setChannelSort : page === 'imported' ? setImportedSort : page === 'history' ? setHistorySort : setSort}
           timeMode={page === 'channel' ? channelTimeMode : timeMode}
           onTimeModeChange={page === 'channel' ? setChannelTimeMode : setTimeMode}
           channelsSort={channelsSort}
@@ -1049,6 +1212,7 @@ export default function App() {
             onDownload={startDownload}
             downloadIds={downloadIds}
             onHideChannel={hideChannel}
+            progressById={progressById}
           />
         ) : page === 'playlists' ? (
           <PlaylistsPage playlists={playlists} onOpen={selectPlaylist} onDelete={deletePlaylist} />
@@ -1061,7 +1225,21 @@ export default function App() {
             onDownload={startDownload}
             downloadIds={downloadIds}
             onHideChannel={hideChannel}
+            progressById={progressById}
             onDeleted={() => setPage('playlists')}
+          />
+        ) : page === 'history' ? (
+          <HistoryPage
+            history={visibleHistory}
+            totalCount={watchHistory.length}
+            sort={historySort}
+            progressById={progressById}
+            onChannelClick={selectChannel}
+            watchLaterIds={watchLaterIds}
+            onToggleWatchLater={toggleWatchLater}
+            onDownload={startDownload}
+            downloadIds={downloadIds}
+            onRemoveHistory={removeHistory}
           />
         ) : page === 'imported' ? (
           <ImportedPage
@@ -1072,6 +1250,7 @@ export default function App() {
             onToggleWatchLater={toggleWatchLater}
             onDownload={startDownload}
             downloadIds={downloadIds}
+            progressById={progressById}
             onRemoveImported={removeImported}
             onImport={() => setImportOpen(true)}
           />
@@ -1089,19 +1268,8 @@ export default function App() {
               </div>
             ) : (() => {
               let result = filterWatchLater(watchLater, timeWindow, timeMode)
-              if (selectedTags.length > 0) {
-                // Group selected tags by section, OR within group, AND across groups
-                const byGroup = new Map<string, string[]>()
-                for (const t of selectedTags) {
-                  const group = tags.find(x => x.name === t)?.group ?? '__ungrouped__'
-                  byGroup.set(group, [...(byGroup.get(group) ?? []), t])
-                }
-                const allowed = [...byGroup.values()].reduce<Set<string> | null>((acc, groupTags) => {
-                  const ids = new Set(groupTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
-                  return acc === null ? ids : new Set([...acc].filter(id => ids.has(id)))
-                }, null) ?? new Set()
-                result = result.filter(v => allowed.has(v.channel_id))
-              }
+              result = filterByTags(result, selectedTags, tags, tagChannels)
+              result = filterByWatchStatus(result, watchStatuses, progressById)
               result = sortWatchLater(result, sort)
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
@@ -1110,6 +1278,7 @@ export default function App() {
               ) : (
                 <VideoRow
                   group={{ name: 'Watch Later', icon: '', sort_order: 0, videos: result }}
+                  progressById={progressById}
                   onChannelClick={selectChannel}
                   sort={sort}
                   watchLaterIds={watchLaterIds}
@@ -1139,6 +1308,8 @@ export default function App() {
             onVocabChange={setChannelLabelVocab}
             onBuildingChange={setChannelLabelsBuilding}
             onHasTopicsChange={setChannelHasTopics}
+            progressById={progressById}
+            watchStatuses={channelWatchStatuses}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">
@@ -1164,15 +1335,18 @@ export default function App() {
               if (videos.length === 0 && !hasMore) {
                 return (
                   <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                    {hiddenChannels.size > 0 && !showHidden
-                      ? 'All channels here are hidden from home.'
-                      : 'No videos found.'}
+                    {watchStatuses.length > 0 && watchStatuses.length < WATCH_STATUSES.length
+                      ? 'No videos match the watch status filter.'
+                      : hiddenChannels.size > 0 && !showHidden
+                        ? 'All channels here are hidden from home.'
+                        : 'No videos found.'}
                   </div>
                 )
               }
               return (
                 <VideoRow
                   key="feed"
+                  progressById={progressById}
                   group={{ name: 'Feed', icon: '', sort_order: 0, videos }}
                   onChannelClick={selectChannel}
                   sort={sort}

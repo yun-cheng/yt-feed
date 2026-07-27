@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import VideoCard from './VideoCard'
-import type { FeedGroup, VideoItem } from '../App'
+import type { FeedGroup, VideoItem, WatchProgress } from '../App'
 
 const INITIAL_COUNT = 20
 const LOAD_MORE = 20
@@ -16,6 +16,9 @@ type Props = {
   onHideChannel?: (channelId: string) => void
   onRemoveFromPlaylist?: (video: VideoItem) => void
   onRemoveImported?: (video: VideoItem) => void
+  onRemoveHistory?: (video: VideoItem) => void
+  // Watch positions by video id — draws the red resume bar on each card.
+  progressById?: Map<string, WatchProgress>
   // Server pagination (feed): when onLoadMore is set, this row renders every
   // video it's given and asks the parent to fetch the next page on scroll,
   // instead of paginating an already-loaded array client-side.
@@ -24,7 +27,7 @@ type Props = {
   totalCount?: number
 }
 
-export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onRemoveFromPlaylist, onRemoveImported, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
+export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onRemoveFromPlaylist, onRemoveImported, onRemoveHistory, progressById, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
   const serverMode = typeof onLoadMore === 'function'
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -104,6 +107,8 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
             onHideChannel={onHideChannel}
             onRemoveFromPlaylist={onRemoveFromPlaylist}
             onRemoveImported={onRemoveImported}
+            onRemoveHistory={onRemoveHistory}
+            watchProgress={progressById?.get(video.youtube_id)}
           />
         ))}
       </div>
