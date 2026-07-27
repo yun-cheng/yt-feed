@@ -159,10 +159,11 @@ trusted at their raw ratio.
 
 ## The background scanner
 
-`main.py`'s lifespan starts `_scheduler_loop()`: one scan ~30s after startup,
-then every `SCAN_INTERVAL_SECONDS` (default **15 min**, env-overridable). A
-`_refreshing` flag means scheduler ticks and manual `POST /api/refresh` calls
-never overlap.
+`main.py`'s lifespan starts two loops. `_scheduler_loop()` scans for new videos:
+once ~30s after startup, then every `SCAN_INTERVAL_SECONDS` (default **15 min**,
+env-overridable). A `_refreshing` flag means scheduler ticks and manual
+`POST /api/refresh` calls never overlap. `_resync_loop()` is the daily
+subscription reconcile (below).
 
 `run_update()` has four phases:
 
@@ -181,8 +182,40 @@ yt-dlp is configured to **fail fast** (`fetcher.py`: `socket_timeout` 10,
 process's sockets.
 
 The scanner only ever walks channels **already in the DB** — it never re-reads
-your YouTube subscription list. New subscribes and unsubscribes are picked up
-only when you run a resync (see below).
+your YouTube subscription list. That's a separate, much slower loop:
+
+### The daily subscription resync
+
+`_resync_loop()` runs `POST /api/subscriptions/resync`'s logic **once a day**
+(`RESYNC_INTERVAL_SECONDS`), so subscribes and unsubscribes land on their own.
+It's daily rather than per-scan because it costs an OAuth round-trip and its
+prune is destructive — an unsubscribed channel's videos go with it.
+
+Four things make it safe to run unattended:
+
+- **The clock is `subscriptions.yaml`'s mtime**, which a successful resync
+  rewrites — not a sleep timer. A sleep timer would either re-run the prune
+  minutes after every restart, or push the next resync a full day out on a
+  machine that reboots daily.
+- **It never raises.** A dead token or an API hiccup logs and backs off
+  (`RESYNC_RETRY_SECONDS`, default 1h) instead of killing the task; if there's
+  no OAuth token at all it skips without even calling YouTube.
+- **It holds the scan guard** (`_refreshing`) for the whole reconcile, so a
+  scheduler tick can't start a scan halfway through the prune — and it won't
+  start while a scan is already running.
+- **It dry-runs first and refuses a big prune.** More than `RESYNC_MAX_PRUNE`
+  (default 5) channels going at once is likelier a truncated response from
+  YouTube than a real unsubscribe spree, and each one takes a year of videos
+  with it. It aborts loudly and leaves the call to the manual endpoint.
+
+What it deliberately does **not** touch: `last_video_fetched`, `llm_labels`,
+`video_label_vocab`, or the tags of channels you're still subscribed to.
+`import_subscriptions` updates existing rows field-by-field rather than
+replacing them, so the daily run never re-triggers a channel's 1-year backfill
+and never re-spends LLM tokens — only genuinely new channels get scanned from
+scratch and auto-tagged.
+
+The endpoint remains for forcing one by hand, and `?dry_run=true` still previews.
 
 ### History backfill — date-aware, so a full year is guaranteed
 
@@ -530,7 +563,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
-| POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview) |
+| POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview). Also runs daily on its own |
 | POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |
 | POST | `/api/refresh` | manually trigger a scan (normally the scheduler handles it) |
 | GET | `/api/refresh/status` | `{running: bool}` |

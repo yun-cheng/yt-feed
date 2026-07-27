@@ -112,10 +112,11 @@ the in-app Google OAuth flow (`/api/auth/login`) or edit the file by hand. The
 backend scheduler picks up new channels on its next scan; you can also force one
 with `POST /api/refresh`.
 
-The scanner never re-reads your YouTube subscription list, so subscribe/unsubscribe
-changes aren't automatic. Run `POST /api/subscriptions/resync` to reconcile: it
+The 15-minute scan only walks channels already in the DB. Reconciling against your
+live YouTube subscriptions is a separate job that runs **once a day**: it
 **deletes channels you've unsubscribed from** (and their videos) and adds new ones.
-Add `?dry_run=true` to preview the prune first.
+`POST /api/subscriptions/resync` forces one by hand; add `?dry_run=true` to preview
+the prune first.
 
 ## Tests
 
