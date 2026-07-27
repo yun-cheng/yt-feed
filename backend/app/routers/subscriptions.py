@@ -32,6 +32,13 @@ async def get_db():
         yield session
 
 
+def _write_subscriptions(ids: list[str]) -> None:
+    """Persist the subscription list. Its mtime doubles as the resync clock
+    (see `_seconds_until_resync_due` in main.py), so only write it on success."""
+    with open(settings.subscriptions_path, "w") as f:
+        yaml.dump({"subscriptions": ids}, f, allow_unicode=True)
+
+
 @router.get("")
 async def list_subscriptions():
     """List stored subscription URLs from config."""
@@ -84,9 +91,7 @@ async def import_subscriptions(
     await db.commit()
 
     # Save IDs to config for cron
-    ids = [ch.youtube_id for ch in channels]
-    with open(settings.subscriptions_path, "w") as f:
-        yaml.dump({"subscriptions": ids}, f, allow_unicode=True)
+    _write_subscriptions([ch.youtube_id for ch in channels])
 
     return {"saved": saved, "total": len(channels)}
 
@@ -243,9 +248,13 @@ async def resync_subscriptions(
     # Persist the live set, then refresh metadata (incl. subscriber counts for
     # brand-new channels) via the existing channels.list-with-stats path.
     ids = sorted(live_ids)
-    with open(settings.subscriptions_path, "w") as f:
-        yaml.dump({"subscriptions": ids}, f, allow_unicode=True)
+    _write_subscriptions(ids)
     sync_result = await sync_all_from_subscriptions(db)
+    # sync_all → import_subscriptions rewrites the file from the channels the
+    # Data API actually returned, and that call SKIPS a batch that errors — so a
+    # transient hiccup would silently drop those ids from the config. Restore the
+    # full live set; it, not a partial fetch, is the subscription list.
+    _write_subscriptions(ids)
 
     # Auto-tag newly-added channels (sidebar filters) now that sync_all has
     # populated their titles/descriptions.
