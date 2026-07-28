@@ -3,7 +3,11 @@ import type { VideoItem, WatchProgress } from '../App'
 import { sortWatchLater } from '../App'
 
 type Props = {
+  // Already filtered by the sidebar's watch status.
   videos: VideoItem[]
+  // How many are imported before that filter — tells "nothing imported yet"
+  // apart from "nothing matches what you've selected".
+  totalCount: number
   sort: string
   onChannelClick: (channelId: string) => void
   watchLaterIds: Set<string>
@@ -16,10 +20,10 @@ type Props = {
 }
 
 export default function ImportedPage({
-  videos, sort, onChannelClick, watchLaterIds, onToggleWatchLater,
+  videos, totalCount, sort, onChannelClick, watchLaterIds, onToggleWatchLater,
   onDownload, downloadIds, onRemoveImported, onImport, progressById,
 }: Props) {
-  if (videos.length === 0) {
+  if (totalCount === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
         <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
@@ -29,6 +33,14 @@ export default function ImportedPage({
         <button onClick={onImport} className="text-xs text-[#3ea6ff] hover:underline">
           Paste a YouTube link to import one
         </button>
+      </div>
+    )
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
+        No imported videos match the current filters.
       </div>
     )
   }

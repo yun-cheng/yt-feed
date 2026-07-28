@@ -166,7 +166,9 @@ const PAGE_DEFAULTS: Record<string, { window: string; sort: string; timeMode: st
   channel: { window: '1m', sort: 'likes', timeMode: 'wide', watch: [] },
   channels: { window: '3d', sort: 'subs', timeMode: 'wide', watch: [] },
   // Imported and History lead with 'recent' — the order the API returns them in.
-  imported: { window: '3d', sort: 'recent', timeMode: 'wide', watch: [] },
+  // Imported shares the global watch-status selection (like Watch Later), so it
+  // shares its default too; History keeps its own, which starts unfiltered.
+  imported: { window: '3d', sort: 'recent', timeMode: 'wide', watch: DEFAULT_WATCH_STATUSES },
   history: { window: '3d', sort: 'recent', timeMode: 'wide', watch: [] },
 }
 const DEFAULTS = PAGE_DEFAULTS.feed
@@ -174,10 +176,28 @@ const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
 
 // Which controls each page actually has. A param a page can't change is never
 // written, so a URL only ever shows filters that page offers.
+//
+// These same sets decide what the sidebar renders: a filter that can't change
+// what you're looking at shouldn't be there to click, and it shouldn't be in the
+// URL either. One table, so the two can't disagree.
 const USES_WINDOW = new Set(['feed', 'watchlater', 'channel'])
 const USES_SORT = new Set(['feed', 'watchlater', 'channel', 'channels', 'imported', 'history'])
-const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history'])
+const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history', 'imported'])
 const USES_SHORTS = new Set(['feed', 'channel', 'history'])
+// Tags are attached to channels, so they only filter lists of subscribed
+// channels' videos. A channel page swaps them for that channel's own topics;
+// imported videos come from channels you don't follow and have no tags at all.
+const USES_TAGS = new Set(['feed', 'watchlater', 'history', 'channels'])
+// "Show hidden channels" only changes the home feed's query.
+const USES_HIDDEN = new Set(['feed'])
+
+// What the sidebar should offer on a given page.
+export const pageFilters = (page: string) => ({
+  watchStatus: USES_WATCH.has(page),
+  tags: USES_TAGS.has(page),
+  hidden: USES_HIDDEN.has(page),
+  contentMode: USES_SHORTS.has(page),
+})
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v => b.includes(v))
 
@@ -230,8 +250,7 @@ export function buildPath(s: UrlState): string {
   const { page } = s
   const d = defaultsFor(page)
   const params = new URLSearchParams()
-  // The tag selection is global — it survives navigation, so every page carries it.
-  if (s.tags?.length) params.set('tags', s.tags.join(','))
+  if (USES_TAGS.has(page) && s.tags?.length) params.set('tags', s.tags.join(','))
   if (USES_WINDOW.has(page)) {
     if (s.window && s.window !== d.window) params.set('window', s.window)
     if (s.timeMode && s.timeMode !== d.timeMode) params.set('time_mode', s.timeMode)
@@ -244,7 +263,7 @@ export function buildPath(s: UrlState): string {
     params.set('watch', s.watch.length ? s.watch.join(',') : 'none')
   }
   if (page === 'channel' && s.label) params.set('label', s.label)
-  if (page === 'feed' && s.showHidden) params.set('hidden', '1')
+  if (USES_HIDDEN.has(page) && s.showHidden) params.set('hidden', '1')
   if (page === 'search' && s.q) params.set('q', s.q)
   const qs = params.toString()
 
@@ -276,7 +295,7 @@ function stateFromUrl() {
     channelSort: owns('channel') ? q.sort : PAGE_DEFAULTS.channel.sort,
     importedSort: owns('imported') ? q.sort : PAGE_DEFAULTS.imported.sort,
     historySort: owns('history') ? q.sort : PAGE_DEFAULTS.history.sort,
-    watchStatuses: owns('feed', 'watchlater') && q.watch !== null ? q.watch : loadWatchStatuses(),
+    watchStatuses: owns('feed', 'watchlater', 'imported') && q.watch !== null ? q.watch : loadWatchStatuses(),
     channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
     historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : [],
     selectedLabel: owns('channel') ? q.label : null,
@@ -872,6 +891,13 @@ export default function App() {
     return filterByTags(byStatus, selectedTags, tags, tagChannels)
   }, [watchHistory, contentMode, selectedTags, tags, tagChannels, historyWatchStatuses, progressById])
 
+  // Imported videos take the global watch-status filter, like Watch Later. Tags
+  // don't apply — these come from channels you don't follow, so none of them are
+  // tagged — and neither does the Videos/Shorts toggle: it's one flat list.
+  const visibleImported = useMemo(
+    () => filterByWatchStatus(imported, watchStatuses, progressById),
+    [imported, watchStatuses, progressById],
+  )
 
   // ── URL sync (continued) ──────────────────────────────
   // The whole current view as a URL. Everything funnels through here, so a
@@ -1196,6 +1222,8 @@ export default function App() {
     setSelectedTags([])
   }
 
+  // Which sidebar sections this page can actually use.
+  const sidebarFilters = pageFilters(page)
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -1237,6 +1265,7 @@ export default function App() {
           watchStatuses={page === 'history' ? historyWatchStatuses : page === 'channel' ? channelWatchStatuses : watchStatuses}
           onToggleWatchStatus={page === 'history' ? toggleHistoryWatchStatus : page === 'channel' ? toggleChannelWatchStatus : toggleWatchStatus}
           watchStatusOptions={page === 'history' ? HISTORY_WATCH_OPTIONS : WATCH_STATUSES}
+          filters={sidebarFilters}
           contentMode={contentMode}
           onContentModeChange={setContentMode}
           channelMode={page === 'channel'}
@@ -1308,7 +1337,7 @@ export default function App() {
         />
         </div>
 
-        {selectedTags.length > 0 && page !== 'channel' && (
+        {selectedTags.length > 0 && sidebarFilters.tags && (
           <div className="sticky z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2" style={{ top: isMobile ? 0 : topbarHeight }}>
             <span className="text-xs text-[#555] font-medium">Filters:</span>
             <div className="flex flex-wrap gap-1.5">
@@ -1376,7 +1405,8 @@ export default function App() {
           />
         ) : page === 'imported' ? (
           <ImportedPage
-            videos={imported}
+            videos={visibleImported}
+            totalCount={imported.length}
             sort={importedSort}
             onChannelClick={selectChannel}
             watchLaterIds={watchLaterIds}

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterWatchLater, sortWatchLater, buildPath } from '../App'
+import { filterWatchLater, sortWatchLater, buildPath, pageFilters } from '../App'
 import type { VideoItem } from '../App'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
@@ -164,6 +164,12 @@ describe('buildPath', () => {
     expect(buildPath({ page: 'history', watch: ['watched'] })).toBe('/history?watch=watched')
   })
 
+  it('writes tags only on pages that filter by them', () => {
+    expect(buildPath({ page: 'history', tags: ['music'] })).toBe('/history?tags=music')
+    expect(buildPath({ page: 'downloads', tags: ['music'] })).toBe('/downloads')
+    expect(buildPath({ page: 'imported', tags: ['music'] })).toBe('/imported')
+  })
+
   it('writes shorts, label, hidden and q only where they apply', () => {
     expect(buildPath({ page: 'feed', shorts: true })).toBe('/?shorts=1')
     expect(buildPath({ page: 'imported', shorts: true })).toBe('/imported')
@@ -171,5 +177,39 @@ describe('buildPath', () => {
     expect(buildPath({ page: 'feed', label: 'piano' })).toBe('/')
     expect(buildPath({ page: 'feed', showHidden: true })).toBe('/?hidden=1')
     expect(buildPath({ page: 'search', q: 'jazz' })).toBe('/search?q=jazz')
+  })
+})
+
+// ── pageFilters ──────────────────────────────────────────────
+
+// The sidebar renders from this, and buildPath writes from the same sets, so a
+// filter is either usable AND in the URL, or in neither.
+describe('pageFilters', () => {
+  const on = (page: string) =>
+    Object.entries(pageFilters(page)).filter(([, v]) => v).map(([k]) => k).sort()
+
+  it('offers every filter on the feed', () => {
+    expect(on('feed')).toEqual(['contentMode', 'hidden', 'tags', 'watchStatus'])
+  })
+
+  it('drops the watch status where there are no videos to filter', () => {
+    // A list of channels, not of videos.
+    expect(on('channels')).toEqual(['tags'])
+  })
+
+  it('leaves the Imported page with only the watch status', () => {
+    // Imported videos come from channels you don't follow, so no tag matches
+    // them, and the page is one flat list — no Videos/Shorts split.
+    expect(on('imported')).toEqual(['watchStatus'])
+  })
+
+  it('offers nothing on pages with no filterable list', () => {
+    expect(on('downloads')).toEqual([])
+    expect(on('playlists')).toEqual([])
+    expect(on('search')).toEqual([])
+  })
+
+  it('swaps tags for the channel page (which shows topics instead)', () => {
+    expect(on('channel')).toEqual(['contentMode', 'watchStatus'])
   })
 })

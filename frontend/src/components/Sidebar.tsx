@@ -23,6 +23,11 @@ type Props = {
   // Which statuses this page can offer — History drops 'unwatched', which has
   // nothing to match on a list of things you've started.
   watchStatusOptions?: readonly { value: string; label: string; icon: string }[]
+  // Which sections this page can actually use (App's `pageFilters`). A control
+  // that can't change what you're looking at isn't rendered at all — the watch
+  // status has nothing to filter on a list of channels, and imported videos come
+  // from channels you don't follow, so no tag ever matches them.
+  filters?: { watchStatus: boolean; tags: boolean; hidden: boolean; contentMode: boolean }
   hiddenCount?: number
   showHidden?: boolean
   onToggleShowHidden?: () => void
@@ -213,7 +218,11 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true }
+
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+  const showMode = filters.contentMode && !!onContentModeChange
+  const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
     const g = tag.group || '其他'
@@ -236,9 +245,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           </button>
         </div>
         <nav className="flex flex-col items-center pt-2 gap-1">
-          {onContentModeChange && (
+          {showMode && (
             <button
-              onClick={() => onContentModeChange(contentMode === 'shorts' ? 'videos' : 'shorts')}
+              onClick={() => onContentModeChange!(contentMode === 'shorts' ? 'videos' : 'shorts')}
               title={contentMode === 'shorts' ? 'Showing Shorts — switch to Videos' : 'Show Shorts'}
               className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
                 contentMode === 'shorts' ? 'text-white' : 'text-[#717171] hover:text-white'
@@ -331,7 +340,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             <HistoryIcon />
             <span className="text-[10px]">History</span>
           </button>
-          {!!hiddenCount && (
+          {showHiddenToggle && (
             <button
               onClick={onToggleShowHidden}
               title={showHidden ? 'Hiding hidden channels' : 'Show hidden channels'}
@@ -362,10 +371,11 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
         </button>
       </div>
 
-      {/* Videos ↔ Shorts: switches what the feed / channel pages show */}
-      {onContentModeChange && (
+      {/* Videos ↔ Shorts: switches what the feed / channel / history pages show.
+          The other pages are one flat list, so it's not offered there. */}
+      {showMode && (
         <div className="px-3 pb-2 flex-shrink-0">
-          <ContentModeToggle mode={contentMode} onChange={onContentModeChange} />
+          <ContentModeToggle mode={contentMode} onChange={onContentModeChange!} />
         </div>
       )}
 
@@ -477,11 +487,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           to one channel. */}
       {channelMode ? (
         <div className="p-4 space-y-5 flex-1 overflow-y-auto">
-          <WatchStatusSection
-            options={watchStatusOptions}
-            selected={watchStatuses}
-            onToggle={onToggleWatchStatus}
-          />
+          {filters.watchStatus && (
+            <WatchStatusSection
+              options={watchStatusOptions}
+              selected={watchStatuses}
+              onToggle={onToggleWatchStatus}
+            />
+          )}
           <div>
           <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#717171]">
             <span>🏷️</span>
@@ -531,7 +543,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
       ) : (
       /* Tag groups */
       <div className="p-4 space-y-5 flex-1 overflow-y-auto">
-        {!!hiddenCount && (
+        {showHiddenToggle && (
           <button
             onClick={onToggleShowHidden}
             className="w-full flex items-center gap-3 pb-4 border-b border-[#272727] text-left text-[#aaa] hover:text-white transition-colors"
@@ -540,12 +552,14 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             <span className="text-sm">Show hidden channels</span>
           </button>
         )}
-        <WatchStatusSection
-          options={watchStatusOptions}
-          selected={watchStatuses}
-          onToggle={onToggleWatchStatus}
-        />
-        {GROUP_ORDER.map(({ key, icon }) => {
+        {filters.watchStatus && (
+          <WatchStatusSection
+            options={watchStatusOptions}
+            selected={watchStatuses}
+            onToggle={onToggleWatchStatus}
+          />
+        )}
+        {filters.tags && GROUP_ORDER.map(({ key, icon }) => {
           const groupTags = grouped.get(key)
           if (!groupTags?.length) return null
           return (

@@ -79,6 +79,26 @@ sits at its own default. `PAGE_DEFAULTS` is that table, and the `USES_*` sets sa
 which controls a page actually has, so a param a page can't change is never
 written.
 
+Those same sets feed `pageFilters(page)`, which is what the **sidebar** renders
+from — so a filter is either usable *and* in the URL, or in neither:
+
+| page | Videos/Shorts | watch status | tags | topics | show hidden |
+|---|---|---|---|---|---|
+| feed | ✓ | ✓ | ✓ | | ✓ |
+| channel | ✓ | ✓ | | ✓ | |
+| history | ✓ | ✓ | ✓ | | |
+| watchlater | | ✓ | ✓ | | |
+| imported | | ✓ | | | |
+| channels | | | ✓ | | |
+| downloads / playlists / search | | | | | |
+
+The reasoning: tags live on **channels**, so they can't filter a page of videos
+from channels you don't follow (imported), and a channel page swaps them for
+that channel's own topics. Watch status needs a list of videos, which the
+channels page isn't. Videos↔Shorts needs a list that's actually split that way.
+Downloads, Playlists and Search do no sidebar filtering at all, so their filter
+panel is empty.
+
 - **Values equal to the page's default are omitted**, so ordinary URLs stay
   short — and the same value can be worth writing on one page and not another
   (`window=3d` is the feed's default but not a channel's, whose default is `1m`).
@@ -149,8 +169,10 @@ there.
   page's default", and the two aren't the same.
 - The **feed and a channel page apply it server-side** (`watch=` on
   `/api/tags/feed` and `/api/channels/{id}/videos`) so `total` and the paging stay
-  honest. Watch Later and History are already-loaded lists, so they use
+  honest. Watch Later, Imported and History are already-loaded lists, so they use
   `filterByWatchStatus` on the client.
+- **Watch Later and Imported share the global selection**; History and a channel
+  page each keep their own (see below).
 - Selecting **every** status — or **none** — means "don't filter", matching both
   the tag filter and the backend, so an empty selection can't leave you staring
   at a blank page.
@@ -175,7 +197,7 @@ and every action (watch, download, save to playlist, watch later) are identical;
 only the source of the list differs. `ImportDialog.tsx` is the paste modal, and
 the TopBar grows an **Import** button at the top right on this page only.
 
-Two deliberate differences from the feed:
+Three deliberate differences from the feed:
 
 - **No time window.** An import is an explicit pick, not a stream of new
   uploads, so filtering it by publish date would hide most of what you just
@@ -183,6 +205,10 @@ Two deliberate differences from the feed:
   `recent` — import order, which is what the API already returns.
 - **Its own remove action.** The card menu shows "Remove from imported"
   (`onRemoveImported`), alongside the existing playlist/download variants.
+- **The watch status is its only sidebar filter.** Tags are attached to
+  channels, and these videos come from channels you don't follow, so no tag
+  could ever match one; and it's a single flat list, so there's no Videos↔Shorts
+  split either.
 
 ### Auto-refresh
 
