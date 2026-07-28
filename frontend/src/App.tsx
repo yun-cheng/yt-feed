@@ -93,6 +93,35 @@ export type FeedResponse = {
   window: string
 }
 
+// ── Watch status ────────────────────────────────────────────
+
+// The three states a video can be in. Derived from watch history, not stored:
+// no entry = never opened, an entry = started, an entry with `watched` = finished.
+export const WATCH_STATUSES = [
+  { value: 'unwatched', label: 'Unwatched', icon: '🆕' },
+  { value: 'in_progress', label: 'In progress', icon: '▶️' },
+  { value: 'watched', label: 'Watched', icon: '✅' },
+] as const
+
+// Watched is off by default: the home feed is for finding something to watch,
+// and things you've already seen are noise there.
+export const DEFAULT_WATCH_STATUSES = ['unwatched', 'in_progress']
+
+// The History page only ever lists videos you've started, so 'unwatched' has
+// nothing to match there and isn't offered.
+export const HISTORY_WATCH_OPTIONS = WATCH_STATUSES.filter(w => w.value !== 'unwatched')
+const WATCH_STATUS_KEY = 'watch_statuses'
+
+export function loadWatchStatuses(): string[] {
+  // The URL is the source of truth (see parseQuery); this is the fallback for a
+  // cold load with no `watch` param — your last choice, remembered.
+  try {
+    const raw = JSON.parse(localStorage.getItem(WATCH_STATUS_KEY) || 'null')
+    if (Array.isArray(raw) && raw.every(v => typeof v === 'string')) return raw
+  } catch { /* fall through to the default */ }
+  return DEFAULT_WATCH_STATUSES
+}
+
 // ── URL helpers ─────────────────────────────────────────────
 
 // NB: there's no 'watch' page — /watch/:id is a full-screen overlay rendered on
@@ -122,55 +151,136 @@ function parsePath(): { page: Page; channelId: string | null; playlistId: number
   return { page: 'feed', ...base }
 }
 
-function parseSearch(): { tags: string[]; window: string; sort: string; timeMode: string; channelsSort: string; shorts: boolean } {
+// Every filter and sort the UI exposes is mirrored in the query string, so a
+// refresh — or a pasted link — lands on the same view.
+//
+// Pages keep SEPARATE sort / window / watch-status state (a channel page's sort
+// isn't the feed's), but the URL carries one of each: the page being shown owns
+// them, and every other page's copy sits at its own default. A value equal to
+// that default is left out, so ordinary URLs stay short.
+const PAGE_DEFAULTS: Record<string, { window: string; sort: string; timeMode: string; watch: string[] }> = {
+  feed: { window: '3d', sort: 'likes', timeMode: 'wide', watch: DEFAULT_WATCH_STATUSES },
+  watchlater: { window: '3d', sort: 'likes', timeMode: 'wide', watch: DEFAULT_WATCH_STATUSES },
+  // A channel page opens on a wider window (one channel posts far less often)
+  // and with nothing filtered out — you came to see what it has.
+  channel: { window: '1m', sort: 'likes', timeMode: 'wide', watch: [] },
+  channels: { window: '3d', sort: 'subs', timeMode: 'wide', watch: [] },
+  // Imported and History lead with 'recent' — the order the API returns them in.
+  imported: { window: '3d', sort: 'recent', timeMode: 'wide', watch: [] },
+  history: { window: '3d', sort: 'recent', timeMode: 'wide', watch: [] },
+}
+const DEFAULTS = PAGE_DEFAULTS.feed
+const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
+
+// Which controls each page actually has. A param a page can't change is never
+// written, so a URL only ever shows filters that page offers.
+const USES_WINDOW = new Set(['feed', 'watchlater', 'channel'])
+const USES_SORT = new Set(['feed', 'watchlater', 'channel', 'channels', 'imported', 'history'])
+const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history'])
+const USES_SHORTS = new Set(['feed', 'channel', 'history'])
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v => b.includes(v))
+
+type QueryState = {
+  tags: string[]
+  window: string
+  sort: string
+  timeMode: string
+  shorts: boolean
+  // null = absent from the URL, so use the page's default. [] = an explicit
+  // "no filter" (?watch=none) — not the same thing.
+  watch: string[] | null
+  label: string | null
+  showHidden: boolean
+  q: string
+}
+
+function parseQuery(page: Page): QueryState {
   const p = new URLSearchParams(window.location.search)
-  const rawSort = p.get('sort')
+  const d = defaultsFor(page)
+  const watch = p.get('watch')
   return {
-    tags: p.get('tags') ? p.get('tags')!.split(',').filter(Boolean) : [],
-    window: p.get('window') || '3d',
-    sort: rawSort || 'likes',
-    timeMode: p.get('time_mode') || 'wide',
-    channelsSort: rawSort || 'subs',
+    tags: p.get('tags')?.split(',').filter(Boolean) ?? [],
+    window: p.get('window') || d.window,
+    sort: p.get('sort') || d.sort,
+    timeMode: p.get('time_mode') || d.timeMode,
     shorts: p.get('shorts') === '1',
+    watch: watch === null ? null : watch === 'none' ? [] : watch.split(',').filter(Boolean),
+    label: p.get('label'),
+    showHidden: p.get('hidden') === '1',
+    q: p.get('q') || '',
   }
 }
 
-export function buildPath(
-  page: string,
-  channelId: string | null,
-  tags: string[],
-  window: string,
-  sort: string,
-  timeMode: string,
-  channelsSort: string,
-  shorts = false,
-): string {
+export type UrlState = {
+  page: string
+  channelId?: string | null
+  tags?: string[]
+  window?: string
+  sort?: string
+  timeMode?: string
+  shorts?: boolean
+  watch?: string[]
+  label?: string | null
+  showHidden?: boolean
+  q?: string
+}
+
+export function buildPath(s: UrlState): string {
+  const { page } = s
+  const d = defaultsFor(page)
   const params = new URLSearchParams()
-  if (tags.length > 0) params.set('tags', tags.join(','))
-  if (window !== '3d') params.set('window', window)
-  if (page === 'channels') {
-    if (channelsSort !== 'subs') params.set('sort', channelsSort)
-  } else {
-    if (sort !== 'likes') params.set('sort', sort)
+  // The tag selection is global — it survives navigation, so every page carries it.
+  if (s.tags?.length) params.set('tags', s.tags.join(','))
+  if (USES_WINDOW.has(page)) {
+    if (s.window && s.window !== d.window) params.set('window', s.window)
+    if (s.timeMode && s.timeMode !== d.timeMode) params.set('time_mode', s.timeMode)
   }
-  if (timeMode !== 'wide') params.set('time_mode', timeMode)
-  // Shorts vs long-form is only meaningful on the feed and a channel page.
-  if (shorts && (page === 'feed' || page === 'channel')) params.set('shorts', '1')
+  if (USES_SORT.has(page) && s.sort && s.sort !== d.sort) params.set('sort', s.sort)
+  if (USES_SHORTS.has(page) && s.shorts) params.set('shorts', '1')
+  if (USES_WATCH.has(page) && s.watch && !sameSet(s.watch, d.watch)) {
+    // Selecting nothing means "no filter", which has to be spelled out — an
+    // absent param means "use the default", and here they differ.
+    params.set('watch', s.watch.length ? s.watch.join(',') : 'none')
+  }
+  if (page === 'channel' && s.label) params.set('label', s.label)
+  if (page === 'feed' && s.showHidden) params.set('hidden', '1')
+  if (page === 'search' && s.q) params.set('q', s.q)
   const qs = params.toString()
 
-  if (page === 'channels') return qs ? `/channels?${qs}` : '/channels'
-  if (page === 'watchlater') return '/watchlater'
-  if (page === 'downloads') return '/downloads'
-  if (page === 'imported') return '/imported'
-  if (page === 'history') return '/history'
-  if (page === 'search') return '/search'  // ?q= is appended by the search URL sync
-  if (page === 'playlists') return '/playlists'
-  // 'playlist' (single) is navigated directly with its id; syncUrl skips it
-  if (page === 'channel' && channelId) {
-    return qs ? `/channel/${channelId}?${qs}` : `/channel/${channelId}`
+  const path = page === 'feed' ? '/'
+    : page === 'channel' && s.channelId ? `/channel/${s.channelId}`
+    : `/${page}`
+  return qs ? `${path}?${qs}` : path
+}
+
+// Map the URL onto app state: whichever page is showing takes the URL's sort /
+// window / watch values, everything else starts at its own default. Used both
+// on a cold load and on back/forward, so the two can't drift apart.
+function stateFromUrl() {
+  const path = parsePath()
+  const q = parseQuery(path.page)
+  const owns = (...pages: Page[]) => pages.includes(path.page)
+  return {
+    ...path,
+    q: q.q,
+    tags: q.tags,
+    contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
+    showHidden: q.showHidden,
+    timeWindow: owns('channel') ? DEFAULTS.window : q.window,
+    timeMode: owns('channel') ? DEFAULTS.timeMode : q.timeMode,
+    channelWindow: owns('channel') ? q.window : PAGE_DEFAULTS.channel.window,
+    channelTimeMode: owns('channel') ? q.timeMode : PAGE_DEFAULTS.channel.timeMode,
+    sort: owns('feed', 'watchlater') ? q.sort : DEFAULTS.sort,
+    channelsSort: owns('channels') ? q.sort : PAGE_DEFAULTS.channels.sort,
+    channelSort: owns('channel') ? q.sort : PAGE_DEFAULTS.channel.sort,
+    importedSort: owns('imported') ? q.sort : PAGE_DEFAULTS.imported.sort,
+    historySort: owns('history') ? q.sort : PAGE_DEFAULTS.history.sort,
+    watchStatuses: owns('feed', 'watchlater') && q.watch !== null ? q.watch : loadWatchStatuses(),
+    channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
+    historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : [],
+    selectedLabel: owns('channel') ? q.label : null,
   }
-  // feed
-  return qs ? `/?${qs}` : '/'
 }
 
 // ── Watch Later helpers ──────────────────────────────────────
@@ -190,33 +300,6 @@ export function filterWatchLater(videos: VideoItem[], win: string, timeMode: str
     const t = new Date(v.published_at).getTime()
     return t >= cutoff && t <= now
   })
-}
-
-// The three states a video can be in. Derived from watch history, not stored:
-// no entry = never opened, an entry = started, an entry with `watched` = finished.
-export const WATCH_STATUSES = [
-  { value: 'unwatched', label: 'Unwatched', icon: '🆕' },
-  { value: 'in_progress', label: 'In progress', icon: '▶️' },
-  { value: 'watched', label: 'Watched', icon: '✅' },
-] as const
-
-// Watched is off by default: the home feed is for finding something to watch,
-// and things you've already seen are noise there.
-export const DEFAULT_WATCH_STATUSES = ['unwatched', 'in_progress']
-
-// The History page only ever lists videos you've started, so 'unwatched' has
-// nothing to match there and isn't offered.
-export const HISTORY_WATCH_OPTIONS = WATCH_STATUSES.filter(w => w.value !== 'unwatched')
-const WATCH_STATUS_KEY = 'watch_statuses'
-
-export function loadWatchStatuses(): string[] {
-  // A viewing preference rather than a shareable view, so it lives here and not
-  // in the URL (which carries tags, window and sort).
-  try {
-    const raw = JSON.parse(localStorage.getItem(WATCH_STATUS_KEY) || 'null')
-    if (Array.isArray(raw) && raw.every(v => typeof v === 'string')) return raw
-  } catch { /* fall through to the default */ }
-  return DEFAULT_WATCH_STATUSES
 }
 
 export function watchStatusOf(videoId: string, progressById: Map<string, WatchProgress>): string {
@@ -283,18 +366,17 @@ const FEED_PAGE_SIZE = 60  // home-feed pagination: videos fetched per page
 
 export default function App() {
   // Init from URL
-  const initPath = parsePath()
-  const initQ = parseSearch()
-  const [page, setPageRaw] = useState<Page>(initPath.page)
-  const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(initPath.playlistId)
+  const init = stateFromUrl()
+  const [page, setPageRaw] = useState<Page>(init.page)
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<number | null>(init.playlistId)
   // In-app watch page: the video id from the URL, plus the VideoItem we arrived
   // with (null on cold load / back-forward, where WatchPage fetches by id).
-  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(initPath.videoId)
+  const [selectedVideoId, setSelectedVideoId] = useState<string | null>(init.videoId)
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null)
   // Whether the watch overlay is currently open — lets popstate tell "closing
   // the overlay" (leave the underlying page untouched) from a real page nav.
-  const overlayOpenRef = useRef<boolean>(!!initPath.videoId)
-  const [searchInput, setSearchInput] = useState<string>(() => new URLSearchParams(window.location.search).get('q') || '')
+  const overlayOpenRef = useRef<boolean>(!!init.videoId)
+  const [searchInput, setSearchInput] = useState<string>(init.q)
   // True once we've pushed a /search history entry, so clearing the box can go
   // back() to the page (and its state) we were on before searching.
   const searchPushedRef = useRef(false)
@@ -303,8 +385,8 @@ export default function App() {
   const feedLoadedRef = useRef(0)                          // videos currently loaded (for bg refresh)
   const feedLoadingMoreRef = useRef(false)                 // guard against overlapping page fetches
   const [tags, setTags] = useState<TagInfo[]>([])
-  const [selectedTags, setSelectedTags] = useState<string[]>(initQ.tags)
-  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(initPath.channelId)
+  const [selectedTags, setSelectedTags] = useState<string[]>(init.tags)
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(init.channelId)
   // Channel-page video-label filtering: the current channel's label vocabulary
   // (its sidebar chips) and the single selected label. Owned here because the
   // sidebar (which renders the chips) lives in App while ChannelPage does the
@@ -312,17 +394,17 @@ export default function App() {
   const [channelLabelVocab, setChannelLabelVocab] = useState<LabelCount[] | null>(null)
   const [channelLabelsBuilding, setChannelLabelsBuilding] = useState(false)
   const [channelHasTopics, setChannelHasTopics] = useState(false)
-  const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(init.selectedLabel)
   const [loading, setLoading] = useState(true)
-  const [timeWindow, setTimeWindow] = useState(initQ.window)
-  const [sort, setSort] = useState(initQ.sort)
-  const [timeMode, setTimeMode] = useState(initQ.timeMode)
-  const [channelsSort, setChannelsSort] = useState(initQ.channelsSort)
+  const [timeWindow, setTimeWindow] = useState(init.timeWindow)
+  const [sort, setSort] = useState(init.sort)
+  const [timeMode, setTimeMode] = useState(init.timeMode)
+  const [channelsSort, setChannelsSort] = useState(init.channelsSort)
   // Videos ↔ Shorts: switches the feed / channel pages between long-form and
   // vertical short-form. Shorts live on a separate channel tab and rank very
   // differently, so they're a distinct browse mode rather than mixed in.
   // Persisted in the URL (?shorts=1) so a reload/shared link lands on the same mode.
-  const [contentMode, setContentMode] = useState<'videos' | 'shorts'>(initQ.shorts ? 'shorts' : 'videos')
+  const [contentMode, setContentMode] = useState<'videos' | 'shorts'>(init.contentMode)
 
   // ── Watch Later ───────────────────────────────────────
   const [watchLater, setWatchLater] = useState<VideoItem[]>([])
@@ -371,7 +453,7 @@ export default function App() {
   // Server-side now (syncs across devices); the feed query already excludes them.
   const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(new Set())
   // When on, hidden channels' videos are shown in the feed anyway (a temporary peek).
-  const [showHidden, setShowHidden] = useState(false)
+  const [showHidden, setShowHidden] = useState(init.showHidden)
 
   useEffect(() => {
     let cancelled = false
@@ -496,7 +578,7 @@ export default function App() {
   const [importOpen, setImportOpen] = useState(false)
   // The Imported page has no time window, and its default order is import order
   // — so it keeps its own sort rather than sharing the feed's.
-  const [importedSort, setImportedSort] = useState('recent')
+  const [importedSort, setImportedSort] = useState(init.importedSort)
 
   const fetchImported = useCallback(async () => {
     try {
@@ -528,7 +610,7 @@ export default function App() {
   // History page, the resume bar drawn on every card, and the watch page's
   // "continue where you left off". Written by WatchPage while a video plays.
   const [watchHistory, setWatchHistory] = useState<HistoryItem[]>([])
-  const [historySort, setHistorySort] = useState('recent')
+  const [historySort, setHistorySort] = useState(init.historySort)
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -574,13 +656,14 @@ export default function App() {
     return () => window.removeEventListener('focus', onFocus)
   }, [checkToken])
 
-  // Reset channel-label chips/selection whenever the viewed channel changes, so
-  // one channel's topics never leak onto another's sidebar.
+  // Reset the channel-label chips whenever the viewed channel changes, so one
+  // channel's topics never leak onto another's sidebar. The *selection* is
+  // cleared by the navigation itself (selectChannel / setPage), not here —
+  // otherwise this would wipe a `?label=` restored from the URL on a cold load.
   useEffect(() => {
     setChannelLabelVocab(null)
     setChannelLabelsBuilding(false)
     setChannelHasTopics(false)
-    setSelectedLabel(null)
   }, [selectedChannelId])
 
   // ── Sidebar state ─────────────────────────────────────
@@ -638,24 +721,13 @@ export default function App() {
   }, [])
 
   // ── Channel page state ────────────────────────────────
-  const [channelWindow, setChannelWindow] = useState('1m')
-  const [channelSort, setChannelSort] = useState('likes')
-  const [channelTimeMode, setChannelTimeMode] = useState('wide')
+  const [channelWindow, setChannelWindow] = useState(init.channelWindow)
+  const [channelSort, setChannelSort] = useState(init.channelSort)
+  const [channelTimeMode, setChannelTimeMode] = useState(init.channelTimeMode)
 
   // ── URL sync ──────────────────────────────────────────
-  // replaceState for reactive filter changes (tags, window, sort) — no new history entry
-  const syncUrl = useCallback(() => {
-    if (selectedVideoId) return  // watch overlay owns the /watch/{id} URL
-    if (page === 'search') return  // search URL (?q=) is managed by onSearchChange
-    if (page === 'playlist') return  // /playlist/{id} is navigated directly
-    const path = buildPath(page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts')
-    if (location.pathname + location.search !== path) {
-      history.replaceState(null, '', path)
-    }
-  }, [selectedVideoId, page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode])
-
-  // Sync URL on filter state changes (replaceState — no new history entry)
-  useEffect(() => { syncUrl() }, [syncUrl])
+  // (currentPath / syncUrl live further down — they read the watch-status state,
+  // which is declared with the rest of the filtering below.)
 
   // Listen for browser back/forward
   useEffect(() => {
@@ -677,18 +749,29 @@ export default function App() {
         setSelectedVideo(null)
         return
       }
-      // A genuine page navigation (back/forward between real pages).
-      const q = parseSearch()
-      setPageRaw(p.page)
-      setSearchInput(new URLSearchParams(window.location.search).get('q') || '')
-      setSelectedChannelId(p.channelId)
-      setSelectedPlaylistId(p.playlistId)
-      setSelectedTags(q.tags)
-      setTimeWindow(q.window)
-      setSort(q.sort)
-      setTimeMode(q.timeMode)
-      setChannelsSort(q.channelsSort)
-      setContentMode(q.shorts ? 'shorts' : 'videos')
+      // A genuine page navigation (back/forward between real pages): rebuild
+      // every filter from the URL, the same mapping a cold load uses.
+      const s = stateFromUrl()
+      setPageRaw(s.page)
+      setSearchInput(s.q)
+      setSelectedChannelId(s.channelId)
+      setSelectedPlaylistId(s.playlistId)
+      setSelectedTags(s.tags)
+      setTimeWindow(s.timeWindow)
+      setTimeMode(s.timeMode)
+      setSort(s.sort)
+      setChannelsSort(s.channelsSort)
+      setChannelWindow(s.channelWindow)
+      setChannelSort(s.channelSort)
+      setChannelTimeMode(s.channelTimeMode)
+      setImportedSort(s.importedSort)
+      setHistorySort(s.historySort)
+      setContentMode(s.contentMode)
+      setShowHidden(s.showHidden)
+      setWatchStatuses(s.watchStatuses)
+      setChannelWatchStatuses(s.channelWatchStatuses)
+      setHistoryWatchStatuses(s.historyWatchStatuses)
+      setSelectedLabel(s.selectedLabel)
       mainRef.current?.scrollTo({ top: 0 })
       setTopbarPinned(true)
     }
@@ -751,7 +834,7 @@ export default function App() {
   // Watch-status filter (sidebar). Global, like the tag selection — the feed
   // applies it server-side so paging stays honest; the already-loaded libraries
   // apply it themselves below.
-  const [watchStatuses, setWatchStatuses] = useState<string[]>(loadWatchStatuses)
+  const [watchStatuses, setWatchStatuses] = useState<string[]>(init.watchStatuses)
   useEffect(() => {
     try { localStorage.setItem(WATCH_STATUS_KEY, JSON.stringify(watchStatuses)) } catch { /* private mode */ }
   }, [watchStatuses])
@@ -761,20 +844,20 @@ export default function App() {
 
   // History keeps its own selection rather than sharing the global one, which
   // hides watched videos — backwards on a page whose whole job is to list what
-  // you've watched. It starts EMPTY (no filter) and resets to empty on every
-  // visit: a filter you set last time is a surprise waiting for you, and the
-  // useful default here is simply "show me everything".
-  const [historyWatchStatuses, setHistoryWatchStatuses] = useState<string[]>([])
-  useEffect(() => { if (page === 'history') setHistoryWatchStatuses([]) }, [page])
+  // you've watched. It starts EMPTY (no filter) and is cleared again by every
+  // navigation to the page (see setPage): a filter you set last time is a
+  // surprise waiting for you, and the useful default here is "show everything".
+  // A reload is not a fresh visit, so `?watch=` in the URL still wins.
+  const [historyWatchStatuses, setHistoryWatchStatuses] = useState<string[]>(init.historyWatchStatuses)
   const toggleHistoryWatchStatus = useCallback((value: string) => {
     setHistoryWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
   }, [])
 
   // A channel page filters its own list the same way, and likewise starts with
   // nothing selected — you open a channel to see what it has, not what's left of
-  // it. Reset per channel, so one channel's filter doesn't follow you to the next.
-  const [channelWatchStatuses, setChannelWatchStatuses] = useState<string[]>([])
-  useEffect(() => { setChannelWatchStatuses([]) }, [selectedChannelId])
+  // it. Cleared by each navigation to a channel, so one channel's filter doesn't
+  // follow you to the next — but a reload of a `?watch=` URL keeps it.
+  const [channelWatchStatuses, setChannelWatchStatuses] = useState<string[]>(init.channelWatchStatuses)
   const toggleChannelWatchStatus = useCallback((value: string) => {
     setChannelWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
   }, [])
@@ -788,6 +871,45 @@ export default function App() {
     const byStatus = filterByWatchStatus(byMode, historyWatchStatuses, progressById)
     return filterByTags(byStatus, selectedTags, tags, tagChannels)
   }, [watchHistory, contentMode, selectedTags, tags, tagChannels, historyWatchStatuses, progressById])
+
+
+  // ── URL sync (continued) ──────────────────────────────
+  // The whole current view as a URL. Everything funnels through here, so a
+  // navigation only has to name its page: this fills in that page's filters.
+  const currentPath = useCallback(() => buildPath({
+    page,
+    channelId: selectedChannelId,
+    tags: selectedTags,
+    window: page === 'channel' ? channelWindow : timeWindow,
+    sort: page === 'channel' ? channelSort
+      : page === 'channels' ? channelsSort
+      : page === 'imported' ? importedSort
+      : page === 'history' ? historySort
+      : sort,
+    timeMode: page === 'channel' ? channelTimeMode : timeMode,
+    shorts: contentMode === 'shorts',
+    watch: page === 'channel' ? channelWatchStatuses
+      : page === 'history' ? historyWatchStatuses
+      : watchStatuses,
+    label: selectedLabel,
+    showHidden,
+    q: searchInput,
+  }), [page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort,
+    channelWindow, channelSort, channelTimeMode, importedSort, historySort, contentMode,
+    watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden, searchInput])
+
+  // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
+  const syncUrl = useCallback(() => {
+    if (selectedVideoId) return  // watch overlay owns the /watch/{id} URL
+    if (page === 'playlist') return  // /playlist/{id} is navigated directly
+    const path = currentPath()
+    if (location.pathname + location.search !== path) {
+      history.replaceState(null, '', path)
+    }
+  }, [selectedVideoId, page, currentPath])
+
+  // Sync URL on filter state changes (replaceState — no new history entry)
+  useEffect(() => { syncUrl() }, [syncUrl])
 
 
   // Per-tag channel count that updates as tags are selected.
@@ -926,20 +1048,27 @@ export default function App() {
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
   const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history') => {
-    const newChannelId = p !== 'channel' ? null : selectedChannelId
-    history.pushState(null, '', buildPath(p, newChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
+    // Push the bare page path; the URL-sync effect appends that page's filters
+    // (replaceState) once the state below has settled.
+    history.pushState(null, '', buildPath({ page: p, channelId: selectedChannelId, tags: selectedTags }))
     setPageRaw(p)
     setSelectedPlaylistId(null)
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
-    if (p !== 'channel') setSelectedChannelId(null)
-    if (p === 'channel') {
-      setChannelWindow('1m')
-      setChannelSort('likes')
-      setChannelTimeMode('wide')
+    if (p !== 'channel') {
+      setSelectedChannelId(null)
+      setSelectedLabel(null)
+      setChannelWatchStatuses([])
     }
+    if (p === 'channel') {
+      setChannelWindow(PAGE_DEFAULTS.channel.window)
+      setChannelSort(PAGE_DEFAULTS.channel.sort)
+      setChannelTimeMode(PAGE_DEFAULTS.channel.timeMode)
+    }
+    // Every visit to History starts unfiltered — see historyWatchStatuses.
+    if (p === 'history') setHistoryWatchStatuses([])
     if (p !== 'feed') setMobileMenuOpen(false)
-  }, [selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort])
+  }, [selectedChannelId, selectedTags])
 
   // Search box: typing routes to the /search page; the URL tracks the query.
   const onSearchChange = useCallback((q: string) => {
@@ -967,11 +1096,11 @@ export default function App() {
       // page when the box is cleared. The ref guards against a second push if
       // several keystrokes land before the re-render.
       searchPushedRef.current = true
-      history.pushState(null, '', `/search?q=${encodeURIComponent(q)}`)
+      history.pushState(null, '', buildPath({ page: 'search', q }))
       setPageRaw('search')
       return
     }
-    history.replaceState(null, '', `/search?q=${encodeURIComponent(q)}`)
+    history.replaceState(null, '', buildPath({ page: 'search', q }))
   }, [])
 
   // Refocusing the box while it still holds a query returns to the results page
@@ -979,7 +1108,7 @@ export default function App() {
   const onSearchFocus = useCallback(() => {
     if (!searchInput.trim() || page === 'search') return
     searchPushedRef.current = true
-    history.pushState(null, '', `/search?q=${encodeURIComponent(searchInput)}`)
+    history.pushState(null, '', buildPath({ page: 'search', q: searchInput }))
     setPageRaw('search')
   }, [searchInput, page])
 
@@ -1009,13 +1138,15 @@ export default function App() {
   }
 
   function selectChannel(channelId: string) {
-    history.pushState(null, '', buildPath('channel', channelId, selectedTags, timeWindow, sort, timeMode, channelsSort, contentMode === 'shorts'))
+    history.pushState(null, '', buildPath({ page: 'channel', channelId, tags: selectedTags }))
     setSelectedChannelId(channelId)
     setSelectedPlaylistId(null)
     setPageRaw('channel')
-    setChannelWindow('1m')
-    setChannelSort('likes')
-    setChannelTimeMode('wide')
+    setChannelWindow(PAGE_DEFAULTS.channel.window)
+    setChannelSort(PAGE_DEFAULTS.channel.sort)
+    setChannelTimeMode(PAGE_DEFAULTS.channel.timeMode)
+    setChannelWatchStatuses([])
+    setSelectedLabel(null)
     mainRef.current?.scrollTo({ top: 0 })
   }
 
@@ -1047,15 +1178,16 @@ export default function App() {
   }
 
   function goHome() {
-    history.pushState(null, '', '/')
+    history.pushState(null, '', buildPath({ page: 'feed', shorts: contentMode === 'shorts' }))
     setSelectedTags([])
     setWatchStatuses(DEFAULT_WATCH_STATUSES)
     setSelectedChannelId(null)
     setSelectedPlaylistId(null)
+    setSelectedLabel(null)
     setPageRaw('feed')
-    setTimeWindow('3d')
-    setSort('likes')
-    setTimeMode('wide')
+    setTimeWindow(DEFAULTS.window)
+    setSort(DEFAULTS.sort)
+    setTimeMode(DEFAULTS.timeMode)
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
   }
@@ -1063,6 +1195,7 @@ export default function App() {
   function clearFilter() {
     setSelectedTags([])
   }
+
 
   return (
     <div className="flex h-screen overflow-hidden">

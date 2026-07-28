@@ -107,39 +107,69 @@ describe('sortWatchLater', () => {
 
 describe('buildPath', () => {
   it('returns / for feed with defaults', () => {
-    expect(buildPath('feed', null, [], '3d', 'likes', 'wide', 'subs')).toBe('/')
+    expect(buildPath({ page: 'feed', window: '3d', sort: 'likes', timeMode: 'wide' })).toBe('/')
   })
 
   it('includes non-default window in query string', () => {
-    expect(buildPath('feed', null, [], '1w', 'likes', 'wide', 'subs')).toBe('/?window=1w')
+    expect(buildPath({ page: 'feed', window: '1w' })).toBe('/?window=1w')
   })
 
   it('includes non-default sort in query string', () => {
-    expect(buildPath('feed', null, [], '3d', 'views', 'wide', 'subs')).toBe('/?sort=views')
+    expect(buildPath({ page: 'feed', sort: 'views' })).toBe('/?sort=views')
   })
 
   it('includes tags in query string', () => {
-    const path = buildPath('feed', null, ['coding', 'music'], '3d', 'likes', 'wide', 'subs')
-    expect(path).toBe('/?tags=coding%2Cmusic')
+    expect(buildPath({ page: 'feed', tags: ['coding', 'music'] })).toBe('/?tags=coding%2Cmusic')
   })
 
   it('returns /channels for channels page', () => {
-    expect(buildPath('channels', null, [], '3d', 'likes', 'wide', 'subs')).toBe('/channels')
+    expect(buildPath({ page: 'channels', sort: 'subs' })).toBe('/channels')
   })
 
-  it('uses channelsSort (not sort) on channels page', () => {
-    expect(buildPath('channels', null, [], '3d', 'likes', 'wide', 'alpha')).toBe('/channels?sort=alpha')
+  it('includes a non-default channels sort', () => {
+    expect(buildPath({ page: 'channels', sort: 'alpha' })).toBe('/channels?sort=alpha')
   })
 
   it('returns /watchlater for watchlater page', () => {
-    expect(buildPath('watchlater', null, [], '3d', 'likes', 'wide', 'subs')).toBe('/watchlater')
+    expect(buildPath({ page: 'watchlater' })).toBe('/watchlater')
   })
 
   it('returns /channel/:id for channel page', () => {
-    expect(buildPath('channel', 'UC123', [], '3d', 'likes', 'wide', 'subs')).toBe('/channel/UC123')
+    expect(buildPath({ page: 'channel', channelId: 'UC123' })).toBe('/channel/UC123')
   })
 
   it('includes timeMode in query string when narrow', () => {
-    expect(buildPath('feed', null, [], '3d', 'likes', 'narrow', 'subs')).toBe('/?time_mode=narrow')
+    expect(buildPath({ page: 'feed', timeMode: 'narrow' })).toBe('/?time_mode=narrow')
+  })
+
+  // Each page's defaults differ, so the same value can be default on one page
+  // and worth writing on another.
+  it('omits the channel page defaults but writes the feed ones', () => {
+    expect(buildPath({ page: 'channel', channelId: 'UC1', window: '1m', sort: 'likes' })).toBe('/channel/UC1')
+    expect(buildPath({ page: 'channel', channelId: 'UC1', window: '3d' })).toBe('/channel/UC1?window=3d')
+  })
+
+  it('omits sort and window on pages that have no such control', () => {
+    expect(buildPath({ page: 'downloads', sort: 'views', window: '1w' })).toBe('/downloads')
+    expect(buildPath({ page: 'history', window: '1w', sort: 'views' })).toBe('/history?sort=views')
+  })
+
+  it('writes the watch-status filter only when it differs from the page default', () => {
+    expect(buildPath({ page: 'feed', watch: ['unwatched', 'in_progress'] })).toBe('/')
+    expect(buildPath({ page: 'feed', watch: ['watched'] })).toBe('/?watch=watched')
+    // Empty means "no filter", which is not the same as the param being absent.
+    expect(buildPath({ page: 'feed', watch: [] })).toBe('/?watch=none')
+    // History and channel pages default to no filter, so empty writes nothing.
+    expect(buildPath({ page: 'history', watch: [] })).toBe('/history')
+    expect(buildPath({ page: 'history', watch: ['watched'] })).toBe('/history?watch=watched')
+  })
+
+  it('writes shorts, label, hidden and q only where they apply', () => {
+    expect(buildPath({ page: 'feed', shorts: true })).toBe('/?shorts=1')
+    expect(buildPath({ page: 'imported', shorts: true })).toBe('/imported')
+    expect(buildPath({ page: 'channel', channelId: 'UC1', label: 'piano' })).toBe('/channel/UC1?label=piano')
+    expect(buildPath({ page: 'feed', label: 'piano' })).toBe('/')
+    expect(buildPath({ page: 'feed', showHidden: true })).toBe('/?hidden=1')
+    expect(buildPath({ page: 'search', q: 'jazz' })).toBe('/search?q=jazz')
   })
 })

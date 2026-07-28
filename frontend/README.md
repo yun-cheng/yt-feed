@@ -59,15 +59,40 @@ does client-side routing itself:
 - On navigation it calls `history.pushState` with a URL built by `buildPath(...)`;
   a `popstate` listener parses the URL back into state, so **back/forward work**
   and every view is deep-linkable.
-- Feed controls (time window, sort, selected tags, videos↔shorts mode) are
-  encoded in the URL query string and restored on load — so a filtered feed can
-  be bookmarked.
+- **Every filter and sort is in the URL**, so a refresh — or a pasted link —
+  restores the exact view: `tags`, `window`, `time_mode`, `sort`, `shorts`,
+  `watch`, `label` (a channel's topic chip), `hidden` (show hidden channels),
+  and `q` (search). See "URL state" below.
 - Data is fetched from `/api/*` into React state (`fetchFeed`, `fetchTags`, …);
   the feed is paged by `offset`/`limit` with a load-more trigger (`loadMoreFeed`).
   Every call goes through `apiFetch` (`lib/api.ts`) — a drop-in `fetch` wrapper
   that shows an error toast on a failed request, so nothing fails silently.
   High-frequency background calls (hover captions/storyboards, the topic-build
   poll) opt out with `{ quiet: true }`.
+
+### URL state
+
+Pages keep **separate** sort / window / watch-status state — a channel page's
+sort isn't the feed's — but the URL carries **one** `sort`, `window`,
+`time_mode` and `watch`. The page being shown owns them; every other page's copy
+sits at its own default. `PAGE_DEFAULTS` is that table, and the `USES_*` sets say
+which controls a page actually has, so a param a page can't change is never
+written.
+
+- **Values equal to the page's default are omitted**, so ordinary URLs stay
+  short — and the same value can be worth writing on one page and not another
+  (`window=3d` is the feed's default but not a channel's, whose default is `1m`).
+- `buildPath(state)` takes an object, not a positional list — there are ten
+  fields now, and it's the one place that knows what a page's URL looks like.
+- `stateFromUrl()` is the inverse, and is used by **both** the cold load and
+  `popstate`, so the two can't drift apart.
+- **Navigations only name their page.** `setPage` / `selectChannel` push the
+  bare path; the `syncUrl` effect then `replaceState`s the full query once the
+  state has settled. Nothing else has to know the param list.
+- Filters that reset on a fresh visit (a channel's watch status and topic label,
+  History's watch status) are cleared **by the navigation**, not by an effect on
+  `[page]`/`[channelId]` — an effect would also fire on a cold load and wipe the
+  very value the URL just restored. A reload isn't a fresh visit.
 
 ### Watch history
 
@@ -117,9 +142,11 @@ an entry with `watched` means finished. **Watched is off by default**: the home
 feed is for finding something to watch, and things you've already seen are noise
 there.
 
-- It lives in **localStorage**, not the URL. The URL carries the shareable view
-  (tags, window, sort); this is a standing viewing preference, and putting it
-  there would mean threading another argument through `buildPath`'s eight.
+- It is carried in the URL as `watch=` like every other filter, and **also**
+  mirrored to localStorage — that's the fallback for a cold load with no `watch`
+  param, so your last choice is remembered when you just open the app.
+  `watch=none` is an explicit "no filter"; an absent param means "use the
+  page's default", and the two aren't the same.
 - The **feed and a channel page apply it server-side** (`watch=` on
   `/api/tags/feed` and `/api/channels/{id}/videos`) so `total` and the paging stay
   honest. Watch Later and History are already-loaded lists, so they use
@@ -127,16 +154,18 @@ there.
 - Selecting **every** status — or **none** — means "don't filter", matching both
   the tag filter and the backend, so an empty selection can't leave you staring
   at a blank page.
-- **A channel page gets its own selection too**, cleared per channel — you open a
-  channel to see what it has, not what's left of it, and one channel's filter
-  shouldn't follow you to the next. The sidebar swaps the global taxonomy for that
+- **A channel page gets its own selection too**, cleared each time you open a
+  channel — you open one to see what it has, not what's left of it, and one
+  channel's filter shouldn't follow you to the next. The sidebar swaps the global taxonomy for that
   channel's topic chips there, but the watch-status section stays.
 - **History gets its own selection**, not the global one — which hides watched
   videos, backwards on a page whose whole job is listing what you've watched.
   `unwatched` can't match anything there either, so that chip isn't offered. The
-  selection starts **empty** (no filter) and is reset to empty on every visit, so
-  the page always opens showing everything and a filter you set last time can't
-  ambush you. Toggling it there leaves the feed's selection alone, and vice versa.
+  selection starts **empty** (no filter) and is reset to empty by every
+  navigation to the page, so it always opens showing everything and a filter you
+  set last time can't ambush you — but a reload of a `?watch=` URL keeps it, a
+  refresh being a continuation rather than a fresh visit. Toggling it there
+  leaves the feed's selection alone, and vice versa.
 
 ### The Imported page
 
@@ -150,8 +179,8 @@ Two deliberate differences from the feed:
 
 - **No time window.** An import is an explicit pick, not a stream of new
   uploads, so filtering it by publish date would hide most of what you just
-  added. It gets its own sort (`IMPORTED_SORT_OPTIONS`) defaulting to `added` —
-  import order, which is what the API already returns.
+  added. It gets its own sort (`recentSortOptions('Added')`) defaulting to
+  `recent` — import order, which is what the API already returns.
 - **Its own remove action.** The card menu shows "Remove from imported"
   (`onRemoveImported`), alongside the existing playlist/download variants.
 
