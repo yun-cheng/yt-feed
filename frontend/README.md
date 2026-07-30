@@ -229,7 +229,8 @@ components/
   ChannelPage.tsx / ChannelsPage.tsx
   ChannelTags.tsx                 per-channel label editor (apply/remove/suggest)
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
-  DownloadsPage.tsx
+  DownloadsPage.tsx               the offline library — cards open the watch
+                                  overlay, which plays the file from disk
   ImportedPage.tsx                videos added by URL — the same VideoRow the
                                   feed uses, so cards and actions are identical
   ImportDialog.tsx                the paste-links modal (opened from TopBar)
@@ -473,7 +474,8 @@ Other details:
 A video with a finished download plays from `/api/downloads/:id/file` instead of
 the embed — no ads, no embedding restrictions, and it keeps working offline — and
 still gets the whole page around it: title, description, transcript, history,
-captions.
+captions. That's also why the Downloads page has no player of its own; its cards
+open this overlay like cards anywhere else.
 
 Only the *player* differs. The rest of the component drives whatever is playing
 through **`PlayerApi`**, the slice of the YouTube IFrame API everything here uses

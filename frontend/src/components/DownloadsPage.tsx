@@ -27,11 +27,11 @@ function toVideoItem(d: DownloadItem): VideoItem {
 }
 
 export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
-  const [playing, setPlaying] = useState<DownloadItem | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
-  // The whole downloaded file, loaded into memory as a blob URL. Both the hover
-  // preview and the player read from this so seeking works entirely offline —
-  // no per-jump range fetch that a lost network connection would block.
+  // The whole downloaded file, loaded into memory as a blob URL, so the hover
+  // preview seeks entirely offline — no per-jump range fetch that a lost network
+  // connection would block. (Opening the video hands off to the watch page,
+  // which streams the same file from the server.)
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({})
   const fetchingRef = useRef<Set<string>>(new Set())
   const blobUrlsRef = useRef(blobUrls)
@@ -47,10 +47,8 @@ export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
       .finally(() => fetchingRef.current.delete(id))
   }, [])
 
-  // Fetch the file into memory the moment a card is hovered (for the preview)
-  // or opened (for the modal).
+  // Fetch the file into memory the moment a card is hovered (for the preview).
   useEffect(() => { if (hoveredId) ensureBlob(hoveredId) }, [hoveredId, ensureBlob])
-  useEffect(() => { if (playing) ensureBlob(playing.youtube_id) }, [playing, ensureBlob])
 
   // Release blob URLs on unmount to free the memory.
   useEffect(() => () => { Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL) }, [])
@@ -75,14 +73,15 @@ export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
       <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-x-4 gap-y-6">
         {downloads.map((d) =>
           d.status === 'ready' ? (
-            // Reuse the feed card: click plays the local file; menu offers "remove".
+            // Reuse the feed card. Clicking opens the watch page like anywhere
+            // else — it plays this same file, and brings the title, description
+            // and transcript with it. Menu offers "remove".
             <VideoCard
               key={d.youtube_id}
               video={toVideoItem(d)}
               isHovered={hoveredId === d.youtube_id}
               onHover={setHoveredId}
               onChannelClick={(id) => window.open(`https://www.youtube.com/channel/${id}`, '_blank')}
-              onOpen={() => setPlaying(d)}
               onRemoveDownload={() => onDelete(d.youtube_id)}
               localOnly
               localSrc={blobUrls[d.youtube_id]}
@@ -132,40 +131,6 @@ export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
           )
         )}
       </div>
-
-      {/* Player modal — served from the local file (same-origin, so native speed
-          controls and browser extensions work). */}
-      {playing && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-          onClick={() => setPlaying(null)}
-        >
-          <div className="w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
-            {blobUrls[playing.youtube_id] ? (
-              <video
-                src={blobUrls[playing.youtube_id]}
-                className="w-full rounded-xl bg-black aspect-video"
-                controls
-                autoPlay
-              />
-            ) : (
-              <div className="w-full rounded-xl bg-black aspect-video flex flex-col items-center justify-center gap-3 text-white">
-                <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span className="text-xs text-[#aaa]">載入中…</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between mt-3">
-              <h2 className="text-white text-sm font-medium line-clamp-1">{playing.title}</h2>
-              <button
-                className="ml-4 flex-shrink-0 text-sm text-[#aaa] hover:text-white transition-colors"
-                onClick={() => setPlaying(null)}
-              >
-                關閉
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
