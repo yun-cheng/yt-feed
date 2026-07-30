@@ -543,12 +543,25 @@ export default function App() {
   // ── Downloads (server-side offline library) ───────────
   const [downloads, setDownloads] = useState<DownloadItem[]>([])
   const downloadIds = useMemo(() => new Set(downloads.map(d => d.youtube_id)), [downloads])
+  // Only 'ready' has a playable file on disk — a queued or failed download has a
+  // row but nothing to serve, so the watch page must still use the embed.
+  const readyDownloadIds = useMemo(
+    () => new Set(downloads.filter(d => d.status === 'ready').map(d => d.youtube_id)),
+    [downloads],
+  )
+
+  // Whether the list has come back at least once. The watch overlay waits for
+  // this before picking a player, so a cold load of /watch/:id can't decide
+  // "not downloaded" from a list that simply hasn't arrived yet. A failed fetch
+  // still counts as an answer — the overlay falls back to the embed.
+  const [downloadsKnown, setDownloadsKnown] = useState(false)
 
   const fetchDownloads = useCallback(async () => {
     try {
       const res = await apiFetch('/api/downloads')
       if (res.ok) setDownloads(await res.json())
     } catch { /* ignore */ }
+    finally { setDownloadsKnown(true) }
   }, [])
 
   useEffect(() => { fetchDownloads() }, [fetchDownloads])
@@ -1585,6 +1598,8 @@ export default function App() {
             onChannelClick={selectChannelFromWatch}
             onDownload={startDownload}
             isDownloaded={downloadIds.has(selectedVideoId)}
+            hasLocalFile={readyDownloadIds.has(selectedVideoId)}
+            downloadsKnown={downloadsKnown}
           />
         </div>
       )}

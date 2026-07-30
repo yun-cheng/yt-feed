@@ -24,7 +24,9 @@ real video (muted, with custom captions and scrubbing).
   switchable between English / Chinese / Japanese / Korean when offered, with
   dual subtitles and an AI translation into Traditional Chinese
 - **Shorts** — a separate feed for vertical short-form videos
-- **Watch Later / Playlists / Downloads** — all server-side (sync across devices)
+- **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
+  A downloaded video plays from disk in that same watch page — no ads, works
+  offline — with our own control bar and a scrub preview of the actual frames
 - **Watch history** — every video remembers where you stopped: revisiting resumes
   from that timestamp, cards show a red progress bar before you hover, and finished
   videos get a "Watched" badge. All of it on its own History page

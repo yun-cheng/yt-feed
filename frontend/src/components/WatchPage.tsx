@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
-import type { ReactNode } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
@@ -14,6 +14,12 @@ type Props = {
   onChannelClick: (channelId: string) => void
   onDownload: (video: VideoItem) => void
   isDownloaded: boolean
+  // A finished download exists on disk, so we play that file instead of the
+  // YouTube embed (see the player effect).
+  hasLocalFile: boolean
+  // Whether hasLocalFile is an answer yet: the downloads list is fetched once at
+  // startup, so on a cold load of /watch/:id it can still be in flight here.
+  downloadsKnown: boolean
 }
 
 function formatCount(n: number): string {
@@ -353,7 +359,257 @@ function CaptionBlock({ lines }: { lines: CaptionLine[] }) {
   )
 }
 
-export default function WatchPage({ videoId, video, onChannelClick, onDownload, isDownloaded }: Props) {
+// The slice of the YouTube IFrame API the rest of this component drives the
+// player through. A downloaded file is played by a plain <video>, so it gets an
+// adapter with the same shape (below) and every caller — history, captions,
+// keyboard shortcuts, the shared volume — works unchanged either way.
+type PlayerApi = {
+  setVolume: (v: number) => void
+  getVolume: () => number
+  isMuted: () => boolean
+  mute: () => void
+  unMute: () => void
+  playVideo: () => void
+  pauseVideo: () => void
+  getPlayerState: () => number
+  getCurrentTime: () => number
+  getDuration: () => number
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void
+}
+
+/** Wrap a <video> element in the PlayerApi, matching YouTube's conventions:
+ *  volume is 0–100 (not 0–1), and the state codes are 0 = ended, 1 = playing,
+ *  2 = paused — the only three values any caller here compares against. */
+function localPlayer(el: HTMLVideoElement): PlayerApi {
+  return {
+    setVolume: (v) => { el.volume = Math.max(0, Math.min(1, v / 100)) },
+    getVolume: () => el.volume * 100,
+    isMuted: () => el.muted,
+    mute: () => { el.muted = true },
+    unMute: () => { el.muted = false },
+    playVideo: () => { void el.play().catch(() => { /* autoplay policy */ }) },
+    pauseVideo: () => el.pause(),
+    getPlayerState: () => (el.ended ? 0 : el.paused ? 2 : 1),
+    getCurrentTime: () => el.currentTime,
+    getDuration: () => (Number.isFinite(el.duration) ? el.duration : 0),
+    seekTo: (seconds) => { el.currentTime = seconds },
+  }
+}
+
+/** Controls for local playback, in place of the browser's native bar — which
+ *  can't show a scrub preview. Hovering the progress bar seeks a second, hidden
+ *  <video> of the same file to that moment and shows the frame, exactly like the
+ *  card's preview scrubber: the file is already on disk, so the frame is instant
+ *  and needs no storyboard fetch. The embed keeps YouTube's own bar. */
+function LocalControls({ videoRef, src, hovering, onFullscreen, leftControls, extraControls }: {
+  videoRef: RefObject<HTMLVideoElement | null>
+  src: string
+  hovering: boolean
+  onFullscreen: () => void
+  // Controls the page owns, placed in the row instead of floating over the
+  // video: captions on the left (after the clock, as YouTube has it), the rest
+  // in the right-hand group.
+  leftControls?: ReactNode
+  extraControls?: ReactNode
+}) {
+  const [time, setTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [paused, setPaused] = useState(true)
+  const [muted, setMuted] = useState(false)
+  const [hoverRatio, setHoverRatio] = useState<number | null>(null)
+  // The slider reads and writes the SHARED volume (the same store the previews
+  // and the embed use), so a level set here follows you to the next video.
+  const volume = useVolume()
+  const barRef = useRef<HTMLDivElement>(null)
+  const scrubRef = useRef<HTMLVideoElement>(null)
+  const draggingRef = useRef(false)
+
+  // Mirror the element's state rather than polling: these events cover every way
+  // the position can change, including the keyboard shortcuts and the resume seek.
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el) return
+    const sync = () => {
+      setTime(el.currentTime)
+      setPaused(el.paused)
+      setMuted(el.muted)
+      setDuration(Number.isFinite(el.duration) ? el.duration : 0)
+    }
+    sync()
+    const events = ['timeupdate', 'play', 'pause', 'seeked', 'durationchange', 'volumechange', 'loadedmetadata']
+    events.forEach((e) => el.addEventListener(e, sync))
+    return () => events.forEach((e) => el.removeEventListener(e, sync))
+  }, [videoRef])
+
+  const hoverTime = hoverRatio !== null && duration ? hoverRatio * duration : null
+  useEffect(() => {
+    if (scrubRef.current && hoverTime !== null) scrubRef.current.currentTime = hoverTime
+  }, [hoverTime])
+  // The popup fades out rather than vanishing, so it still renders for a beat
+  // after the cursor leaves. Hold the last hovered spot for that beat: reading
+  // the live (now null) values would snap it to the middle showing 0:00 on the
+  // way out. The scrub video keeps following hoverTime, so it doesn't re-seek.
+  const lastHover = useRef({ ratio: 0.5, time: 0 })
+  if (hoverRatio !== null && hoverTime !== null) lastHover.current = { ratio: hoverRatio, time: hoverTime }
+  const shownRatio = hoverRatio ?? lastHover.current.ratio
+  const shownTime = hoverTime ?? lastHover.current.time
+
+  const ratioAt = (clientX: number) => {
+    const bar = barRef.current
+    if (!bar) return null
+    const r = bar.getBoundingClientRect()
+    return Math.max(0, Math.min(1, (clientX - r.left) / r.width))
+  }
+  const seekTo = (clientX: number) => {
+    const el = videoRef.current
+    const ratio = ratioAt(clientX)
+    if (!el || ratio === null || !duration) return
+    el.currentTime = ratio * duration
+    setTime(ratio * duration)
+  }
+
+  // Shown while the pointer is over the player, and whenever it's paused — a
+  // paused video with no controls looks broken.
+  const show = hovering || paused
+  const progress = duration ? time / duration : 0
+
+  return (
+    <div
+      className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${show ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+    >
+      {/* Scrub preview — a fixed-width popup so it keeps its size when clamped
+          against either edge. Sits clear of the bar: the container's bottom
+          padding, the button row and the bar's own hit area come to ~4.5rem, so
+          anything shorter puts the timestamp on top of the track. */}
+      <div
+        className="pointer-events-none absolute transition-opacity duration-75"
+        style={{
+          bottom: '4.75rem',
+          width: 176,
+          left: `clamp(88px, ${(shownRatio * 100).toFixed(2)}%, calc(100% - 88px))`,
+          transform: 'translateX(-50%)',
+          opacity: hoverRatio !== null ? 1 : 0,
+        }}
+      >
+        <video
+          ref={scrubRef}
+          src={src}
+          muted
+          preload="auto"
+          className="rounded border border-white/20 bg-black object-cover shadow-lg"
+          style={{ width: 176, height: 99, maxWidth: 'none' }}
+        />
+        <div className="mt-1 text-center">
+          <span className="inline-block rounded bg-black/80 px-1.5 py-0.5 text-sm font-semibold text-white">
+            {formatTime(shownTime)}
+          </span>
+        </div>
+      </div>
+
+      {/* Progress bar. The padded wrapper is the hit area (and the measured rect —
+          its horizontal edges match the track's). */}
+      <div
+        ref={barRef}
+        className="group/bar cursor-pointer py-2"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          draggingRef.current = true
+          seekTo(e.clientX)
+        }}
+        onPointerMove={(e) => {
+          setHoverRatio(ratioAt(e.clientX))
+          if (draggingRef.current) seekTo(e.clientX)
+        }}
+        // Drop the preview as soon as the cursor leaves the BAR — leaving it to
+        // the whole controls area kept the thumbnail up while you were off using
+        // the buttons. A drag holds the pointer capture, which suppresses this,
+        // so scrubbing past the ends is unaffected.
+        onPointerLeave={() => setHoverRatio(null)}
+        onPointerUp={() => { draggingRef.current = false }}
+      >
+        {/* Thickens on hover, YouTube-style, to make the target read as grabbable. */}
+        <div className="relative h-1 rounded-full bg-white/30 transition-all group-hover/bar:h-[5px]">
+          <div className="absolute inset-y-0 left-0 rounded-full bg-red-500" style={{ width: `${progress * 100}%` }} />
+          {hoverRatio !== null && (
+            <div
+              className="pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-white/50"
+              style={{ left: `${hoverRatio * 100}%` }}
+            />
+          )}
+          <div
+            className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow"
+            style={{ left: `${progress * 100}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Play / mute / clock on the left, fullscreen on the right. Everything
+          here also has a keyboard shortcut (k, m, f) — see the key handler. */}
+      <div className="flex items-center gap-3 text-white">
+        <button
+          onClick={() => { const el = videoRef.current; if (!el) return; if (el.paused) void el.play().catch(() => {}); else el.pause() }}
+          className="rounded p-1 hover:bg-white/10"
+          title={paused ? 'Play (k)' : 'Pause (k)'}
+        >
+          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            {paused ? <path d="M8 5v14l11-7z" /> : <path d="M6 5h4v14H6zm8 0h4v14h-4z" />}
+          </svg>
+        </button>
+        {/* Mute + volume, as one YouTube-style group: the slider is collapsed
+            until the group is hovered (or the slider itself has focus, so it
+            stays open while dragging or tabbing). */}
+        <div className="group/vol flex items-center">
+          <button
+            onClick={() => { const el = videoRef.current; if (el) el.muted = !el.muted }}
+            className="rounded p-1 hover:bg-white/10"
+            title={muted ? 'Unmute (m)' : 'Mute (m)'}
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              {muted || volume === 0
+                ? <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3 2.7-2.7a1 1 0 0 0-1.4-1.4L15.1 10.6l-2.7-2.7v8.2l2.7-2.7 2.7 2.7a1 1 0 0 0 1.4-1.4L16.5 12z" />
+                : <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />}
+            </svg>
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={muted ? 0 : volume}
+            onChange={(e) => {
+              const next = Number(e.target.value)
+              const el = videoRef.current
+              // Dragging off zero unmutes, like YouTube — otherwise the slider
+              // would move with no sound and look broken.
+              if (el && next > 0) el.muted = false
+              setAudioVolume(next)
+            }}
+            title="Volume (↑/↓)"
+            aria-label="Volume"
+            className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-16 group-hover/vol:opacity-100 focus:w-16 focus:opacity-100"
+          />
+        </div>
+        <span className="text-xs tabular-nums text-white/90">
+          {formatTime(time)} / {formatTime(duration)}
+        </span>
+        {leftControls}
+        <div className="ml-auto flex items-center gap-1">
+          {extraControls}
+          <button
+            onClick={onFullscreen}
+            className="rounded p-1 hover:bg-white/10"
+            title="Fullscreen (f)"
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function WatchPage({ videoId, video, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
@@ -476,19 +732,34 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const volume = useVolume()
   const volumeRef = useRef(volume)
   volumeRef.current = volume
-  const playerRef = useRef<{
-    setVolume: (v: number) => void
-    getVolume: () => number
-    isMuted: () => boolean
-    mute: () => void
-    unMute: () => void
-    playVideo: () => void
-    pauseVideo: () => void
-    getPlayerState: () => number
-    getCurrentTime: () => number
-    getDuration: () => number
-    seekTo: (seconds: number, allowSeekAhead: boolean) => void
-  } | null>(null)
+  const playerRef = useRef<PlayerApi | null>(null)
+  // The <video> for a downloaded file. Same-origin, so the range requests that
+  // make seeking work go straight to the backend's FileResponse.
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const localSrc = `/api/downloads/${videoId}/file`
+  // Our control bar shows while the pointer is over the player (or it's paused).
+  const [pointerOverPlayer, setPointerOverPlayer] = useState(false)
+  // Fullscreen OUR box, not the video/iframe — see the `f` shortcut for why.
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen()
+    else playerBoxRef.current?.requestFullscreen?.()
+  }
+  // Which source we're playing. Chosen ONCE, the moment the downloads list is
+  // known, and never revisited: swapping players mid-playback would drop the
+  // video back to zero, so a download that finishes while you watch applies the
+  // next time you open it.
+  //
+  // The wait matters on a cold load of /watch/:id, where the list is still in
+  // flight when the overlay mounts: without it we'd read "not downloaded",
+  // build the YouTube embed, and leave a downloaded video playing from YouTube.
+  // Neither player exists until then — a frame of black beats the wrong one.
+  const [playLocal, setPlayLocal] = useState(downloadsKnown && hasLocalFile)
+  const [sourceChosen, setSourceChosen] = useState(downloadsKnown)
+  useEffect(() => {
+    if (!downloadsKnown || sourceChosen) return
+    setPlayLocal(hasLocalFile)
+    setSourceChosen(true)
+  }, [downloadsKnown, sourceChosen, hasLocalFile])
 
   // Jump to a description timestamp and play from there.
   const seekTo = (seconds: number) => {
@@ -1086,6 +1357,10 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // gesture inside the iframe, so the audio loads properly).
   useEffect(() => {
     setEmbedError(false)
+    // Wait for the source decision, then build the embed only if it won. A
+    // downloaded copy is played by the <video> below instead — no embed at all,
+    // so nothing here (including the muted-autoplay dance) applies.
+    if (!sourceChosen || playLocal) return
     const hasGesture = typeof navigator !== 'undefined' && navigator.userActivation
       ? navigator.userActivation.hasBeenActive
       : true
@@ -1146,7 +1421,24 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       try { player?.destroy() } catch { /* already gone */ }
       if (hostRef.current) hostRef.current.innerHTML = ''
     }
-  }, [videoId, forcedMuted])
+  }, [videoId, forcedMuted, playLocal, sourceChosen])
+
+  // Publish the local <video> as the player once its metadata is in. Waiting for
+  // that matters: the resume seek polls for a player and a currentTime set before
+  // the duration is known is silently dropped. Autoplay follows the same rule as
+  // the embed — try with sound, fall back to muted when the browser refuses.
+  const onLocalReady = () => {
+    const el = videoRef.current
+    if (!el) return
+    playerRef.current = localPlayer(el)
+    el.volume = Math.max(0, Math.min(1, volumeRef.current / 100))
+    playerBoxRef.current?.focus()
+    el.play().catch(() => {
+      el.muted = true
+      el.play().catch(() => { /* leave it paused; the controls still work */ })
+    })
+  }
+  useEffect(() => () => { playerRef.current = null }, [videoId])
 
   // Store → player: apply shared-volume changes to a live player.
   useEffect(() => { playerRef.current?.setVolume(volume) }, [volume])
@@ -1195,9 +1487,9 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         // traps keyboard focus (our shortcuts die, YouTube's native ones take
         // over) and still doesn't give a clean pause — so the box wins: our
         // overlays and shortcuts keep working, at the cost of YouTube's inline
-        // pause UI showing the control bar.
-        if (document.fullscreenElement) document.exitFullscreen()
-        else playerBoxRef.current?.requestFullscreen?.()
+        // pause UI showing the control bar. (Safe to call the render-scope
+        // closure from this once-bound listener: it only reads refs.)
+        toggleFullscreen()
       } else if (k === 'ArrowUp' || k === 'ArrowDown') {
         e.preventDefault()
         const next = Math.max(0, Math.min(100, Math.round(volumeRef.current + (k === 'ArrowUp' ? 5 : -5))))
@@ -1258,7 +1550,9 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
           // on big players, but on a short player the embed scales the bar UP
           // ("big mode"), so it dips into 11% — the 5.5rem floor clears the
           // scrubber (measured ~73px above the bottom on a 281px-tall player).
-          style={{ bottom: 'max(11%, 5.5rem)' }}
+          // The browser's native bar (local playback) is shorter and a fixed
+          // height, so it needs less room.
+          style={{ bottom: playLocal ? '3.5rem' : 'max(11%, 5.5rem)' }}
         >
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
@@ -1293,6 +1587,125 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     </>
   )
 
+  // The caption switcher and the pin toggle. Against the embed they float over
+  // the player — its control bar is inside the iframe, out of reach. With our
+  // own bar (local playback) they sit in its button row like any other control.
+  const captionControl = captionLangs.length > 0 && (
+    <div
+      ref={captionMenuRef}
+      // The embed placement slots it into the iframe's own bottom-left button
+      // row, whose buttons sit at a fixed offset.
+      className={playLocal ? 'relative' : 'absolute bottom-[14px] left-[8.25rem] z-20'}
+    >
+      {showCaptionMenu && (
+        // Two mirrored columns: Main | Second. Each lists every track the
+        // video offers, plus the AI translation. No "Off" row — an empty slot
+        // is off (toggle by clicking the active row). The same track can't sit
+        // in both columns; picking it in the other slot moves/swaps it.
+        <div className="absolute bottom-full left-0 mb-2 flex overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
+          {([
+            { title: 'Main', cur: curMain, pick: pickMain },
+            { title: 'Second', cur: curSecond, pick: pickSecond },
+          ] as const).map((col, ci) => (
+            <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
+              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
+              {captionLangs.map((l) => {
+                const active = col.cur === l.code
+                // A word-segment track splits into two rows: the plain label for
+                // whole sentences, and "(word-by-word)" for the reveal-as-spoken
+                // mode. Shown in both columns for any language known to carry
+                // per-word timing. Every other row is a single entry.
+                if (wordSegLangs.has(l.code)) {
+                  return (
+                    <Fragment key={l.code}>
+                      {(['sentence', 'word'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => pickMode(col.pick, col.cur, l.code, mode)}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                        >
+                          <span className="w-4 shrink-0">{active && captionMode === mode && '✓'}</span>
+                          {mode === 'word' ? `${l.label} (word-by-word)` : l.label}
+                        </button>
+                      ))}
+                    </Fragment>
+                  )
+                }
+                return (
+                  <button
+                    key={l.code}
+                    onClick={() => col.pick(l.code)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                  >
+                    <span className="w-4 shrink-0">{active && '✓'}</span>
+                    {l.label}
+                  </button>
+                )
+              })}
+              {/* AI translation — only when the source track isn't Chinese. */}
+              {aiTranslateAvailable && (
+                <button
+                  onClick={() => col.pick(AI_ZH)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                >
+                  <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
+                  Chinese
+                  <span className="ml-auto pl-2 text-xs text-[#888]">
+                    {col.cur === AI_ZH && translating ? '翻譯中…' : 'AI'}
+                  </span>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        onClick={() => setShowCaptionMenu((o) => !o)}
+        className={`group relative flex items-center justify-center text-white ${playLocal ? 'h-9 w-9' : 'h-11 w-11'}`}
+        title="Subtitles / captions"
+        aria-pressed={showCaptions}
+      >
+        {/* Material-style hover circle, centered in the hit area. */}
+        <span className={`pointer-events-none absolute inset-0 m-auto rounded-full transition-colors group-hover:bg-white/10 ${playLocal ? 'h-8 w-8' : 'h-10 w-10'}`} />
+        {/* YouTube's exact CC glyph (filled), sized to match the embed's
+            own bottom-left buttons. A stroke-drawn version reads thinner and
+            smaller even at the same 24px viewBox. */}
+        <svg className="relative h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2ZM3 19V5h18v14H3ZM6.972 8.346c-.631.336-1.131.881-1.466 1.526A4.6 4.6 0 005 12c-.004.74.17 1.47.506 2.128.336.645.835 1.191 1.466 1.526a2.86 2.86 0 002.066.257c.697-.178 1.294-.606 1.737-1.176a1 1 0 00-1.578-1.228c-.21.27-.444.413-.654.467a.86.86 0 01-.632-.085c-.222-.119-.453-.342-.631-.684A2.64 2.64 0 017 12a2.6 2.6 0 01.281-1.205c.177-.342.408-.565.63-.684a.86.86 0 01.632-.085c.209.054.444.197.654.467a1 1 0 001.578-1.228c-.443-.57-1.04-.998-1.737-1.176a2.86 2.86 0 00-2.066.257Zm8 0c-.631.336-1.131.881-1.466 1.526A4.6 4.6 0 0013 12c-.004.74.17 1.47.506 2.128.336.645.835 1.191 1.466 1.526a2.86 2.86 0 002.066.257c.697-.178 1.294-.606 1.737-1.176a1 1 0 00-1.578-1.228c-.21.27-.444.413-.654.467a.86.86 0 01-.632-.085c-.222-.119-.453-.342-.631-.684A2.64 2.64 0 0115 12a2.6 2.6 0 01.281-1.205c.177-.342.408-.565.63-.684a.86.86 0 01.632-.085c.209.054.444.197.654.467a1 1 0 001.578-1.228c-.443-.57-1.04-.998-1.737-1.176a2.86 2.86 0 00-2.066.257Z" />
+        </svg>
+        {/* Active indicator: a YouTube-style underline (no background
+            circle, to match the embed's bare share / watch-later buttons). */}
+        {showCaptions && (
+          <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${playLocal ? 'bottom-[3px]' : 'bottom-[7px]'}`} />
+        )}
+      </button>
+    </div>
+  )
+
+  const pinButton = (
+    <button
+      onClick={() => setPinned((p) => !p)}
+      // Over the embed: a pill in the bottom-right corner, on the button-row
+      // line so it clears the progress scrubber. In our bar: a plain button.
+      className={playLocal
+        ? 'rounded p-1 text-white hover:bg-white/10'
+        : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
+      title={pinned ? 'Unpin — scroll the whole page' : 'Pin — keep the video in view'}
+      aria-pressed={pinned}
+    >
+      {pinned ? (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M16 3a1 1 0 0 1 .117 1.993L16 5v4.764l1.447 2.895c.55 1.098-.2 2.38-1.41 2.34L16 15h-3v5a1 1 0 0 1-1.993.117L11 20v-5H8c-1.23.05-2.02-1.2-1.51-2.28l.063-.125L8 9.764V5a1 1 0 0 1-.117-1.993L8 3h8z" />
+        </svg>
+      ) : (
+        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v5M8 9.5V5h8v4.5l1.5 3H6.5L8 9.5z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
+        </svg>
+      )}
+    </button>
+  )
+
   return (
     // Pinned: a fixed column where the player stays put and the details scroll on
     // their own. Unpinned: a plain block, so the overlay scrolls the whole thing.
@@ -1307,125 +1720,50 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         // 2.5%-of-player-width caption size), matching at any player scale.
         style={{ containerType: 'inline-size' }}
         className={`relative w-full bg-black outline-none aspect-video [&:fullscreen]:aspect-auto ${pinned ? 'shrink-0' : ''}`}
+        // Only our own control bar reacts to this; the embed draws its own.
+        onMouseEnter={playLocal ? () => setPointerOverPlayer(true) : undefined}
+        onMouseLeave={playLocal ? () => setPointerOverPlayer(false) : undefined}
       >
-        <div ref={hostRef} className="absolute inset-0" />
+        {/* A finished download plays from disk: no ads, no embed restrictions,
+            and it keeps working offline. Everything else on this page (captions,
+            history, shortcuts) reads it through the same PlayerApi. */}
+        {playLocal ? (
+          <>
+            <video
+              ref={videoRef}
+              src={localSrc}
+              onLoadedMetadata={onLocalReady}
+              onClick={() => {
+                const el = videoRef.current
+                if (!el) return
+                if (el.paused) void el.play().catch(() => { /* autoplay policy */ })
+                else el.pause()
+              }}
+              autoPlay
+              playsInline
+              className="absolute inset-0 h-full w-full bg-black"
+            />
+            <LocalControls
+              videoRef={videoRef}
+              src={localSrc}
+              hovering={pointerOverPlayer}
+              onFullscreen={toggleFullscreen}
+              leftControls={captionControl}
+              extraControls={pinButton}
+            />
+          </>
+        ) : (
+          // Empty until the source is chosen — see playLocal.
+          sourceChosen && <div ref={hostRef} className="absolute inset-0" />
+        )}
 
         {/* Caption + volume-HUD overlays (defined above). They stay inside the
             box, which is also the fullscreen target, so they show in fullscreen. */}
         {overlays}
 
-        {/* Caption language switcher — a third button in the player's bottom-left
-            row, sitting just right of the embed's built-in share / watch-later
-            buttons (which live at a fixed offset inside the iframe) and matching
-            their ~44px size. Only shown when the video offers a track in one of our
-            languages. Picking a language turns captions on and re-renders from that
-            track; "Off" hides them (same as the `c` shortcut). */}
-        {captionLangs.length > 0 && (
-          <div ref={captionMenuRef} className="absolute bottom-[14px] left-[8.25rem] z-20">
-            {showCaptionMenu && (
-              // Two mirrored columns: Main | Second. Each lists every track the
-              // video offers, plus the AI translation. No "Off" row — an empty slot
-              // is off (toggle by clicking the active row). The same track can't sit
-              // in both columns; picking it in the other slot moves/swaps it.
-              <div className="absolute bottom-full left-0 mb-2 flex overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
-                {([
-                  { title: 'Main', cur: curMain, pick: pickMain },
-                  { title: 'Second', cur: curSecond, pick: pickSecond },
-                ] as const).map((col, ci) => (
-                  <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
-                    <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
-                    {captionLangs.map((l) => {
-                      const active = col.cur === l.code
-                      // A word-segment track splits into two rows: the plain label for
-                      // whole sentences, and "(word-by-word)" for the reveal-as-spoken
-                      // mode. Shown in both columns for any language known to carry
-                      // per-word timing. Every other row is a single entry.
-                      if (wordSegLangs.has(l.code)) {
-                        return (
-                          <Fragment key={l.code}>
-                            {(['sentence', 'word'] as const).map((mode) => (
-                              <button
-                                key={mode}
-                                onClick={() => pickMode(col.pick, col.cur, l.code, mode)}
-                                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                              >
-                                <span className="w-4 shrink-0">{active && captionMode === mode && '✓'}</span>
-                                {mode === 'word' ? `${l.label} (word-by-word)` : l.label}
-                              </button>
-                            ))}
-                          </Fragment>
-                        )
-                      }
-                      return (
-                        <button
-                          key={l.code}
-                          onClick={() => col.pick(l.code)}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                        >
-                          <span className="w-4 shrink-0">{active && '✓'}</span>
-                          {l.label}
-                        </button>
-                      )
-                    })}
-                    {/* AI translation — only when the source track isn't Chinese. */}
-                    {aiTranslateAvailable && (
-                      <button
-                        onClick={() => col.pick(AI_ZH)}
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                      >
-                        <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
-                        Chinese
-                        <span className="ml-auto pl-2 text-xs text-[#888]">
-                          {col.cur === AI_ZH && translating ? '翻譯中…' : 'AI'}
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={() => setShowCaptionMenu((o) => !o)}
-              className="group relative flex h-11 w-11 items-center justify-center text-white"
-              title="Subtitles / captions"
-              aria-pressed={showCaptions}
-            >
-              {/* 40px Material-style hover circle, centered in the 44px hit area. */}
-              <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
-              {/* YouTube's exact CC glyph (filled), sized to match the embed's
-                  own bottom-left buttons. A stroke-drawn version reads thinner and
-                  smaller even at the same 24px viewBox. */}
-              <svg className="relative h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M21 3H3a2 2 0 00-2 2v14a2 2 0 002 2h18a2 2 0 002-2V5a2 2 0 00-2-2ZM3 19V5h18v14H3ZM6.972 8.346c-.631.336-1.131.881-1.466 1.526A4.6 4.6 0 005 12c-.004.74.17 1.47.506 2.128.336.645.835 1.191 1.466 1.526a2.86 2.86 0 002.066.257c.697-.178 1.294-.606 1.737-1.176a1 1 0 00-1.578-1.228c-.21.27-.444.413-.654.467a.86.86 0 01-.632-.085c-.222-.119-.453-.342-.631-.684A2.64 2.64 0 017 12a2.6 2.6 0 01.281-1.205c.177-.342.408-.565.63-.684a.86.86 0 01.632-.085c.209.054.444.197.654.467a1 1 0 001.578-1.228c-.443-.57-1.04-.998-1.737-1.176a2.86 2.86 0 00-2.066.257Zm8 0c-.631.336-1.131.881-1.466 1.526A4.6 4.6 0 0013 12c-.004.74.17 1.47.506 2.128.336.645.835 1.191 1.466 1.526a2.86 2.86 0 002.066.257c.697-.178 1.294-.606 1.737-1.176a1 1 0 00-1.578-1.228c-.21.27-.444.413-.654.467a.86.86 0 01-.632-.085c-.222-.119-.453-.342-.631-.684A2.64 2.64 0 0115 12a2.6 2.6 0 01.281-1.205c.177-.342.408-.565.63-.684a.86.86 0 01.632-.085c.209.054.444.197.654.467a1 1 0 001.578-1.228c-.443-.57-1.04-.998-1.737-1.176a2.86 2.86 0 00-2.066.257Z" />
-              </svg>
-              {/* Active indicator: a YouTube-style underline (no background
-                  circle, to match the embed's bare share / watch-later buttons). */}
-              {showCaptions && (
-                <span className="pointer-events-none absolute bottom-[7px] left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white" />
-              )}
-            </button>
-          </div>
-        )}
+        {!playLocal && captionControl}
 
-        {/* Pin toggle, bottom-right corner — equal 8px gap on the bottom and
-            right, sat on the button-row line so it clears the progress scrubber. */}
-        <button
-          onClick={() => setPinned((p) => !p)}
-          className="absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white hover:bg-black/80 transition-colors"
-          title={pinned ? 'Unpin — scroll the whole page' : 'Pin — keep the video in view'}
-          aria-pressed={pinned}
-        >
-          {pinned ? (
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M16 3a1 1 0 0 1 .117 1.993L16 5v4.764l1.447 2.895c.55 1.098-.2 2.38-1.41 2.34L16 15h-3v5a1 1 0 0 1-1.993.117L11 20v-5H8c-1.23.05-2.02-1.2-1.51-2.28l.063-.125L8 9.764V5a1 1 0 0 1-.117-1.993L8 3h8z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v5M8 9.5V5h8v4.5l1.5 3H6.5L8 9.5z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
-            </svg>
-          )}
-        </button>
+        {!playLocal && pinButton}
 
         {embedError && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/95 px-6 text-center">

@@ -235,7 +235,8 @@ components/
   ImportDialog.tsx                the paste-links modal (opened from TopBar)
   HistoryPage.tsx                 what you've watched, same VideoRow again
   SearchPage.tsx
-  WatchPage.tsx                   in-app player (/watch/:id) — full-size embed,
+  WatchPage.tsx                   in-app player (/watch/:id) — the embed, or the
+                                  downloaded file with our own control bar;
                                   keyboard controls, our own captions (language
                                   switcher, dual subtitles, AI translation),
                                   metadata, description, topic chips
@@ -287,9 +288,10 @@ YouTube IFrame player over the thumbnail and drives it directly:
 
 ## The watch overlay (`WatchPage.tsx`)
 
-Opening a video plays it in-app at `/watch/:id`: a full-bleed YouTube embed with
+Opening a video plays it in-app at `/watch/:id`: a full-bleed player with
 page-level keyboard controls and our own captions, plus title / channel / stats /
-description below.
+description below. The player is the YouTube embed, or — if the video has been
+downloaded — the file on disk (see [Downloaded videos](#downloaded-videos-play-from-disk)).
 
 **It's an overlay, not a page.** It renders outside the page switch as a
 `fixed inset-0` layer above everything, so the page you came from stays mounted
@@ -465,6 +467,54 @@ Other details:
   the overlay seeds its state from them on mount. The AI-translate selection is
   deliberately excluded (see above).
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
+
+### Downloaded videos play from disk
+
+A video with a finished download plays from `/api/downloads/:id/file` instead of
+the embed — no ads, no embedding restrictions, and it keeps working offline — and
+still gets the whole page around it: title, description, transcript, history,
+captions.
+
+Only the *player* differs. The rest of the component drives whatever is playing
+through **`PlayerApi`**, the slice of the YouTube IFrame API everything here uses
+(volume 0–100, state codes 0/1/2). `localPlayer(el)` wraps a `<video>` in that
+same shape, so history reporting, the resume seek, the caption ticker, the shared
+volume store and every keyboard shortcut work identically on either source.
+
+**Choosing the source** happens once, when the downloads list is known, and is
+never revisited:
+
+- *Never revisited*, because swapping players mid-playback would drop the video
+  back to 0:00. A download that finishes while you watch applies next time.
+- *Wait for the list*, because it's fetched once at startup: on a cold load of
+  `/watch/:id` it can still be in flight, and reading the empty list as "not
+  downloaded" left downloaded videos playing from YouTube — intermittently, since
+  opening from a page you were already on was always fine. `downloadsKnown` (set
+  in the fetch's `finally`, so a failure still counts as an answer) gates the
+  decision, and **neither** player is built until then — a frame of black beats
+  the wrong player.
+- Only `status === 'ready'` counts. A queued or failed download has a row but no
+  file to serve, so those still use the embed.
+
+**Our own control bar** replaces the browser's native one, which can't show a
+scrub preview. It carries play/pause, mute + a volume slider (the shared,
+persisted store, so a level set here follows you to the next video), the clock,
+the CC button, pin and fullscreen — everything with a keyboard equivalent
+(`k`, `m`, `f`). It shows while the pointer is over the player or while paused,
+and mirrors the element's own events rather than polling, so a keyboard seek or
+the resume jump moves it too.
+
+The **scrub preview** is a second, hidden `<video>` of the same file seeked to the
+hovered time — the trick `VideoCard` already uses for download cards. The file is
+local and served with range support, so the exact frame paints instantly and no
+storyboard fetch is involved (YouTube's sprite sheets are a workaround for *not*
+having the file, and fetching them would defeat playing offline). The popup holds
+its last position and timestamp while it fades out; reading the live values would
+snap it to the middle showing `0:00` on the way out.
+
+Against the embed, the CC button and pin toggle still float over the player —
+its control bar is inside the iframe, out of reach — so both render in two
+placements from one definition (`captionControl` / `pinButton`).
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is
 > created. Both are YouTube players for the same video, and two live players for
