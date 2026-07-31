@@ -69,6 +69,7 @@ app/
     tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
     history.py     watch positions — resume, the card's progress bar, History
     imported.py    videos added by pasting a YouTube link (metadata via yt-dlp)
+    local.py       local folders: scan a directory, serve its files, remember positions
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 config/            categories.yaml, subscriptions.yaml, oauth token
@@ -387,6 +388,47 @@ is defined: portrait and at most 180s.
 
 ---
 
+## Local folders (`routers/local.py`)
+
+Not everything worth watching came from YouTube. Point `POST /api/local/folders`
+at a directory on the machine running the backend and its videos become a feed:
+the files are listed, served with range support (so seeking and the scrub
+preview work), given a poster frame, and remembered where you stopped.
+
+Each folder stays its own page. Folders are added and removed whole, and merging
+two unrelated directories into one list would throw away the only grouping the
+user gave us.
+
+**Nothing here writes to the user's directory.** Files are read, probed and
+served; removing a folder deletes our rows and the thumbnails we generated,
+never the videos.
+
+**Scanning is split in two, because reading a file is expensive.** The walk is
+stat-only and returns immediately; durations come from `ffprobe`, which has to
+read the file — on a cloud-synced drive (Google Drive, iCloud) that streams the
+whole thing down. Measuring 32 such files took **three minutes** in testing, so
+a listing never waits on it: new files land with `probed = false`, a background
+pass measures them a few at a time and commits each batch, and the response
+carries `scanning: true` so the page can poll and fill durations in as they
+arrive. `_start_probe` registers the folder **synchronously** — a flag set inside
+the task would leave the very response that scheduled the pass reporting
+`scanning: false`, and the UI would never poll.
+
+`probed` is its own column rather than `duration_seconds == 0`: probing can
+legitimately come back with nothing (an unreadable file), and retrying that on
+every page view would re-stream it forever.
+
+Poster frames are extracted by `ffmpeg` on first request and cached under
+`data/local_thumbs/`, a tenth of the way in so they aren't a black fade-in.
+A file whose size or mtime changed is re-probed and its thumbnail dropped —
+both describe a file that no longer exists.
+
+Resume lives here (`position_seconds`, `watched`) rather than in `watch_history`:
+that table is keyed by `youtube_id` and its page renders YouTube cards, and a
+file on disk is neither.
+
+---
+
 ## LLM client (`llm.py`)
 
 A thin wrapper over OpenRouter's chat-completions API, shared by every AI
@@ -512,6 +554,8 @@ Same OpenRouter client/model as tagging; unset key ⇒ no topics, never a crash.
 | `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
 | `imported_videos` | one-off videos added by URL, from channels you don't follow |
 | `watch_history` | how far you got in each video, and whether you finished it |
+| `local_folders` | directories browsed as feeds (absolute path + display name) |
+| `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
 
 `watch_later`, `playlist_items`, `downloads`, `imported_videos` and
@@ -600,6 +644,11 @@ These are the design decisions most likely to bite if you touch them:
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
+| GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
+| GET | `/api/local/folders/{id}/videos` | that folder's videos (`?rescan=false` = cached listing, used by the scanning poll) |
+| DELETE | `/api/local/folders/{id}` | forget a folder — our rows and thumbnails only, never the files |
+| GET | `/api/local/videos/{id}/file` \| `/thumb` | the file itself (range requests) / its poster frame |
+| POST/DELETE | `/api/local/videos/{id}/progress` | record / clear where playback got to |
 | POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview). Also runs daily on its own |
 | POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |
 | POST | `/api/refresh` | manually trigger a scan (normally the scheduler handles it) |

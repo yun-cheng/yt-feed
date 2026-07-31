@@ -6,8 +6,8 @@ type Props = {
   selectedTags: string[]
   onToggleTag: (tag: string) => void
   onSetTags: (tags: string[]) => void
-  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history'
-  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history') => void
+  page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history' | 'local' | 'localfolder'
+  onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history' | 'local') => void
   onHome: () => void
   onToggleCollapse: () => void
   onClearFilter: () => void
@@ -16,6 +16,7 @@ type Props = {
   downloadsCount?: number
   playlistsCount?: number
   importedCount?: number
+  localFoldersCount?: number
   tagFilteredCounts?: Map<string, number> | null
   // Watch-status filter: which of unwatched / in progress / watched to show.
   watchStatuses?: string[]
@@ -94,6 +95,12 @@ const HistoryIcon = () => (
 const ImportedIcon = () => (
   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 15V3m0 12l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+  </svg>
+)
+
+const LocalIcon = () => (
+  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
   </svg>
 )
 
@@ -220,7 +227,7 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
 
 const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true }
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const showMode = filters.contentMode && !!onContentModeChange
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
@@ -328,6 +335,20 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             {!!importedCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {importedCount > 9 ? '9+' : importedCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => onPageChange('local')}
+            className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
+              page === 'local' || page === 'localfolder' ? 'text-white' : 'text-[#717171] hover:text-white'
+            }`}
+          >
+            <LocalIcon />
+            <span className="text-[10px]">Local</span>
+            {!!localFoldersCount && (
+              <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
+                {localFoldersCount > 9 ? '9+' : localFoldersCount}
               </span>
             )}
           </button>
@@ -464,6 +485,22 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
           {!!importedCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {importedCount}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => onPageChange('local')}
+          className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
+            page === 'local' || page === 'localfolder'
+              ? 'bg-[#272727] text-white font-medium'
+              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+          }`}
+        >
+          <LocalIcon />
+          Local
+          {!!localFoldersCount && (
+            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+              {localFoldersCount}
             </span>
           )}
         </button>

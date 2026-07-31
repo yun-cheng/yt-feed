@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import async_session, init_db
-from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history
+from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local
 from app.routers import search as search_router
 from app.routers import watch_later as watch_later_router
 from app.routers import playlists as playlists_router
@@ -175,6 +175,7 @@ app.include_router(subscriptions.router, prefix="/api")
 app.include_router(hidden.router, prefix="/api")
 app.include_router(imported.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(local.router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(tags_router, prefix="/api")
 

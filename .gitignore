@@ -8,6 +8,7 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/downloads/
+data/local_thumbs/
 data/meili/
 frontend/dist/
 backend/config/*.json

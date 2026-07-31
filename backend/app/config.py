@@ -39,6 +39,11 @@ class Settings(BaseSettings):
         return str(Path(self.db_path).parent / "downloads")
 
     @property
+    def local_thumbs_dir(self) -> str:
+        """Poster frames extracted from local-folder videos (see routers/local.py)."""
+        return str(Path(self.db_path).parent / "local_thumbs")
+
+    @property
     def categories_path(self) -> str:
         return str(Path(self.config_dir) / "categories.yaml")
 

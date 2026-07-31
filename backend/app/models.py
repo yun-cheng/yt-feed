@@ -203,6 +203,55 @@ class ImportedVideo(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class LocalFolder(Base):
+    """A directory on this machine watched as its own feed.
+
+    Only the path is user-supplied; everything under it is discovered by scanning
+    (see routers/local.py). Kept as separate rows rather than one big "local
+    videos" pile so each folder is its own page — a folder is the unit you added,
+    and the unit you remove.
+    """
+    __tablename__ = "local_folders"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    path = Column(String, nullable=False, unique=True)  # absolute, resolved
+    name = Column(String, default="")  # defaults to the directory's own name
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LocalVideo(Base):
+    """One video file inside a LocalFolder.
+
+    A cache of what a scan found, not a source of truth: the files on disk are.
+    It exists because the two things a card needs — duration and a poster frame —
+    each cost an ffmpeg/ffprobe run, and re-deriving them on every page view would
+    make a folder of thirty clips unusable. `mtime`/`filesize` are how a rescan
+    tells an unchanged file (keep the cached duration) from a replaced one.
+
+    `position_seconds`/`watched` are the same resume behaviour the YouTube side
+    gets from watch_history, kept here instead: history is keyed by youtube_id
+    and its page renders YouTube cards, and a file on disk is neither.
+    """
+    __tablename__ = "local_videos"
+
+    # sha1(folder id + relative path) — stable across rescans, and safe in a URL.
+    id = Column(String, primary_key=True)
+    folder_id = Column(Integer, ForeignKey("local_folders.id"), index=True, nullable=False)
+    rel_path = Column(String, nullable=False)  # relative to the folder's path
+    title = Column(String, default="")  # the file name without its extension
+    duration_seconds = Column(Integer, default=0)
+    # False until ffprobe has read this file. Its own flag rather than
+    # `duration_seconds == 0` because probing can legitimately come back with
+    # nothing (an unreadable file), and retrying that on every page view would
+    # re-stream it from the cloud forever.
+    probed = Column(Boolean, nullable=False, default=False, server_default="0")
+    filesize = Column(BigInteger, default=0)
+    mtime = Column(Float, default=0.0)
+    position_seconds = Column(Float, nullable=False, default=0.0)
+    watched = Column(Boolean, nullable=False, default=False, server_default="0")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Playlist(Base):
     """A user-created playlist (server-side)."""
     __tablename__ = "playlists"

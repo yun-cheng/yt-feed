@@ -35,6 +35,10 @@ real video (muted, with custom captions and scrubbing).
 - **Imported videos** — paste any YouTube link to add a one-off video from a
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)
+- **Local folders** — point the app at a directory on the backend's machine and
+  its video files become their own feed: poster frames, durations, hover previews
+  and resume, played in the same control bar downloads use. Each folder stays a
+  separate page; files are only ever read
 - **Search** — typo-tolerant, via a Meilisearch companion
 - **Backend-scheduled refresh** — the backend re-scans channels on its own
   interval (default 15 min); the UI just re-reads the results

@@ -37,6 +37,7 @@ _COLUMN_MIGRATIONS = [
     ("channels", "video_label_vocab", "TEXT"),
     ("channels", "video_label_version", "INTEGER"),
     ("videos", "title_labels", "TEXT"),
+    ("local_videos", "probed", "BOOLEAN NOT NULL DEFAULT 0"),
 ]
 
 

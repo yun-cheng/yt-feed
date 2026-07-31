@@ -17,6 +17,11 @@ import ImportedPage from './components/ImportedPage'
 import HistoryPage from './components/HistoryPage'
 import ImportDialog from './components/ImportDialog'
 import type { ImportResult } from './components/ImportDialog'
+import LocalPage, { addLocalFolder } from './components/LocalPage'
+import LocalFolderPage from './components/LocalFolderPage'
+import LocalWatchPage from './components/LocalWatchPage'
+import { fetchFolders, fetchFolderVideos } from './lib/local'
+import type { LocalFolder, LocalVideo } from './lib/local'
 
 export type DownloadItem = {
   youtube_id: string
@@ -127,11 +132,22 @@ export function loadWatchStatuses(): string[] {
 // NB: there's no 'watch' page — /watch/:id is a full-screen overlay rendered on
 // top of whichever page you were on (see selectedVideoId), so that page stays
 // mounted underneath with its scroll and loaded videos intact.
-type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history'
+// 'local' is the list of local folders; 'localfolder' is one folder's videos.
+// /local/:folderId/:videoId is likewise an OVERLAY over the folder page.
+type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history' | 'local' | 'localfolder'
 
-function parsePath(): { page: Page; channelId: string | null; playlistId: number | null; videoId: string | null } {
+type PathState = {
+  page: Page
+  channelId: string | null
+  playlistId: number | null
+  videoId: string | null
+  localFolderId: number | null
+  localVideoId: string | null
+}
+
+function parsePath(): PathState {
   const path = window.location.pathname
-  const base = { channelId: null, playlistId: null, videoId: null }
+  const base = { channelId: null, playlistId: null, videoId: null, localFolderId: null, localVideoId: null }
   if (path === '/channels') return { page: 'channels', ...base }
   if (path === '/watchlater') return { page: 'watchlater', ...base }
   if (path === '/downloads') return { page: 'downloads', ...base }
@@ -139,6 +155,11 @@ function parsePath(): { page: Page; channelId: string | null; playlistId: number
   if (path === '/history') return { page: 'history', ...base }
   if (path === '/search') return { page: 'search', ...base }
   if (path === '/playlists') return { page: 'playlists', ...base }
+  if (path === '/local') return { page: 'local', ...base }
+  // /local/:folderId, optionally with a video — the video is an overlay over the
+  // folder page, the same arrangement /watch/:id has over the feed.
+  const lm = path.match(/^\/local\/(\d+)(?:\/([^/]+))?/)
+  if (lm) return { page: 'localfolder', ...base, localFolderId: Number(lm[1]), localVideoId: lm[2] ?? null }
   // /watch/:id is a full-screen OVERLAY, not a page — the underlying page stays
   // mounted behind it. `page` is the underlying page (feed by default on a cold
   // load); `videoId` drives the overlay.
@@ -269,6 +290,8 @@ export function buildPath(s: UrlState): string {
 
   const path = page === 'feed' ? '/'
     : page === 'channel' && s.channelId ? `/channel/${s.channelId}`
+    // A folder's own path is /local/:id, pushed directly (like /playlist/:id).
+    : page === 'localfolder' ? '/local'
     : `/${page}`
   return qs ? `${path}?${qs}` : path
 }
@@ -637,6 +660,71 @@ export default function App() {
     try { await apiFetch(`/api/imported/${video.youtube_id}`, { method: 'DELETE' }) } catch { /* ignore */ }
   }, [])
 
+  // ── Local folders ─────────────────────────────────────
+  // A directory on the backend's machine, listed as a feed. The folder's videos
+  // live here rather than in the folder page so the watch overlay can read the
+  // same list (its up-next column) and a position written by the player shows up
+  // on the grid behind it.
+  const [localFolders, setLocalFolders] = useState<LocalFolder[]>([])
+  const [localFolderId, setLocalFolderId] = useState<number | null>(init.localFolderId)
+  const [localFolderMeta, setLocalFolderMeta] = useState<LocalFolder | null>(null)
+  const [localVideos, setLocalVideos] = useState<LocalVideo[]>([])
+  const [localScanning, setLocalScanning] = useState(false)
+  const [localLoading, setLocalLoading] = useState(false)
+  const [selectedLocalVideoId, setSelectedLocalVideoId] = useState<string | null>(init.localVideoId)
+
+  const fetchLocalFolders = useCallback(async () => {
+    setLocalFolders(await fetchFolders())
+  }, [])
+  useEffect(() => { fetchLocalFolders() }, [fetchLocalFolders])
+
+  // Load the open folder. `rescan` walks the directory first (the files are the
+  // source of truth); the poll below re-reads without walking.
+  const loadLocalVideos = useCallback(async (folderId: number, rescan = true) => {
+    const data = await fetchFolderVideos(folderId, rescan)
+    if (!data) return
+    setLocalFolderMeta(data.folder)
+    setLocalVideos(data.videos)
+    setLocalScanning(data.scanning)
+  }, [])
+
+  useEffect(() => {
+    if (localFolderId === null) return
+    let cancelled = false
+    setLocalLoading(true)
+    setLocalVideos([])
+    ;(async () => {
+      await loadLocalVideos(localFolderId)
+      if (!cancelled) setLocalLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [localFolderId, loadLocalVideos])
+
+  // Durations are measured in the background (reading a file on a cloud-synced
+  // drive streams it down), so poll until the backend says it's finished.
+  useEffect(() => {
+    if (localFolderId === null || !localScanning) return
+    const id = setInterval(() => loadLocalVideos(localFolderId, false), 3000)
+    return () => clearInterval(id)
+  }, [localFolderId, localScanning, loadLocalVideos])
+
+  const addLocalFolderPath = useCallback(async (path: string) => {
+    const err = await addLocalFolder(path)
+    if (!err) await fetchLocalFolders()
+    return err
+  }, [fetchLocalFolders])
+
+  const removeLocalFolder = useCallback(async (folderId: number) => {
+    setLocalFolders(prev => prev.filter(f => f.id !== folderId))
+    try { await apiFetch(`/api/local/folders/${folderId}`, { method: 'DELETE' }) } catch { /* ignore */ }
+    fetchLocalFolders()
+  }, [fetchLocalFolders])
+
+  const selectedLocalVideo = useMemo(
+    () => localVideos.find(v => v.id === selectedLocalVideoId) ?? null,
+    [localVideos, selectedLocalVideoId],
+  )
+
   // ── Watch history ─────────────────────────────────────
   // Where you got to in every video you've opened. Feeds three things: the
   // History page, the resume bar drawn on every card, and the watch page's
@@ -773,12 +861,20 @@ export default function App() {
         overlayOpenRef.current = true
         return
       }
+      if (p.localVideoId) {
+        // Same arrangement for a local folder's video (see parsePath).
+        setSelectedLocalVideoId(p.localVideoId)
+        if (p.localFolderId !== null) setLocalFolderId(p.localFolderId)
+        overlayOpenRef.current = true
+        return
+      }
       if (overlayOpenRef.current) {
         // Just closing the overlay onto the page we came from — it's already
         // correct and mounted, so leave its scroll and data exactly as they were.
         overlayOpenRef.current = false
         setSelectedVideoId(null)
         setSelectedVideo(null)
+        setSelectedLocalVideoId(null)
         return
       }
       // A genuine page navigation (back/forward between real pages): rebuild
@@ -788,6 +884,8 @@ export default function App() {
       setSearchInput(s.q)
       setSelectedChannelId(s.channelId)
       setSelectedPlaylistId(s.playlistId)
+      setLocalFolderId(s.localFolderId)
+      setSelectedLocalVideoId(null)
       setSelectedTags(s.tags)
       setTimeWindow(s.timeWindow)
       setTimeMode(s.timeMode)
@@ -939,13 +1037,14 @@ export default function App() {
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
   const syncUrl = useCallback(() => {
-    if (selectedVideoId) return  // watch overlay owns the /watch/{id} URL
+    if (selectedVideoId || selectedLocalVideoId) return  // an overlay owns the URL
     if (page === 'playlist') return  // /playlist/{id} is navigated directly
+    if (page === 'localfolder') return  // ditto /local/{id}
     const path = currentPath()
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
     }
-  }, [selectedVideoId, page, currentPath])
+  }, [selectedVideoId, selectedLocalVideoId, page, currentPath])
 
   // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
@@ -1086,7 +1185,7 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history' | 'local') => {
     // Push the bare page path; the URL-sync effect appends that page's filters
     // (replaceState) once the state below has settled.
     history.pushState(null, '', buildPath({ page: p, channelId: selectedChannelId, tags: selectedTags }))
@@ -1106,6 +1205,7 @@ export default function App() {
     }
     // Every visit to History starts unfiltered — see historyWatchStatuses.
     if (p === 'history') setHistoryWatchStatuses([])
+    if (p === 'local') { setLocalFolderId(null); setSelectedLocalVideoId(null) }
     if (p !== 'feed') setMobileMenuOpen(false)
   }, [selectedChannelId, selectedTags])
 
@@ -1189,6 +1289,23 @@ export default function App() {
     mainRef.current?.scrollTo({ top: 0 })
   }
 
+  // Open one local folder's videos (a forward navigation, like a playlist).
+  function selectLocalFolder(id: number) {
+    history.pushState(null, '', `/local/${id}`)
+    setLocalFolderId(id)
+    setSelectedLocalVideoId(null)
+    setPageRaw('localfolder')
+    mainRef.current?.scrollTo({ top: 0 })
+  }
+
+  // Play a local video: an overlay over the folder page, which stays mounted
+  // underneath (same contract as openWatch).
+  function openLocalVideo(video: LocalVideo) {
+    history.pushState(null, '', `/local/${video.folder_id}/${video.id}`)
+    setSelectedLocalVideoId(video.id)
+    overlayOpenRef.current = true
+  }
+
   function selectPlaylist(id: number) {
     history.pushState(null, '', `/playlist/${id}`)
     setSelectedPlaylistId(id)
@@ -1267,6 +1384,7 @@ export default function App() {
           }}
           downloadsCount={downloads.length}
           importedCount={imported.length}
+          localFoldersCount={localFolders.length}
           playlistsCount={playlists.length}
           onClearFilter={clearFilter}
           collapsed={sidebarCollapsed}
@@ -1327,7 +1445,7 @@ export default function App() {
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
         <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'history' ? 'history' : page === 'playlists' || page === 'playlist' ? 'playlists' : 'feed'}
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'history' ? 'history' : page === 'playlists' || page === 'playlist' ? 'playlists' : page === 'local' || page === 'localfolder' ? 'local' : 'feed'}
           onImport={page === 'imported' ? () => setImportOpen(true) : undefined}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
@@ -1429,6 +1547,23 @@ export default function App() {
             progressById={progressById}
             onRemoveImported={removeImported}
             onImport={() => setImportOpen(true)}
+          />
+        ) : page === 'local' ? (
+          <LocalPage
+            folders={localFolders}
+            onOpen={selectLocalFolder}
+            onAdd={addLocalFolderPath}
+            onRemove={removeLocalFolder}
+          />
+        ) : page === 'localfolder' ? (
+          <LocalFolderPage
+            folder={localFolderMeta}
+            videos={localVideos}
+            scanning={localScanning}
+            loading={localLoading}
+            onBack={() => setPage('local')}
+            onRescan={() => { if (localFolderId !== null) loadLocalVideos(localFolderId) }}
+            onOpen={openLocalVideo}
           />
         ) : page === 'downloads' ? (
           <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />
@@ -1600,6 +1735,21 @@ export default function App() {
             isDownloaded={downloadIds.has(selectedVideoId)}
             hasLocalFile={readyDownloadIds.has(selectedVideoId)}
             downloadsKnown={downloadsKnown}
+          />
+        </div>
+      )}
+      {/* Local-video overlay — same layering and close-by-back behaviour as the
+          watch overlay above; the folder grid stays mounted behind it. */}
+      {selectedLocalVideo && (
+        <div className="fixed inset-0 z-[60] bg-[#0f0f0f]">
+          <LocalWatchPage
+            key={selectedLocalVideo.id}
+            video={selectedLocalVideo}
+            folder={localFolderMeta}
+            siblings={localVideos}
+            onClose={() => history.back()}
+            onSelect={openLocalVideo}
+            onProgress={() => { if (localFolderId !== null) loadLocalVideos(localFolderId, false) }}
           />
         </div>
       )}

@@ -54,8 +54,10 @@ There is **no router library**. `App.tsx` holds essentially all page state and
 does client-side routing itself:
 
 - A `Page` union — `'feed' | 'channel' | 'channels' | 'playlist' | 'playlists' |
-  'downloads' | 'search' | 'watchlater' | 'imported' | 'history'`. Note there is deliberately
-  **no `'watch'`** — `/watch/:id` is an overlay, not a page (see below).
+  'downloads' | 'search' | 'watchlater' | 'imported' | 'history' | 'local' |
+  'localfolder'`. Note there is deliberately
+  **no `'watch'`** — `/watch/:id` is an overlay, not a page (see below), and
+  `/local/:folderId/:videoId` is the same arrangement over a folder page.
 - On navigation it calls `history.pushState` with a URL built by `buildPath(...)`;
   a `popstate` listener parses the URL back into state, so **back/forward work**
   and every view is deep-linkable.
@@ -90,7 +92,7 @@ from — so a filter is either usable *and* in the URL, or in neither:
 | watchlater | | ✓ | ✓ | | |
 | imported | | ✓ | | | |
 | channels | | | ✓ | | |
-| downloads / playlists / search | | | | | |
+| downloads / playlists / search / local | | | | | |
 
 The reasoning: tags live on **channels**, so they can't filter a page of videos
 from channels you don't follow (imported), and a channel page swaps them for
@@ -210,6 +212,40 @@ Three deliberate differences from the feed:
   could ever match one; and it's a single flat list, so there's no Videos↔Shorts
   split either.
 
+### Local folders
+
+`/local` lists directories on the **backend's** machine (`LocalPage.tsx`);
+`/local/:id` is one folder's videos (`LocalFolderPage.tsx`); `/local/:id/:videoId`
+plays one (`LocalWatchPage.tsx`), as an overlay over the grid — the same
+arrangement `/watch/:id` has over the feed.
+
+The path is **typed, not picked**. A browser file picker hands back a sandboxed
+handle, and the process that has to open the directory is the backend, which may
+not even be on this machine. What it needs is a path in its own filesystem.
+
+A local video is deliberately **not a `VideoItem`** (`lib/local.ts` has its own
+types): it has no channel, no stats and no `youtube_id`, and dressing it as one
+would push it through the embed, watch history and playlists, none of which have
+anything to work with. So `LocalFolderPage` has its own card — same shape as the
+feed's (thumbnail, duration badge, resume bar, play-on-hover) so the two feeds
+feel like one app, without VideoCard's channel/YouTube machinery.
+
+What IS shared is the player: `LocalControls.tsx` (extracted from `WatchPage`,
+along with `localPlayer()` and the `PlayerApi` type) is the same control bar a
+downloaded video plays in — so the scrub preview, the shared volume and the
+shortcuts behave identically whichever kind of local file you're watching.
+
+Two things the folder page does that the other libraries don't:
+
+- **It polls while `scanning`.** Durations are measured backend-side by ffprobe,
+  which on a cloud-synced drive streams the whole file down; the listing returns
+  first and durations fill in (see the backend README's "Local folders").
+- **Hovering only starts a preview after 400ms**, and opening a video clears it.
+  Each preview is a real range request against a file that may be streaming from
+  the cloud, so sweeping the grid mustn't start twenty of them — and one left
+  running behind the overlay would hold a second stream of the very file the
+  player is reading.
+
 ### Auto-refresh
 
 A visibility-aware timer periodically **re-reads** the feed (`fetchFeed` +
@@ -235,6 +271,11 @@ components/
                                   feed uses, so cards and actions are identical
   ImportDialog.tsx                the paste-links modal (opened from TopBar)
   HistoryPage.tsx                 what you've watched, same VideoRow again
+  LocalPage.tsx                   local folders: the list, and the add-by-path box
+  LocalFolderPage.tsx             one folder's video files, as its own card grid
+  LocalWatchPage.tsx              player for a local file (/local/:id/:videoId)
+  LocalControls.tsx               our control bar + the <video>→PlayerApi adapter,
+                                  shared by downloads and local folders
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — the embed, or the
                                   downloaded file with our own control bar;
@@ -247,6 +288,8 @@ hooks/
   toastStore.ts                   tiny global toast store (API errors)
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
+  local.ts                        local-folder types + fetch helpers
+  time.ts                         formatTime — the player clock
 ```
 
 ---
