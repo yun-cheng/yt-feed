@@ -536,7 +536,25 @@ filters that channel's videos.
 - **New uploads** — `assign_labels` labels videos added after the build, lazily,
   as the channel page renders them.
 
+**A failed batch is not an answer.** `_label_batch` degrades to `{}` on any
+failure (dead key, rate limit, JSON truncated by `max_tokens`), and a video
+missing from the reply is indistinguishable from one the model deliberately gave
+no labels. So `assign_labels` persists **only** the videos the batch answered
+for: anything else stays `NULL` and is retried on the next render. Writing `[]`
+there made a transient failure permanent — `[]` is never re-labeled, only `NULL`
+is — and quietly stranded whole pages of videos with no topics.
+
+**`reasoning=False` is load-bearing here**, not a tuning knob. Matching 50 titles
+against a fixed list is mechanical, and with reasoning on the model spent its
+whole budget thinking and returned empty content (`finish_reason=length`) — most
+batches failed, which stranded videos with no labels and left the channel page
+saying "finding topics" for minutes. With it off: 50/50 titles answered in 19.6s
+on 1,047 completion tokens, against 8,192 burned for nothing.
+
 Same OpenRouter client/model as tagging; unset key ⇒ no topics, never a crash.
+Note that a 200 from OpenRouter doesn't guarantee a completion: `llm.chat`
+raises `LLMError` on null content (model emitted only reasoning tokens, or was
+cut off) rather than returning `None` for a caller to trip over.
 
 ---
 

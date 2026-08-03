@@ -126,7 +126,15 @@ def _label_batch(items: list[tuple[str, str]], vocab: list[str], allow_new: bool
     header = f"{channel_ctx}\n\n" if channel_ctx else ""
     user = f"{header}Channel's existing labels: {vocab_line}\n\nVideos:\n{numbered}"
     try:
-        out = llm.chat_json(_build_prompt(allow_new), user, max_tokens=4096)
+        # reasoning=False is load-bearing, not a tuning knob. Matching 50 titles
+        # against a fixed label list is mechanical work, and with reasoning on
+        # the model spent the WHOLE budget thinking and returned empty content
+        # (finish_reason=length) — so most batches failed, which is what stranded
+        # videos with no labels and left the channel page saying "finding topics"
+        # for as long as it did.
+        out = llm.chat_json(
+            _build_prompt(allow_new), user, max_tokens=4096, reasoning=False
+        )
     except Exception as e:  # missing key / API error / bad JSON — degrade
         print(f"[video_labels] batch failed: {e}")
         return {}
@@ -320,7 +328,16 @@ async def assign_labels(db, channel_id: str, video_ids: list[str]) -> dict[str, 
         batch = todo[start:start + BATCH_SIZE]
         result = await loop.run_in_executor(None, _label_batch, batch, vocab, False, channel_ctx)
         for vid, _title in batch:
-            labels = _canonical(result.get(vid, []), vocab)
+            # Only persist videos the batch actually answered for. _label_batch
+            # degrades to {} on any failure (dead key, rate limit, JSON truncated
+            # by max_tokens), and a video missing from the response is
+            # indistinguishable from one the model deliberately gave no labels —
+            # so writing [] here turns a transient failure into a PERMANENT
+            # answer: `[]` is never re-labeled, only NULL is. Leaving it NULL
+            # costs one more attempt the next time the page renders it.
+            if vid not in result:
+                continue
+            labels = _canonical(result[vid], vocab)
             out[vid] = labels
             row = await db.get(Video, vid)
             if row is not None:

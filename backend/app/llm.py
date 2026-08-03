@@ -94,7 +94,17 @@ def chat(
     usage_totals["prompt_tokens"] += u.get("prompt_tokens", 0)
     usage_totals["completion_tokens"] += u.get("completion_tokens", 0)
     usage_totals["total_tokens"] += u.get("total_tokens", 0)
-    return data["choices"][0]["message"]["content"]
+    # A 200 doesn't guarantee a completion: providers return null content when the
+    # model emits only reasoning tokens, or gets cut off before writing any. Left
+    # unguarded that None reaches the caller's .find() as an AttributeError, which
+    # says nothing about what went wrong — and callers that degrade on failure
+    # (video labels) can't tell it from a real empty answer.
+    choices = data.get("choices") or []
+    content = ((choices[0] or {}).get("message") or {}).get("content") if choices else None
+    if not content:
+        reason = (choices[0] or {}).get("finish_reason") if choices else None
+        raise LLMError(f"empty reply from {body['model']} (finish_reason={reason})")
+    return content
 
 
 def chat_json(system: str, user: str, **kw) -> dict:
