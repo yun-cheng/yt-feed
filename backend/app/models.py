@@ -23,6 +23,13 @@ class Channel(Base):
     # ["T1","HLE","BLG"]). These are the filter chips shown on the channel page.
     # NULL = not built yet (built once, lazily, on first channel-page view).
     video_label_vocab = Column(Text, nullable=True)
+    # Labels this channel must never produce, as a JSON list. Its own subject
+    # ("League of Legends" on an LoL channel, "anime" on an anime channel) is a
+    # label every one of its videos would carry, which makes it a chip that
+    # filters nothing and a slot spent saying what you already knew. Seeded
+    # automatically — the channel's taxonomy tags, plus any label a build found
+    # on nearly every video — and meant to be user-editable later.
+    label_stop_words = Column(Text, nullable=True)
     # The video_labels.LABEL_VERSION the vocab was built with. When it's behind
     # the current version (e.g. after a prompt change), the channel is re-labeled
     # automatically on its next visit. NULL = pre-versioning / needs rebuild.

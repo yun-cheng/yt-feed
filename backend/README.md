@@ -535,6 +535,39 @@ filters that channel's videos.
   channel page rebuilds it automatically.
 - **New uploads** — `assign_labels` labels videos added after the build, lazily,
   as the channel page renders them.
+- **Up to `MAX_LABELS` (6) per video, capped LAST.** Six is the shape these
+  titles actually have — game + esports + league + both teams + a player. The
+  cap is applied *after* non-vocab labels are dropped, so a 5th label that is a
+  real chip can't lose its place to a 3rd that gets discarded a step later.
+  Filtering is a server-side query on `title_labels`, so a truncated label
+  doesn't just shorten a chip row — it removes the video from that chip's
+  results.
+
+**The channel's own subject is not a topic.** An LoL channel labeling every
+video `League of Legends` produces a chip that returns the whole channel and
+spends one of six label slots saying what you already knew. Each channel carries
+a `label_stop_words` list, decided BEFORE labeling and fed to the model as
+"never output these", then enforced deterministically (asking nicely is not a
+filter). It's seeded from two stable sources: the channel's own taxonomy tags,
+and **one cheap call per build** — name, themes and 40 sample titles in, "what
+would be true of every video here?" out. That call answered `League of Legends`,
+`海賊王`, `art`+`drawing`, `real-estate` on the four channels it was tried on.
+
+An earlier version *measured* coverage instead and dropped labels found on ≥75%
+of videos. It doesn't work: the labeler's recall wobbles, so the same universal
+label measured **81% on one build and 67% on the next** over the same 1049
+videos. Deriving beats measuring when the thing you'd measure is the noise.
+
+**Verbatim backstop.** After the model answers, any vocabulary term written
+literally in the title is added to that video's labels. `DK vs G2 …` and
+`2026 LCK常規賽` carry the answer in the text, and the model's recall is the
+weak link — the identical batch at `temperature=0` returned the teams 5/5, 5/5,
+then 1/5. Matching costs no tokens and never varies. ASCII terms need word
+boundaries (`AL` must not fire inside `GAL`); CJK matches as a substring. It took
+"both teams labeled" on `A vs B` titles from patchy to **94% (751/796)**.
+
+**Labels match space- and punctuation-insensitively** (`_key`), so
+`League of Legends` / `leagueoflegends` are one label rather than two chips.
 
 **A failed batch is not an answer.** `_label_batch` degrades to `{}` on any
 failure (dead key, rate limit, JSON truncated by `max_tokens`), and a video
@@ -562,7 +595,7 @@ cut off) rather than returning `None` for a caller to trip over.
 
 | Table | Purpose |
 |---|---|
-| `channels` | subscribed channels (id, title, `last_video_fetched`, `topics`, `llm_labels`, `video_label_vocab` + `video_label_version`) |
+| `channels` | subscribed channels (id, title, `last_video_fetched`, `topics`, `llm_labels`, `video_label_vocab` + `video_label_version`, `label_stop_words`) |
 | `videos` | scraped videos (stats, `published_at`, `is_short`, `title_labels`, `last_updated`) |
 | `channel_tags` | channel↔tag assignments (`auto_assigned`: 1 = LLM, 0 = manual) |
 | `channel_tag_rejections` | auto tags the user removed, so re-tagging won't re-add them |
