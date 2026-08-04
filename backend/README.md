@@ -370,6 +370,33 @@ Two guards keep the data honest:
 
 ---
 
+## Bookmarks (`routers/bookmarks.py`)
+
+Moments in a video, marked with `b` while it plays. Server-side for the same
+reason as history: the mark is about the video, not the browser that made it.
+
+Deliberately thinner than history — add, list, delete, no upsert. Two decisions
+carry all of it:
+
+- **Many rows per video**, ordered by position. A bookmark is an event, not a
+  state, and keeping several is the whole point.
+- **One untyped `video_id`.** The watch page plays a YouTube video, a downloaded
+  copy of one, or a file from a local folder; the first two share the YouTube id
+  and the third uses the `local_videos` hash. All three are opaque strings here,
+  so one table covers every source with no per-source column and no join that
+  differs by source.
+
+"Press `b` again at the same spot to remove it" is the **client's** rule (±2s),
+not this router's: the page already holds the list, so it can answer instantly
+instead of asking — and it's the only way to remove one, since the marks live on
+the progress bar rather than in a list with delete buttons. Delete is `/api/bookmarks/id/{n}` — the `/id/` segment keeps
+it from reading as the video id that the GET takes in the same slot.
+
+The A–B repeat loop has nothing here. It's about this sitting rather than the
+video, so it lives in frontend state and dies with the overlay.
+
+---
+
 ## Imported videos (`routers/imported.py`)
 
 The feed only ever shows videos from channels you're subscribed to, so a link
@@ -605,6 +632,7 @@ cut off) rather than returning `None` for a caller to trip over.
 | `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
 | `imported_videos` | one-off videos added by URL, from channels you don't follow |
 | `watch_history` | how far you got in each video, and whether you finished it |
+| `bookmarks` | moments marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
@@ -695,6 +723,7 @@ These are the design decisions most likely to bite if you touch them:
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
+| GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
 | GET | `/api/local/folders/{id}/videos` | that folder's videos (`?rescan=false` = cached listing, used by the scanning poll) |
 | DELETE | `/api/local/folders/{id}` | forget a folder — our rows and thumbnails only, never the files |

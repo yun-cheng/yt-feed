@@ -296,6 +296,27 @@ class HiddenChannel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Bookmark(Base):
+    """A moment in a video the user marked while watching (the `b` shortcut).
+
+    `video_id` is deliberately untyped and unconstrained: the watch page plays a
+    YouTube video, a downloaded copy of one, or a file from a local folder, and
+    the first two share the YouTube id while the third uses the LocalVideo hash.
+    All three are opaque strings from here, so one table covers every source
+    without a per-source column or a join that would differ by source.
+
+    Many rows per video, ordered by position — unlike WatchHistory's single
+    upserted row, a bookmark is an event, and the whole point is keeping several.
+    """
+    __tablename__ = "bookmarks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    video_id = Column(String, nullable=False, index=True)
+    position_seconds = Column(Float, nullable=False, default=0.0)
+    note = Column(String, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Video(Base):
     __tablename__ = "videos"
 
