@@ -72,10 +72,71 @@ describe('VideoCard', () => {
     expect(onHover).toHaveBeenCalledWith(null)
   })
 
-  it('opens YouTube on card click', () => {
+  it('opens the in-app watch page on card click', () => {
+    // Dispatched as an app-level event rather than threaded as a callback
+    // through every feed surface (VideoRow / Channel / Search / Playlist).
+    const onWatch = vi.fn()
+    window.addEventListener('app:watch', onWatch)
     render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
     fireEvent.click(screen.getByRole('img', { name: 'Test Video Title' }).closest('.relative')!)
-    expect(window.open).toHaveBeenCalledWith('https://www.youtube.com/watch?v=abc123', '_blank')
+    expect(onWatch).toHaveBeenCalled()
+    expect((onWatch.mock.calls[0][0] as CustomEvent).detail).toEqual(mockVideo)
+    window.removeEventListener('app:watch', onWatch)
+  })
+
+  // Two real anchors carry the title: the transparent one over the thumbnail,
+  // and the title text itself.
+  const overlayLink = () => screen.getAllByRole('link', { name: 'Test Video Title' })[0]
+
+  it('keeps real YouTube anchors so right-click offers "open in new tab"', () => {
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    for (const link of screen.getAllByRole('link', { name: 'Test Video Title' })) {
+      expect(link).toHaveAttribute('href', 'https://www.youtube.com/watch?v=abc123')
+    }
+  })
+
+  it('currently opens the watch page on a modifier-click as well as the new tab', () => {
+    // Pins a known wrong answer so a fix is a deliberate change, not a surprise.
+    // The overlay anchor returns early on a modifier-click so the browser opens
+    // YouTube natively — but it doesn't stopPropagation, so the click still
+    // reaches the card wrapper's onClick and opens the watch overlay too.
+    const onWatch = vi.fn()
+    window.addEventListener('app:watch', onWatch)
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    fireEvent.click(overlayLink(), { metaKey: true })
+    expect(onWatch).toHaveBeenCalled()
+    window.removeEventListener('app:watch', onWatch)
+  })
+
+  it.fails('should leave a modifier-click to YouTube alone', () => {
+    const onWatch = vi.fn()
+    window.addEventListener('app:watch', onWatch)
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    fireEvent.click(overlayLink(), { metaKey: true })
+    try {
+      expect(onWatch).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('app:watch', onWatch)
+    }
+  })
+
+  it('opens the watch page on a plain click of the thumbnail overlay', () => {
+    const onWatch = vi.fn()
+    window.addEventListener('app:watch', onWatch)
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    fireEvent.click(overlayLink())
+    expect(onWatch).toHaveBeenCalled()
+    window.removeEventListener('app:watch', onWatch)
+  })
+
+  it('lets a caller override the open behaviour', () => {
+    // Downloads and local files open their own player instead of YouTube's.
+    const onOpen = vi.fn()
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} onOpen={onOpen} />)
+    fireEvent.click(screen.getByRole('img', { name: 'Test Video Title' }).closest('.relative')!)
+    expect(onOpen).toHaveBeenCalledWith(mockVideo)
+    // …and drops the YouTube anchor entirely, so there's nothing to cmd-click to.
+    expect(screen.queryByRole('link', { name: 'Test Video Title' })).not.toBeInTheDocument()
   })
 
   it('calls onChannelClick when channel name is clicked', () => {

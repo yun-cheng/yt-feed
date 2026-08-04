@@ -11,7 +11,7 @@ class MockIntersectionObserver {
 
 beforeAll(() => {
   window.open = vi.fn()
-  global.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver
+  globalThis.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver
 })
 
 function makeVideo(id: string): VideoItem {

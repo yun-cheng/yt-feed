@@ -20,10 +20,17 @@ describe('TimeSortControls — feed variant', () => {
     }
   })
 
-  it('renders Narrow and Wide toggle buttons', () => {
+  // Narrow/Wide is one icon button that flips between the two modes; its title
+  // names the CURRENT mode and what a click would do.
+  const modeToggle = () => screen.getByTitle(/^(Wide|Narrow) /)
+
+  it('renders the narrow/wide toggle showing the current mode', () => {
     render(<TimeSortControls {...defaultProps} />)
-    expect(screen.getByRole('button', { name: 'Narrow' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Wide' })).toBeInTheDocument()
+    expect(modeToggle()).toHaveAttribute('title', expect.stringContaining('Wide (cumulative)'))
+
+    render(<TimeSortControls {...defaultProps} timeMode="narrow" />)
+    expect(screen.getAllByTitle(/^(Wide|Narrow) /)[1])
+      .toHaveAttribute('title', expect.stringContaining('Narrow (discrete)'))
   })
 
   it('renders all sort option buttons', () => {
@@ -47,17 +54,17 @@ describe('TimeSortControls — feed variant', () => {
     expect(onSortChange).toHaveBeenCalledWith('score')
   })
 
-  it('calls onTimeModeChange when Narrow is clicked', () => {
+  it('toggles from wide to narrow', () => {
     const onTimeModeChange = vi.fn()
     render(<TimeSortControls {...defaultProps} onTimeModeChange={onTimeModeChange} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Narrow' }))
+    fireEvent.click(modeToggle())
     expect(onTimeModeChange).toHaveBeenCalledWith('narrow')
   })
 
-  it('calls onTimeModeChange when Wide is clicked', () => {
+  it('toggles from narrow to wide', () => {
     const onTimeModeChange = vi.fn()
     render(<TimeSortControls {...defaultProps} timeMode="narrow" onTimeModeChange={onTimeModeChange} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Wide' }))
+    fireEvent.click(modeToggle())
     expect(onTimeModeChange).toHaveBeenCalledWith('wide')
   })
 

@@ -3,9 +3,12 @@ import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../components/Sidebar'
 import type { TagInfo } from '../App'
 
+// `group` has to match a key in the sidebar's GROUP_ORDER, which mirrors the
+// backend taxonomy's groups (app/routers/tags.py). A tag whose group isn't one
+// of those renders nowhere.
 const mockTags: TagInfo[] = [
-  { name: 'coding', group: '開發', icon: '💻', channel_count: 5 },
-  { name: 'music', group: '音樂', icon: '🎵', channel_count: 3 },
+  { name: 'coding', group: 'Tech', icon: '💻', channel_count: 5 },
+  { name: 'music', group: 'Music', icon: '🎵', channel_count: 3 },
 ]
 
 const defaultProps = {
@@ -31,14 +34,42 @@ describe('Sidebar — expanded', () => {
 
   it('renders tag groups', () => {
     render(<Sidebar {...defaultProps} />)
-    expect(screen.getByText('Dev')).toBeInTheDocument()
+    expect(screen.getByText('Tech')).toBeInTheDocument()
     expect(screen.getByText('Music')).toBeInTheDocument()
+  })
+
+  it('skips groups that have no tags', () => {
+    render(<Sidebar {...defaultProps} />)
+    // Gaming is in GROUP_ORDER but no mock tag belongs to it.
+    expect(screen.queryByText('Gaming')).not.toBeInTheDocument()
+  })
+
+  it('selects and deselects a whole group at once', () => {
+    const onSetTags = vi.fn()
+    render(<Sidebar {...defaultProps} onSetTags={onSetTags} />)
+    fireEvent.click(screen.getByText('Tech').closest('button')!)
+    expect(onSetTags).toHaveBeenCalledWith(['coding'])
+
+    onSetTags.mockClear()
+    render(<Sidebar {...defaultProps} selectedTags={['coding']} onSetTags={onSetTags} />)
+    fireEvent.click(screen.getAllByText('Tech')[1].closest('button')!)
+    expect(onSetTags).toHaveBeenCalledWith([])
   })
 
   it('renders tag buttons with counts', () => {
     render(<Sidebar {...defaultProps} />)
-    expect(screen.getByText('coding')).toBeInTheDocument()
-    expect(screen.getByText('music')).toBeInTheDocument()
+    expect(screen.getByText('coding').closest('button')).toHaveTextContent('5')
+    expect(screen.getByText('music').closest('button')).toHaveTextContent('3')
+  })
+
+  it('prefers the filtered count over the channel count when given one', () => {
+    // On a filtered feed the sidebar shows how many channels the CURRENT filter
+    // leaves under each tag, not the tag's whole-feed total.
+    render(<Sidebar {...defaultProps} tagFilteredCounts={new Map([['coding', 2]])} />)
+    const coding = screen.getByText('coding').closest('button')!
+    expect(coding).toHaveTextContent('2')
+    // A tag missing from the map has nothing left under it.
+    expect(screen.getByText('music').closest('button')).toHaveTextContent('0')
   })
 
   it('calls onToggleTag when a tag is clicked', () => {
