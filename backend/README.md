@@ -741,8 +741,42 @@ Interactive docs at `http://localhost:8000/docs` when the server is running.
 
 ## Tests & maintenance
 
-- There are **no automated backend tests** yet (the frontend has a Vitest
-  suite). Smoke-check with `/api/health` and `/api/feed`, and `/docs` for the
-  full surface.
-- `scripts/` holds one-off maintenance scripts (stat backfills, date/count
-  fixes, subscription import) — run ad hoc, not part of the app.
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
+
+Tests live in `tests/`, under pytest + pytest-asyncio (`asyncio_mode = auto`, so
+no per-test decorator). What's covered:
+
+| File | Covers |
+|------|--------|
+| `test_ranking.py` | windows (narrow vs wide), the sort modes, the hot-score burn-in, like% shrinkage |
+| `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot |
+| `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
+| `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
+| `test_playlists.py` | counts, covers, item ordering, cascade on delete |
+| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import |
+| `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
+| `test_tags.py` | the derived taxonomy maps, language detection |
+| `test_captions.py` | sentence grouping, numbered-reply parsing |
+| `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
+| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks |
+
+`conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before
+importing anything under `app`** — `database.py` builds its engine at import
+time, so a fixture would be too late and the suite would run against the real
+feed. Each test gets an empty schema; the app is driven through httpx's
+`ASGITransport`, which doesn't run the lifespan, so the scan scheduler, the
+resync loop and the Meilisearch reindex stay out of the way. Nothing reaches the
+network: `OPENROUTER_API_KEY` is blanked, and every LLM caller degrades rather
+than failing.
+
+Two tests pin behaviour that is currently **wrong**, so a fix is a deliberate
+change rather than a surprise — `test_a_mixed_script_japanese_name_is_currently_read_as_chinese`
+(with a strict `xfail` next to it stating the intent), and
+`test_the_two_rules_cross_over_at_ten_minutes` (whose comment in `history.py`
+has the two rules backwards).
+
+`scripts/` holds one-off maintenance scripts (stat backfills, date/count fixes,
+subscription import) — run ad hoc, not part of the app.

@@ -139,3 +139,10 @@ the prune first.
 ```bash
 cd frontend && npm test
 ```
+
+```bash
+cd backend && pip install -r requirements-dev.txt && pytest
+```
+
+The backend suite runs against a temp SQLite file, never your real feed, and
+makes no network calls. See each side's README for what's covered.

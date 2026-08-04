@@ -1,0 +1,7 @@
+# Test-only dependencies. Kept out of requirements.txt so a normal install
+# doesn't pull them: `pip install -r requirements.txt -r requirements-dev.txt`.
+#
+# httpx is already a runtime dependency (search_index, the YouTube calls), and
+# the tests reuse it as the ASGI client — so there's nothing to add for that.
+pytest>=8.0
+pytest-asyncio>=1.0
