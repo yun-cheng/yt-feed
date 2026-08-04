@@ -52,14 +52,23 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
   }
 }
 
-/** Controls for local playback, in place of the browser's native bar — which
- *  can't show a scrub preview. Hovering the progress bar seeks a second, hidden
- *  <video> of the same file to that moment and shows the frame, exactly like the
- *  card's preview scrubber: the file is already on disk, so the frame is instant
- *  and needs no storyboard fetch. The embed keeps YouTube's own bar. */
-export default function LocalControls({ videoRef, src, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
-  videoRef: RefObject<HTMLVideoElement | null>
-  src: string
+/** Our control bar, in place of the player's own.
+ *
+ *  For a file on disk it replaces the browser's native bar, which can't show a
+ *  scrub preview: hovering the progress bar seeks a second, hidden <video> of the
+ *  same file to that moment and shows the frame, exactly like the card's preview
+ *  scrubber — the file is already there, so the frame is instant and needs no
+ *  storyboard fetch.
+ *
+ *  It also drives the YouTube embed (with its own controls turned off), where
+ *  `player` stands in for `videoRef`. The difference is only in how state
+ *  arrives: a <video> tells us when it changes, the embed has to be asked. There
+ *  is no scrub preview there — the frames aren't ours to seek. */
+export default function LocalControls({ videoRef, player, src, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
+  // One of these two. `videoRef` also enables the scrub preview.
+  videoRef?: RefObject<HTMLVideoElement | null>
+  player?: RefObject<PlayerApi | null>
+  src?: string
   hovering: boolean
   onFullscreen: () => void
   // Controls the page owns, placed in the row instead of floating over the
@@ -68,6 +77,8 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
   leftControls?: ReactNode
   extraControls?: ReactNode
   // Drawn on the track: bookmarks as ticks, the A–B loop as a span (MarkTrack).
+  // They need no click handling here — the bar already seeks to wherever you
+  // click it, which for a tick is the moment it marks.
   bookmarks?: Bookmark[]
   loop?: Loop
 }) {
@@ -83,22 +94,40 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
   const scrubRef = useRef<HTMLVideoElement>(null)
   const draggingRef = useRef(false)
 
-  // Mirror the element's state rather than polling: these events cover every way
-  // the position can change, including the keyboard shortcuts and the resume seek.
+  // Whichever source we were handed, through one shape. Rebuilt per call — the
+  // adapter is three lines of closures over the element, not a resource.
+  const api = (): PlayerApi | null => {
+    const el = videoRef?.current
+    return el ? localPlayer(el) : player?.current ?? null
+  }
+
+  // Mirror the source's state. A <video> tells us when it changes, which covers
+  // every way the position can move (the keyboard shortcuts, the resume seek);
+  // the embed says nothing, so it gets asked four times a second — the same rate
+  // `timeupdate` fires at anyway.
   useEffect(() => {
-    const el = videoRef.current
-    if (!el) return
     const sync = () => {
-      setTime(el.currentTime)
-      setPaused(el.paused)
-      setMuted(el.muted)
-      setDuration(Number.isFinite(el.duration) ? el.duration : 0)
+      const p = api()
+      if (!p) return
+      setTime(p.getCurrentTime())
+      // Buffering counts as running, so a stall neither flips the button to
+      // "play" nor pins the bar open. (localPlayer never reports it.)
+      const s = p.getPlayerState()
+      setPaused(s !== 1 && s !== 3)
+      setMuted(p.isMuted())
+      setDuration(p.getDuration())
     }
     sync()
+    const el = videoRef?.current
     const events = ['timeupdate', 'play', 'pause', 'seeked', 'durationchange', 'volumechange', 'loadedmetadata']
-    events.forEach((e) => el.addEventListener(e, sync))
-    return () => events.forEach((e) => el.removeEventListener(e, sync))
-  }, [videoRef])
+    if (el) events.forEach((e) => el.addEventListener(e, sync))
+    const id = el ? undefined : window.setInterval(sync, 250)
+    return () => {
+      if (el) events.forEach((e) => el.removeEventListener(e, sync))
+      if (id) window.clearInterval(id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoRef, player])
 
   const hoverTime = hoverRatio !== null && duration ? hoverRatio * duration : null
   useEffect(() => {
@@ -120,10 +149,10 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
     return Math.max(0, Math.min(1, (clientX - r.left) / r.width))
   }
   const seekTo = (clientX: number) => {
-    const el = videoRef.current
+    const p = api()
     const ratio = ratioAt(clientX)
-    if (!el || ratio === null || !duration) return
-    el.currentTime = ratio * duration
+    if (!p || ratio === null || !duration) return
+    p.seekTo(ratio * duration, true)
     setTime(ratio * duration)
   }
 
@@ -131,33 +160,44 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
   // paused video with no controls looks broken.
   const show = hovering || paused
   const progress = duration ? time / duration : 0
+  // Over the embed the bar is SOLID rather than a gradient, because it has
+  // something to hide: turning YouTube's controls off leaves the rest of its
+  // chrome — the share arrow, the "More videos" tray, the logo — drawn on that
+  // same line, and a gradient lets them show straight through. See the top cover
+  // in WatchPage for the other half of that chrome.
+  const overEmbed = !videoRef
 
   return (
     <div
-      className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${show ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+      className={`absolute inset-x-0 bottom-0 z-30 px-3 pb-2 pt-8 transition-opacity duration-150 ${
+        overEmbed ? 'bg-gradient-to-t from-black via-black to-transparent' : 'bg-gradient-to-t from-black/80 to-transparent'
+      } ${show ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
     >
       {/* Scrub preview — a fixed-width popup so it keeps its size when clamped
           against either edge. Sits clear of the bar: the container's bottom
           padding, the button row and the bar's own hit area come to ~4.5rem, so
-          anything shorter puts the timestamp on top of the track. */}
+          anything shorter puts the timestamp on top of the track. Over the embed
+          there's no frame to show, so it narrows to just the timestamp. */}
       <div
         className="pointer-events-none absolute transition-opacity duration-75"
         style={{
-          bottom: '4.75rem',
+          bottom: src ? '4.75rem' : '3.25rem',
           width: 176,
           left: `clamp(88px, ${(shownRatio * 100).toFixed(2)}%, calc(100% - 88px))`,
           transform: 'translateX(-50%)',
           opacity: hoverRatio !== null ? 1 : 0,
         }}
       >
-        <video
-          ref={scrubRef}
-          src={src}
-          muted
-          preload="auto"
-          className="rounded border border-white/20 bg-black object-cover shadow-lg"
-          style={{ width: 176, height: 99, maxWidth: 'none' }}
-        />
+        {src && (
+          <video
+            ref={scrubRef}
+            src={src}
+            muted
+            preload="auto"
+            className="rounded border border-white/20 bg-black object-cover shadow-lg"
+            style={{ width: 176, height: 99, maxWidth: 'none' }}
+          />
+        )}
         <div className="mt-1 text-center">
           <span className="inline-block rounded bg-black/80 px-1.5 py-0.5 text-sm font-semibold text-white">
             {formatTime(shownTime)}
@@ -197,9 +237,9 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
             loop={loop ?? { a: null, b: null }}
             duration={duration}
             onSeek={(seconds) => {
-              const el = videoRef.current
-              if (!el) return
-              el.currentTime = seconds
+              const p = api()
+              if (!p) return
+              p.seekTo(seconds, true)
               setTime(seconds)
             }}
           />
@@ -220,7 +260,7 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
           here also has a keyboard shortcut (k, m, f) — see the key handler. */}
       <div className="flex items-center gap-3 text-white">
         <button
-          onClick={() => { const el = videoRef.current; if (!el) return; if (el.paused) void el.play().catch(() => {}); else el.pause() }}
+          onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
           className="rounded p-1 hover:bg-white/10"
           title={paused ? 'Play (k)' : 'Pause (k)'}
         >
@@ -233,7 +273,7 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
             stays open while dragging or tabbing). */}
         <div className="group/vol flex items-center">
           <button
-            onClick={() => { const el = videoRef.current; if (el) el.muted = !el.muted }}
+            onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
             className="rounded p-1 hover:bg-white/10"
             title={muted ? 'Unmute (m)' : 'Mute (m)'}
           >
@@ -250,10 +290,9 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
             value={muted ? 0 : volume}
             onChange={(e) => {
               const next = Number(e.target.value)
-              const el = videoRef.current
               // Dragging off zero unmutes, like YouTube — otherwise the slider
               // would move with no sound and look broken.
-              if (el && next > 0) el.muted = false
+              if (next > 0) api()?.unMute()
               setAudioVolume(next)
             }}
             title="Volume (↑/↓)"

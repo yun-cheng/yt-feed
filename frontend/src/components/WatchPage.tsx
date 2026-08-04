@@ -10,6 +10,19 @@ import LocalControls, { localPlayer } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 
+// Turn YouTube's own controls off and drive the embed with OUR control bar — the
+// same one a downloaded file gets. Off by default: it's a trade, not an upgrade.
+//
+// What it buys: one bar everywhere, our marks drawn on a track we own, and no
+// guessing about YouTube's chrome — the fade timing can't drift out of sync with
+// controls that no longer exist, and the sheet that watches for mouse movement
+// can stay put instead of dodging YouTube's buttons.
+//
+// What it costs: YouTube's quality / speed / subtitle menus go with them, and the
+// scrub preview has no frames to show (the storyboard endpoint the cards use
+// could fill that in later).
+const EMBED_OWN_CONTROLS = false
+
 type Props = {
   videoId: string
   // Metadata when we arrived from a card (renders instantly, no fetch flash).
@@ -550,6 +563,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const chromeAwake = (pointerOverPlayer && !chromeIdle) || !playing
   const embedChrome = chromeAwake || showCaptionMenu
 
+  // Whether the controls under the video are OURS — either because it's a file
+  // we play ourselves, or because we turned YouTube's off. The caption button and
+  // the pin sit in that bar's button row when it's ours, and float over the
+  // embed's own chrome when it isn't.
+  const ownBar = playLocal || EMBED_OWN_CONTROLS
 
   // Close the "…" menu on an outside click.
   useEffect(() => {
@@ -1164,7 +1182,8 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         width: '100%',
         height: '100%',
         playerVars: {
-          autoplay: 1, mute: startMuted ? 1 : 0, controls: 1, rel: 0, modestbranding: 1, playsinline: 1, fs: 1,
+          autoplay: 1, mute: startMuted ? 1 : 0, controls: EMBED_OWN_CONTROLS ? 0 : 1,
+          rel: 0, modestbranding: 1, playsinline: 1, fs: 1,
         },
         events: {
           onReady: (e) => {
@@ -1350,7 +1369,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
           // scrubber (measured ~73px above the bottom on a 281px-tall player).
           // The browser's native bar (local playback) is shorter and a fixed
           // height, so it needs less room.
-          style={{ bottom: playLocal ? '3.5rem' : 'max(11%, 5.5rem)' }}
+          style={{ bottom: ownBar ? '3.5rem' : 'max(11%, 5.5rem)' }}
         >
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
@@ -1393,7 +1412,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       ref={captionMenuRef}
       // The embed placement slots it into the iframe's own bottom-left button
       // row, whose buttons sit at a fixed offset.
-      className={playLocal ? 'relative' : 'absolute bottom-[14px] left-[8.25rem] z-20'}
+      className={ownBar ? 'relative' : 'absolute bottom-[14px] left-[8.25rem] z-20'}
     >
       {showCaptionMenu && (
         // Two mirrored columns: Main | Second. Each lists every track the
@@ -1459,12 +1478,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       )}
       <button
         onClick={() => setShowCaptionMenu((o) => !o)}
-        className={`group relative flex items-center justify-center text-white ${playLocal ? 'h-9 w-9' : 'h-11 w-11'}`}
+        className={`group relative flex items-center justify-center text-white ${ownBar ? 'h-9 w-9' : 'h-11 w-11'}`}
         title="Subtitles / captions"
         aria-pressed={showCaptions}
       >
         {/* Material-style hover circle, centered in the hit area. */}
-        <span className={`pointer-events-none absolute inset-0 m-auto rounded-full transition-colors group-hover:bg-white/10 ${playLocal ? 'h-8 w-8' : 'h-10 w-10'}`} />
+        <span className={`pointer-events-none absolute inset-0 m-auto rounded-full transition-colors group-hover:bg-white/10 ${ownBar ? 'h-8 w-8' : 'h-10 w-10'}`} />
         {/* YouTube's exact CC glyph (filled), sized to match the embed's
             own bottom-left buttons. A stroke-drawn version reads thinner and
             smaller even at the same 24px viewBox. */}
@@ -1474,7 +1493,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         {/* Active indicator: a YouTube-style underline (no background
             circle, to match the embed's bare share / watch-later buttons). */}
         {showCaptions && (
-          <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${playLocal ? 'bottom-[3px]' : 'bottom-[7px]'}`} />
+          <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[3px]' : 'bottom-[7px]'}`} />
         )}
       </button>
     </div>
@@ -1485,7 +1504,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       onClick={() => setPinned((p) => !p)}
       // Over the embed: a pill in the bottom-right corner, on the button-row
       // line so it clears the progress scrubber. In our bar: a plain button.
-      className={playLocal
+      className={ownBar
         ? 'rounded p-1 text-white hover:bg-white/10'
         : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
       title={pinned ? 'Unpin — scroll the whole page' : 'Pin — keep the video in view'}
@@ -1580,7 +1599,10 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             the chrome was down toggles play instead of leaving fullscreen,
             because the second click lands after this is gone. `f` and Esc still
             do it.) */}
-        {!playLocal && !embedChrome && (
+        {/* With our own bar the sheet can simply STAY: there are no YouTube
+            controls left for it to swallow clicks meant for, so it sees every
+            move and our fade times exactly like a player's. */}
+        {!playLocal && (EMBED_OWN_CONTROLS || !embedChrome) && (
           <div
             className="absolute inset-0 z-10"
             onMouseMove={wakeChrome}
@@ -1590,6 +1612,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
               if (!p) return
               if (p.getPlayerState() === 1) p.pauseVideo(); else p.playVideo()
             }}
+            onDoubleClick={EMBED_OWN_CONTROLS ? toggleFullscreen : undefined}
           />
         )}
 
@@ -1608,7 +1631,43 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             video is caught by the sheet above. An open caption menu pins them
             too — it would be absurd for the button to fade out from under the
             menu it opened. */}
-        {!playLocal && (
+        {!playLocal && (EMBED_OWN_CONTROLS ? (
+          <>
+          {/* Turning YouTube's controls off leaves the REST of its chrome: the
+              channel avatar and title across the top, and the share / "More
+              videos" / logo row along the bottom. The embed API has no switch
+              for those — `modestbranding` and `showinfo` were the old ones and
+              both are dead — and YouTube raises them whenever the video is
+              paused or the state changes, so play/pause flashes them up.
+
+              Our sheet already swallows their clicks, which leaves buttons that
+              look live and aren't; so we cover them instead. The bottom half is
+              our control bar going solid (see LocalControls); this is the top.
+              It rides with our own chrome, which is up in exactly the cases
+              YouTube raises its overlay — paused, or the pointer moving. The
+              band scales with the player because YouTube's does. */}
+          <div
+            className={`pointer-events-none absolute inset-x-0 top-0 z-20 transition-opacity duration-200 ${
+              chromeAwake ? 'opacity-100' : 'opacity-0'
+            }`}
+            style={{ height: 'max(8%, 3.5rem)' }}
+          >
+            <div className="h-full bg-black" />
+            <div className="h-6 bg-gradient-to-b from-black to-transparent" />
+          </div>
+          {/* Our bar, driven through PlayerApi. The marks go on ITS track, so
+              there's no rail to lay over anyone else's, and no offset to measure. */}
+          <LocalControls
+            player={playerRef}
+            hovering={chromeAwake}
+            onFullscreen={toggleFullscreen}
+            leftControls={captionControl}
+            extraControls={pinButton}
+            bookmarks={marks.bookmarks}
+            loop={marks.loop}
+          />
+          </>
+        ) : (
           <div
             className={`transition-opacity duration-200 ${
               embedChrome ? 'opacity-100' : 'pointer-events-none opacity-0'
@@ -1625,7 +1684,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
               onSeek={seekTo}
             />
           </div>
-        )}
+        ))}
 
         {embedError && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/95 px-6 text-center">
