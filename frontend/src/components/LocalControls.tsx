@@ -12,6 +12,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
+import { MarkTrack } from './PlayerMarks'
+import type { Bookmark, Loop } from './PlayerMarks'
 
 // The slice of the YouTube IFrame API the rest of this component drives the
 // player through. A downloaded file is played by a plain <video>, so it gets an
@@ -55,7 +57,7 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  <video> of the same file to that moment and shows the frame, exactly like the
  *  card's preview scrubber: the file is already on disk, so the frame is instant
  *  and needs no storyboard fetch. The embed keeps YouTube's own bar. */
-export default function LocalControls({ videoRef, src, hovering, onFullscreen, leftControls, extraControls }: {
+export default function LocalControls({ videoRef, src, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
   videoRef: RefObject<HTMLVideoElement | null>
   src: string
   hovering: boolean
@@ -65,6 +67,9 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
   // in the right-hand group.
   leftControls?: ReactNode
   extraControls?: ReactNode
+  // Drawn on the track: bookmarks as ticks, the A–B loop as a span (MarkTrack).
+  bookmarks?: Bookmark[]
+  loop?: Loop
 }) {
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -184,6 +189,20 @@ export default function LocalControls({ videoRef, src, hovering, onFullscreen, l
         {/* Thickens on hover, YouTube-style, to make the target read as grabbable. */}
         <div className="relative h-1 rounded-full bg-white/30 transition-all group-hover/bar:h-[5px]">
           <div className="absolute inset-y-0 left-0 rounded-full bg-red-500" style={{ width: `${progress * 100}%` }} />
+          {/* Bookmarks and the A–B loop, on the track they're positions on.
+              Clicking a mark seeks to the exact moment it marks rather than to
+              wherever on the track the click landed. */}
+          <MarkTrack
+            bookmarks={bookmarks ?? []}
+            loop={loop ?? { a: null, b: null }}
+            duration={duration}
+            onSeek={(seconds) => {
+              const el = videoRef.current
+              if (!el) return
+              el.currentTime = seconds
+              setTime(seconds)
+            }}
+          />
           {hoverRatio !== null && (
             <div
               className="pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-white/50"

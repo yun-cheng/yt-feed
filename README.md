@@ -19,10 +19,15 @@ real video (muted, with custom captions and scrubbing).
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were.
-  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c) and our
+  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, and the
+  marks below) and our
   own captions, rendered from the transcript and styled like YouTube's —
   switchable between English / Chinese / Japanese / Korean when offered, with
   dual subtitles and an AI translation into Traditional Chinese
+- **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
+  click the tick to jump back); `[` and `]` set a loop's ends and `\` clears it,
+  so a passage replays until you're done with it. Both are drawn on the progress
+  bar — ours over a file on disk, and laid over YouTube's own bar on the embed
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works

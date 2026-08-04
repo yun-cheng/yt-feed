@@ -8,6 +8,7 @@ import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
 import LocalControls, { localPlayer } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
+import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 
 type Props = {
   videoId: string
@@ -483,6 +484,8 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   const localSrc = `/api/downloads/${videoId}/file`
   // Our control bar shows while the pointer is over the player (or it's paused).
   const [pointerOverPlayer, setPointerOverPlayer] = useState(false)
+  // Whether the player is playing, polled below. Only used for the fade rule.
+  const [playing, setPlaying] = useState(false)
   // Fullscreen OUR box, not the video/iframe — see the `f` shortcut for why.
   const toggleFullscreen = () => {
     if (document.fullscreenElement) document.exitFullscreen()
@@ -512,6 +515,41 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     p.seekTo(seconds, true)
     p.playVideo()
   }
+
+  // Bookmarks (`b`) and the A–B repeat loop (`[`, `]`, `\`). Owns its own key
+  // handler and drives the player through the same PlayerApi as everything else
+  // here, so it works over the embed and over a downloaded file alike.
+  const marks = usePlayerMarks(videoId, playerRef)
+
+  // Our chrome — the control bar over a local file, and the caption button, pin
+  // and mark rail over the embed — goes away after a few seconds of stillness,
+  // the way a player's does. Leaving the player was the only signal at first,
+  // which is no signal at all in FULLSCREEN: the player is the whole screen, so
+  // the pointer never leaves it and the chrome sat there forever.
+  //
+  // Stillness is measured from the last mouse move over the player or shortcut
+  // key pressed. A cross-origin iframe keeps its own mouse events, so movement
+  // over the EMBED is caught by a sheet laid over it while the chrome is down
+  // (see the render) — without that, moving the pointer brought YouTube's
+  // controls back and left ours hidden.
+  const CHROME_IDLE_MS = 3000
+  const activityAt = useRef(Date.now())
+  const wakeChrome = () => { activityAt.current = Date.now() }
+  const [chromeIdle, setChromeIdle] = useState(false)
+  useEffect(() => {
+    // Cheaper than it looks: setting state to the value it already holds doesn't
+    // re-render, so this is two renders per idle/active transition, not 2.5/s.
+    const id = window.setInterval(
+      () => setChromeIdle(Date.now() - activityAt.current > CHROME_IDLE_MS),
+      400
+    )
+    return () => window.clearInterval(id)
+  }, [])
+  // Awake while the pointer is on the player and moving, and whenever playback
+  // isn't running — a paused player keeps its controls, like every other one.
+  const chromeAwake = (pointerOverPlayer && !chromeIdle) || !playing
+  const embedChrome = chromeAwake || showCaptionMenu
+
 
   // Close the "…" menu on an outside click.
   useEffect(() => {
@@ -1189,10 +1227,18 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
 
   // Player → store: if you change volume with the embed's own control, push it
   // back so previews follow. (No update while muted — that shouldn't zero it.)
+  // The same tick answers "is it playing?", which is what tells our overlays
+  // over the embed when to fade (see embedChrome) — the embed fires no events
+  // we can listen to, and one poll serves both.
   useEffect(() => {
     const id = setInterval(() => {
       const p = playerRef.current
-      if (!p || p.isMuted()) return
+      if (!p) return
+      // BUFFERING (3) counts as running: a stall shouldn't raise the chrome and
+      // then drop it again every time the network hiccups.
+      const s = p.getPlayerState()
+      setPlaying(s === 1 || s === 3)
+      if (p.isMuted()) return
       const v = Math.round(p.getVolume())
       if (v >= 0 && v !== volumeRef.current) setAudioVolume(v)
     }, 1000)
@@ -1216,6 +1262,10 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         || (t instanceof HTMLElement && t.isContentEditable)) return
       const p = playerRef.current
       if (!p) return
+      // Any shortcut counts as being here — in fullscreen it's the only activity
+      // we can see at all (see chromeAwake). Safe from this once-bound listener:
+      // it only writes a ref.
+      wakeChrome()
       const k = e.key
       if (e.code === 'Space' || k === 'k') {
         e.preventDefault()
@@ -1284,6 +1334,10 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // the fullscreen target, so they show in both windowed and fullscreen modes.
   const overlays = (
     <>
+      {/* Not part of embedChrome below: a keypress has to be acknowledged even
+          when the chrome is down — that's usually exactly when you pressed it. */}
+      <MarksFlash flash={marks.flash} />
+
       {/* Caption overlay — the main track, plus the optional second (dual-
           subtitle) track stacked beneath it. Bottom-anchored above the control
           bar so new lines push the stack upward; see CaptionBlock for styling. */}
@@ -1464,9 +1518,17 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         // 2.5%-of-player-width caption size), matching at any player scale.
         style={{ containerType: 'inline-size' }}
         className={`relative w-full bg-black outline-none aspect-video [&:fullscreen]:aspect-auto ${pinned ? 'shrink-0' : ''}`}
-        // Only our own control bar reacts to this; the embed draws its own.
-        onMouseEnter={playLocal ? () => setPointerOverPlayer(true) : undefined}
-        onMouseLeave={playLocal ? () => setPointerOverPlayer(false) : undefined}
+        // Drives our control bar (local playback) and, over the embed, when our
+        // own overlays fade — see chromeAwake. onMouseMove is what keeps the
+        // chrome up while you're using it; over the embed it only fires on our
+        // own overlays, so there the keyboard does most of the waking.
+        onMouseEnter={() => { setPointerOverPlayer(true); wakeChrome() }}
+        // A move over the box also SETS "over the player", not just the activity
+        // stamp: entering fullscreen by keyboard makes the player the whole
+        // screen without the pointer ever crossing its edge, so mouseenter never
+        // fires and it would otherwise be stuck reading "pointer is elsewhere".
+        onMouseMove={() => { setPointerOverPlayer(true); wakeChrome() }}
+        onMouseLeave={() => setPointerOverPlayer(false)}
       >
         {/* A finished download plays from disk: no ads, no embed restrictions,
             and it keeps working offline. Everything else on this page (captions,
@@ -1490,10 +1552,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             <LocalControls
               videoRef={videoRef}
               src={localSrc}
-              hovering={pointerOverPlayer}
+              hovering={pointerOverPlayer && !chromeIdle}
               onFullscreen={toggleFullscreen}
               leftControls={captionControl}
               extraControls={pinButton}
+              bookmarks={marks.bookmarks}
+              loop={marks.loop}
             />
           </>
         ) : (
@@ -1501,13 +1565,67 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
           sourceChosen && <div ref={hostRef} className="absolute inset-0" />
         )}
 
+        {/* Move-to-wake over the embed. A cross-origin iframe keeps its own
+            mouse events, so moving the pointer across the video tells us
+            nothing — YouTube's controls come back and ours don't, which in
+            fullscreen (where the pointer never leaves the player) left no way
+            at all to bring the marks back.
+
+            This sheet sits over the video for exactly as long as our chrome is
+            down, catching that first movement; the moment it wakes anything,
+            it unmounts and every pixel belongs to the embed again. So it can
+            only ever swallow one gesture — and when that gesture is a click, we
+            do what the click was going to do anyway: play/pause, through the
+            same PlayerApi. (Only ONE case escapes: a double-click begun while
+            the chrome was down toggles play instead of leaving fullscreen,
+            because the second click lands after this is gone. `f` and Esc still
+            do it.) */}
+        {!playLocal && !embedChrome && (
+          <div
+            className="absolute inset-0 z-10"
+            onMouseMove={wakeChrome}
+            onClick={() => {
+              wakeChrome()
+              const p = playerRef.current
+              if (!p) return
+              if (p.getPlayerState() === 1) p.pauseVideo(); else p.playVideo()
+            }}
+          />
+        )}
+
         {/* Caption + volume-HUD overlays (defined above). They stay inside the
             box, which is also the fullscreen target, so they show in fullscreen. */}
         {overlays}
 
-        {!playLocal && captionControl}
+        {/* Everything we draw over the EMBED — the caption button, the pin, and
+            the bookmark / A–B rail on its progress bar. They fade together with
+            YouTube's own controls, or they'd be left sitting alone over an
+            otherwise clean video once the embed hides its chrome.
 
-        {!playLocal && pinButton}
+            We can't ask the iframe whether its controls are up, so this follows
+            the rule our own control bar uses: shown while the pointer is on the
+            player and moving, and whenever it isn't playing. Movement over the
+            video is caught by the sheet above. An open caption menu pins them
+            too — it would be absurd for the button to fade out from under the
+            menu it opened. */}
+        {!playLocal && (
+          <div
+            className={`transition-opacity duration-200 ${
+              embedChrome ? 'opacity-100' : 'pointer-events-none opacity-0'
+            }`}
+          >
+            {captionControl}
+            {pinButton}
+            {/* Over the embed the progress bar lives inside the iframe, so the
+                marks are laid over it — see EmbedMarkRail. */}
+            <EmbedMarkRail
+              bookmarks={marks.bookmarks}
+              loop={marks.loop}
+              duration={meta?.duration_seconds ?? 0}
+              onSeek={seekTo}
+            />
+          </div>
+        )}
 
         {embedError && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/95 px-6 text-center">

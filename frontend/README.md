@@ -276,6 +276,10 @@ components/
   LocalWatchPage.tsx              player for a local file (/local/:id/:videoId)
   LocalControls.tsx               our control bar + the <video>→PlayerApi adapter,
                                   shared by downloads and local folders
+  PlayerMarks.tsx                 bookmarks (`b`) and the A–B repeat loop
+                                  (`[`, `]`, `\`): state, shortcuts, and the
+                                  marks drawn on the progress bar (ours, or a
+                                  rail over the embed's)
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — the embed, or the
                                   downloaded file with our own control bar;
@@ -370,10 +374,78 @@ Other details:
   IFrame API, so shortcuts work wherever focus is on the page — not only while
   the iframe holds focus. `space`/`k` play-pause, `m` mute, `f` fullscreen (of
   our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
-  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions. We focus our
+  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, and the
+  marks below (`b`, `[`, `]`, `\`). We focus our
   box, not the iframe, and pull focus back whenever a click lands in the video —
   a cross-origin iframe otherwise swallows its own keys. A brief volume HUD shows
   while adjusting.
+- **Bookmarks and A–B repeat** (`PlayerMarks.tsx`): `b` marks the moment, `[` and
+  `]` set the loop's ends, `\` clears it. Both drive the player through
+  `PlayerApi`, so they behave the same over the embed and over a file on disk.
+  - **Bookmarks persist** (`/api/bookmarks`, keyed by the video id — YouTube's or
+    a local one). Pressing `b` within 2s of an existing mark **removes** it, so a
+    second press undoes the first; the list is already in hand, so that decision
+    needs no round-trip. A new mark renders immediately under a temporary id and
+    swaps in the saved row — a mark that appears a beat after the keypress reads
+    as a dropped one.
+  - **The loop is session state**, cleared when the video changes: it's about
+    this sitting, not the video. Either end can be set first and either can be
+    moved afterwards; the loop simply stays inactive until the pair makes sense
+    (B after A, ≥0.5s apart), so neither key is ever a press that does nothing.
+    A 200ms timer of its own sends the play head back to A at B — the caption
+    tick can't do it, since that only exists while captions are on. A loop ending
+    at the very end of the video hits B as the video ENDS, which leaves a seek
+    paused, so the tick nudges it back into play.
+  - **Both are drawn on the progress bar** (`MarkTrack`) — bookmarks as white
+    ticks, the loop as a yellow span with end caps, all solid and dark-ringed so
+    they read against whatever frame is behind them. That's the axis they're
+    positions on; anywhere else and you have to translate a timestamp back into a
+    place in the video. The **span appears only once the loop is really
+    running**; a half-set loop shows just its end cap, since a colour bar over
+    the rest of the video would claim something repeats when nothing does.
+  - **Every mark is clickable** and jumps to itself — on our own bar that beats
+    the bar's own click, which would only land near the mark (the press stops
+    propagating, so the bar doesn't also treat it as a scrub). Each tick sits in
+    a wider invisible hit area, since 3px is not a target.
+  - **Over the embed** the bar is inside the iframe, so `EmbedMarkRail` lays the
+    same marks over it, at a **constant** distance up from the player's bottom
+    (76px — measured at 73px on a 560px-wide player, 74 at 800, ~78 at 1280). It
+    was a share of the height first, which drifted further out the bigger the
+    window got: 10% of a 1080px-tall player is 108px, half a control bar too
+    high. Its marks are the only pixels that take the pointer, and they sit on
+    YouTube's scrubber: swallowing a click meant for it is the price of being
+    able to click a mark at all, paid at the handful of x positions you put one
+    on.
+  - Each keypress also leaves a brief line saying what it did; a shortcut you
+    can't tell fired is one you stop trusting, and the chrome is often hidden.
+
+- **Our chrome fades like a player's** (`chromeAwake`): the control bar over a
+  local file, and the caption button, pin and mark rail over the embed, are up
+  while the pointer is on the player *and moving*, and whenever playback isn't
+  running — a paused player keeps its controls, and buffering counts as running
+  so a stall doesn't raise them and drop them again. Playing state comes from the
+  1s volume poll, which already asks; no second timer. An open caption menu pins
+  the chrome, since a button fading out from under its own menu would be absurd.
+  - The **stillness** half is what makes fullscreen work. Leaving the player was
+    the only signal at first, which is no signal at all in fullscreen: the player
+    is the whole screen, the pointer never leaves it, and the chrome sat there
+    forever against a video whose own controls had long since gone.
+  - Stillness is measured from the last mouse move over the player, or shortcut
+    key pressed. Over a local file every move reaches us already. A cross-origin
+    iframe keeps its own mouse events, so over the **embed** a sheet (`absolute
+    inset-0 z-10`) is laid over the video for exactly as long as the chrome is
+    down, to catch that first movement — without it, moving the pointer brought
+    YouTube's controls back and left ours hidden, and in fullscreen nothing
+    brought them back at all.
+  - The sheet unmounts the moment it wakes anything, so it can only ever swallow
+    one gesture, and when that gesture is a click we do what the click was going
+    to do anyway: play/pause, through the same `PlayerApi`. One case escapes — a
+    double-click begun while the chrome was down toggles play instead of leaving
+    fullscreen, because the second click lands after the sheet is gone. `f` and
+    Esc still do it.
+  - A mousemove also *sets* "pointer is over the player", not just the activity
+    stamp: entering fullscreen by keyboard makes the player the whole screen
+    without the pointer ever crossing its edge, so `mouseenter` never fires.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
   embed's own captions can't be positioned or styled). The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
