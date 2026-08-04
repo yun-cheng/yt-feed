@@ -665,3 +665,25 @@ placements from one definition (`captionControl` / `pinButton`).
 
 Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 (`npm test`). `src/test/setup.ts` wires up `@testing-library/jest-dom`.
+
+| File | Covers |
+|------|--------|
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\`, the add-toggle tolerance, the loop tick, the marks on the bar |
+| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source |
+| `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
+| `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
+| `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
+| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
+
+Three jsdom gaps have to be papered over, and each is a stub rather than a
+behaviour change: `isContentEditable` is not implemented (so the shortcut guard's
+own property is set by hand), there is no pointer capture (the scrub handler
+takes it before seeking, and an unstubbed call throws before the seek), and every
+element measures zero, so the progress bar is given a rect.
+
+`VideoCard.test.tsx` has an `it.fails` pinning a **known bug**: a modifier-click
+opens the in-app watch overlay as well as the YouTube tab, because the anchor's
+early return doesn't `stopPropagation` and the click still reaches the card
+wrapper. `PlayerMarks.test.tsx` pins another: a `b` pressed before the bookmark
+list finishes loading is wiped from view by the load handler, though the POST
+still saves it.
