@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import type { VideoItem, WatchProgress } from '../App'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
+import { storyboardFrame } from '../lib/storyboard'
+import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
 
 // Minimal YT IFrame API types
@@ -70,15 +72,6 @@ export function ensureYTApi(): Promise<void> {
 // hover doesn't also wait on this script download before it can create a player.
 export function preloadYouTubeApi() {
   ensureYTApi()
-}
-
-type StoryboardInfo = {
-  rows: number
-  cols: number
-  frame_width: number
-  frame_height: number
-  fragment_urls: string[]
-  fragment_duration: number
 }
 
 // A single timed caption cue (seconds) from /feed/captions
@@ -162,28 +155,6 @@ function timeAgo(iso: string): string {
 
 // Scale down frames so preview fits in small cards
 const SB_SCALE = 0.5
-
-function getStoryboardFrame(sb: StoryboardInfo, time: number) {
-  const framesPerSheet = sb.rows * sb.cols
-  const totalFrames = framesPerSheet * sb.fragment_urls.length
-  const frameDuration = (sb.fragment_duration * sb.fragment_urls.length) / totalFrames
-  const frame = Math.max(0, Math.min(totalFrames - 1, Math.floor(time / frameDuration)))
-  const sheetIdx = Math.floor(frame / framesPerSheet)
-  const posInSheet = frame % framesPerSheet
-  const col = posInSheet % sb.cols
-  const row = Math.floor(posInSheet / sb.cols)
-  const fw = sb.frame_width * SB_SCALE
-  const fh = sb.frame_height * SB_SCALE
-  return {
-    url: sb.fragment_urls[sheetIdx] ?? sb.fragment_urls[0],
-    bgX: -col * fw,
-    bgY: -row * fh,
-    fw,
-    fh,
-    sheetW: sb.cols * fw,
-    sheetH: sb.rows * fh,
-  }
-}
 
 // Shared circle-button sizes so bookmark / mute / CC all match
 const BTN = 'p-2 rounded-full transition-colors'
@@ -703,7 +674,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
 
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0
   const hoverTime = hoverRatio !== null ? hoverRatio * duration : null
-  const sbFrame = storyboard && hoverTime !== null ? getStoryboardFrame(storyboard, hoverTime) : null
+  const sbFrame = storyboard && hoverTime !== null ? storyboardFrame(storyboard, hoverTime, SB_SCALE) : null
 
   // Local file: generate the scrubbing thumbnail from the video itself by seeking a
   // hidden <video> to the hovered time (offline — no YouTube storyboard needed).
