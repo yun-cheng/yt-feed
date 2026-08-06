@@ -89,9 +89,10 @@ async def list_channels(
 @router.get("/{channel_id}/videos")
 async def channel_videos(
     channel_id: str,
-    window: str = Query(default="3d", description="Time window: 3d, 1w, 2w, 1m, ..."),
+    age: str = Query(default="", description="publish-age range in days, e.g. 0-30 or 3-14"),
+    window: str = Query(default="", description="legacy: 3d, 1w, ... — superseded by age"),
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
-    time_mode: str = Query(default="wide", description="narrow | wide"),
+    time_mode: str = Query(default="wide", description="legacy: narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     label: str = Query(default="", description="filter to videos carrying this title-label"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
@@ -100,7 +101,7 @@ async def channel_videos(
     db: AsyncSession = Depends(get_db),
 ):
     """Get ranked videos for a single channel, same as feed."""
-    from app.ranking import TimeWindow, rank_videos
+    from app.ranking import rank_videos, resolve_range
 
     # Get channel info
     chan_result = await db.execute(
@@ -125,7 +126,11 @@ async def channel_videos(
     )
     videos = list(vid_result.scalars().all())
 
-    ranked = rank_videos(videos, TimeWindow(window), {channel_id: channel.title}, sort=sort, time_mode=time_mode, channel_thumbnails={channel_id: channel.thumbnail_url})
+    try:
+        date_range = resolve_range(age, window or None, time_mode)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    ranked = rank_videos(videos, None, {channel_id: channel.title}, sort=sort, channel_thumbnails={channel_id: channel.thumbnail_url}, date_range=date_range)
 
     # Attach each video's title-derived labels (null = not labeled yet).
     labels_by_id = {v.youtube_id: v.title_labels for v in videos}
@@ -179,9 +184,8 @@ async def channel_videos(
             "label_vocab": label_vocab,
             "has_topics": has_topics,
         },
-        "window": window,
+        "age": f"{date_range[0].days}-{date_range[1].days}",
         "sort": sort,
-        "time_mode": time_mode,
         "videos": ranked[offset:offset + limit],
         "total": len(ranked),
         "offset": offset,

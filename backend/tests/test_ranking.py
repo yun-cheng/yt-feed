@@ -9,10 +9,13 @@ from app.ranking import (
     HOT_HOUR_OFFSET,
     LIKE_PCT_FALLBACK_PRIOR,
     LIKE_PCT_PSEUDO_VIEWS,
+    TICK_DAYS,
     TimeWindow,
     WINDOW_RANGES,
+    filter_by_range,
     filter_by_window,
     rank_videos,
+    resolve_range,
     score_video,
 )
 
@@ -93,6 +96,60 @@ def test_every_window_admits_a_video_at_its_own_upper_bound(window):
     outside = video("out", hours_ago=upper.total_seconds() / 3600 + 1)
     kept = {v.youtube_id for v in filter_by_window([inside, outside], window, "wide")}
     assert kept == {"in"}
+
+
+# ── resolve_range ────────────────────────────────────────────────────
+
+
+def test_an_age_range_becomes_two_offsets():
+    assert resolve_range("3-14") == (timedelta(days=3), timedelta(days=14))
+
+
+def test_the_slider_reaches_a_range_the_old_params_could_not():
+    """3d–2w ago: not anchored at 0, not one notch wide — unreachable before."""
+    videos = [video("recent", hours_ago=24), video("mid", hours_ago=24 * 8), video("old", hours_ago=24 * 40)]
+    kept = filter_by_range(videos, *resolve_range("3-14"))
+    assert [v.youtube_id for v in kept] == ["mid"]
+
+
+@pytest.mark.parametrize("window", list(TimeWindow))
+@pytest.mark.parametrize("mode", ["wide", "narrow"])
+def test_legacy_params_resolve_to_what_they_always_meant(window, mode):
+    """An old bookmark keeps selecting exactly the videos it used to."""
+    videos = [video(f"v{h}", hours_ago=h) for h in (1, 24 * 2, 24 * 5, 24 * 20, 24 * 200)]
+    legacy = filter_by_window(videos, window, mode)
+    viaage = filter_by_range(videos, *resolve_range(None, window.value, mode))
+    assert [v.youtube_id for v in legacy] == [v.youtube_id for v in viaage]
+
+
+def test_age_wins_over_the_legacy_params():
+    assert resolve_range("0-1", "1y", "narrow") == (timedelta(days=0), timedelta(days=1))
+
+
+def test_a_reversed_range_is_read_in_the_order_it_meant():
+    assert resolve_range("14-3") == resolve_range("3-14")
+
+
+def test_off_ladder_days_snap_to_the_nearest_tick():
+    assert resolve_range("0-6") == (timedelta(days=0), timedelta(days=7))
+    # A dead tie goes to the tighter window — the frontend breaks it the same way.
+    assert resolve_range("0-5") == (timedelta(days=0), timedelta(days=3))
+
+
+@pytest.mark.parametrize("bad", ["", None])
+def test_no_age_falls_back_to_the_legacy_default(bad):
+    assert resolve_range(bad) == (timedelta(days=0), timedelta(days=3))
+
+
+@pytest.mark.parametrize("bad", ["7-7", "abc", "3", "3-", "-3", "1-2-3"])
+def test_a_range_that_selects_nothing_is_rejected(bad):
+    with pytest.raises(ValueError):
+        resolve_range(bad)
+
+
+def test_every_tick_pairs_with_the_one_after_it():
+    for lo, hi in zip(TICK_DAYS, TICK_DAYS[1:]):
+        assert resolve_range(f"{lo}-{hi}") == (timedelta(days=lo), timedelta(days=hi))
 
 
 def test_member_only_videos_are_excluded():

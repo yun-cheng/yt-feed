@@ -64,16 +64,49 @@ def score_video(view_count: int, published_at: datetime) -> float:
     return view_count / (hours + HOT_HOUR_OFFSET)
 
 
-def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "wide") -> list[Video]:
-    """Filter videos to the given time window.
+# The ladder of day boundaries a window's edges may sit on — the same numbers
+# WINDOW_RANGES is built from, which is what lets the UI's two-handled slider
+# and the old (window, time_mode) pair mean the same things.
+TICK_DAYS = [0, 1, 3, 7, 14, 30, 90, 180, 365]
 
-    narrow (default): discrete non-overlapping bucket, e.g. 3d = 1d–3d ago
-    wide: accumulated from 0, e.g. 3d = 0–3d ago (everything up to the upper bound)
+
+def _nearest_tick(days: int) -> int:
+    return min(TICK_DAYS, key=lambda t: abs(t - days))
+
+
+def resolve_range(
+    age: str | None = None,
+    window: str | None = None,
+    time_mode: str = "wide",
+) -> tuple[timedelta, timedelta]:
+    """The (newer, older) offsets from now that a request's time filter means.
+
+    `age` is the current spelling — "3-14" for "published 3 to 14 days ago".
+    `window` + `time_mode` is what the UI sent before the slider; it still
+    resolves, so old bookmarks and any cached links keep working.
     """
+    if age:
+        try:
+            lo_s, hi_s = age.split("-", 1)
+            lo, hi = _nearest_tick(int(lo_s)), _nearest_tick(int(hi_s))
+        except ValueError:
+            raise ValueError(f"malformed age range: {age!r}") from None
+        if lo > hi:
+            lo, hi = hi, lo
+        if lo == hi:
+            raise ValueError(f"empty age range: {age!r}")
+        return timedelta(days=lo), timedelta(days=hi)
+
+    win = TimeWindow(window) if window else TimeWindow.THREE_DAYS
+    lower_offset, upper_offset = WINDOW_RANGES[win]
+    return (lower_offset if time_mode == "narrow" else timedelta(0)), upper_offset
+
+
+def filter_by_range(videos: list[Video], lower_offset: timedelta, upper_offset: timedelta) -> list[Video]:
+    """Filter videos to publish times between two offsets back from now."""
     now = datetime.now(timezone.utc)
-    lower_offset, upper_offset = WINDOW_RANGES[window]
     lower = now - upper_offset  # older bound (inclusive)
-    upper = now if time_mode == "wide" else now - lower_offset  # newer bound (exclusive)
+    upper = now - lower_offset  # newer bound (exclusive)
 
     result = []
     for v in videos:
@@ -88,7 +121,16 @@ def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "
     return result
 
 
-def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str, str] | None = None, sort: str = "likes", time_mode: str = "wide", channel_thumbnails: dict[str, str] | None = None) -> list[dict]:
+def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "wide") -> list[Video]:
+    """Filter videos to the given time window.
+
+    narrow: discrete non-overlapping bucket, e.g. 3d = 1d–3d ago
+    wide (default): accumulated from 0, e.g. 3d = 0–3d ago
+    """
+    return filter_by_range(videos, *resolve_range(window=window.value, time_mode=time_mode))
+
+
+def rank_videos(videos: list[Video], window: TimeWindow | None = None, channel_names: dict[str, str] | None = None, sort: str = "likes", time_mode: str = "wide", channel_thumbnails: dict[str, str] | None = None, date_range: tuple[timedelta, timedelta] | None = None) -> list[dict]:
     """
     Rank videos filtered by time window, sorted by the given criteria.
 
@@ -102,8 +144,11 @@ def rank_videos(videos: list[Video], window: TimeWindow, channel_names: dict[str
 
     Returns list of dicts with score included.
     channel_names: optional dict of channel_id → channel_title.
+    date_range: a resolved (newer, older) pair, which wins over window/time_mode.
     """
-    filtered = filter_by_window(videos, window, time_mode)
+    if date_range is None:
+        date_range = resolve_range(window=window.value if window else None, time_mode=time_mode)
+    filtered = filter_by_range(videos, *date_range)
     ranked = []
     for v in filtered:
         ranked.append({

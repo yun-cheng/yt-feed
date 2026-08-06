@@ -576,9 +576,10 @@ async def set_channel_tags(
 @router.get("/feed")
 async def feed_by_tags(
     tags: str = "",
-    window: str = "3d",
+    age: str = Query(default="", description="publish-age range in days, e.g. 0-3 or 3-14"),
+    window: str = Query(default="", description="legacy: 3d, 1w, ... — superseded by age"),
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
-    time_mode: str = Query(default="wide", description="narrow | wide"),
+    time_mode: str = Query(default="wide", description="legacy: narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     include_hidden: bool = Query(default=False, description="include channels hidden from home (peek mode)"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
@@ -594,7 +595,7 @@ async def feed_by_tags(
     """
     from datetime import datetime
 
-    from app.ranking import WINDOW_RANGES, TimeWindow, rank_videos
+    from app.ranking import rank_videos, resolve_range
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
@@ -634,8 +635,11 @@ async def feed_by_tags(
     # Ranking (score / like%) depends on the whole windowed set, so we must fetch
     # and rank all of it, then return just the requested page. 10000 is a safety
     # cap far above any realistic window.
-    tw = TimeWindow(window)
-    cutoff = datetime.utcnow() - WINDOW_RANGES[tw][1]
+    try:
+        date_range = resolve_range(age, window or None, time_mode)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from None
+    cutoff = datetime.utcnow() - date_range[1]
     stmt = select(Video).where(
         Video.channel_id.in_(channel_ids),
         Video.published_at >= cutoff,
@@ -663,11 +667,10 @@ async def feed_by_tags(
         }
         all_videos = [v for v in all_videos if hist.get(v.youtube_id, "unwatched") in wanted]
 
-    ranked = rank_videos(list(all_videos), tw, chan_titles, sort=sort, time_mode=time_mode, channel_thumbnails=chan_thumbs)
+    ranked = rank_videos(list(all_videos), None, chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
     return {
-        "window": window,
+        "age": f"{date_range[0].days}-{date_range[1].days}",
         "sort": sort,
-        "time_mode": time_mode,
         "tags": tag_list,
         "watch": sorted(wanted),
         "videos": ranked[offset:offset + limit],
