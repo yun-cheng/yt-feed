@@ -294,6 +294,7 @@ hooks/
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
   ext.ts                          is the clean-embed extension installed?
+  quality.ts                      YouTube's quality names → "1080p"
   local.ts                        local-folder types + fetch helpers
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
   time.ts                         formatTime — the player clock
@@ -467,7 +468,8 @@ Other details:
     settled before the first player is built and must not change under one.
     Install or remove the extension, then reload.
   - YouTube's quality / speed / subtitle menus go with its bar. Our captions are
-    unaffected.
+    unaffected. The bar shows the **resolution** it settled on (see below), but
+    can't change it.
   - The scrub preview keeps its frames, from a different source. A file on disk
     is seeked directly; the embed's frames aren't ours to seek, so YouTube's
     **storyboard** sprite sheets stand in — the same `/api/feed/storyboard` the
@@ -676,6 +678,27 @@ cursor) **plus the bar's 12px gutter**, so at either extreme the popup's edge
 lands on the end of the track instead of flush in the corner of the video, which
 reads as clipped.
 
+The **resolution label** sits at the left of the right-hand button group —
+`[1080p] [pin] [fullscreen]`. A file on disk simply knows its own height; the
+embed only has YouTube's name for the quality it settled on, so `lib/quality.ts`
+translates ("large" is 480p, "medium" is 360p — nobody guesses those). It's
+polled with the clock rather than read once, because on auto the quality drifts
+with bandwidth. Names that mean "not yet" — `unknown` before playback starts,
+`auto` before it settles, anything unrecognised — hide the label rather than put
+a word where a number belongs.
+
+It is **read-only, and has to be.** `setPlaybackQuality` still exists on the
+player but has been a no-op for years (called with `hd1080`, the video stayed at
+640x360 — measured, not assumed). The setter that does work,
+`setPlaybackQualityRange`, is not proxied across the iframe boundary: it is
+`undefined` on a parent-side player instance, which carries 72 other functions.
+Only a script running *inside* the embed can reach it, so switching quality would
+have to go through the extension.
+
+Note this label only appears over the embed when the extension is installed,
+since it lives in our bar and YouTube's bar is used otherwise. Downloaded and
+local files always have it.
+
 Against the embed, the CC button and pin toggle still float over the player —
 its control bar is inside the iframe, out of reach — so both render in two
 placements from one definition (`captionControl` / `pinButton`).
@@ -703,6 +726,7 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
+| `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 
 Three jsdom gaps have to be papered over, and each is a stub rather than a

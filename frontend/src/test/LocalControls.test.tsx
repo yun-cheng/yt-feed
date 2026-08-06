@@ -136,8 +136,11 @@ function fakePlayer(over: Partial<PlayerApi> = {}) {
 }
 
 /** The bar over the embed, which is polled rather than event-driven. */
-function renderOverEmbed(props: Partial<Parameters<typeof LocalControls>[0]> = {}) {
-  const player = fakePlayer()
+function renderOverEmbed(
+  props: Partial<Parameters<typeof LocalControls>[0]> = {},
+  playerOver: Partial<PlayerApi> = {},
+) {
+  const player = fakePlayer(playerOver)
   const ref = createRef<PlayerApi | null>() as { current: PlayerApi | null }
   ref.current = player
   const out = render(
@@ -356,6 +359,48 @@ describe('LocalControls — the scrub preview', () => {
     const during = screen.getByTestId('scrub-storyboard').getAttribute('style')
     fireEvent.pointerLeave(track)
     expect(screen.getByTestId('scrub-storyboard').getAttribute('style')).toBe(during)
+  })
+})
+
+describe('LocalControls — the resolution label', () => {
+  it("shows YouTube's quality as a resolution over the embed", () => {
+    const { container } = renderOverEmbed({}, { getPlaybackQuality: () => 'hd1080' })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(container).toHaveTextContent('1080p')
+  })
+
+  it('shows nothing until the player has settled on one', () => {
+    // "unknown" is what the embed reports until playback starts. A label that
+    // flickers a word then a number is worse than one that arrives late.
+    const { container } = renderOverEmbed({}, { getPlaybackQuality: () => 'unknown' })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(container).not.toHaveTextContent(/\d+p/)
+  })
+
+  it("reads a file's own height instead of asking about quality", () => {
+    // A downloaded file is one resolution and simply knows it — there's no
+    // quality to report and localPlayer deliberately has no getPlaybackQuality.
+    const videoRef = createRef<HTMLVideoElement>() as { current: HTMLVideoElement | null }
+    const el = withDuration(videoEl(), 600)
+    Object.defineProperty(el, 'videoHeight', { value: 720, configurable: true })
+    videoRef.current = el
+    const { container } = render(
+      <LocalControls videoRef={videoRef} src="/x" hovering onFullscreen={vi.fn()} />
+    )
+    expect(container).toHaveTextContent('720p')
+  })
+
+  it('sits left of the controls the page supplies', () => {
+    // Order in the right-hand group: resolution, then the page's own buttons
+    // (the pin), then fullscreen.
+    const { container } = renderOverEmbed(
+      { extraControls: <button>PIN</button> },
+      { getPlaybackQuality: () => 'hd720' }
+    )
+    act(() => { vi.advanceTimersByTime(300) })
+    const text = container.textContent ?? ''
+    expect(text.indexOf('720p')).toBeGreaterThan(-1)
+    expect(text.indexOf('720p')).toBeLessThan(text.indexOf('PIN'))
   })
 })
 

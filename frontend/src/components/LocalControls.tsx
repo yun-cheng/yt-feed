@@ -14,6 +14,7 @@ import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
 import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
+import { qualityLabel, heightLabel } from '../lib/quality'
 import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
 
@@ -63,6 +64,10 @@ export type PlayerApi = {
   getCurrentTime: () => number
   getDuration: () => number
   seekTo: (seconds: number, allowSeekAhead: boolean) => void
+  // YouTube's own name for the quality it settled on ("hd1080", "large", …).
+  // Optional: the embed player has it natively, a <video> has a real height
+  // instead (see localPlayer, which leaves this off deliberately).
+  getPlaybackQuality?: () => string
 }
 
 /** Wrap a <video> element in the PlayerApi, matching YouTube's conventions:
@@ -128,6 +133,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   const [duration, setDuration] = useState(0)
   const [paused, setPaused] = useState(true)
   const [muted, setMuted] = useState(false)
+  const [resolution, setResolution] = useState<string | null>(null)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
   // The slider reads and writes the SHARED volume (the same store the previews
   // and the embed use), so a level set here follows you to the next video.
@@ -158,6 +164,12 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
       setPaused(s !== 1 && s !== 3)
       setMuted(p.isMuted())
       setDuration(p.getDuration())
+      // What's actually on screen. A file knows its own height; the embed only
+      // has YouTube's name for the quality it settled on, which drifts on its
+      // own while it's on auto — so this is polled with everything else rather
+      // than read once.
+      const vid = videoRef?.current
+      setResolution(vid ? heightLabel(vid.videoHeight) : qualityLabel(p.getPlaybackQuality?.()))
     }
     sync()
     const el = videoRef?.current
@@ -366,6 +378,19 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         </span>
         {leftControls}
         <div className="ml-auto flex items-center gap-1">
+          {/* What you're actually watching. Read-only: YouTube's working quality
+              setter isn't reachable from outside the iframe (see lib/quality),
+              so offering a click here would be offering something we can't do.
+              Hidden entirely until the player has settled on an answer — a label
+              that flickers "auto" then a number is worse than arriving late. */}
+          {resolution && (
+            <span
+              className="select-none rounded px-1.5 py-0.5 text-xs font-medium tabular-nums text-white/90"
+              title={videoRef ? 'Resolution of the file' : "YouTube's current quality"}
+            >
+              {resolution}
+            </span>
+          )}
           {extraControls}
           <button
             onClick={onFullscreen}
