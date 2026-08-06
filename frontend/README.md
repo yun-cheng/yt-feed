@@ -295,6 +295,7 @@ lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
   ext.ts                          is the clean-embed extension installed?
   local.ts                        local-folder types + fetch helpers
+  storyboard.ts                   YouTube's scrub sprite sheets → one frame
   time.ts                         formatTime — the player clock
 ```
 
@@ -467,9 +468,11 @@ Other details:
     Install or remove the extension, then reload.
   - YouTube's quality / speed / subtitle menus go with its bar. Our captions are
     unaffected.
-  - The scrub preview has no frames over the embed (they aren't ours to seek), so
-    it narrows to a timestamp. The storyboard endpoint the cards use could fill
-    it in.
+  - The scrub preview keeps its frames, from a different source. A file on disk
+    is seeked directly; the embed's frames aren't ours to seek, so YouTube's
+    **storyboard** sprite sheets stand in — the same `/api/feed/storyboard` the
+    cards use, scaled to the popup's width so the two look identical. A video
+    with no storyboards falls back to the timestamp alone.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
   embed's own captions can't be positioned or styled). The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
@@ -653,6 +656,16 @@ having the file, and fetching them would defeat playing offline). The popup hold
 its last position and timestamp while it fades out; reading the live values would
 snap it to the middle showing `0:00` on the way out.
 
+Over the **embed** there is no file to seek, so the same popup is filled from
+YouTube's storyboards instead (`lib/storyboard.ts`): a few JPEGs, each a grid of
+thumbnails, positioned by `background-position` with `background-size` set to the
+whole sheet. Frame size differs per video, so the scale is derived from the
+popup's width (`scaleToWidth`) rather than fixed — otherwise the two previews
+would be different sizes. Tile and sheet dimensions are **rounded together**, or
+each tile shows a sliver of its neighbour. `WatchPage` only fetches the sheets on
+the path that can show them; hovering the card on the way in usually warmed the
+same server-side cache already.
+
 Against the embed, the CC button and pin toggle still float over the player —
 its control bar is inside the iframe, out of reach — so both render in two
 placements from one definition (`captionControl` / `pinButton`).
@@ -679,6 +692,7 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
+| `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 
 Three jsdom gaps have to be papered over, and each is a stub rather than a

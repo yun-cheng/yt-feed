@@ -10,6 +10,7 @@ import LocalControls, { localPlayer } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
+import type { StoryboardInfo } from '../lib/storyboard'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
 // same one a downloaded file gets.
@@ -19,9 +20,7 @@ import { hasCleanEmbed } from '../lib/ext'
 // controls that no longer exist, and the sheet that watches for mouse movement
 // can stay put instead of dodging YouTube's buttons.
 //
-// What it costs: YouTube's quality / speed / subtitle menus go with them, and the
-// scrub preview has no frames to show (the storyboard endpoint the cards use
-// could fill that in later).
+// What it costs: YouTube's quality / speed / subtitle menus go with them.
 //
 // Gated on the extension because `controls=0` alone isn't enough: it takes away
 // the control BAR and leaves the title, avatar, centre play button and share row
@@ -708,6 +707,24 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       .catch(() => { /* no description box */ })
     return () => { cancelled = true }
   }, [videoId])
+
+  // Scrub-preview frames for the embed. Only fetched where they can be shown:
+  // our own bar, over a video we're streaming rather than playing off disk (a
+  // file seeks its own frames, which are better and free). Hovering the card is
+  // almost always how you got here and warms the same server-side cache, so this
+  // is usually a hit rather than another yt-dlp extraction. An empty object
+  // means the video has no storyboards — the popup falls back to the timestamp.
+  const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
+  useEffect(() => {
+    setStoryboard(null)
+    if (!EMBED_OWN_CONTROLS || playLocal || !downloadsKnown) return
+    let cancelled = false
+    apiFetch(`/api/feed/storyboard/${videoId}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => { if (!cancelled && d?.fragment_urls?.length) setStoryboard(d) })
+      .catch(() => { /* timestamp-only preview */ })
+    return () => { cancelled = true }
+  }, [videoId, playLocal, downloadsKnown])
 
   // Prefetch the transcript so `c` toggles instantly. [] = no captions available.
   // Refetches when the chosen language changes; the response's `lang` is the base
@@ -1650,6 +1667,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
              inside the iframe. See extension/embed.css. */
           <LocalControls
             player={playerRef}
+            storyboard={storyboard}
             hovering={chromeAwake}
             onFullscreen={toggleFullscreen}
             leftControls={captionControl}

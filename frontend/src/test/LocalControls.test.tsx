@@ -9,6 +9,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
 import LocalControls, { localPlayer } from '../components/LocalControls'
 import type { PlayerApi } from '../components/LocalControls'
+import type { StoryboardInfo } from '../lib/storyboard'
+
+// Two sheets, 5x5 tiles each, over the fakePlayer's 600s — one frame per 12s.
+const SB: StoryboardInfo = {
+  rows: 5,
+  cols: 5,
+  frame_width: 160,
+  frame_height: 90,
+  fragment_urls: ['https://i.ytimg.com/sb/vid/0.jpg', 'https://i.ytimg.com/sb/vid/1.jpg'],
+  fragment_duration: 300,
+}
 
 // ── localPlayer: the adapter ─────────────────────────────────────────
 
@@ -291,9 +302,42 @@ describe('LocalControls — the scrub preview', () => {
     expect(preview).toBeInTheDocument()
   })
 
-  it('shows only a timestamp over the embed, whose frames are not ours to seek', () => {
-    const { container } = renderOverEmbed()
+  it('shows a storyboard frame over the embed, whose frames are not ours to seek', () => {
+    const { container } = renderOverEmbed({ storyboard: SB })
+    act(() => { vi.advanceTimersByTime(300) })
+    fireEvent.pointerMove(bar(container), { clientX: 100, pointerId: 1 })
+    // 25% of 600s = 150s = frame 12 of the first sheet: third column, third row,
+    // at the scale that renders it 176px across.
+    const frame = screen.getByTestId('scrub-storyboard')
+    expect(frame).toHaveStyle({
+      width: '176px',
+      height: '99px',
+      backgroundImage: `url(${SB.fragment_urls[0]})`,
+      backgroundPosition: '-352px -198px',
+      backgroundSize: '880px 495px',
+    })
+    // Never a <video> here: there's no file to seek, which is the whole reason
+    // the storyboard exists.
     expect(container.querySelector('video')).toBeNull()
+  })
+
+  it('falls back to the timestamp alone when the video has no storyboard', () => {
+    const { container } = renderOverEmbed()
+    expect(screen.queryByTestId('scrub-storyboard')).toBeNull()
+    expect(container.querySelector('video')).toBeNull()
+  })
+
+  it('keeps the frame while the popup fades out', () => {
+    // The popup fades rather than vanishing, so it still renders for a beat
+    // after the cursor leaves. Reading the live (now null) hover would snap the
+    // picture back to 0:00 on the way out, which reads as a glitch.
+    const { container } = renderOverEmbed({ storyboard: SB })
+    act(() => { vi.advanceTimersByTime(300) })
+    const track = bar(container)
+    fireEvent.pointerMove(track, { clientX: 100, pointerId: 1 })
+    const during = screen.getByTestId('scrub-storyboard').getAttribute('style')
+    fireEvent.pointerLeave(track)
+    expect(screen.getByTestId('scrub-storyboard').getAttribute('style')).toBe(during)
   })
 })
 

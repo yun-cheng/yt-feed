@@ -12,8 +12,14 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
+import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
+import type { StoryboardInfo } from '../lib/storyboard'
 import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
+
+// The scrub popup's width. Both sources render into it: the local <video> at
+// 176x99, and a storyboard frame scaled to match.
+const PREVIEW_W = 176
 
 // The slice of the YouTube IFrame API the rest of this component drives the
 // player through. A downloaded file is played by a plain <video>, so it gets an
@@ -70,11 +76,15 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  watch page keeps YouTube's controls and never renders this bar over an embed
  *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
  *  modes — there is no leftover chrome for it to paint over. */
-export default function LocalControls({ videoRef, player, src, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
-  // One of these two. `videoRef` also enables the scrub preview.
+export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
+  // One of these two. `videoRef` + `src` give the scrub preview its frames
+  // directly; over the embed, `storyboard` supplies them instead.
   videoRef?: RefObject<HTMLVideoElement | null>
   player?: RefObject<PlayerApi | null>
   src?: string
+  // YouTube's scrub sprite sheets, for the embed. Null until they arrive (or if
+  // the video has none) — the preview falls back to the timestamp alone.
+  storyboard?: StoryboardInfo | null
   hovering: boolean
   onFullscreen: () => void
   // Controls the page owns, placed in the row instead of floating over the
@@ -167,6 +177,14 @@ export default function LocalControls({ videoRef, player, src, hovering, onFulls
   const show = hovering || paused
   const progress = duration ? time / duration : 0
 
+  // The frame under the cursor, cut from YouTube's sprite sheet. Follows
+  // `shownTime` rather than `hoverTime` so it holds its picture while the popup
+  // fades out, the same way the timestamp does.
+  const sbFrame = storyboard && !src
+    ? storyboardFrame(storyboard, shownTime, scaleToWidth(storyboard, PREVIEW_W))
+    : null
+  const hasFrame = Boolean(src) || Boolean(sbFrame)
+
   return (
     <div
       className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
@@ -176,26 +194,43 @@ export default function LocalControls({ videoRef, player, src, hovering, onFulls
       {/* Scrub preview — a fixed-width popup so it keeps its size when clamped
           against either edge. Sits clear of the bar: the container's bottom
           padding, the button row and the bar's own hit area come to ~4.5rem, so
-          anything shorter puts the timestamp on top of the track. Over the embed
-          there's no frame to show, so it narrows to just the timestamp. */}
+          anything shorter puts the timestamp on top of the track. With no frame
+          to show it narrows to just the timestamp, and sits lower to match. */}
       <div
         className="pointer-events-none absolute transition-opacity duration-75"
         style={{
-          bottom: src ? '4.75rem' : '3.25rem',
-          width: 176,
+          bottom: hasFrame ? '4.75rem' : '3.25rem',
+          width: PREVIEW_W,
           left: `clamp(88px, ${(shownRatio * 100).toFixed(2)}%, calc(100% - 88px))`,
           transform: 'translateX(-50%)',
           opacity: hoverRatio !== null ? 1 : 0,
         }}
       >
-        {src && (
+        {src ? (
           <video
             ref={scrubRef}
             src={src}
             muted
             preload="auto"
             className="rounded border border-white/20 bg-black object-cover shadow-lg"
-            style={{ width: 176, height: 99, maxWidth: 'none' }}
+            style={{ width: PREVIEW_W, height: 99, maxWidth: 'none' }}
+          />
+        ) : sbFrame && (
+          /* The same popup over the embed, its frame cut out of one of YouTube's
+             sprite sheets. Scaled to the popup's width so it lines up with the
+             <video> above — sheets differ in frame size between videos, so a
+             fixed scale would not. */
+          <div
+            data-testid="scrub-storyboard"
+            className="rounded border border-white/20 bg-black shadow-lg"
+            style={{
+              width: sbFrame.fw,
+              height: sbFrame.fh,
+              backgroundImage: `url(${sbFrame.url})`,
+              backgroundPosition: `${sbFrame.bgX}px ${sbFrame.bgY}px`,
+              backgroundRepeat: 'no-repeat',
+              backgroundSize: `${sbFrame.sheetW}px ${sbFrame.sheetH}px`,
+            }}
           />
         )}
         <div className="mt-1 text-center">
