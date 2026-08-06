@@ -666,6 +666,16 @@ each tile shows a sliver of its neighbour. `WatchPage` only fetches the sheets o
 the path that can show them; hovering the card on the way in usually warmed the
 same server-side cache already.
 
+`PREVIEW_W` (240) is the **one** number that sizes all of this — the popup, the
+local `<video>`, the storyboard scale, and how far the popup may travel before it
+stops. It caps out around there because the storyboard does: sheets arrive at a
+fixed tile size (320×180 is typical), and scaling past that only magnifies JPEG.
+A file on disk has no such ceiling, but one number keeps both sources in the same
+popup, which is worth more. The stop is `PREVIEW_W / 2` (it's centred on the
+cursor) **plus the bar's 12px gutter**, so at either extreme the popup's edge
+lands on the end of the track instead of flush in the corner of the video, which
+reads as clipped.
+
 Against the embed, the CC button and pin toggle still float over the player —
 its control bar is inside the iframe, out of reach — so both render in two
 placements from one definition (`captionControl` / `pinButton`).
@@ -687,7 +697,7 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 | File | Covers |
 |------|--------|
 | `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\`, the add-toggle tolerance, the loop tick, the marks on the bar |
-| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source |
+| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, and the scrub popup (its frame, and where it stops at the ends) |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
@@ -700,6 +710,12 @@ behaviour change: `isContentEditable` is not implemented (so the shortcut guard'
 own property is set by hand), there is no pointer capture (the scrub handler
 takes it before seeking, and an unstubbed call throws before the seek), and every
 element measures zero, so the progress bar is given a rect.
+
+A fourth can't be stubbed, only worked around: **jsdom discards `clamp()`**. Set
+one and the property reads back `''` with the style attribute `null`. So nothing
+positioned that way can be asserted through the DOM — a test that seems to pass
+is measuring something else. That's why `previewLeft` is exported from
+`LocalControls` and its CSS asserted directly.
 
 `VideoCard.test.tsx` has an `it.fails` pinning a **known bug**: a modifier-click
 opens the in-app watch overlay as well as the YouTube tab, because the anchor's
