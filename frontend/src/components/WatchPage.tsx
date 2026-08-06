@@ -1505,14 +1505,20 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       )}
       <button
         onClick={() => setShowCaptionMenu((o) => !o)}
-        // In our row it takes the same 48x40 box as every other button; over the
-        // embed it keeps the size that lines it up with the iframe's own row.
-        className={`group relative flex items-center justify-center text-white ${ownBar ? 'h-10 w-12' : 'h-11 w-11'}`}
+        // In our row it IS a bar button — the same BAR_BUTTON as play, mute and
+        // fullscreen, including its hover pill. Only the floating placement over
+        // YouTube's own chrome keeps a bespoke box, because there it has to line
+        // up with the iframe's row rather than ours.
+        className={ownBar
+          ? `group relative ${BAR_BUTTON}`
+          : 'group relative flex h-11 w-11 items-center justify-center text-white'}
         title="Subtitles / captions"
         aria-pressed={showCaptions}
       >
-        {/* Material-style hover circle, centered in the hit area. */}
-        <span className={`pointer-events-none absolute inset-0 m-auto rounded-full transition-colors group-hover:bg-white/10 ${ownBar ? 'h-10 w-10' : 'h-10 w-10'}`} />
+        {/* Floating placement only: BAR_BUTTON brings its own hover pill. */}
+        {!ownBar && (
+          <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
+        )}
         {/* YouTube's exact CC glyph (filled), sized to match the embed's
             own bottom-left buttons. A stroke-drawn version reads thinner and
             smaller even at the same 24px viewBox. */}

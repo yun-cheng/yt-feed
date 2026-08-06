@@ -692,9 +692,20 @@ desktop player at 1280x720 rather than guessed at:
 The one that isn't obvious is the gap: YouTube has **none**. The rhythm comes
 from padding *inside* each wide button, which is why its row reads as roomy while
 staying compact — and why the hit target is far larger than the glyph suggests.
-Small buttons with gaps between them get both halves wrong. `BAR_BUTTON` is that
-box, exported because `WatchPage` supplies buttons into this row (captions, pin,
-open-on-YouTube) that have to match.
+Small buttons with gaps between them get both halves wrong.
+
+The hover affordance is theirs too, read off the stylesheet rather than eyed:
+`.ytp-right-controls .ytp-button::before` is a 48px pill at `border-radius: 40px`
+filled with `rgba(255,255,255,.1)` — `rounded-full` + `bg-white/10` on a box this
+shape. Not a small rounded rect, and not a circle (YouTube only goes circular
+below its xsmall breakpoint).
+
+`BAR_BUTTON` is that button, and **every button in the row uses it** — including
+the ones `WatchPage` supplies (captions, pin, open-on-YouTube). The caption
+button keeps only what is genuinely its own: the active underline, and, in its
+floating placement over YouTube's chrome, a bespoke box that lines up with the
+iframe's row instead of ours. Re-stating the numbers per button is how they
+drift apart; that is what this constant exists to prevent.
 
 The **resolution label** sits at the left of the right-hand button group —
 `[1080p] [pin] [fullscreen]`. A file on disk simply knows its own height; the

@@ -28,11 +28,18 @@ import type { Bookmark, Loop } from './PlayerMarks'
  * compact, and why the hit target is far bigger than it looks. A row of small
  * buttons with gaps between them gets both halves of that wrong.
  *
- * Exported because the watch page supplies buttons of its own into this row
- * (the caption menu, the pin, open-on-YouTube) and they have to match.
+ * The hover affordance is theirs too, read off the stylesheet rather than eyed:
+ * `.ytp-right-controls .ytp-button::before` is a 48px-wide pill at
+ * `border-radius: 40px` filled with `rgba(255,255,255,.1)` — a stadium, which is
+ * `rounded-full` on a box this shape. Not a small rounded rect, and not a circle
+ * (YouTube only goes circular below its xsmall width breakpoint).
+ *
+ * Exported, and USED, by everything in this row — including the buttons the
+ * watch page supplies (the caption menu, the pin, open-on-YouTube). Matching
+ * these numbers by hand in each place is how they drift apart.
  */
 export const BAR_BUTTON =
-  'flex h-10 w-12 shrink-0 items-center justify-center rounded text-white transition-colors hover:bg-white/10'
+  'flex h-10 w-12 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10'
 
 // The scrub popup's size. Both sources render into it: the local <video>, and a
 // storyboard frame scaled to match (see `sbFrame` below).
