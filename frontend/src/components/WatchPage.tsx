@@ -6,7 +6,7 @@ import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
-import LocalControls, { localPlayer } from './LocalControls'
+import LocalControls, { localPlayer, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
@@ -1505,12 +1505,14 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       )}
       <button
         onClick={() => setShowCaptionMenu((o) => !o)}
-        className={`group relative flex items-center justify-center text-white ${ownBar ? 'h-9 w-9' : 'h-11 w-11'}`}
+        // In our row it takes the same 48x40 box as every other button; over the
+        // embed it keeps the size that lines it up with the iframe's own row.
+        className={`group relative flex items-center justify-center text-white ${ownBar ? 'h-10 w-12' : 'h-11 w-11'}`}
         title="Subtitles / captions"
         aria-pressed={showCaptions}
       >
         {/* Material-style hover circle, centered in the hit area. */}
-        <span className={`pointer-events-none absolute inset-0 m-auto rounded-full transition-colors group-hover:bg-white/10 ${ownBar ? 'h-8 w-8' : 'h-10 w-10'}`} />
+        <span className={`pointer-events-none absolute inset-0 m-auto rounded-full transition-colors group-hover:bg-white/10 ${ownBar ? 'h-10 w-10' : 'h-10 w-10'}`} />
         {/* YouTube's exact CC glyph (filled), sized to match the embed's
             own bottom-left buttons. A stroke-drawn version reads thinner and
             smaller even at the same 24px viewBox. */}
@@ -1520,7 +1522,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
         {/* Active indicator: a YouTube-style underline (no background
             circle, to match the embed's bare share / watch-later buttons). */}
         {showCaptions && (
-          <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[3px]' : 'bottom-[7px]'}`} />
+          <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[5px]' : 'bottom-[7px]'}`} />
         )}
       </button>
     </div>
@@ -1532,17 +1534,17 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       // Over the embed: a pill in the bottom-right corner, on the button-row
       // line so it clears the progress scrubber. In our bar: a plain button.
       className={ownBar
-        ? 'rounded p-1 text-white hover:bg-white/10'
+        ? BAR_BUTTON
         : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
       title={pinned ? 'Unpin — scroll the whole page' : 'Pin — keep the video in view'}
       aria-pressed={pinned}
     >
       {pinned ? (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
           <path d="M16 3a1 1 0 0 1 .117 1.993L16 5v4.764l1.447 2.895c.55 1.098-.2 2.38-1.41 2.34L16 15h-3v5a1 1 0 0 1-1.993.117L11 20v-5H8c-1.23.05-2.02-1.2-1.51-2.28l.063-.125L8 9.764V5a1 1 0 0 1-.117-1.993L8 3h8z" />
         </svg>
       ) : (
-        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v5M8 9.5V5h8v4.5l1.5 3H6.5L8 9.5z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
         </svg>
@@ -1572,11 +1574,11 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
       // over YouTube's chrome — there sitting left of the pin, the only other
       // thing in that corner.
       className={ownBar
-        ? 'rounded p-1 text-white hover:bg-white/10'
+        ? BAR_BUTTON
         : 'absolute bottom-2 right-12 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
       title="Open on YouTube at this moment"
     >
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
         <path d="M23.5 6.2a3 3 0 0 0-2.12-2.12C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.53A3 3 0 0 0 .5 6.2C0 8.08 0 12 0 12s0 3.92.5 5.8a3 3 0 0 0 2.12 2.12c1.88.53 9.38.53 9.38.53s7.5 0 9.38-.53a3 3 0 0 0 2.12-2.12C24 15.92 24 12 24 12s0-3.92-.5-5.8zM9.55 15.57V8.43L15.82 12l-6.27 3.57z" />
       </svg>
     </button>
@@ -1813,7 +1815,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
                 onClick={() => setShowSavePanel((o) => !o)}
                 className="flex items-center gap-2 rounded-full bg-[#272727] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f3f3f] transition-colors"
               >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
                 </svg>
                 Save

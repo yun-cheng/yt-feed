@@ -678,6 +678,24 @@ cursor) **plus the bar's 12px gutter**, so at either extreme the popup's edge
 lands on the end of the track instead of flush in the corner of the video, which
 reads as clipped.
 
+**The bar's metrics are YouTube's**, measured off `.ytp-chrome-bottom` on the
+desktop player at 1280x720 rather than guessed at:
+
+| | value |
+|---|---|
+| button box | **48x40**, and **no gap between them** |
+| icon glyph | 24px svg, ~18–22px of drawing |
+| clock | **14px**, 8px padding |
+| progress track | **6px** tall, **8px** clear of the buttons |
+| side gutter | **12px** |
+
+The one that isn't obvious is the gap: YouTube has **none**. The rhythm comes
+from padding *inside* each wide button, which is why its row reads as roomy while
+staying compact — and why the hit target is far larger than the glyph suggests.
+Small buttons with gaps between them get both halves wrong. `BAR_BUTTON` is that
+box, exported because `WatchPage` supplies buttons into this row (captions, pin,
+open-on-YouTube) that have to match.
+
 The **resolution label** sits at the left of the right-hand button group —
 `[1080p] [pin] [fullscreen]`. A file on disk simply knows its own height; the
 embed only has YouTube's name for the quality it settled on, so `lib/quality.ts`

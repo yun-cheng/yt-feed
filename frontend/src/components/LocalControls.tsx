@@ -18,6 +18,22 @@ import { qualityLabel, heightLabel } from '../lib/quality'
 import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
 
+/**
+ * One control-bar button, sized the way YouTube sizes its own.
+ *
+ * Measured off the desktop player at 1280x720 rather than guessed: every button
+ * in `.ytp-chrome-bottom` is a **48x40 box with NO gap between them** and a
+ * ~20px glyph centred inside. The rhythm comes from padding *within* each
+ * button, not space between — which is why the row reads as roomy while staying
+ * compact, and why the hit target is far bigger than it looks. A row of small
+ * buttons with gaps between them gets both halves of that wrong.
+ *
+ * Exported because the watch page supplies buttons of its own into this row
+ * (the caption menu, the pin, open-on-YouTube) and they have to match.
+ */
+export const BAR_BUTTON =
+  'flex h-10 w-12 shrink-0 items-center justify-center rounded text-white transition-colors hover:bg-white/10'
+
 // The scrub popup's size. Both sources render into it: the local <video>, and a
 // storyboard frame scaled to match (see `sbFrame` below).
 //
@@ -282,7 +298,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           its horizontal edges match the track's). */}
       <div
         ref={barRef}
-        className="group/bar cursor-pointer py-2"
+        className="group/bar cursor-pointer py-2 pb-2"
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId)
           draggingRef.current = true
@@ -300,7 +316,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         onPointerUp={() => { draggingRef.current = false }}
       >
         {/* Thickens on hover, YouTube-style, to make the target read as grabbable. */}
-        <div className="relative h-1 rounded-full bg-white/30 transition-all group-hover/bar:h-[5px]">
+        <div className="relative h-1.5 rounded-full bg-white/30 transition-all group-hover/bar:h-2">
           <div className="absolute inset-y-0 left-0 rounded-full bg-red-500" style={{ width: `${progress * 100}%` }} />
           {/* Bookmarks and the A–B loop, on the track they're positions on.
               Clicking a mark seeks to the exact moment it marks rather than to
@@ -331,10 +347,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
 
       {/* Play / mute / clock on the left, fullscreen on the right. Everything
           here also has a keyboard shortcut (k, m, f) — see the key handler. */}
-      <div className="flex items-center gap-3 text-white">
+      <div className="flex items-center text-white">
         <button
           onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
-          className="rounded p-1 hover:bg-white/10"
+          className={BAR_BUTTON}
           title={paused ? 'Play (k)' : 'Pause (k)'}
         >
           <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -347,7 +363,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         <div className="group/vol flex items-center">
           <button
             onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
-            className="rounded p-1 hover:bg-white/10"
+            className={BAR_BUTTON}
             title={muted ? 'Unmute (m)' : 'Mute (m)'}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -373,14 +389,15 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-16 group-hover/vol:opacity-100 focus:w-16 focus:opacity-100"
           />
         </div>
-        <span className="text-xs tabular-nums text-white/90">
+        {/* 14px and 8px of padding, both YouTube's. */}
+        <span className="px-2 text-sm tabular-nums text-white/90">
           {formatTime(time)} / {formatTime(duration)}
         </span>
         {leftControls}
-        {/* Same gap-3 as the left group, so the bar keeps one rhythm across it.
-            These sat at gap-1 while there were only two of them; with four the
-            row read as one crowded lump. */}
-        <div className="ml-auto flex items-center gap-3">
+        {/* No gap, like YouTube's: each button carries its own padding (see
+            BAR_BUTTON), which spaces the row evenly and keeps the hit targets
+            full-size. */}
+        <div className="ml-auto flex items-center">
           {/* What you're actually watching. Read-only: YouTube's working quality
               setter isn't reachable from outside the iframe (see lib/quality),
               so offering a click here would be offering something we can't do.
@@ -388,7 +405,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               that flickers "auto" then a number is worse than arriving late. */}
           {resolution && (
             <span
-              className="select-none rounded px-1.5 py-0.5 text-xs font-medium tabular-nums text-white/90"
+              className="select-none px-2 text-sm tabular-nums text-white/90"
               title={videoRef ? 'Resolution of the file' : "YouTube's current quality"}
             >
               {resolution}
@@ -397,7 +414,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           {extraControls}
           <button
             onClick={onFullscreen}
-            className="rounded p-1 hover:bg-white/10"
+            className={BAR_BUTTON}
             title="Fullscreen (f)"
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
