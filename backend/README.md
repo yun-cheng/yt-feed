@@ -698,6 +698,50 @@ These are the design decisions most likely to bite if you touch them:
   `asyncio.Lock` serialises the read-modify-write of the stored sentence map, so
   two overlapping block requests can't clobber each other's merge.
 
+- **Every `yt_dlp.YoutubeDL` must be context-managed** — `with ... as ydl:`, not
+  `ydl = ...`. Closing it is what returns its connections. The four
+  request-scoped call sites (`imported`, `downloads`, `feed` ×2) would survive
+  getting this wrong, because the process outlives a request by a lot; the two in
+  `fetcher.py` would not, and did not. See below.
+
+### The scan can take the whole machine's network down
+
+Worth knowing by name, because the symptom points nowhere near the cause.
+
+`fetcher.py` ran the scan's yt-dlp without closing it. Each connection to
+YouTube stayed in `CLOSE_WAIT` — one per channel, 141 channels, every 15
+minutes. After ~17 hours it held **16,350 sockets against an ephemeral range of
+16,384** (`net.inet.ip.portrange`, 49152–65535). Once that range is gone, no
+process on the machine can open an outbound connection, because there is no
+source port left to bind. That includes `curl`, the browser fetching `/api`, and
+the backend itself — whose logs filled with
+
+```
+[Errno 49] Can't assign requested address
+```
+
+against youtube.com, the leak having taken the ports it needed to keep working.
+
+What makes it confusing to diagnose:
+
+- **The servers look fine.** All three processes are alive, and `lsof`/`netstat`
+  still show them LISTENing. Nothing crashed. They simply can't be reached.
+- **The frontend may still answer** while the backend appears dead — Vite binds
+  `host: true` and gets reached over IPv6 (`::1`), which draws from a separate
+  pool. That asymmetry is a red herring, not a clue about the backend.
+- **`ulimit`/`maxfiles` look healthy.** The exhausted resource is ports, not file
+  descriptors, so every limit you'd normally check is well under.
+
+One line tells you whether this is what you're looking at:
+
+```bash
+netstat -an -p tcp | grep -c CLOSE_WAIT
+```
+
+A handful is normal; thousands means ports are being exhausted. Restarting the
+offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
+-sTCP:CLOSE_WAIT` names the culprit if it's something other than the scan.
+
 ---
 
 ## Key endpoints
