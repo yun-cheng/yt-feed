@@ -78,6 +78,9 @@ Component-level detail lives in the per-package READMEs:
   preview pool).
 - **[frontend/README.md](frontend/README.md)** — the SPA, History-API routing,
   and the hover-preview / mute logic.
+- **[extension/README.md](extension/README.md)** — the optional clean-embed
+  extension: what it hides, how the app detects it, and the one selector it
+  rests on.
 
 ## Setup
 
@@ -108,6 +111,17 @@ meilisearch --db-path data/meili --http-addr 127.0.0.1:7700 --no-analytics
 
 If Meilisearch isn't running, search returns nothing and everything else works.
 All three are also defined in [`.claude/launch.json`](.claude/launch.json).
+
+### Clean embed (optional)
+
+A companion browser extension strips YouTube's overlays — title, avatar, centre
+play button, share row, "More videos" — off embedded players, so the app draws
+its own control bar over bare video. Load `extension/` unpacked from
+`chrome://extensions` (Developer mode → Load unpacked) and reload the app.
+
+Everything works without it; the app keeps YouTube's own controls and lays the
+bookmark / A–B marks over them instead. See
+[`extension/README.md`](extension/README.md).
 
 ### AI tagging (optional)
 

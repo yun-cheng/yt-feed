@@ -1,0 +1,44 @@
+/*
+ * Everything YouTube draws over an embedded video, removed.
+ *
+ * `controls=0` (which the app already passes) turns off the control BAR and
+ * nothing else. What survives it is the channel avatar and title across the top,
+ * the "Includes paid promotion" badge, the centre play/pause button, and the
+ * share / watch-later / "More videos" / watch-on-YouTube row along the bottom.
+ * The embed API has no switch for any of it — `modestbranding` and `showinfo`
+ * were the old ones and both are dead.
+ *
+ * All of it lives in ONE container, `#player-controls`, which is a SIBLING of
+ * `#movie_player` rather than a child. That's the whole reason this file is
+ * three rules long, and it's also why hiding them is safe: the video element and
+ * the IFrame API live in the other subtree entirely, so nothing here can reach
+ * them. The app keeps driving the player exactly as it does without us.
+ *
+ * Verified against a live embed: clean while playing, while paused, and at the
+ * end of the video (no endscreen grid at all).
+ *
+ * NOTE: this is a single ID against a UI that YouTube rewrites. It already
+ * replaced the old `.ytp-chrome-top` / `.ytp-pause-overlay` / `.ytp-ce-element`
+ * markup wholesale — none of those elements exist any more. When it happens
+ * again this file silently stops matching and the chrome comes back UNDER the
+ * app's own bar, so treat "YouTube's controls reappeared" as a symptom of this
+ * file, not of the app. See extension/README.md.
+ */
+
+/* Title, avatar, paid-promotion badge, centre play/pause, share, watch later,
+   "More videos", watch on YouTube. */
+#player-controls {
+  display: none !important;
+}
+
+/* The sheets those buttons open (share targets, the related-videos drawer).
+   Hidden alongside their triggers so a stray tap can't raise one. */
+#bottom-sheet-wrapper {
+  display: none !important;
+}
+
+/* The "tap to unmute" popup. The app owns volume and starts muted deliberately
+   when autoplay demands it, so this only ever contradicts our own bar. */
+.ytp-unmute {
+  display: none !important;
+}
