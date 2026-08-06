@@ -307,14 +307,14 @@ describe('LocalControls — the scrub preview', () => {
     act(() => { vi.advanceTimersByTime(300) })
     fireEvent.pointerMove(bar(container), { clientX: 100, pointerId: 1 })
     // 25% of 600s = 150s = frame 12 of the first sheet: third column, third row,
-    // at the scale that renders it 176px across.
+    // at the scale that renders a 160px tile the popup's 240px across.
     const frame = screen.getByTestId('scrub-storyboard')
     expect(frame).toHaveStyle({
-      width: '176px',
-      height: '99px',
+      width: '240px',
+      height: '135px',
       backgroundImage: `url(${SB.fragment_urls[0]})`,
-      backgroundPosition: '-352px -198px',
-      backgroundSize: '880px 495px',
+      backgroundPosition: '-480px -270px',
+      backgroundSize: '1200px 675px',
     })
     // Never a <video> here: there's no file to seek, which is the whole reason
     // the storyboard exists.

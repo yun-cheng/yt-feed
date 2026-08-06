@@ -17,9 +17,16 @@ import type { StoryboardInfo } from '../lib/storyboard'
 import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
 
-// The scrub popup's width. Both sources render into it: the local <video> at
-// 176x99, and a storyboard frame scaled to match.
-const PREVIEW_W = 176
+// The scrub popup's size. Both sources render into it: the local <video>, and a
+// storyboard frame scaled to match (see `sbFrame` below).
+//
+// 240 rather than something larger because the storyboard has to stay sharp:
+// the sheets are served at a fixed tile size — 320x180 on the ones YouTube
+// hands us for a typical video — and scaling past that only magnifies JPEG.
+// A file on disk has no such ceiling, but one number keeps the two previews the
+// same popup, which is the point.
+const PREVIEW_W = 240
+const PREVIEW_H = Math.round((PREVIEW_W * 9) / 16)
 
 // The slice of the YouTube IFrame API the rest of this component drives the
 // player through. A downloaded file is played by a plain <video>, so it gets an
@@ -201,7 +208,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         style={{
           bottom: hasFrame ? '4.75rem' : '3.25rem',
           width: PREVIEW_W,
-          left: `clamp(88px, ${(shownRatio * 100).toFixed(2)}%, calc(100% - 88px))`,
+          // Clamped by HALF the popup, since it's centred on the cursor — that's
+          // exactly how far it can travel before an edge clips it.
+          left: `clamp(${PREVIEW_W / 2}px, ${(shownRatio * 100).toFixed(2)}%, calc(100% - ${PREVIEW_W / 2}px))`,
           transform: 'translateX(-50%)',
           opacity: hoverRatio !== null ? 1 : 0,
         }}
@@ -213,7 +222,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             muted
             preload="auto"
             className="rounded border border-white/20 bg-black object-cover shadow-lg"
-            style={{ width: PREVIEW_W, height: 99, maxWidth: 'none' }}
+            style={{ width: PREVIEW_W, height: PREVIEW_H, maxWidth: 'none' }}
           />
         ) : sbFrame && (
           /* The same popup over the embed, its frame cut out of one of YouTube's

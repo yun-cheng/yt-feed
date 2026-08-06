@@ -55,10 +55,12 @@ describe('storyboardFrame', () => {
 
 describe('scaleToWidth', () => {
   it('should render a frame exactly the width asked for', () => {
-    const f = storyboardFrame(SB, 0, scaleToWidth(SB, 176))
-    // 176x99 — the size of the local file's scrub <video>, so the two previews
-    // are the same popup whichever source is playing.
-    expect([f.fw, f.fh]).toEqual([176, 99])
+    // What the scrub popup relies on: it asks for its own width and gets it,
+    // whatever tile size this particular video's sheets happen to use, so the
+    // storyboard preview and the local-file one are the same popup.
+    const f = storyboardFrame(SB, 0, scaleToWidth(SB, 240))
+    expect(f.fw).toBe(240)
+    expect(f.fh).toBe(135)  // the tile's own 16:9 carried through
   })
 
   it('should survive a sheet that reports no frame size', () => {
