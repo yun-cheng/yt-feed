@@ -687,6 +687,18 @@ with bandwidth. Names that mean "not yet" — `unknown` before playback starts,
 `auto` before it settles, anything unrecognised — hide the label rather than put
 a word where a number belongs.
 
+Next to it sits **Open on YouTube**, which carries the moment across:
+`watch?v=ID&t=115s`, read off the player at click time rather than tracked in
+state — a value wanted once per click doesn't earn a subscription that re-renders
+the page four times a second. It works over a downloaded file too, since the
+position means the same thing in the copy on YouTube. Clicking **pauses** on the
+way out: the overlay keeps playing behind the new tab otherwise, and two copies
+of the same audio is a worse greeting than pressing play again.
+
+The right-hand group is `[resolution] [YouTube] [pin] [fullscreen]` at `gap-3`,
+the same rhythm as the left group — at `gap-1`, which was fine for two buttons,
+four read as one crowded lump.
+
 It is **read-only, and has to be.** `setPlaybackQuality` still exists on the
 player but has been a no-op for years (called with `hd1080`, the video stayed at
 640x360 — measured, not assumed). The setter that does work,

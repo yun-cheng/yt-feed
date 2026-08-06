@@ -377,7 +377,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           {formatTime(time)} / {formatTime(duration)}
         </span>
         {leftControls}
-        <div className="ml-auto flex items-center gap-1">
+        {/* Same gap-3 as the left group, so the bar keeps one rhythm across it.
+            These sat at gap-1 while there were only two of them; with four the
+            row read as one crowded lump. */}
+        <div className="ml-auto flex items-center gap-3">
           {/* What you're actually watching. Read-only: YouTube's working quality
               setter isn't reachable from outside the iframe (see lib/quality),
               so offering a click here would be offering something we can't do.

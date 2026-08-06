@@ -1550,6 +1550,38 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
     </button>
   )
 
+  // Hand the video over to youtube.com at the moment you're on.
+  //
+  // The timestamp is read off the player at CLICK time rather than tracked in
+  // state: a value wanted once per click doesn't earn a subscription that
+  // re-renders this page four times a second. It works for a downloaded file
+  // too — playerRef holds localPlayer there, and the position means the same
+  // thing in the copy on YouTube.
+  const youtubeButton = (
+    <button
+      onClick={() => {
+        const p = playerRef.current
+        const at = Math.max(0, Math.floor(p?.getCurrentTime() ?? 0))
+        // Pause on the way out. The overlay keeps playing behind the new tab
+        // otherwise, and two copies of the same audio is a worse greeting than
+        // having to press play again.
+        p?.pauseVideo()
+        window.open(`${youtubeUrl}&t=${at}s`, '_blank', 'noopener,noreferrer')
+      }}
+      // Same two placements as the pin: a button in our row, or a floating pill
+      // over YouTube's chrome — there sitting left of the pin, the only other
+      // thing in that corner.
+      className={ownBar
+        ? 'rounded p-1 text-white hover:bg-white/10'
+        : 'absolute bottom-2 right-12 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
+      title="Open on YouTube at this moment"
+    >
+      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M23.5 6.2a3 3 0 0 0-2.12-2.12C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.53A3 3 0 0 0 .5 6.2C0 8.08 0 12 0 12s0 3.92.5 5.8a3 3 0 0 0 2.12 2.12c1.88.53 9.38.53 9.38.53s7.5 0 9.38-.53a3 3 0 0 0 2.12-2.12C24 15.92 24 12 24 12s0-3.92-.5-5.8zM9.55 15.57V8.43L15.82 12l-6.27 3.57z" />
+      </svg>
+    </button>
+  )
+
   return (
     // Pinned: a fixed column where the player stays put and the details scroll on
     // their own. Unpinned: a plain block, so the overlay scrolls the whole thing.
@@ -1601,7 +1633,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
               hovering={pointerOverPlayer && !chromeIdle}
               onFullscreen={toggleFullscreen}
               leftControls={captionControl}
-              extraControls={pinButton}
+              extraControls={<>{youtubeButton}{pinButton}</>}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
             />
@@ -1671,7 +1703,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             hovering={chromeAwake}
             onFullscreen={toggleFullscreen}
             leftControls={captionControl}
-            extraControls={pinButton}
+            extraControls={<>{youtubeButton}{pinButton}</>}
             bookmarks={marks.bookmarks}
             loop={marks.loop}
           />
@@ -1682,6 +1714,7 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             }`}
           >
             {captionControl}
+            {youtubeButton}
             {pinButton}
             {/* Over the embed the progress bar lives inside the iframe, so the
                 marks are laid over it — see EmbedMarkRail. */}
