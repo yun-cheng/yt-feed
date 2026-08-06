@@ -62,7 +62,7 @@ does client-side routing itself:
   a `popstate` listener parses the URL back into state, so **back/forward work**
   and every view is deep-linkable.
 - **Every filter and sort is in the URL**, so a refresh — or a pasted link —
-  restores the exact view: `tags`, `window`, `time_mode`, `sort`, `shorts`,
+  restores the exact view: `tags`, `age`, `sort`, `shorts`,
   `watch`, `label` (a channel's topic chip), `hidden` (show hidden channels),
   and `q` (search). See "URL state" below.
 - Data is fetched from `/api/*` into React state (`fetchFeed`, `fetchTags`, …);
@@ -75,9 +75,8 @@ does client-side routing itself:
 ### URL state
 
 Pages keep **separate** sort / window / watch-status state — a channel page's
-sort isn't the feed's — but the URL carries **one** `sort`, `window`,
-`time_mode` and `watch`. The page being shown owns them; every other page's copy
-sits at its own default. `PAGE_DEFAULTS` is that table, and the `USES_*` sets say
+sort isn't the feed's — but the URL carries **one** `sort`, `age` and `watch`.
+The page being shown owns them; every other page's copy sits at its own default. `PAGE_DEFAULTS` is that table, and the `USES_*` sets say
 which controls a page actually has, so a param a page can't change is never
 written.
 
@@ -103,7 +102,7 @@ panel is empty.
 
 - **Values equal to the page's default are omitted**, so ordinary URLs stay
   short — and the same value can be worth writing on one page and not another
-  (`window=3d` is the feed's default but not a channel's, whose default is `1m`).
+  (`age=0-3` is the feed's default but not a channel's, whose default is `0-30`).
 - `buildPath(state)` takes an object, not a positional list — there are ten
   fields now, and it's the one place that knows what a page's URL looks like.
 - `stateFromUrl()` is the inverse, and is used by **both** the cold load and
@@ -191,6 +190,48 @@ there.
   refresh being a continuation rather than a fresh visit. Toggling it there
   leaves the feed's selection alone, and vice versa.
 
+### The time window
+
+`TimeRangeSlider.tsx` is a two-handled slider over a fixed ladder of day
+boundaries, and `lib/timeWindow.ts` is the model both it and the URL agree on:
+
+```
+days:    0     1     3     7    14    30    90   180   365
+label:  now   1d    3d    1w    2w    1m    3m    6m    1y
+index:   0     1     2     3     4     5     6     7     8
+```
+
+A window is a `TimeRange` — a `{lo, hi}` pair of **indices** — which the wire
+format spells in days: `?age=3-14`. Indices are what the slider moves in and
+what keeps the short windows reachable, since the ladder is spaced by index
+rather than by days; 1d and 1y are one notch apart either way.
+
+This replaced eight preset buttons plus a narrow/wide toggle. Those could only
+reach ranges anchored at 0 ("wide") or exactly one notch wide ("narrow") — 15 of
+the 36 pairs the ladder allows. Naming both edges reaches all of them, and the
+toggle disappears into the question "is `lo` at 0?". `rangeFromLegacy()` reads
+the old `window` + `time_mode` params so existing bookmarks still resolve; the
+first `syncUrl` then rewrites them to `age`.
+
+Three ways to set it, and the third is why the button row isn't missed:
+
+- **Drag a thumb** — move one edge.
+- **Keyboard** — Radix gives the thumbs arrow keys and ARIA for free.
+  `minStepsBetweenThumbs={1}` (backed by `clampRange`) keeps the band from
+  collapsing to a window that selects nothing.
+- **Click a tick label** — sets the older edge, keeping the recent one when it
+  still fits. That's the one-click "just show me the past week" move.
+
+The track is notched at every interior tick, cut in the page colour so the
+notches read over the filled range and the empty track alike. The ends are the
+track's own edges and need none. `now` is the origin, never an older edge, so
+it's a marker rather than a button.
+
+Radix's slider is the one third-party UI component in the app. It was worth it
+for the keyboard and ARIA handling; what it does **not** do is drag the filled
+band as a unit to sweep a fixed-width window through time. That was cut, and
+it's purely additive on top of the same controlled value if it's ever wanted.
+
 ### The Imported page
 
 `/imported` lists videos added by pasting a link (`ImportedPage.tsx`), rendered
@@ -259,7 +300,8 @@ components/
   Sidebar.tsx / TopBar.tsx        chrome: nav, search box, tag filters
                                   (on a channel page the sidebar swaps the
                                   global taxonomy for that channel's topic chips)
-  TimeSortControls.tsx            time-window + sort pills
+  TimeSortControls.tsx            the time-window slider + sort pills
+  TimeRangeSlider.tsx             two-handled window picker (see "The time window")
   VideoCard.tsx                   the card + hover preview (the complex one)
   VideoRow.tsx                    list-row variant
   ChannelPage.tsx / ChannelsPage.tsx
@@ -754,7 +796,8 @@ definition (`captionControl` / `youtubeButton` / `pinButton`).
 ## Tests
 
 Component/behavior tests live in `src/test/` and run under Vitest + jsdom
-(`npm test`). `src/test/setup.ts` wires up `@testing-library/jest-dom`.
+(`npm test`). `src/test/setup.ts` wires up `@testing-library/jest-dom`, plus the
+two shims Radix's slider needs to mount at all (below).
 
 | File | Covers |
 |------|--------|
@@ -766,13 +809,17 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
+| `timeWindow.test.ts` | the time-window ladder: clamping, snapping, the `age` round-trip, and the legacy params it replaced |
+| `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 
-Three jsdom gaps have to be papered over, and each is a stub rather than a
+Four jsdom gaps have to be papered over, and each is a stub rather than a
 behaviour change: `isContentEditable` is not implemented (so the shortcut guard's
 own property is set by hand), there is no pointer capture (the scrub handler
-takes it before seeking, and an unstubbed call throws before the seek), and every
-element measures zero, so the progress bar is given a rect.
+takes it before seeking, and an unstubbed call throws before the seek), there is
+no `ResizeObserver` (Radix's slider tracks the track's width with one, and throws
+on mount without it), and every element measures zero, so the progress bar is
+given a rect.
 
 A fourth can't be stubbed, only worked around: **jsdom discards `clamp()`**. Set
 one and the property reads back `''` with the style attribute `null`. So nothing

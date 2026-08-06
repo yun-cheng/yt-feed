@@ -8,7 +8,8 @@ real video (muted, with custom captions and scrubbing).
 ## Features
 
 - **Custom ranking** — score videos by views/hour, likes, like rate, or recency
-- **Time windows** — filter by last 1d / 3d / 1w / 1m / … (each a discrete bucket)
+- **Time windows** — drag a two-handled slider to any span: the last 3 days, or
+  3 days to 2 weeks ago
 - **Tag filtering** — channels are auto-tagged by an LLM into a topic taxonomy;
   filter the feed by tag, and edit a channel's labels on its page
 - **AI categorization** — an LLM (via OpenRouter) reads each channel and assigns
@@ -67,8 +68,8 @@ real video (muted, with custom captions and scrubbing).
 
 A scheduler in the backend re-scans channels every 15 min into SQLite; the
 frontend reads `/api/*`. The interesting logic is the **ranking** — a
-views-per-hour "hot" score with an early-velocity burn-in, discrete time-window
-buckets (wide/narrow), and Bayesian shrinkage on the like-rate sort. See
+views-per-hour "hot" score with an early-velocity burn-in, time windows named by
+both their edges, and Bayesian shrinkage on the like-rate sort. See
 [backend/README.md](backend/README.md#ranking--feed-shaping-rankingpy).
 
 Component-level detail lives in the per-package READMEs:

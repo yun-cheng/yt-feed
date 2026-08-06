@@ -55,7 +55,7 @@ app/
   cron_update.py   run_update(): the actual channel-scan job (Phases 1–4)
   fetcher.py       yt-dlp wrappers (channel listings, video details)
   youtube_api.py   YouTube Data API v3 batch stats (+ token handling)
-  ranking.py       score = views / hours-since-published; time-window buckets
+  ranking.py       score = views / hours-since-published; age-range resolving
   categorizer.py   legacy keyword → feed-category rules (config/categories.yaml)
   llm.py           OpenRouter chat client, shared by AI features
   video_labels.py  LLM per-video topic labeling (see "Video topics")
@@ -109,16 +109,35 @@ This is the heart of the project. The feed answers *"what's worth watching from
 my subs right now,"* which is more than reverse-chronological. `rank_videos()`
 does three things: filter to a time window, score, and sort.
 
-### Time windows are discrete buckets — with two modes
+### A time window is a pair of ticks on a ladder
 
-Each window (`1d 3d 1w 2w 1m 3m 6m 1y`) maps to a `(lower, upper)` age range
-(`WINDOW_RANGES`). The `time_mode` decides how the range is read:
+Requests carry `age`, a publish-age range in days: `age=0-3` is "the last three
+days", `age=3-14` is "published 3 to 14 days ago". Both edges must land on the
+ladder of boundaries in `TICK_DAYS`, which is the same set `WINDOW_RANGES` is
+built from:
 
-- **wide** (default) — accumulated from now: `3d` = everything **0–3 days** old.
-- **narrow** — the exclusive bucket: `3d` = only **1–3 days** old.
+```
+days:    0     1     3     7    14    30    90   180   365
+label:  now   1d    3d    1w    2w    1m    3m    6m    1y
+```
 
-Narrow mode lets you step through "this week, but not today" without re-seeing
-the newer videos you already scanned.
+`resolve_range()` turns the request into the `(newer, older)` offsets from now
+that `filter_by_range()` compares against. Off-ladder days snap to the nearest
+tick (a dead tie goes to the tighter window), a reversed pair is read in the
+order it meant, and a zero-width range is a 422 rather than a silently empty
+feed.
+
+**The pre-slider spelling still resolves.** `window` + `time_mode` was the old
+pair, and `resolve_range()` accepts it so existing bookmarks keep working:
+
+- **wide** (the default) — accumulated from now: `window=3d` → `age=0-3`.
+- **narrow** — the exclusive bucket: `window=3d` → `age=1-3`.
+
+Those two modes could only reach ranges anchored at 0 or exactly one notch
+wide: 15 of the 36 pairs the ladder allows. A window like `3d-14` — starting
+away from now *and* several buckets wide — had no spelling at all. Naming both
+edges is what the UI's two-handled slider needed, and it makes the mode flag
+redundant: "wide" is just a range whose newer edge sits at 0.
 
 ### Hot score, with a burn-in
 
@@ -748,7 +767,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/feed` | ranked feed grouped by category (query: window, sort, tags…) |
+| GET | `/api/feed` | ranked feed grouped by category (query: age, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
@@ -795,7 +814,7 @@ no per-test decorator). What's covered:
 
 | File | Covers |
 |------|--------|
-| `test_ranking.py` | windows (narrow vs wide), the sort modes, the hot-score burn-in, like% shrinkage |
+| `test_ranking.py` | age ranges (and the legacy window/time_mode they replaced), the sort modes, the hot-score burn-in, like% shrinkage |
 | `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot |
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
