@@ -7,7 +7,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
-import LocalControls, { localPlayer } from '../components/LocalControls'
+import LocalControls, { localPlayer, previewLeft } from '../components/LocalControls'
 import type { PlayerApi } from '../components/LocalControls'
 import type { StoryboardInfo } from '../lib/storyboard'
 
@@ -288,6 +288,24 @@ describe('LocalControls — scrubbing', () => {
     act(() => { vi.advanceTimersByTime(300) })
     fireEvent.pointerMove(bar(container), { clientX: 200, pointerId: 1 })
     expect(screen.getByText('5:00')).toBeInTheDocument()
+  })
+})
+
+describe('previewLeft — where the popup sits', () => {
+  // Asserted on the CSS rather than the element: jsdom discards a `clamp()`
+  // outright (the property reads back empty), so the DOM can't answer this.
+
+  it('should follow the cursor through the middle', () => {
+    expect(previewLeft(0.5)).toBe('clamp(132px, 50.00%, calc(100% - 132px))')
+  })
+
+  it('should stop short of both ends rather than sit flush in the corner', () => {
+    // 132 = half the 240px popup, since it's centred on the cursor, + the bar's
+    // own 12px gutter — so at either extreme its edge lines up with the end of
+    // the TRACK, not the edge of the video. Both terms derive from the popup's
+    // width; this is really pinning that they still track it.
+    expect(previewLeft(0)).toContain('clamp(132px,')
+    expect(previewLeft(1)).toContain('calc(100% - 132px)')
   })
 })
 

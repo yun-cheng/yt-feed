@@ -28,6 +28,25 @@ import type { Bookmark, Loop } from './PlayerMarks'
 const PREVIEW_W = 240
 const PREVIEW_H = Math.round((PREVIEW_W * 9) / 16)
 
+// How close to the video's edge the popup may get. 12px is the bar's own px-3
+// gutter, so at either extreme the popup's edge lines up with the END OF THE
+// TRACK rather than the edge of the video — without it the popup sits flush in
+// the corner, which reads as clipped even though it isn't.
+const PREVIEW_EDGE = 12
+// It's centred on the cursor, so half of it is how far it can travel before
+// that edge is reached.
+const PREVIEW_STOP = PREVIEW_W / 2 + PREVIEW_EDGE
+
+/** Where the popup's centre sits: the hovered point, stopped short of both ends.
+ *
+ *  CSS rather than a number because the stops are px while the position is a %,
+ *  and only the browser knows the player's width. Exported to be testable —
+ *  jsdom discards a `clamp()` outright, so reading it back off the element
+ *  proves nothing. */
+export function previewLeft(ratio: number): string {
+  return `clamp(${PREVIEW_STOP}px, ${(ratio * 100).toFixed(2)}%, calc(100% - ${PREVIEW_STOP}px))`
+}
+
 // The slice of the YouTube IFrame API the rest of this component drives the
 // player through. A downloaded file is played by a plain <video>, so it gets an
 // adapter with the same shape (below) and every caller — history, captions,
@@ -208,9 +227,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         style={{
           bottom: hasFrame ? '4.75rem' : '3.25rem',
           width: PREVIEW_W,
-          // Clamped by HALF the popup, since it's centred on the cursor — that's
-          // exactly how far it can travel before an edge clips it.
-          left: `clamp(${PREVIEW_W / 2}px, ${(shownRatio * 100).toFixed(2)}%, calc(100% - ${PREVIEW_W / 2}px))`,
+          left: previewLeft(shownRatio),
           transform: 'translateX(-50%)',
           opacity: hoverRatio !== null ? 1 : 0,
         }}
