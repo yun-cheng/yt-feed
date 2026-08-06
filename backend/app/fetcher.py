@@ -34,8 +34,17 @@ def _run_ytdlp(url: str, **extra_opts) -> list[dict[str, Any]]:
     }
     opts.update(extra_opts)
 
-    ydl = yt_dlp.YoutubeDL(opts)
-    info = ydl.extract_info(url, download=False)
+    # As a context manager, so closing it returns its connections. Every OTHER
+    # yt-dlp call site is request-scoped and dies with the request; this one runs
+    # on the 15-minute scan loop forever, so a socket it doesn't hand back is a
+    # socket lost for the life of the process. Left open, one scan of 141
+    # channels stranded that many sockets in CLOSE_WAIT, and a night of them
+    # consumed all 16384 ephemeral ports — after which NOTHING on the machine
+    # could open a connection, this process included (Errno 49). The retry caps
+    # above were an earlier pass at the same symptom: they slowed the leak by
+    # opening fewer sockets, rather than giving any of them back.
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
     if info is None:
         return []
 
@@ -168,43 +177,45 @@ def fetch_video_details(video_ids: list[str]) -> list[dict[str, Any]]:
 
     urls = [f"https://www.youtube.com/watch?v={vid}" for vid in video_ids]
     try:
-        ydl = yt_dlp.YoutubeDL({
+        # Context-managed for the same reason as _run_ytdlp above: this is on the
+        # scan path, and one that isn't closed never gives its sockets back.
+        with yt_dlp.YoutubeDL({
             "quiet": True,
             "extract_flat": False,
             "skip_download": True,
             "ignoreerrors": True,
             "no_warnings": True,
-        })
-        info = ydl.extract_info(urls[0], download=False)
-        results = []
-        entries = [info] if isinstance(info, dict) else (info or [])
-        for entry in entries:
-            if entry and entry.get("id"):
-                results.append({
-                    "youtube_id": entry["id"],
-                    "view_count": entry.get("view_count", 0),
-                    "like_count": entry.get("like_count", 0),
-                    "duration_seconds": entry.get("duration", 0),
-                    "published_at": datetime.fromtimestamp(entry["timestamp"], tz=timezone.utc)
-                        if entry.get("timestamp") else None,
-                })
-
-        # Process remaining URLs one at a time (yt-dlp API doesn't accept lists)
-        for url in urls[1:]:
-            try:
-                info = ydl.extract_info(url, download=False)
-                if info and info.get("id"):
+        }) as ydl:
+            info = ydl.extract_info(urls[0], download=False)
+            results = []
+            entries = [info] if isinstance(info, dict) else (info or [])
+            for entry in entries:
+                if entry and entry.get("id"):
                     results.append({
-                        "youtube_id": info["id"],
-                        "view_count": info.get("view_count", 0),
-                        "like_count": info.get("like_count", 0),
-                        "duration_seconds": info.get("duration", 0),
-                        "published_at": datetime.fromtimestamp(info["timestamp"], tz=timezone.utc)
-                            if info.get("timestamp") else None,
+                        "youtube_id": entry["id"],
+                        "view_count": entry.get("view_count", 0),
+                        "like_count": entry.get("like_count", 0),
+                        "duration_seconds": entry.get("duration", 0),
+                        "published_at": datetime.fromtimestamp(entry["timestamp"], tz=timezone.utc)
+                            if entry.get("timestamp") else None,
                     })
-            except Exception:
-                pass
-        return results
+
+            # Process remaining URLs one at a time (yt-dlp API doesn't accept lists)
+            for url in urls[1:]:
+                try:
+                    info = ydl.extract_info(url, download=False)
+                    if info and info.get("id"):
+                        results.append({
+                            "youtube_id": info["id"],
+                            "view_count": info.get("view_count", 0),
+                            "like_count": info.get("like_count", 0),
+                            "duration_seconds": info.get("duration", 0),
+                            "published_at": datetime.fromtimestamp(info["timestamp"], tz=timezone.utc)
+                                if info.get("timestamp") else None,
+                        })
+                except Exception:
+                    pass
+            return results
     except Exception as e:
         print(f"Error fetching video details: {e}")
         return []
