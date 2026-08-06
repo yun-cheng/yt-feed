@@ -707,26 +707,15 @@ floating placement over YouTube's chrome, a bespoke box that lines up with the
 iframe's row instead of ours. Re-stating the numbers per button is how they
 drift apart; that is what this constant exists to prevent.
 
-The **resolution label** sits at the left of the right-hand button group —
-`[1080p] [pin] [fullscreen]`. A file on disk simply knows its own height; the
-embed only has YouTube's name for the quality it settled on, so `lib/quality.ts`
-translates ("large" is 480p, "medium" is 360p — nobody guesses those). It's
-polled with the clock rather than read once, because on auto the quality drifts
-with bandwidth. Names that mean "not yet" — `unknown` before playback starts,
-`auto` before it settles, anything unrecognised — hide the label rather than put
-a word where a number belongs.
+The right-hand group is `[resolution] [YouTube] [pin] [fullscreen]`.
 
-Next to it sits **Open on YouTube**, which carries the moment across:
-`watch?v=ID&t=115s`, read off the player at click time rather than tracked in
-state — a value wanted once per click doesn't earn a subscription that re-renders
-the page four times a second. It works over a downloaded file too, since the
-position means the same thing in the copy on YouTube. Clicking **pauses** on the
-way out: the overlay keeps playing behind the new tab otherwise, and two copies
-of the same audio is a worse greeting than pressing play again.
-
-The right-hand group is `[resolution] [YouTube] [pin] [fullscreen]` at `gap-3`,
-the same rhythm as the left group — at `gap-1`, which was fine for two buttons,
-four read as one crowded lump.
+The **resolution label** leads it. A file on disk simply knows its own height;
+the embed only has YouTube's name for the quality it settled on, so
+`lib/quality.ts` translates ("large" is 480p, "medium" is 360p — nobody guesses
+those). It's polled with the clock rather than read once, because on auto the
+quality drifts with bandwidth. Names that mean "not yet" — `unknown` before
+playback starts, `auto` before it settles, anything unrecognised — hide the label
+rather than put a word where a number belongs.
 
 It is **read-only, and has to be.** `setPlaybackQuality` still exists on the
 player but has been a no-op for years (called with `hd1080`, the video stayed at
@@ -736,13 +725,22 @@ player but has been a no-op for years (called with `hd1080`, the video stayed at
 Only a script running *inside* the embed can reach it, so switching quality would
 have to go through the extension.
 
-Note this label only appears over the embed when the extension is installed,
-since it lives in our bar and YouTube's bar is used otherwise. Downloaded and
-local files always have it.
+Over the embed the label only appears with the extension installed, since it
+lives in our bar and YouTube's own bar is used otherwise. Downloaded and local
+files always have it.
 
-Against the embed, the CC button and pin toggle still float over the player —
-its control bar is inside the iframe, out of reach — so both render in two
-placements from one definition (`captionControl` / `pinButton`).
+**Open on YouTube** sits next to it and carries the moment across:
+`watch?v=ID&t=115s`, read off the player at click time rather than tracked in
+state — a value wanted once per click doesn't earn a subscription that re-renders
+the page four times a second. It works over a downloaded file too, since the
+position means the same thing in the copy on YouTube. Clicking **pauses** on the
+way out: the overlay keeps playing behind the new tab otherwise, and two copies
+of the same audio is a worse greeting than pressing play again.
+
+Against the embed without the extension, three of these float over the player
+instead — its control bar is inside the iframe, out of reach — so the caption
+button, open-on-YouTube and the pin each render in two placements from one
+definition (`captionControl` / `youtubeButton` / `pinButton`).
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is
 > created. Both are YouTube players for the same video, and two live players for
