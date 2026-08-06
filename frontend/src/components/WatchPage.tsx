@@ -9,9 +9,10 @@ import { formatTime } from '../lib/time'
 import LocalControls, { localPlayer } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
+import { hasCleanEmbed } from '../lib/ext'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
-// same one a downloaded file gets. Off by default: it's a trade, not an upgrade.
+// same one a downloaded file gets.
 //
 // What it buys: one bar everywhere, our marks drawn on a track we own, and no
 // guessing about YouTube's chrome — the fade timing can't drift out of sync with
@@ -21,7 +22,16 @@ import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 // What it costs: YouTube's quality / speed / subtitle menus go with them, and the
 // scrub preview has no frames to show (the storyboard endpoint the cards use
 // could fill that in later).
-const EMBED_OWN_CONTROLS = false
+//
+// Gated on the extension because `controls=0` alone isn't enough: it takes away
+// the control BAR and leaves the title, avatar, centre play button and share row
+// sitting on top of ours. Without the extension there is no way to remove those,
+// so we leave YouTube's controls up and lay our marks over them instead — the
+// other branch of every conditional below. Both paths ship.
+//
+// Read at module scope on purpose: it decides a playerVar, so it has to be
+// settled before the first player is built and must not change under one.
+const EMBED_OWN_CONTROLS = hasCleanEmbed()
 
 type Props = {
   videoId: string
@@ -1632,31 +1642,12 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             too — it would be absurd for the button to fade out from under the
             menu it opened. */}
         {!playLocal && (EMBED_OWN_CONTROLS ? (
-          <>
-          {/* Turning YouTube's controls off leaves the REST of its chrome: the
-              channel avatar and title across the top, and the share / "More
-              videos" / logo row along the bottom. The embed API has no switch
-              for those — `modestbranding` and `showinfo` were the old ones and
-              both are dead — and YouTube raises them whenever the video is
-              paused or the state changes, so play/pause flashes them up.
-
-              Our sheet already swallows their clicks, which leaves buttons that
-              look live and aren't; so we cover them instead. The bottom half is
-              our control bar going solid (see LocalControls); this is the top.
-              It rides with our own chrome, which is up in exactly the cases
-              YouTube raises its overlay — paused, or the pointer moving. The
-              band scales with the player because YouTube's does. */}
-          <div
-            className={`pointer-events-none absolute inset-x-0 top-0 z-20 transition-opacity duration-200 ${
-              chromeAwake ? 'opacity-100' : 'opacity-0'
-            }`}
-            style={{ height: 'max(8%, 3.5rem)' }}
-          >
-            <div className="h-full bg-black" />
-            <div className="h-6 bg-gradient-to-b from-black to-transparent" />
-          </div>
-          {/* Our bar, driven through PlayerApi. The marks go on ITS track, so
-              there's no rail to lay over anyone else's, and no offset to measure. */}
+          /* Our bar, driven through PlayerApi. The marks go on ITS track, so
+             there's no rail to lay over anyone else's, and no offset to measure.
+             Nothing covers YouTube's chrome because there is none left: this
+             branch only runs with the extension installed, and it has already
+             stripped the title, avatar, centre play button and share row from
+             inside the iframe. See extension/embed.css. */
           <LocalControls
             player={playerRef}
             hovering={chromeAwake}
@@ -1666,7 +1657,6 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
             bookmarks={marks.bookmarks}
             loop={marks.loop}
           />
-          </>
         ) : (
           <div
             className={`transition-opacity duration-200 ${

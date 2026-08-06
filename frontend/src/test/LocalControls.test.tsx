@@ -353,20 +353,21 @@ describe('LocalControls — visibility and extras', () => {
     expect(container.firstElementChild).toHaveClass('opacity-0')
   })
 
-  it('is opaque over the embed, which has residual chrome to hide', () => {
-    // YouTube's share arrow, "More videos" tray and logo sit on that same line;
-    // a gradient lets them show through.
-    const { container } = renderOverEmbed()
-    expect(container.firstElementChild!.className).toContain('via-black')
-  })
-
-  it('is a gradient over a file, which has nothing behind it', () => {
+  it('is the same gradient over either source', () => {
+    // It used to go SOLID over the embed, to hide YouTube's share arrow, "More
+    // videos" tray and logo sitting on that same line. The extension removes
+    // them at the source now, and this bar is only ever drawn over an embed when
+    // the extension is installed — so there is nothing left to paint over, and
+    // one bar means one look. If this splits again, something is showing through.
     const videoRef = createRef<HTMLVideoElement>() as { current: HTMLVideoElement | null }
     videoRef.current = withDuration(videoEl(), 600)
-    const { container } = render(
+    const { container: overFile } = render(
       <LocalControls videoRef={videoRef} src="/x" hovering onFullscreen={vi.fn()} />
     )
-    expect(container.firstElementChild!.className).toContain('from-black/80')
+    const { container: overEmbed } = renderOverEmbed()
+    expect(overEmbed.firstElementChild!.className).toContain('from-black/80')
+    expect(overEmbed.firstElementChild!.className).not.toContain('via-black')
+    expect(overFile.firstElementChild!.className).toBe(overEmbed.firstElementChild!.className)
   })
 
   it('calls back for fullscreen', () => {

@@ -275,7 +275,8 @@ components/
   LocalFolderPage.tsx             one folder's video files, as its own card grid
   LocalWatchPage.tsx              player for a local file (/local/:id/:videoId)
   LocalControls.tsx               our control bar + the <video>→PlayerApi adapter.
-                                  Drives a file on disk, and (opt-in) the embed
+                                  Drives a file on disk, and the embed too when
+                                  the clean-embed extension is installed
   PlayerMarks.tsx                 bookmarks (`b`) and the A–B repeat loop
                                   (`[`, `]`, `\`): state, shortcuts, and the
                                   marks drawn on the progress bar (ours, or a
@@ -292,6 +293,7 @@ hooks/
   toastStore.ts                   tiny global toast store (API errors)
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
+  ext.ts                          is the clean-embed extension installed?
   local.ts                        local-folder types + fetch helpers
   time.ts                         formatTime — the player clock
 ```
@@ -446,25 +448,28 @@ Other details:
   - A mousemove also *sets* "pointer is over the player", not just the activity
     stamp: entering fullscreen by keyboard makes the player the whole screen
     without the pointer ever crossing its edge, so `mouseenter` never fires.
-- **Our own controls over the embed** — `EMBED_OWN_CONTROLS`, a constant at the
-  top of `WatchPage.tsx`, **off**. Flipping it passes `controls: 0` to the embed
-  and renders `LocalControls` against `playerRef` instead, so one bar serves both
-  sources: the marks go on a track we own (no rail, no measured offset), and the
-  fade can't drift out of step with controls that no longer exist — the sheet can
-  simply stay, seeing every move. It's a trade, not an upgrade:
+- **Our own controls over the embed** — `EMBED_OWN_CONTROLS` at the top of
+  `WatchPage.tsx`, now `hasCleanEmbed()` (`lib/ext.ts`) rather than a constant.
+  It passes `controls: 0` to the embed and renders `LocalControls` against
+  `playerRef` instead, so one bar serves both sources: the marks go on a track we
+  own (no rail, no measured offset), and the fade can't drift out of step with
+  controls that no longer exist — the sheet can simply stay, seeing every move.
+  - **It needs the extension** (`extension/` at the repo root). `controls: 0`
+    removes only the control *bar*; the channel avatar and title on top, and the
+    share / "More videos" / watch-on-YouTube row along the bottom, have no switch
+    (`modestbranding` and `showinfo` are both dead). Nothing in a page can reach
+    into a cross-origin iframe to remove them — a content script can, so that's
+    what the extension is. Without it, YouTube's chrome would sit *over* our bar,
+    so we keep YouTube's controls and lay the marks on its rail instead.
+  - The capability is read **once at module scope**, deliberately: `controls` is
+    a playerVar baked into the iframe URL at construction, so it has to be
+    settled before the first player is built and must not change under one.
+    Install or remove the extension, then reload.
   - YouTube's quality / speed / subtitle menus go with its bar. Our captions are
     unaffected.
   - The scrub preview has no frames over the embed (they aren't ours to seek), so
     it narrows to a timestamp. The storyboard endpoint the cards use could fill
     it in.
-  - `controls: 0` removes only the control *bar*. The rest of YouTube's chrome —
-    channel avatar and title on top, share / "More videos" / logo along the
-    bottom — has no switch (`modestbranding` and `showinfo` are both dead), and
-    the embed raises it on pause and on state changes. Since our sheet swallows
-    its clicks, those buttons would look live and not be, so we **cover** them:
-    the bar goes solid instead of a gradient, and a black band (`max(8%, 3.5rem)`,
-    scaled like YouTube's own) rides in and out with our chrome across the top.
-    The cost is the top ~8% of the frame while the chrome is up.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
   embed's own captions can't be positioned or styled). The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
@@ -673,6 +678,7 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
+| `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 
 Three jsdom gaps have to be papered over, and each is a stub rather than a

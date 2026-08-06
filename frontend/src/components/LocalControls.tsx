@@ -60,10 +60,16 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  scrubber — the file is already there, so the frame is instant and needs no
  *  storyboard fetch.
  *
- *  It also drives the YouTube embed (with its own controls turned off), where
- *  `player` stands in for `videoRef`. The difference is only in how state
- *  arrives: a <video> tells us when it changes, the embed has to be asked. There
- *  is no scrub preview there — the frames aren't ours to seek. */
+ *  It also drives the YouTube embed, where `player` stands in for `videoRef`.
+ *  The difference is only in how state arrives: a <video> tells us when it
+ *  changes, the embed has to be asked. There is no scrub preview there — the
+ *  frames aren't ours to seek.
+ *
+ *  That second mode only runs with the companion extension installed, which is
+ *  what strips YouTube's own overlays from inside the iframe. Without it the
+ *  watch page keeps YouTube's controls and never renders this bar over an embed
+ *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
+ *  modes — there is no leftover chrome for it to paint over. */
 export default function LocalControls({ videoRef, player, src, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
   // One of these two. `videoRef` also enables the scrub preview.
   videoRef?: RefObject<HTMLVideoElement | null>
@@ -160,18 +166,12 @@ export default function LocalControls({ videoRef, player, src, hovering, onFulls
   // paused video with no controls looks broken.
   const show = hovering || paused
   const progress = duration ? time / duration : 0
-  // Over the embed the bar is SOLID rather than a gradient, because it has
-  // something to hide: turning YouTube's controls off leaves the rest of its
-  // chrome — the share arrow, the "More videos" tray, the logo — drawn on that
-  // same line, and a gradient lets them show straight through. See the top cover
-  // in WatchPage for the other half of that chrome.
-  const overEmbed = !videoRef
 
   return (
     <div
-      className={`absolute inset-x-0 bottom-0 z-30 px-3 pb-2 pt-8 transition-opacity duration-150 ${
-        overEmbed ? 'bg-gradient-to-t from-black via-black to-transparent' : 'bg-gradient-to-t from-black/80 to-transparent'
-      } ${show ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+      className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
+        show ? 'opacity-100' : 'pointer-events-none opacity-0'
+      }`}
     >
       {/* Scrub preview — a fixed-width popup so it keeps its size when clamped
           against either edge. Sits clear of the bar: the container's bottom
