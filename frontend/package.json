@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@radix-ui/react-slider": "^1.4.7",
     "@testing-library/dom": "^10.4.1",
     "@types/react-headroom": "^3.2.3",
     "react": "^19.0.0",

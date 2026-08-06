@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/api'
-import TimeSortControls from './TimeSortControls'
 import type { VideoItem, LabelCount, WatchProgress } from '../App'
+import { formatAge } from '../lib/timeWindow'
+import type { TimeRange } from '../lib/timeWindow'
 import VideoRow from './VideoRow'
 import ChannelTags from './ChannelTags'
 
@@ -29,12 +30,9 @@ type ChannelResponse = {
 
 type Props = {
   channelId: string
-  timeWindow: string
-  onTimeWindowChange: (w: string) => void
+  age: TimeRange
   sort: string
   onSortChange: (s: string) => void
-  timeMode: string
-  onTimeModeChange: (m: string) => void
   watchLaterIds?: Set<string>
   onToggleWatchLater?: (video: VideoItem) => void
   onDownload?: (video: VideoItem) => void
@@ -62,7 +60,7 @@ function formatSubs(n: number): string {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange, sort, onSortChange, timeMode, onTimeModeChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses }: Props) {
+export default function ChannelPage({ channelId, age, sort, onSortChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -124,7 +122,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
   // server-side so it spans the whole channel, not just loaded videos.
   const fetchPage = useCallback(async (offset: number, replace: boolean) => {
     const params = new URLSearchParams({
-      window: timeWindow, sort, time_mode: timeMode,
+      age: formatAge(age), sort,
       shorts: String(shorts),
       offset: String(offset), limit: String(CHANNEL_PAGE_SIZE),
     })
@@ -137,7 +135,7 @@ export default function ChannelPage({ channelId, timeWindow, onTimeWindowChange,
     setTotal(d.total || 0)
     setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
     if (replace) initChannelLabels(d.channel)
-  }, [channelId, timeWindow, sort, timeMode, shorts, labelFilter, watchStatuses, initChannelLabels])
+  }, [channelId, age, sort, shorts, labelFilter, watchStatuses, initChannelLabels])
   fetchPageRef.current = fetchPage
 
   // Stop polling and clear per-channel label state when leaving the channel.

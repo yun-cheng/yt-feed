@@ -4,26 +4,24 @@ import TopBar from '../components/TopBar'
 
 const defaultProps = {
   variant: 'feed' as const,
-  window: '3d',
-  onWindowChange: vi.fn(),
+  age: { lo: 0, hi: 2 },
+  onAgeChange: vi.fn(),
   sort: 'likes',
   onSortChange: vi.fn(),
-  timeMode: 'wide',
-  onTimeModeChange: vi.fn(),
   onToggleCollapse: vi.fn(),
 }
 
 describe('TopBar', () => {
   it('renders time/sort controls for feed variant', () => {
     render(<TopBar {...defaultProps} />)
-    expect(screen.getAllByRole('button', { name: '3d' })[0]).toBeInTheDocument()
+    expect(screen.getByText('Past 3d')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Likes' })[0]).toBeInTheDocument()
   })
 
   it('renders channels sort for channels variant', () => {
     render(<TopBar {...defaultProps} variant="channels" channelsSort="subs" onChannelsSortChange={vi.fn()} />)
     expect(screen.getAllByRole('button', { name: 'Subs' })[0]).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '3d' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
   })
 
   it('renders collapse toggle button', () => {
@@ -44,7 +42,7 @@ describe('TopBar', () => {
   })
 
   it('renders channel variant controls in topbar', () => {
-    render(<TopBar {...defaultProps} variant="channel" window="1m" />)
-    expect(screen.getAllByRole('button', { name: '1m' })[0]).toBeInTheDocument()
+    render(<TopBar {...defaultProps} variant="channel" age={{ lo: 0, hi: 5 }} />)
+    expect(screen.getByText('Past 1m')).toBeInTheDocument()
   })
 })

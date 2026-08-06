@@ -25,31 +25,27 @@ describe('filterWatchLater', () => {
   beforeEach(() => { vi.setSystemTime(NOW) })
   afterEach(() => { vi.useRealTimers() })
 
-  it('returns all videos when window is unrecognised', () => {
-    const videos = [makeVideo(), makeVideo({ youtube_id: 'v2' })]
-    expect(filterWatchLater(videos, 'bad', 'wide')).toHaveLength(2)
-  })
-
-  it('wide mode: keeps videos within the window', () => {
+  it('keeps videos inside the window and drops the rest', () => {
     const recent = makeVideo({ published_at: new Date(NOW - 1 * 3600_000).toISOString() }) // 1h ago
     const old    = makeVideo({ youtube_id: 'v2', published_at: new Date(NOW - 100 * 3600_000).toISOString() }) // 100h ago
-    const result = filterWatchLater([recent, old], '3d', 'wide') // 3d = 72h
+    const result = filterWatchLater([recent, old], { lo: 0, hi: 2 }) // 0–3d = 0–72h
     expect(result).toHaveLength(1)
     expect(result[0].youtube_id).toBe('v1')
   })
 
-  it('wide mode: excludes videos older than the window', () => {
+  it('excludes videos older than the window', () => {
     const old = makeVideo({ published_at: new Date(NOW - 200 * 3600_000).toISOString() })
-    expect(filterWatchLater([old], '1w', 'wide')).toHaveLength(0)
+    expect(filterWatchLater([old], { lo: 0, hi: 3 })).toHaveLength(0)
   })
 
-  it('narrow mode: same cutoff as wide (keeps videos within the window)', () => {
-    // frontend narrow mode is t >= cutoff && t <= now — same behaviour as wide
+  // The old narrow mode never applied its recent edge here, so a range that
+  // starts away from now behaved exactly like one that didn't.
+  it('excludes videos newer than the recent edge', () => {
     const recent = makeVideo({ published_at: new Date(NOW - 1 * 3600_000).toISOString() }) // 1h ago
-    const old    = makeVideo({ youtube_id: 'v2', published_at: new Date(NOW - 100 * 3600_000).toISOString() }) // 100h ago — beyond 72h
-    const result = filterWatchLater([recent, old], '3d', 'narrow')
+    const mid    = makeVideo({ youtube_id: 'v2', published_at: new Date(NOW - 100 * 3600_000).toISOString() }) // ~4d ago
+    const result = filterWatchLater([recent, mid], { lo: 2, hi: 4 }) // 3d–2w ago
     expect(result).toHaveLength(1)
-    expect(result[0].youtube_id).toBe('v1')
+    expect(result[0].youtube_id).toBe('v2')
   })
 })
 
@@ -107,11 +103,15 @@ describe('sortWatchLater', () => {
 
 describe('buildPath', () => {
   it('returns / for feed with defaults', () => {
-    expect(buildPath({ page: 'feed', window: '3d', sort: 'likes', timeMode: 'wide' })).toBe('/')
+    expect(buildPath({ page: 'feed', age: { lo: 0, hi: 2 }, sort: 'likes' })).toBe('/')
   })
 
   it('includes non-default window in query string', () => {
-    expect(buildPath({ page: 'feed', window: '1w' })).toBe('/?window=1w')
+    expect(buildPath({ page: 'feed', age: { lo: 0, hi: 3 } })).toBe('/?age=0-7')
+  })
+
+  it('writes a window that the old two-param spelling could not express', () => {
+    expect(buildPath({ page: 'feed', age: { lo: 2, hi: 4 } })).toBe('/?age=3-14')
   })
 
   it('includes non-default sort in query string', () => {
@@ -138,20 +138,20 @@ describe('buildPath', () => {
     expect(buildPath({ page: 'channel', channelId: 'UC123' })).toBe('/channel/UC123')
   })
 
-  it('includes timeMode in query string when narrow', () => {
-    expect(buildPath({ page: 'feed', timeMode: 'narrow' })).toBe('/?time_mode=narrow')
+  it('writes a window that starts away from now', () => {
+    expect(buildPath({ page: 'feed', age: { lo: 1, hi: 2 } })).toBe('/?age=1-3')
   })
 
   // Each page's defaults differ, so the same value can be default on one page
   // and worth writing on another.
   it('omits the channel page defaults but writes the feed ones', () => {
-    expect(buildPath({ page: 'channel', channelId: 'UC1', window: '1m', sort: 'likes' })).toBe('/channel/UC1')
-    expect(buildPath({ page: 'channel', channelId: 'UC1', window: '3d' })).toBe('/channel/UC1?window=3d')
+    expect(buildPath({ page: 'channel', channelId: 'UC1', age: { lo: 0, hi: 5 }, sort: 'likes' })).toBe('/channel/UC1')
+    expect(buildPath({ page: 'channel', channelId: 'UC1', age: { lo: 0, hi: 2 } })).toBe('/channel/UC1?age=0-3')
   })
 
   it('omits sort and window on pages that have no such control', () => {
-    expect(buildPath({ page: 'downloads', sort: 'views', window: '1w' })).toBe('/downloads')
-    expect(buildPath({ page: 'history', window: '1w', sort: 'views' })).toBe('/history?sort=views')
+    expect(buildPath({ page: 'downloads', sort: 'views', age: { lo: 0, hi: 3 } })).toBe('/downloads')
+    expect(buildPath({ page: 'history', age: { lo: 0, hi: 3 }, sort: 'views' })).toBe('/history?sort=views')
   })
 
   it('writes the watch-status filter only when it differs from the page default', () => {

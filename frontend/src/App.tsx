@@ -22,6 +22,8 @@ import LocalFolderPage from './components/LocalFolderPage'
 import LocalWatchPage from './components/LocalWatchPage'
 import { fetchFolders, fetchFolderVideos } from './lib/local'
 import type { LocalFolder, LocalVideo } from './lib/local'
+import { DEFAULT_RANGE, formatAge, parseAge, rangeBounds, rangeFromLegacy } from './lib/timeWindow'
+import type { TimeRange } from './lib/timeWindow'
 
 export type DownloadItem = {
   youtube_id: string
@@ -95,7 +97,7 @@ export type FeedGroup = {
 export type FeedResponse = {
   categories: { name: string; icon: string; sort_order: number }[]
   groups: FeedGroup[]
-  window: string
+  age: string
 }
 
 // ── Watch status ────────────────────────────────────────────
@@ -179,21 +181,23 @@ function parsePath(): PathState {
 // isn't the feed's), but the URL carries one of each: the page being shown owns
 // them, and every other page's copy sits at its own default. A value equal to
 // that default is left out, so ordinary URLs stay short.
-const PAGE_DEFAULTS: Record<string, { window: string; sort: string; timeMode: string; watch: string[] }> = {
-  feed: { window: '3d', sort: 'likes', timeMode: 'wide', watch: DEFAULT_WATCH_STATUSES },
-  watchlater: { window: '3d', sort: 'likes', timeMode: 'wide', watch: DEFAULT_WATCH_STATUSES },
+const PAGE_DEFAULTS: Record<string, { age: string; sort: string; watch: string[] }> = {
+  feed: { age: '0-3', sort: 'likes', watch: DEFAULT_WATCH_STATUSES },
+  watchlater: { age: '0-3', sort: 'likes', watch: DEFAULT_WATCH_STATUSES },
   // A channel page opens on a wider window (one channel posts far less often)
   // and with nothing filtered out — you came to see what it has.
-  channel: { window: '1m', sort: 'likes', timeMode: 'wide', watch: [] },
-  channels: { window: '3d', sort: 'subs', timeMode: 'wide', watch: [] },
+  channel: { age: '0-30', sort: 'likes', watch: [] },
+  channels: { age: '0-3', sort: 'subs', watch: [] },
   // Imported and History lead with 'recent' — the order the API returns them in.
   // Imported shares the global watch-status selection (like Watch Later), so it
   // shares its default too; History keeps its own, which starts unfiltered.
-  imported: { window: '3d', sort: 'recent', timeMode: 'wide', watch: DEFAULT_WATCH_STATUSES },
-  history: { window: '3d', sort: 'recent', timeMode: 'wide', watch: [] },
+  imported: { age: '0-3', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
+  history: { age: '0-3', sort: 'recent', watch: [] },
 }
 const DEFAULTS = PAGE_DEFAULTS.feed
 const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
+/** A page's opening window, as the ticks the slider speaks. */
+const defaultRange = (page: string) => parseAge(defaultsFor(page).age) ?? DEFAULT_RANGE
 
 // Which controls each page actually has. A param a page can't change is never
 // written, so a URL only ever shows filters that page offers.
@@ -224,9 +228,8 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v
 
 type QueryState = {
   tags: string[]
-  window: string
+  age: TimeRange
   sort: string
-  timeMode: string
   shorts: boolean
   // null = absent from the URL, so use the page's default. [] = an explicit
   // "no filter" (?watch=none) — not the same thing.
@@ -242,9 +245,13 @@ function parseQuery(page: Page): QueryState {
   const watch = p.get('watch')
   return {
     tags: p.get('tags')?.split(',').filter(Boolean) ?? [],
-    window: p.get('window') || d.window,
+    // `window` + `time_mode` are the pre-slider spelling. They still resolve, so
+    // old bookmarks land on the range they always meant.
+    age: parseAge(p.get('age'))
+      ?? rangeFromLegacy(p.get('window'), p.get('time_mode'))
+      ?? parseAge(d.age)
+      ?? DEFAULT_RANGE,
     sort: p.get('sort') || d.sort,
-    timeMode: p.get('time_mode') || d.timeMode,
     shorts: p.get('shorts') === '1',
     watch: watch === null ? null : watch === 'none' ? [] : watch.split(',').filter(Boolean),
     label: p.get('label'),
@@ -257,9 +264,8 @@ export type UrlState = {
   page: string
   channelId?: string | null
   tags?: string[]
-  window?: string
+  age?: TimeRange
   sort?: string
-  timeMode?: string
   shorts?: boolean
   watch?: string[]
   label?: string | null
@@ -272,9 +278,9 @@ export function buildPath(s: UrlState): string {
   const d = defaultsFor(page)
   const params = new URLSearchParams()
   if (USES_TAGS.has(page) && s.tags?.length) params.set('tags', s.tags.join(','))
-  if (USES_WINDOW.has(page)) {
-    if (s.window && s.window !== d.window) params.set('window', s.window)
-    if (s.timeMode && s.timeMode !== d.timeMode) params.set('time_mode', s.timeMode)
+  if (USES_WINDOW.has(page) && s.age) {
+    const age = formatAge(s.age)
+    if (age !== d.age) params.set('age', age)
   }
   if (USES_SORT.has(page) && s.sort && s.sort !== d.sort) params.set('sort', s.sort)
   if (USES_SHORTS.has(page) && s.shorts) params.set('shorts', '1')
@@ -309,10 +315,8 @@ function stateFromUrl() {
     tags: q.tags,
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
-    timeWindow: owns('channel') ? DEFAULTS.window : q.window,
-    timeMode: owns('channel') ? DEFAULTS.timeMode : q.timeMode,
-    channelWindow: owns('channel') ? q.window : PAGE_DEFAULTS.channel.window,
-    channelTimeMode: owns('channel') ? q.timeMode : PAGE_DEFAULTS.channel.timeMode,
+    age: owns('channel') ? (parseAge(DEFAULTS.age) ?? DEFAULT_RANGE) : q.age,
+    channelAge: owns('channel') ? q.age : (parseAge(PAGE_DEFAULTS.channel.age) ?? DEFAULT_RANGE),
     sort: owns('feed', 'watchlater') ? q.sort : DEFAULTS.sort,
     channelsSort: owns('channels') ? q.sort : PAGE_DEFAULTS.channels.sort,
     channelSort: owns('channel') ? q.sort : PAGE_DEFAULTS.channel.sort,
@@ -327,20 +331,13 @@ function stateFromUrl() {
 
 // ── Watch Later helpers ──────────────────────────────────────
 
-const WINDOW_HOURS: Record<string, number> = {
-  '1d': 24, '3d': 72, '1w': 168, '2w': 336,
-  '1m': 720, '3m': 2160, '6m': 4320, '1y': 8760,
-}
-
-export function filterWatchLater(videos: VideoItem[], win: string, timeMode: string): VideoItem[] {
-  const hours = WINDOW_HOURS[win]
-  if (!hours) return videos
-  const now = Date.now()
-  const cutoff = now - hours * 3_600_000
-  if (timeMode === 'wide') return videos.filter(v => new Date(v.published_at).getTime() >= cutoff)
+// Watch Later is filtered here rather than by the API, but to the same bounds
+// the backend would apply — one range, one pair of comparisons.
+export function filterWatchLater(videos: VideoItem[], age: TimeRange): VideoItem[] {
+  const { from, to } = rangeBounds(age, Date.now())
   return videos.filter(v => {
     const t = new Date(v.published_at).getTime()
-    return t >= cutoff && t <= now
+    return t >= from && t < to
   })
 }
 
@@ -438,9 +435,8 @@ export default function App() {
   const [channelHasTopics, setChannelHasTopics] = useState(false)
   const [selectedLabel, setSelectedLabel] = useState<string | null>(init.selectedLabel)
   const [loading, setLoading] = useState(true)
-  const [timeWindow, setTimeWindow] = useState(init.timeWindow)
+  const [age, setAge] = useState(init.age)
   const [sort, setSort] = useState(init.sort)
-  const [timeMode, setTimeMode] = useState(init.timeMode)
   const [channelsSort, setChannelsSort] = useState(init.channelsSort)
   // Videos ↔ Shorts: switches the feed / channel pages between long-form and
   // vertical short-form. Shorts live on a separate channel tab and rank very
@@ -841,9 +837,8 @@ export default function App() {
   }, [])
 
   // ── Channel page state ────────────────────────────────
-  const [channelWindow, setChannelWindow] = useState(init.channelWindow)
+  const [channelAge, setChannelAge] = useState(init.channelAge)
   const [channelSort, setChannelSort] = useState(init.channelSort)
-  const [channelTimeMode, setChannelTimeMode] = useState(init.channelTimeMode)
 
   // ── URL sync ──────────────────────────────────────────
   // (currentPath / syncUrl live further down — they read the watch-status state,
@@ -887,13 +882,11 @@ export default function App() {
       setLocalFolderId(s.localFolderId)
       setSelectedLocalVideoId(null)
       setSelectedTags(s.tags)
-      setTimeWindow(s.timeWindow)
-      setTimeMode(s.timeMode)
+      setAge(s.age)
       setSort(s.sort)
       setChannelsSort(s.channelsSort)
-      setChannelWindow(s.channelWindow)
+      setChannelAge(s.channelAge)
       setChannelSort(s.channelSort)
-      setChannelTimeMode(s.channelTimeMode)
       setImportedSort(s.importedSort)
       setHistorySort(s.historySort)
       setContentMode(s.contentMode)
@@ -1017,13 +1010,12 @@ export default function App() {
     page,
     channelId: selectedChannelId,
     tags: selectedTags,
-    window: page === 'channel' ? channelWindow : timeWindow,
+    age: page === 'channel' ? channelAge : age,
     sort: page === 'channel' ? channelSort
       : page === 'channels' ? channelsSort
       : page === 'imported' ? importedSort
       : page === 'history' ? historySort
       : sort,
-    timeMode: page === 'channel' ? channelTimeMode : timeMode,
     shorts: contentMode === 'shorts',
     watch: page === 'channel' ? channelWatchStatuses
       : page === 'history' ? historyWatchStatuses
@@ -1031,8 +1023,8 @@ export default function App() {
     label: selectedLabel,
     showHidden,
     q: searchInput,
-  }), [page, selectedChannelId, selectedTags, timeWindow, sort, timeMode, channelsSort,
-    channelWindow, channelSort, channelTimeMode, importedSort, historySort, contentMode,
+  }), [page, selectedChannelId, selectedTags, age, sort, channelsSort,
+    channelAge, channelSort, importedSort, historySort, contentMode,
     watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden, searchInput])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
@@ -1125,7 +1117,7 @@ export default function App() {
   // Fetch one page of the feed; append to the existing list unless replacing.
   const fetchFeedPage = useCallback(async (offset: number, replace: boolean, size = FEED_PAGE_SIZE) => {
     const params = new URLSearchParams({
-      window: timeWindow, sort, time_mode: timeMode,
+      age: formatAge(age), sort,
       shorts: String(contentMode === 'shorts'),
       offset: String(offset), limit: String(size),
     })
@@ -1140,10 +1132,10 @@ export default function App() {
       return {
         categories: [],
         groups: [{ name: 'Feed', icon: '', sort_order: 0, videos: [...existing, ...(data.videos || [])] }],
-        window: data.window,
+        age: data.age,
       }
     })
-  }, [timeWindow, sort, timeMode, selectedTags, contentMode, showHidden, watchStatuses])
+  }, [age, sort, selectedTags, contentMode, showHidden, watchStatuses])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
@@ -1199,9 +1191,8 @@ export default function App() {
       setChannelWatchStatuses([])
     }
     if (p === 'channel') {
-      setChannelWindow(PAGE_DEFAULTS.channel.window)
+      setChannelAge(defaultRange('channel'))
       setChannelSort(PAGE_DEFAULTS.channel.sort)
-      setChannelTimeMode(PAGE_DEFAULTS.channel.timeMode)
     }
     // Every visit to History starts unfiltered — see historyWatchStatuses.
     if (p === 'history') setHistoryWatchStatuses([])
@@ -1281,9 +1272,8 @@ export default function App() {
     setSelectedChannelId(channelId)
     setSelectedPlaylistId(null)
     setPageRaw('channel')
-    setChannelWindow(PAGE_DEFAULTS.channel.window)
+    setChannelAge(defaultRange('channel'))
     setChannelSort(PAGE_DEFAULTS.channel.sort)
-    setChannelTimeMode(PAGE_DEFAULTS.channel.timeMode)
     setChannelWatchStatuses([])
     setSelectedLabel(null)
     mainRef.current?.scrollTo({ top: 0 })
@@ -1341,9 +1331,8 @@ export default function App() {
     setSelectedPlaylistId(null)
     setSelectedLabel(null)
     setPageRaw('feed')
-    setTimeWindow(DEFAULTS.window)
+    setAge(defaultRange('feed'))
     setSort(DEFAULTS.sort)
-    setTimeMode(DEFAULTS.timeMode)
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
   }
@@ -1450,12 +1439,11 @@ export default function App() {
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
-          window={page === 'channel' ? channelWindow : timeWindow}
-          onWindowChange={page === 'channel' ? setChannelWindow : setTimeWindow}
+          age={page === 'channel' ? channelAge : age}
+          onAgeChange={page === 'channel' ? setChannelAge : setAge}
+          count={page === 'feed' ? feedTotal : undefined}
           sort={page === 'channel' ? channelSort : page === 'imported' ? importedSort : page === 'history' ? historySort : sort}
           onSortChange={page === 'channel' ? setChannelSort : page === 'imported' ? setImportedSort : page === 'history' ? setHistorySort : setSort}
-          timeMode={page === 'channel' ? channelTimeMode : timeMode}
-          onTimeModeChange={page === 'channel' ? setChannelTimeMode : setTimeMode}
           channelsSort={channelsSort}
           onChannelsSortChange={setChannelsSort}
           onToggleCollapse={() => {
@@ -1578,7 +1566,7 @@ export default function App() {
                 <p className="text-xs text-[#555]">Hover a video and click the bookmark icon to save it.</p>
               </div>
             ) : (() => {
-              let result = filterWatchLater(watchLater, timeWindow, timeMode)
+              let result = filterWatchLater(watchLater, age)
               result = filterByTags(result, selectedTags, tags, tagChannels)
               result = filterByWatchStatus(result, watchStatuses, progressById)
               result = sortWatchLater(result, sort)
@@ -1603,12 +1591,9 @@ export default function App() {
         ) : page === 'channel' && selectedChannelId ? (
           <ChannelPage
             channelId={selectedChannelId}
-            timeWindow={channelWindow}
-            onTimeWindowChange={setChannelWindow}
+            age={channelAge}
             sort={channelSort}
             onSortChange={setChannelSort}
-            timeMode={channelTimeMode}
-            onTimeModeChange={setChannelTimeMode}
             watchLaterIds={watchLaterIds}
             onToggleWatchLater={toggleWatchLater}
             onDownload={startDownload}

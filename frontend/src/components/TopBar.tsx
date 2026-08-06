@@ -1,13 +1,13 @@
 import TimeSortControls from './TimeSortControls'
+import type { TimeRange } from '../lib/timeWindow'
 
 type Props = {
   variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'imported' | 'history' | 'local'
-  window: string
-  onWindowChange: (w: string) => void
+  age: TimeRange
+  onAgeChange: (r: TimeRange) => void
+  count?: number
   sort: string
   onSortChange: (s: string) => void
-  timeMode: string
-  onTimeModeChange: (m: string) => void
   channelsSort?: string
   onChannelsSortChange?: (s: string) => void
   onToggleCollapse: () => void
@@ -18,7 +18,7 @@ type Props = {
   onImport?: () => void
 }
 
-export default function TopBar({ variant, window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
+export default function TopBar({ variant, age, onAgeChange, count, sort, onSortChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
   // Downloads, search, playlists and local folders have nothing to sort or
   // window — their order is the library's own.
   const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' || variant === 'local' ? null : variant === 'imported' || variant === 'history' ? (
@@ -32,10 +32,9 @@ export default function TopBar({ variant, window, onWindowChange, sort, onSortCh
       variant="watchlater"
       sort={sort}
       onSortChange={onSortChange}
-      window={window}
-      onWindowChange={onWindowChange}
-      timeMode={timeMode}
-      onTimeModeChange={onTimeModeChange}
+      age={age}
+      onAgeChange={onAgeChange}
+      count={count}
     />
   ) : variant === 'channels' ? (
     <TimeSortControls
@@ -46,12 +45,11 @@ export default function TopBar({ variant, window, onWindowChange, sort, onSortCh
   ) : (
     <TimeSortControls
       variant={variant}
-      window={window}
-      onWindowChange={onWindowChange}
+      age={age}
+      onAgeChange={onAgeChange}
+      count={count}
       sort={sort}
       onSortChange={onSortChange}
-      timeMode={timeMode}
-      onTimeModeChange={onTimeModeChange}
     />
   )
 

@@ -1,17 +1,7 @@
-import type { TagInfo } from '../App'
+import TimeRangeSlider from './TimeRangeSlider'
+import type { TimeRange } from '../lib/timeWindow'
 
 // ── Constants ──────────────────────────────────────────────
-
-export const WINDOWS = [
-  { value: '1d', label: '1d' },
-  { value: '3d', label: '3d' },
-  { value: '1w', label: '1w' },
-  { value: '2w', label: '2w' },
-  { value: '1m', label: '1m' },
-  { value: '3m', label: '3m' },
-  { value: '6m', label: '6m' },
-  { value: '1y', label: '1y' },
-] as const
 
 export const SORT_OPTIONS = [
   { value: 'views', label: 'Views' },
@@ -39,17 +29,16 @@ export const CHANNEL_SORT_OPTIONS = [
 
 type Props = {
   variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'imported' | 'history'
-  window?: string
-  onWindowChange?: (w: string) => void
+  age?: TimeRange
+  onAgeChange?: (r: TimeRange) => void
+  count?: number
   sort: string
   onSortChange: (s: string) => void
-  timeMode?: string
-  onTimeModeChange?: (m: string) => void
 }
 
 // ── Inline time + sort (no TopBar wrapper) ─────────────────
 
-export default function TimeSortControls({ variant = 'feed', window, onWindowChange, sort, onSortChange, timeMode, onTimeModeChange }: Props) {
+export default function TimeSortControls({ variant = 'feed', age, onAgeChange, count, sort, onSortChange }: Props) {
   const effectiveVariant = variant === 'watchlater' ? 'feed' : variant
   if (effectiveVariant === 'channels' || effectiveVariant === 'imported' || effectiveVariant === 'history') {
     const options = effectiveVariant === 'channels'
@@ -77,59 +66,14 @@ export default function TimeSortControls({ variant = 'feed', window, onWindowCha
   }
 
   return (
-    <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-      {/* Row 1 on mobile / left on desktop: time window buttons + narrow/wide toggle */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="flex gap-1 overflow-x-auto no-scrollbar flex-1 min-w-0">
-          {WINDOWS.map((w, i) => {
-            const selectedIdx = WINDOWS.findIndex((x) => x.value === window)
-            const isSelected = timeMode === 'wide' ? i <= selectedIdx : window === w.value
-            return (
-              <button
-                key={w.value}
-                onClick={() => onWindowChange?.(w.value)}
-                className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
-                  isSelected
-                    ? 'bg-white text-black font-medium'
-                    : 'bg-[#272727] text-white hover:bg-[#3a3a3a]'
-                }`}
-              >
-                {w.label}
-              </button>
-            )
-          })}
-        </div>
-
-        {/* Narrow / Wide mode toggle — single icon button */}
-        <button
-          onClick={() => onTimeModeChange?.(timeMode === 'wide' ? 'narrow' : 'wide')}
-          title={timeMode === 'wide' ? 'Wide (cumulative) — click for Narrow' : 'Narrow (discrete) — click for Wide'}
-          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-[#1a1a1a] hover:bg-[#272727] transition-colors text-[#aaa] hover:text-white"
-        >
-          {timeMode === 'wide' ? (
-            /* Wide: arrows pointing outward from center bar, with gap */
-            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="2.5" x2="8" y2="13.5"/>
-              <line x1="1.5" y1="8" x2="5.5" y2="8"/>
-              <polyline points="3.5,5.5 1.5,8 3.5,10.5"/>
-              <line x1="10.5" y1="8" x2="14.5" y2="8"/>
-              <polyline points="12.5,5.5 14.5,8 12.5,10.5"/>
-            </svg>
-          ) : (
-            /* Narrow: arrows pointing inward toward center bar, with gap */
-            <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="2.5" x2="8" y2="13.5"/>
-              <line x1="1.5" y1="8" x2="5.5" y2="8"/>
-              <polyline points="3.5,5.5 5.5,8 3.5,10.5"/>
-              <line x1="10.5" y1="8" x2="14.5" y2="8"/>
-              <polyline points="12.5,5.5 10.5,8 12.5,10.5"/>
-            </svg>
-          )}
-        </button>
-      </div>
+    <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+      {/* Row 1 on mobile / left on desktop: the time window */}
+      {age && onAgeChange && (
+        <TimeRangeSlider value={age} onChange={onAgeChange} count={count} />
+      )}
 
       {/* Row 2 on mobile / right on desktop: sort buttons */}
-      <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 md:ml-auto overflow-x-auto no-scrollbar">
+      <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 md:ml-auto md:flex-shrink-0 overflow-x-auto no-scrollbar">
         {SORT_OPTIONS.map((opt) => (
           <button
             key={opt.value}

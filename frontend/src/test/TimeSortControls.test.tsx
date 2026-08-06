@@ -1,36 +1,20 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
-import TimeSortControls, { WINDOWS, SORT_OPTIONS, CHANNEL_SORT_OPTIONS } from '../components/TimeSortControls'
+import TimeSortControls, { SORT_OPTIONS, CHANNEL_SORT_OPTIONS } from '../components/TimeSortControls'
 
 describe('TimeSortControls — feed variant', () => {
   const defaultProps = {
     variant: 'feed' as const,
-    window: '3d',
-    onWindowChange: vi.fn(),
+    age: { lo: 0, hi: 2 },
+    onAgeChange: vi.fn(),
     sort: 'likes',
     onSortChange: vi.fn(),
-    timeMode: 'wide',
-    onTimeModeChange: vi.fn(),
   }
 
-  it('renders all time window buttons', () => {
+  it('renders the time window slider', () => {
     render(<TimeSortControls {...defaultProps} />)
-    for (const w of WINDOWS) {
-      expect(screen.getByRole('button', { name: w.label })).toBeInTheDocument()
-    }
-  })
-
-  // Narrow/Wide is one icon button that flips between the two modes; its title
-  // names the CURRENT mode and what a click would do.
-  const modeToggle = () => screen.getByTitle(/^(Wide|Narrow) /)
-
-  it('renders the narrow/wide toggle showing the current mode', () => {
-    render(<TimeSortControls {...defaultProps} />)
-    expect(modeToggle()).toHaveAttribute('title', expect.stringContaining('Wide (cumulative)'))
-
-    render(<TimeSortControls {...defaultProps} timeMode="narrow" />)
-    expect(screen.getAllByTitle(/^(Wide|Narrow) /)[1])
-      .toHaveAttribute('title', expect.stringContaining('Narrow (discrete)'))
+    expect(screen.getByText('Past 3d')).toBeInTheDocument()
+    expect(screen.getByTestId('time-thumb-lo')).toBeInTheDocument()
   })
 
   it('renders all sort option buttons', () => {
@@ -40,11 +24,11 @@ describe('TimeSortControls — feed variant', () => {
     }
   })
 
-  it('calls onWindowChange when a window button is clicked', () => {
-    const onWindowChange = vi.fn()
-    render(<TimeSortControls {...defaultProps} onWindowChange={onWindowChange} />)
+  it('reports a new range when a tick is clicked', () => {
+    const onAgeChange = vi.fn()
+    render(<TimeSortControls {...defaultProps} onAgeChange={onAgeChange} />)
     fireEvent.click(screen.getByRole('button', { name: '1w' }))
-    expect(onWindowChange).toHaveBeenCalledWith('1w')
+    expect(onAgeChange).toHaveBeenCalledWith({ lo: 0, hi: 3 })
   })
 
   it('calls onSortChange when a sort button is clicked', () => {
@@ -54,31 +38,15 @@ describe('TimeSortControls — feed variant', () => {
     expect(onSortChange).toHaveBeenCalledWith('score')
   })
 
-  it('toggles from wide to narrow', () => {
-    const onTimeModeChange = vi.fn()
-    render(<TimeSortControls {...defaultProps} onTimeModeChange={onTimeModeChange} />)
-    fireEvent.click(modeToggle())
-    expect(onTimeModeChange).toHaveBeenCalledWith('narrow')
+  it('shows the count beside the window when one is given', () => {
+    render(<TimeSortControls {...defaultProps} count={1234} />)
+    expect(screen.getByText('1,234 videos')).toBeInTheDocument()
   })
 
-  it('toggles from narrow to wide', () => {
-    const onTimeModeChange = vi.fn()
-    render(<TimeSortControls {...defaultProps} timeMode="narrow" onTimeModeChange={onTimeModeChange} />)
-    fireEvent.click(modeToggle())
-    expect(onTimeModeChange).toHaveBeenCalledWith('wide')
-  })
-
-  it('highlights selected window button in narrow mode', () => {
-    render(<TimeSortControls {...defaultProps} window="1w" timeMode="narrow" />)
-    const btn = screen.getByRole('button', { name: '1w' })
-    expect(btn.className).toMatch(/bg-white/)
-  })
-
-  it('highlights buttons up to selected window in wide mode', () => {
-    render(<TimeSortControls {...defaultProps} window="1w" timeMode="wide" />)
-    // 1d, 3d, 1w should be highlighted; 2w onward should not
-    expect(screen.getByRole('button', { name: '1d' }).className).toMatch(/bg-white/)
-    expect(screen.getByRole('button', { name: '2w' }).className).not.toMatch(/bg-white/)
+  it('leaves the slider out when the page has no window to set', () => {
+    render(<TimeSortControls variant="feed" sort="likes" onSortChange={vi.fn()} />)
+    expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hot' })).toBeInTheDocument()
   })
 })
 
@@ -88,7 +56,7 @@ describe('TimeSortControls — channels variant', () => {
     for (const opt of CHANNEL_SORT_OPTIONS) {
       expect(screen.getByRole('button', { name: opt.label })).toBeInTheDocument()
     }
-    expect(screen.queryByRole('button', { name: '1d' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
   })
 
   it('calls onSortChange when A-Z is clicked', () => {
