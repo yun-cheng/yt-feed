@@ -41,6 +41,10 @@ real video (muted, with custom captions and scrubbing).
 - **Imported videos** — paste any YouTube link to add a one-off video from a
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)
+- **Open from YouTube** — with the extension installed, hovering any thumbnail on
+  youtube.com puts a button on its corner that opens that video here instead.
+  Whatever you send over gets its title, channel and stats resolved on arrival,
+  and stays off the Imported page — that page is what you chose to keep
 - **Local folders** — point the app at a directory on the backend's machine and
   its video files become their own feed: poster frames, durations, hover previews
   and resume, played in the same control bar downloads use. Each folder stays a
@@ -79,9 +83,9 @@ Component-level detail lives in the per-package READMEs:
   preview pool).
 - **[frontend/README.md](frontend/README.md)** — the SPA, History-API routing,
   and the hover-preview / mute logic.
-- **[extension/README.md](extension/README.md)** — the optional clean-embed
-  extension: what it hides, how the app detects it, and the one selector it
-  rests on.
+- **[extension/README.md](extension/README.md)** — the optional companion
+  extension: the *open in YT Feed* button on YouTube's video cards, what it
+  hides on embedded players, and the one selector that rests on.
 
 ## Setup
 
@@ -113,16 +117,22 @@ meilisearch --db-path data/meili --http-addr 127.0.0.1:7700 --no-analytics
 If Meilisearch isn't running, search returns nothing and everything else works.
 All three are also defined in [`.claude/launch.json`](.claude/launch.json).
 
-### Clean embed (optional)
+### Browser extension (optional)
 
-A companion browser extension strips YouTube's overlays — title, avatar, centre
-play button, share row, "More videos" — off embedded players, so the app draws
-its own control bar over bare video. Load `extension/` unpacked from
-`chrome://extensions` (Developer mode → Load unpacked) and reload the app.
+A companion extension does two things, each on a different site. On **youtube.com**
+it puts an *open in YT Feed* button on the corner of every video thumbnail, so a
+video you find there opens here instead — styled to pass for YouTube's own
+circular hover controls. On **embedded players** it strips YouTube's overlays —
+title, avatar, centre play button, share row, "More videos" — so the app draws
+its own control bar over bare video.
+
+Load `extension/` unpacked from `chrome://extensions` (Developer mode → Load
+unpacked) and reload the app.
 
 Everything works without it; the app keeps YouTube's own controls and lays the
-bookmark / A–B marks over them instead. See
-[`extension/README.md`](extension/README.md).
+bookmark / A–B marks over them instead. A video opened with the button need not
+be from a channel you follow — the watch page resolves and caches whatever it's
+never seen. See [`extension/README.md`](extension/README.md).
 
 ### AI tagging (optional)
 

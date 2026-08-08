@@ -103,7 +103,7 @@ def _published_at(info: dict) -> datetime:
     return datetime.utcnow()
 
 
-def _to_record(video_id: str, info: dict) -> ImportedVideo:
+def _to_record(video_id: str, info: dict, source: str = "import") -> ImportedVideo:
     published = _published_at(info)
     views = int(info.get("view_count") or 0)
     width, height = info.get("width") or 0, info.get("height") or 0
@@ -126,6 +126,7 @@ def _to_record(video_id: str, info: dict) -> ImportedVideo:
         # Set here rather than left to the column default so the record we hand
         # straight back to the UI already carries it (the default only lands on flush).
         created_at=datetime.utcnow(),
+        source=source,
     )
 
 
@@ -135,6 +136,7 @@ def _channel_thumb(info: dict) -> str:
         if t.get("id") == "avatar_uncropped":
             return t.get("url") or ""
     return ""
+
 
 
 def _serialize(v: ImportedVideo) -> dict:
@@ -158,9 +160,17 @@ def _serialize(v: ImportedVideo) -> dict:
 
 @router.get("")
 async def list_imported(db: AsyncSession = Depends(get_db)):
-    """Imported videos, most recently imported first."""
+    """Imported videos, most recently imported first.
+
+    Only the ones you actually imported. The table also holds metadata rows for
+    videos opened through the extension's button, which exist so the watch page
+    and history have a title to show — listing those here would turn a page of
+    things you chose to keep into a log of everything you clicked.
+    """
     rows = (await db.execute(
-        select(ImportedVideo).order_by(ImportedVideo.created_at.desc())
+        select(ImportedVideo)
+        .where(ImportedVideo.source == "import")
+        .order_by(ImportedVideo.created_at.desc())
     )).scalars().all()
     return [_serialize(v) for v in rows]
 
@@ -176,15 +186,28 @@ async def import_videos(req: ImportRequest, db: AsyncSession = Depends(get_db)):
     ids, bad = parse_video_ids(req.urls)
     failed = [{"input": t, "error": "not a YouTube link"} for t in bad]
 
-    existing = set()
+    existing: dict[str, str] = {}
     if ids:
         existing = {
-            r[0] for r in await db.execute(
-                select(ImportedVideo.youtube_id).where(ImportedVideo.youtube_id.in_(ids))
+            r[0]: r[1] for r in await db.execute(
+                select(ImportedVideo.youtube_id, ImportedVideo.source)
+                .where(ImportedVideo.youtube_id.in_(ids))
             )
         }
-    skipped = [vid for vid in ids if vid in existing]
+    skipped = [vid for vid in ids if existing.get(vid) == "import"]
+    # Already here, but only as the metadata cached when you opened it from
+    # YouTube. Pasting its link is you asking to KEEP it, so promote the row
+    # instead of reporting "already imported" about something not on the page.
+    promoted = [vid for vid in ids if existing.get(vid) == "youtube"]
     todo = [vid for vid in ids if vid not in existing]
+
+    added = []
+    for vid in promoted:
+        rec = await db.get(ImportedVideo, vid)
+        rec.source = "import"
+        # Ordering is "most recently imported first", and this is that moment.
+        rec.created_at = datetime.utcnow()
+        added.append(_serialize(rec))
 
     loop = asyncio.get_event_loop()
     infos = await asyncio.gather(
@@ -192,7 +215,6 @@ async def import_videos(req: ImportRequest, db: AsyncSession = Depends(get_db)):
         return_exceptions=True,
     )
 
-    added = []
     for vid, info in zip(todo, infos):
         if isinstance(info, BaseException) or not info:
             failed.append({"input": vid, "error": str(info)[:200] or "could not fetch"})

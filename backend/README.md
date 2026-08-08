@@ -499,6 +499,23 @@ the box for a retry. Duplicates inside one paste collapse to the first.
 `is_short` isn't something yt-dlp reports, so it's inferred the way the format
 is defined: portrait and at most 180s.
 
+### Two kinds of row: `source`
+
+The table holds more than the things you pasted. Opening a video the app has no
+row for — which is what the browser extension's *open in YT Feed* button does —
+needs the same metadata, because the watch page and the history reporter both
+read their title, channel and stats from it. So `GET /api/feed/video/{id}`
+resolves an unknown video from YouTube and keeps the result here.
+
+`source` separates the two: `"import"` is something you pasted and meant to
+keep, `"youtube"` is a cache of something you opened. `GET /api/imported` lists
+only the former — listing the latter would turn a page of things you chose to
+keep into a log of everything you clicked.
+
+Pasting the link of a video you'd already opened **promotes** its row to
+`"import"` and restamps `created_at`, rather than reporting "already imported"
+about something absent from the page.
+
 ---
 
 ## Local folders (`routers/local.py`)
@@ -716,7 +733,7 @@ cut off) rather than returning `None` for a caller to trip over.
 | `playlists` / `playlist_items` | user playlists |
 | `downloads` | videos downloaded to disk for offline viewing |
 | `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
-| `imported_videos` | one-off videos added by URL, from channels you don't follow |
+| `imported_videos` | one-off videos added by URL, from channels you don't follow — plus, under `source="youtube"`, cached metadata for videos opened via the extension's button |
 | `watch_history` | how far you got in each video, and whether you finished it |
 | `bookmarks` | moments marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
@@ -862,7 +879,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
-| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot |
+| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
 | POST | `/api/channels/{id}/labels/build` | build this channel's video-topic vocabulary (background; `?force=1` rebuilds) |
@@ -920,7 +937,7 @@ no per-test decorator). What's covered:
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
-| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks |
+| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video |
 
 `conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import
@@ -938,4 +955,9 @@ change rather than a surprise — `test_a_mixed_script_japanese_name_is_currentl
 has the two rules backwards).
 
 `scripts/` holds one-off maintenance scripts (stat backfills, date/count fixes,
-subscription import) — run ad hoc, not part of the app.
+subscription import) — run ad hoc, not part of the app. One of them repairs rows
+written before the fix that made it unnecessary, and takes `--dry-run`:
+
+```bash
+python -m scripts.fix_blank_history    # nameless history rows, via get_video
+```

@@ -44,6 +44,9 @@ _COLUMN_MIGRATIONS = [
     ("channels", "archive_cursor", "TEXT"),
     ("channels", "archive_exhausted", "BOOLEAN NOT NULL DEFAULT 0"),
     ("channels", "lifetime_count", "INTEGER"),
+    # Existing rows were all deliberate imports, which is exactly what the
+    # default says — so the backfill needs no separate pass.
+    ("imported_videos", "source", "TEXT NOT NULL DEFAULT 'import'"),
 ]
 
 

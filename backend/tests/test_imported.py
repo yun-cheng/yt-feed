@@ -154,3 +154,111 @@ def test_channel_avatar_is_picked_out_of_the_thumbnail_list():
 
 def test_no_avatar_in_the_extraction_is_blank_not_an_error():
     assert _to_record("vid1", info()).channel_thumbnail == ""
+
+
+# ── where a row came from ────────────────────────────────────────────
+#
+# The table holds two kinds of row. Pasting a link means "keep this", and those
+# are what the Imported page lists. Opening a video with the extension's button
+# also needs a row — the watch page and the history reporter read their title,
+# channel and stats from it — but that's a cache, not a keepsake.
+
+
+def test_a_record_is_a_deliberate_import_unless_said_otherwise():
+    assert _to_record("vid1", info()).source == "import"
+
+
+@pytest.mark.asyncio
+async def test_a_video_cached_from_youtube_stays_off_the_imported_page(client, db):
+    from app.models import ImportedVideo
+
+    db.add(_to_record("kept", info()))
+    db.add(_to_record("opened", info(), source="youtube"))
+    await db.commit()
+
+    listed = (await client.get("/api/imported")).json()
+    assert [v["youtube_id"] for v in listed] == ["kept"]
+    # Still stored, though — that's the whole point of writing it.
+    assert await db.get(ImportedVideo, "opened") is not None
+
+
+@pytest.mark.asyncio
+async def test_opening_an_unknown_video_resolves_it_from_youtube_and_keeps_it(
+    client, db, monkeypatch
+):
+    """Without this the watch page plays a video under a blank title, and history
+    files it nameless."""
+    from app.models import ImportedVideo
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: info(title="Resolved"))
+
+    body = (await client.get("/api/feed/video/never-seen")).json()
+    assert body["title"] == "Resolved"
+    assert body["channel_name"] == "A Channel"
+
+    rec = await db.get(ImportedVideo, "never-seen")
+    assert rec.source == "youtube"
+
+
+@pytest.mark.asyncio
+async def test_a_video_youtube_will_not_give_up_degrades_rather_than_erroring(
+    client, monkeypatch
+):
+    """Private, deleted and region-blocked all land here. The watch page can still
+    play from the id alone, so a blank answer beats a 500."""
+    from app.routers import imported as imported_mod
+
+    def boom(vid):
+        raise RuntimeError("Video unavailable")
+
+    monkeypatch.setattr(imported_mod, "_extract", boom)
+    res = await client.get("/api/feed/video/gone")
+    assert res.status_code == 200
+    assert res.json() == {}
+
+
+@pytest.mark.asyncio
+async def test_the_second_open_is_served_from_the_cached_row(client, monkeypatch):
+    """The fetch costs a yt-dlp extraction, so it must happen once per video."""
+    from app.routers import imported as imported_mod
+
+    calls = {"n": 0}
+
+    def counted(vid):
+        calls["n"] += 1
+        return info(title="Once")
+
+    monkeypatch.setattr(imported_mod, "_extract", counted)
+    await client.get("/api/feed/video/vid1")
+    second = (await client.get("/api/feed/video/vid1")).json()
+    assert calls["n"] == 1
+    assert second["title"] == "Once"
+
+
+@pytest.mark.asyncio
+async def test_pasting_the_link_of_a_video_you_opened_promotes_it(client, db):
+    """Reporting "already imported" about something absent from the Imported page
+    would leave no way to actually import it."""
+    db.add(_to_record("openedAAAAA", info(), source="youtube"))
+    await db.commit()
+
+    res = (await client.post(
+        "/api/imported", json={"urls": "https://youtu.be/openedAAAAA"})).json()
+    assert [v["youtube_id"] for v in res["added"]] == ["openedAAAAA"]
+    assert res["skipped"] == []
+
+    listed = (await client.get("/api/imported")).json()
+    assert [v["youtube_id"] for v in listed] == ["openedAAAAA"]
+
+
+@pytest.mark.asyncio
+async def test_pasting_a_link_you_really_did_import_is_still_a_skip(client, db):
+    db.add(_to_record("keptAAAAAAA", info()))
+    await db.commit()
+
+    res = (await client.post(
+        "/api/imported", json={"urls": "https://youtu.be/keptAAAAAAA"})).json()
+    assert res["skipped"] == ["keptAAAAAAA"]
+    assert res["added"] == []
+

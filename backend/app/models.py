@@ -249,6 +249,11 @@ class ImportedVideo(Base):
     is_short = Column(Boolean, nullable=False, default=False, server_default="0")
     score = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # How the row got here. "import" = you pasted its link and meant to keep it,
+    # and those are the only ones the Imported page lists. "youtube" = you opened
+    # it with the extension's button and this is just the metadata the watch page
+    # and history need; see routers/feed.get_video.
+    source = Column(String, nullable=False, default="import", server_default="import")
 
 
 class LocalFolder(Base):

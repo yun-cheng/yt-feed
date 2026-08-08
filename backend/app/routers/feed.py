@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -697,14 +698,50 @@ async def get_storyboard(video_id: str):
     return data or {}
 
 
+async def _resolve_from_youtube(video_id: str, db: AsyncSession) -> dict:
+    """Metadata for a video we hold no row for, fetched live and then kept.
+
+    The extension's button (see `extension/open-in-app.js`) can hand the watch
+    page any id on YouTube — one belonging to no subscribed channel and never
+    imported. Without this the page plays it under a blank title, and the
+    history reporter, which copies its fields from this response, files it
+    nameless.
+
+    Kept with source="youtube", so it serves the watch page and history while
+    staying off the Imported page — that page means "videos I chose to keep".
+    """
+    from app.routers.imported import _extract, _import_pool, _serialize, _to_record
+
+    loop = asyncio.get_event_loop()
+    try:
+        info = await loop.run_in_executor(_import_pool, _extract, video_id)
+    except Exception as exc:  # a private, deleted or region-blocked video
+        print(f"[feed] could not resolve {video_id} from YouTube: {exc}")
+        return {}
+    if not info:
+        return {}
+
+    rec = _to_record(video_id, info, source="youtube")
+    # Serialised BEFORE the commit: committing expires the instance, and the
+    # rollback path below detaches it entirely.
+    payload = _serialize(rec)
+    db.add(rec)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Two tabs opened the same new video at once. The row we wanted exists.
+        await db.rollback()
+    return payload
+
+
 @router.get("/video/{video_id}")
 async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
     """Single video's metadata for the in-app watch page (deep links / refresh).
 
     Falls back to the imported-videos snapshot, so opening (or reloading) an
     imported video keeps its title/channel chrome even though it belongs to no
-    subscribed channel. Returns {} if the id is in neither — the watch page
-    still plays the embed from the id alone, just with minimal chrome.
+    subscribed channel. A video in neither is resolved from YouTube and cached,
+    which is the path every video opened with the extension's button takes.
     """
     v = await db.get(Video, video_id)
     if not v:
@@ -712,7 +749,7 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
         if imp:
             from app.routers.imported import _serialize as _serialize_imported
             return _serialize_imported(imp)
-        return {}
+        return await _resolve_from_youtube(video_id, db)
     chan = await db.get(Channel, v.channel_id)
     try:
         title_labels = json.loads(v.title_labels) if v.title_labels else None
