@@ -5,6 +5,7 @@ import { formatAge } from '../lib/timeWindow'
 import type { TimeRange } from '../lib/timeWindow'
 import VideoRow from './VideoRow'
 import ChannelTags from './ChannelTags'
+import ChannelArchive, { useArchiveStatus } from './ChannelArchive'
 
 type ChannelInfo = {
   youtube_id: string
@@ -70,6 +71,10 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
   const [descOverflows, setDescOverflows] = useState(false)
   const descRef = useRef<HTMLParagraphElement>(null)
   const loadingMoreRef = useRef(false)
+
+  // How much of this channel's back catalogue we hold, plus the action that
+  // fetches the rest. Polls only while a fill is running.
+  const archive = useArchiveStatus(channelId)
 
   // ── Video labels ──────────────────────────────────────────────
   // vocabReady gates lazy per-video labeling: true once phase-1 built a
@@ -137,6 +142,16 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     if (replace) initChannelLabels(d.channel)
   }, [channelId, age, sort, shorts, labelFilter, watchStatuses, initChannelLabels])
   fetchPageRef.current = fetchPage
+
+  // A finished fill means rows the current query never saw. Refetch page 0 the
+  // way a finished label build does, so the list reflects what just arrived
+  // instead of waiting for the next navigation.
+  const wasFillingRef = useRef(false)
+  useEffect(() => {
+    const filling = archive.status?.filling ?? false
+    if (wasFillingRef.current && !filling) fetchPageRef.current(0, true)
+    wasFillingRef.current = filling
+  }, [archive.status?.filling])
 
   // Stop polling and clear per-channel label state when leaving the channel.
   useEffect(() => {
@@ -259,6 +274,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
               )}
             </div>
           )}
+          <ChannelArchive status={archive.status} onStart={archive.start} />
           <a
             href={`https://www.youtube.com/channel/${ch.youtube_id}`}
             target="_blank"
@@ -284,10 +300,35 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
 
       {/* Video grid */}
       {videos.length === 0 ? (
-        <div className="flex items-center justify-center h-32 text-[#aaaaaa] text-sm">
-          {labelFilter
-            ? `No "${labelFilter}" videos in this time range.`
-            : 'No videos in this time range.'}
+        <div className="flex flex-col items-center justify-center gap-2 h-40 text-[#aaaaaa] text-sm">
+          <span>
+            {labelFilter
+              ? `No "${labelFilter}" videos in this time range.`
+              : 'No videos in this time range.'}
+          </span>
+          {/* The moment you want more history is the moment a window comes back
+              empty, so the action lives here rather than behind a setting. Only
+              offered when there IS more: a channel we hold in full is telling
+              you something true. */}
+          {!labelFilter && archive.status && !archive.status.exhausted && (
+            <span className="flex items-center gap-2 text-xs text-[#777]">
+              {archive.status.oldest_held && (
+                <span>Fetched back to {new Date(archive.status.oldest_held)
+                  .toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}.</span>
+              )}
+              {archive.status.filling ? (
+                <span className="text-[#aaa]">Fetching more…</span>
+              ) : (
+                <button
+                  onClick={archive.start}
+                  className="cursor-pointer rounded-full border border-[#3f3f3f] px-2.5 py-0.5 text-[#aaa] transition-colors hover:border-[#666] hover:text-white"
+                >
+                  Fetch older videos
+                  {archive.status.remaining ? ` (${archive.status.remaining.toLocaleString()})` : ''}
+                </button>
+              )}
+            </span>
+          )}
         </div>
       ) : (
         <VideoRow
