@@ -196,9 +196,9 @@ there.
 boundaries, and `lib/timeWindow.ts` is the model both it and the URL agree on:
 
 ```
-days:    0     1     3     7    14    30    90   180   365
-label:  now   1d    3d    1w    2w    1m    3m    6m    1y
-index:   0     1     2     3     4     5     6     7     8
+days:    0     1     3     7    14    30    90   180   365    ∞
+label:  now   1d    3d    1w    2w    1m    3m    6m    1y   all
+index:   0     1     2     3     4     5     6     7     8    9
 ```
 
 A window is a `TimeRange` — a `{lo, hi}` pair of **indices** — which the wire
@@ -208,10 +208,18 @@ rather than by days; 1d and 1y are one notch apart either way.
 
 This replaced eight preset buttons plus a narrow/wide toggle. Those could only
 reach ranges anchored at 0 ("wide") or exactly one notch wide ("narrow") — 15 of
-the 36 pairs the ladder allows. Naming both edges reaches all of them, and the
-toggle disappears into the question "is `lo` at 0?". `rangeFromLegacy()` reads
-the old `window` + `time_mode` params so existing bookmarks still resolve; the
-first `syncUrl` then rewrites them to `age`.
+the pairs the ladder allows. Naming both edges reaches all of them, and the
+toggle disappears into the question "is `lo` at 0?".
+
+**The last rung is unbounded.** `TICK_DAYS` ends in `Infinity`, spelled `all` on
+the wire: `?age=0-all` is "All time", `?age=30-all` is "Older than 1m". It costs
+almost nothing to carry because the range arithmetic is entirely by index —
+`clampRange` never looks at a day count — so only the four functions that
+translate an index into days know it exists. Two of them have a trap worth
+knowing: `parseAge` special-cases the token before calling `nearestTick`,
+because `|∞ − ∞|` is `NaN` and would compare false against every rung and land
+on index 0; and `nearestTick` can never *return* the rung, so a hand-edited
+`?age=0-99999` still means the past year rather than quietly meaning everything.
 
 Three ways to set it, and the third is why the button row isn't missed:
 
@@ -306,6 +314,10 @@ components/
   VideoRow.tsx                    list-row variant
   ChannelPage.tsx / ChannelsPage.tsx
   ChannelTags.tsx                 per-channel label editor (apply/remove/suggest)
+  ChannelArchive.tsx              how much of a channel's history is held, and
+                                  the button that fetches the rest
+  SettingsPage.tsx                renders itself from the spec /api/settings
+                                  serves — adding a setting is a backend change
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx               the offline library — cards open the watch
                                   overlay, which plays the file from disk
@@ -809,7 +821,7 @@ two shims Radix's slider needs to mount at all (below).
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
-| `timeWindow.test.ts` | the time-window ladder: clamping, snapping, the `age` round-trip, and the legacy params it replaced |
+| `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 

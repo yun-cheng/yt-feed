@@ -52,7 +52,10 @@ app/
   database.py      Async engine + session factory, schema create, tiny migrations
   models.py        SQLAlchemy tables (see "Data model")
 
-  cron_update.py   run_update(): the actual channel-scan job (Phases 1–4)
+  cron_update.py   run_update(): the actual channel-scan job (Phases 1–5)
+  app_settings.py  user-facing preferences (DB-backed; .env is deployment)
+  archive.py       deep per-channel history, under a daily quota budget
+  quota.py         Data API units spent per quota-day (midnight US/Pacific)
   fetcher.py       yt-dlp wrappers (channel listings, video details)
   youtube_api.py   YouTube Data API v3 batch stats (+ token handling)
   ranking.py       score = views / hours-since-published; age-range resolving
@@ -70,10 +73,12 @@ app/
     history.py     watch positions — resume, the card's progress bar, History
     imported.py    videos added by pasting a YouTube link (metadata via yt-dlp)
     local.py       local folders: scan a directory, serve its files, remember positions
+    settings.py    app settings, served with the spec the UI renders from
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 config/            categories.yaml, subscriptions.yaml, oauth token
-.env               secrets (OPENROUTER_API_KEY); gitignored
+.env               secrets + deployment wiring (OPENROUTER_API_KEY); gitignored
+                   — user-facing preferences live in app_settings.py instead
 scripts/           one-off maintenance scripts (backfills, fixes)
 ```
 
@@ -113,12 +118,11 @@ does three things: filter to a time window, score, and sort.
 
 Requests carry `age`, a publish-age range in days: `age=0-3` is "the last three
 days", `age=3-14` is "published 3 to 14 days ago". Both edges must land on the
-ladder of boundaries in `TICK_DAYS`, which is the same set `WINDOW_RANGES` is
-built from:
+ladder of boundaries in `TICK_DAYS`:
 
 ```
-days:    0     1     3     7    14    30    90   180   365
-label:  now   1d    3d    1w    2w    1m    3m    6m    1y
+days:    0     1     3     7    14    30    90   180   365    ∞
+label:  now   1d    3d    1w    2w    1m    3m    6m    1y   all
 ```
 
 `resolve_range()` turns the request into the `(newer, older)` offsets from now
@@ -127,17 +131,31 @@ tick (a dead tie goes to the tighter window), a reversed pair is read in the
 order it meant, and a zero-width range is a 422 rather than a silently empty
 feed.
 
-**The pre-slider spelling still resolves.** `window` + `time_mode` was the old
-pair, and `resolve_range()` accepts it so existing bookmarks keep working:
+**The older edge can be unbounded.** `age=0-all` is everything held, `age=30-all`
+is everything older than a month — which is how a channel's deep archive is
+reachable at all, since the finite ladder stops at a year. It resolves to an
+older offset of `None`, and a query with `None` there omits its lower bound
+rather than inventing a floor (`range_cutoffs()` returns the pair a `WHERE`
+wants). Only the older edge may be unbounded; `all-30` is a 422. The token
+spells itself rather than standing in for a big number, because a sentinel that
+looks like a day count reads as data everywhere it travels — and it means
+`nearestTick` can never land on it, so `age=0-99999` still means "the past
+year".
 
-- **wide** (the default) — accumulated from now: `window=3d` → `age=0-3`.
-- **narrow** — the exclusive bucket: `window=3d` → `age=1-3`.
+The preset row this replaced could only reach ranges anchored at 0 or exactly
+one notch wide: 15 of the 36 pairs the ladder allows. A window like `3-14` —
+starting away from now *and* several buckets wide — had no spelling at all.
+Naming both edges is what the UI's two-handled slider needed, and it makes the
+old narrow/wide mode flag redundant: "wide" is just a range whose newer edge
+sits at 0. A request that names no `age` gets `DEFAULT_AGE` ("0-3").
 
-Those two modes could only reach ranges anchored at 0 or exactly one notch
-wide: 15 of the 36 pairs the ladder allows. A window like `3d-14` — starting
-away from now *and* several buckets wide — had no spelling at all. Naming both
-edges is what the UI's two-handled slider needed, and it makes the mode flag
-redundant: "wide" is just a range whose newer edge sits at 0.
+**A window is fetched, not trimmed to.** Both feed and channel queries put the
+range in the SQL `WHERE` and cap at `WINDOW_FETCH_CAP` (10,000) purely as a
+safety net. The channel page used to take the newest 2,000 rows and filter
+afterwards, which meant that on a channel posting faster than that the older
+half of the ladder could never match anything — the rows were in the table, the
+query just never saw them. The cap that remains says so in the log when it bites,
+because a silently short list reads as "nothing there".
 
 ### Hot score, with a burn-in
 
@@ -189,14 +207,19 @@ subscription reconcile (below).
 `run_update()` has four phases:
 
 1. **Scan** — for each channel, yt-dlp *flat mode* over `/videos` and `/shorts`
-   to collect video IDs and upsert rows (fast, no JS challenges). On a channel's
-   **first** scan (`last_video_fetched is None`) it also runs a **1-year backfill**
-   (see below) so high-volume channels aren't stuck with just the latest ~50.
+   to collect video IDs and upsert rows (fast, no JS challenges). This costs no
+   API quota and runs for every channel every pass, which is why no channel is
+   ever left with nothing however the archive fill below is ordered.
 2. **New-video stats** — batch-fetch real view/like counts for newly-seen
    videos via the YouTube Data API (yt-dlp fallback if the token is dead).
 3. **Stale-video refresh** — re-fetch stats for recent videos on an age-based
    schedule (newer videos refresh more often).
-4. **Reindex** — push updated titles/stats into Meilisearch.
+4. **Archive fill** — deep per-channel history, under a quota budget. Off unless
+   `ARCHIVE_FILL_ENABLED` (see below).
+5. **Reindex** — push updated titles/stats into Meilisearch.
+
+Phases 2–4 all spend Data API quota and all record it in the persisted ledger.
+A `quotaExceeded` refusal stops the rest of the run rather than being retried.
 
 yt-dlp is configured to **fail fast** (`fetcher.py`: `socket_timeout` 10,
 `retries` 1) — its default ~10× retries over 130+ channels used to exhaust the
@@ -238,17 +261,61 @@ scratch and auto-tagged.
 
 The endpoint remains for forcing one by hand, and `?dry_run=true` still previews.
 
-### History backfill — date-aware, so a full year is guaranteed
+### The archive fill (`archive.py`) — deep history, on a budget
 
-The flat scan is **count-bounded** (newest ~50/tab) and yt-dlp flat mode returns
-no dates, so "latest 50" can be as little as a few days for a firehose channel.
-To keep **a year of history**, `backfill_channel()` instead pages the channel's
-uploads playlist via the **YouTube Data API** (`fetch_uploads_since`), which is
-date-native — it stops exactly at the cutoff and reliably covers even ~20-uploads/day
-channels. It only inserts videos not already stored (idempotent); Shorts are
-flagged via the `/shorts` tab. It runs automatically on a channel's first scan
-(1-year window) and on demand via `POST /api/channels/{id}/backfill?years=N`
-(`years<=0` = entire history) — the primitive a "load older videos" UI can call.
+The flat scan is **count-bounded** (newest ~50/tab), which for a firehose channel
+is a few days. Depth comes from paging the channel's uploads playlist through the
+Data API instead, which is quota-priced — so unlike everything else in the scan,
+it has to be budgeted rather than simply run.
+
+**Measured cost:** 1 unit lists 50 videos, 1 unit stats 50, so **~40 units and
+~12s per 1,000 videos**, plus ~0.4 MB of SQLite. Against a 10,000/day allowance,
+a whole library of ~194,000 videos is ~7,000 units — affordable, but spread over
+days rather than taken in one bite.
+
+Four things make that work:
+
+- **A cursor per channel** (`channels.archive_cursor`). A `nextPageToken` is a
+  self-contained cursor: stored, it resumes the walk in a different process days
+  later with identical results. Without it, deepening a channel that already
+  holds 8,000 videos would mean re-walking 160 pages of known IDs every time.
+- **A daily budget** (`quota.archive_budget()`). At most 25% of the day's units,
+  and never into the reserve the stale-refresh needs. The sweep stops when it's
+  gone and resumes after the midnight-Pacific reset.
+- **Ascending remaining.** Channels owing the least go first — shortest-job-first.
+  It can't finish the sweep sooner, but on this library it turns "8 of 133
+  channels complete after day one" into "120 of 133". A channel never walked
+  sorts ahead of one already in progress, so a new subscription doesn't queue
+  behind a three-day firehose.
+- **The budget is counted in pages, not in what the meter reports.** One page is
+  exactly one unit, so the two agree — but a stopping condition that is a
+  measurement can be argued out of stopping by a bad measurement, and "walks
+  YouTube forever" is not a failure worth leaving open.
+
+**It is off by default**, and the switch is **Settings → Library**, not an env
+var. Turning it on commits the quota and the disk for every channel's back
+catalogue, so it should be a decision rather than a side effect of a deploy —
+but turning it *off* has to take effect immediately, and "edit .env, restart
+uvicorn" is the wrong shape for a kill switch on an unattended job that spends a
+metered resource. The runner re-reads the setting **between channels**, so a
+sweep already in flight stops rather than finishing its budget.
+(`ARCHIVE_FILL_ENABLED` in `.env` survives only as the *bootstrap* default: it
+seeds the first read and is ignored once the setting has been stored.)
+What is *not* gated: the
+per-channel `POST /api/channels/{id}/archive`, which is a thing you asked for by
+name while looking at the channel; and the lifetime-count lookup that gives the
+UI its denominator (~1 unit per 50 channels, charged to the day but not to the
+archive's share, so opening a channel page can't eat the fetching budget).
+
+**Two ceilings, both real.** The uploads playlist stops at 20,000 items whatever
+the channel's true `videoCount` says (`ARCHIVE_CEILING`) — a 40,097-video channel
+can only ever give up half of itself, so progress is shown against what's
+*reachable* and the shortfall is stated rather than left as a bar that never
+fills. And Shorts labelling is a fixed ~4s yt-dlp call against the `/shorts` tab,
+so it runs **once, when a channel's walk finishes** — never per page. A channel
+mid-fill has its newest Shorts labelled and its older ones provisionally filed as
+long-form until the walk completes.
+
 No retention prune: older videos are kept once fetched.
 
 ---
@@ -683,10 +750,33 @@ are added by the tiny additive-migration list in `database.py`.
 - **`youtube_oauth_token.json`** — the Data API token refreshed by the in-app
   "Re-authenticate" link. Stats fall back to yt-dlp if it's missing/expired, so
   OAuth is **optional**.
-- **`.env`** (in `backend/`, gitignored) — secrets. `OPENROUTER_API_KEY` powers
-  LLM channel tagging; without it, tagging degrades to language-only. See
-  "Channel tagging". The tag taxonomy itself lives in code (`SEED_TAXONOMY`), not
-  a config file.
+- **`.env`** (in `backend/`, gitignored) — secrets and switches.
+  `OPENROUTER_API_KEY` powers LLM channel tagging; without it, tagging degrades
+  to language-only. See "Channel tagging". The tag taxonomy itself lives in code
+  (`SEED_TAXONOMY`), not a config file.
+  `ARCHIVE_FILL_ENABLED` is only the **bootstrap default** for the archive-fill
+  switch; the switch itself lives in Settings → Library and is stored in the DB
+  (see "App settings"). Leave it off until you've watched one channel fill from
+  its own page and checked the ledger — a library-wide sweep is the first thing
+  to exercise the quota-day boundary and cursor resumption against the live API.
+
+### App settings (`app_settings.py`)
+
+Two config systems, split by who the setting belongs to:
+
+- **`.env` / `config.py`** — secrets and environment wiring: API keys, ports,
+  paths. Properties of *where the app runs*. Read once at import; changing one
+  means restarting.
+- **`app_settings.py`** — preferences about *how the app behaves for you*,
+  stored in the `app_settings` table and changeable from the Settings page with
+  no restart.
+
+Adding a setting is one entry in `SPEC` (key, type, default, label, description,
+group). `GET /api/settings` serves the spec alongside the values and the page
+renders its controls from it, so a new setting needs no endpoint, no form field,
+and no frontend change. Defaults are lazy callables, which is what lets an
+`.env` value act as a bootstrap default without becoming a second source of
+truth: it seeds the first read and is ignored once a value is stored.
 
 ---
 
@@ -793,7 +883,10 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/local/videos/{id}/file` \| `/thumb` | the file itself (range requests) / its poster frame |
 | POST/DELETE | `/api/local/videos/{id}/progress` | record / clear where playback got to |
 | POST | `/api/subscriptions/resync` | sync DB to live YouTube subs — prune unsubscribed, add new (`?dry_run=true` to preview). Also runs daily on its own |
-| POST | `/api/channels/{id}/backfill` | fetch older videos for a channel via the Data API uploads pager (`?years=N`, `<=0` = all) |
+| GET | `/api/settings` | every app setting, with the spec the settings page renders itself from |
+| PUT | `/api/settings` | partial update: `{"values": {key: value}}`; an unknown key is a 400 |
+| GET | `/api/channels/{id}/archive` | how much of this channel's history is held: `held`, `reachable`, `remaining`, `oldest_held`, `exhausted`, `filling` |
+| POST | `/api/channels/{id}/archive` | fetch this channel's remaining history in the background (`?units=N` to bound the spend); poll the GET for progress |
 | POST | `/api/refresh` | manually trigger a scan (normally the scheduler handles it) |
 | GET | `/api/refresh/status` | `{running: bool}` |
 | GET | `/api/health` | liveness |
@@ -814,7 +907,10 @@ no per-test decorator). What's covered:
 
 | File | Covers |
 |------|--------|
-| `test_ranking.py` | age ranges (and the legacy window/time_mode they replaced), the sort modes, the hot-score burn-in, like% shrinkage |
+| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, and that turning the fill off stops a sweep mid-flight |
+| `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
+| `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
+| `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |
 | `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot |
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
