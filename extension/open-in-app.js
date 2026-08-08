@@ -1,14 +1,16 @@
 /*
- * "Open in YT Feed" — a button on the corner of a YouTube video card.
+ * Two buttons on the corner of a YouTube video card: open in YT Feed, and save
+ * to the app's Watch Later.
  *
- * Hover any thumbnail on youtube.com and a small button appears in its top-left
- * corner; clicking it opens that video in the app instead of on YouTube.
+ * Hover any thumbnail on youtube.com and they appear, stacked, in its top-left
+ * corner. The first opens that video in the app instead of on YouTube; the
+ * second saves it without leaving the page you're on.
  *
- * There is exactly ONE button, parked off-screen and moved onto whatever the
- * pointer is over. The obvious alternative — inject a button into every card —
+ * There is exactly ONE pair, parked off-screen and moved onto whatever the
+ * pointer is over. The obvious alternative — inject buttons into every card —
  * needs a MutationObserver, has to name the card elements it's injecting into,
  * and then fights YouTube's virtualised lists, which RECYCLE those nodes as you
- * scroll (so the button follows the wrong video). Moving one element sidesteps
+ * scroll (so the buttons follow the wrong video). Moving one element sidesteps
  * all three, and costs one listener instead of a live DOM subscription.
  *
  * The only YouTube fact it relies on is the URL shape of a video link, which is
@@ -93,6 +95,9 @@ function svg(tag, attrs) {
 
 const host = document.createElement('div')
 host.style.cssText = 'position:fixed;top:0;left:0;z-index:2147483647;display:none'
+// Not `display: flex` on the host itself: `place()` toggles that property, and
+// it would have to remember which value means visible. The shadow root gets one
+// wrapper instead, and the host stays a plain block.
 const root = host.attachShadow({ mode: 'open' })
 
 // Built element by element rather than with innerHTML, because youtube.com sets
@@ -107,9 +112,15 @@ const style = document.createElement('style')
 // rgba(0,0,0,.6) with a 24px icon, inset 8px from the corner.
 //
 // The one deliberate difference is the hover state. YouTube's pair has none —
-// they're a permanent fixture on a playing video — but this appears on hover
-// and is the only thing here you can click, so it answers the pointer.
+// they're a permanent fixture on a playing video — but these appear on hover and
+// are the only clickable things on the thumbnail, so they answer the pointer.
 style.textContent = `
+  .stack {
+    display: flex;
+    flex-direction: column;
+    /* YouTube's own inset, reused as the gap so the pair reads as one column. */
+    gap: 8px;
+  }
   button {
     display: flex;
     align-items: center;
@@ -127,27 +138,63 @@ style.textContent = `
     transition: background 0.1s;
   }
   button:hover { background: rgba(0, 0, 0, 0.9); }
+  button:disabled { cursor: default; }
   svg { width: 24px; height: 24px; display: block; }
+  /* Saved is said by the icon alone — a tick on the same dark circle as
+     everything else. Only the failure gets a colour, because it's the one state
+     you have to notice rather than merely read, and it clears on the next card. */
+  button.failed { background: rgba(153, 27, 27, 0.9); }
 `
 
-const button = document.createElement('button')
-button.type = 'button'
-// Icon-only, like the buttons it's modelled on, so the tooltip carries the name.
-button.title = 'Open in YT Feed'
-button.setAttribute('aria-label', 'Open in YT Feed')
+/** An icon-only button, like the ones it's modelled on: the tooltip names it. */
+function makeButton(label, icon) {
+  const el = document.createElement('button')
+  el.type = 'button'
+  el.title = label
+  el.setAttribute('aria-label', label)
+  el.append(icon)
+  return el
+}
 
-const icon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
-icon.append(
+const openIcon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+openIcon.append(
   svg('rect', {
     x: 3, y: 4, width: 18, height: 16, rx: 3,
     stroke: 'currentColor', 'stroke-width': 2,
   }),
   svg('path', { d: 'M10 9.5v5l4-2.5z', fill: 'currentColor' }),
 )
-button.append(icon)
-root.append(style, button)
+const openButton = makeButton('Open in YT Feed', openIcon)
 
-/** The link the button is currently parked on, so scrolling can follow it. */
+// A clock, which is what YouTube's own Watch Later is drawn as — the app's list
+// is a different list, but the gesture is the one people already know.
+const saveIcon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+saveIcon.append(
+  svg('circle', {
+    cx: 12, cy: 12, r: 9, stroke: 'currentColor', 'stroke-width': 2,
+  }),
+  svg('path', {
+    d: 'M12 7v5.5l3.5 2', stroke: 'currentColor', 'stroke-width': 2,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  }),
+)
+
+// Saved. The icon is the whole difference — same circle, same fill — so a
+// column of thumbnails reads as one set of controls rather than a scoreboard.
+const savedIcon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+savedIcon.append(svg('path', {
+  d: 'M5 12.5l4.5 4.5L19 7.5', stroke: 'currentColor', 'stroke-width': 2.5,
+  'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+}))
+
+const saveButton = makeButton('Save to YT Feed Watch Later', saveIcon)
+
+const stack = document.createElement('div')
+stack.className = 'stack'
+stack.append(openButton, saveButton)
+root.append(style, stack)
+
+/** The link the pair is currently parked on, so scrolling can follow it. */
 let anchored = null
 let currentId = null
 
@@ -167,6 +214,19 @@ function hide() {
   currentId = null
 }
 
+/** Draw the save button in one of its three states. */
+function drawSave(state, title) {
+  saveButton.disabled = false
+  saveButton.classList.toggle('failed', state === 'failed')
+  saveButton.replaceChildren(state === 'saved' ? savedIcon : saveIcon)
+  saveButton.title = title
+}
+
+/** Back to "not saved yet" — how every video starts out. */
+function resetSave() {
+  drawSave('unsaved', 'Save to YT Feed Watch Later')
+}
+
 document.addEventListener('mouseover', (e) => {
   // Over the button itself — leave it exactly where it is, or hovering it would
   // move it out from under the pointer.
@@ -179,6 +239,9 @@ document.addEventListener('mouseover', (e) => {
   const thumb = thumbnailLink(link, id)
   if (thumb.getBoundingClientRect().width < MIN_THUMB_WIDTH) return hide()
 
+  // Only on a change of video: re-entering the same card (crossing from the
+  // thumbnail to its title, say) must not wipe the answer you just asked for.
+  if (id !== currentId) resetSave()
   anchored = thumb
   currentId = id
   place()
@@ -196,12 +259,34 @@ addEventListener('scroll', () => {
   })
 }, { capture: true, passive: true })
 
-button.addEventListener('click', (e) => {
-  // The button is a sibling of the page rather than a child of the card's link,
-  // so nothing needs preventing — YouTube's own navigation never sees this.
+openButton.addEventListener('click', (e) => {
+  // The buttons are siblings of the page rather than children of the card's
+  // link, so nothing needs preventing — YouTube's navigation never sees this.
   e.stopPropagation()
   if (currentId) window.open(`${APP_ORIGIN}/watch/${currentId}`, APP_TAB)
   hide()
+})
+
+saveButton.addEventListener('click', async (e) => {
+  e.stopPropagation()
+  const id = currentId
+  if (!id || saveButton.disabled) return
+
+  // Deliberately stays put rather than hiding like the open button does. That
+  // one hands the video to another tab and is finished; this one's whole reply
+  // is the button changing, so there has to be a button to change.
+  saveButton.disabled = true
+  const reply = await chrome.runtime.sendMessage({ type: 'save-watch-later', videoId: id })
+
+  // Hovered away mid-flight: the save still landed, but the pair now belongs to
+  // a different video and drawing the answer on it would report the wrong one.
+  if (currentId !== id) return resetSave()
+
+  // `saved: false` is the API resolving nothing — a private or deleted video —
+  // which is a failure to the person who clicked, whatever the HTTP status was.
+  const ok = reply?.ok && reply.saved
+  if (ok) drawSave('saved', reply.already ? 'Already in Watch Later' : 'Saved to Watch Later')
+  else drawSave('failed', `Couldn't save — is the app running?`)
 })
 
 document.documentElement.append(host)

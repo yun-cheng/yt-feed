@@ -42,9 +42,10 @@ real video (muted, with custom captions and scrubbing).
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)
 - **Open from YouTube** — with the extension installed, hovering any thumbnail on
-  youtube.com puts a button on its corner that opens that video here instead.
-  Whatever you send over gets its title, channel and stats resolved on arrival,
-  and stays off the Imported page — that page is what you chose to keep
+  youtube.com puts two buttons on its corner: open that video here instead, or
+  save it straight to Watch Later without leaving the page. Whatever you send
+  over gets its title, channel and stats resolved on arrival, and stays off the
+  Imported page — that page is what you chose to keep
 - **Local folders** — point the app at a directory on the backend's machine and
   its video files become their own feed: poster frames, durations, hover previews
   and resume, played in the same control bar downloads use. Each folder stays a
@@ -120,9 +121,10 @@ All three are also defined in [`.claude/launch.json`](.claude/launch.json).
 ### Browser extension (optional)
 
 A companion extension does two things, each on a different site. On **youtube.com**
-it puts an *open in YT Feed* button on the corner of every video thumbnail, so a
-video you find there opens here instead — styled to pass for YouTube's own
-circular hover controls. On **embedded players** it strips YouTube's overlays —
+it puts *open in YT Feed* and *save to Watch Later* buttons on the corner of
+every video thumbnail, so a video you find there opens — or is kept — here
+instead, styled to pass for YouTube's own circular hover controls. On
+**embedded players** it strips YouTube's overlays —
 title, avatar, centre play button, share row, "More videos" — so the app draws
 its own control bar over bare video.
 

@@ -516,6 +516,15 @@ Pasting the link of a video you'd already opened **promotes** its row to
 `"import"` and restamps `created_at`, rather than reporting "already imported"
 about something absent from the page.
 
+`POST /api/watch-later/by-id/{id}` — the extension's *save to Watch Later*
+button — goes through the same door. It's given an id and nothing else, on
+purpose: the alternative is the extension scraping a title and channel name out
+of YouTube's markup, which changes. So it calls `get_video` and copies the
+snapshot fields off the result, which means a subscribed channel's video costs a
+row read and an unknown one is fetched and cached exactly as above. A video that
+resolves to nothing — private, deleted, region-blocked — is **not** saved: it
+answers `saved: false` rather than putting a blank card on the page.
+
 ### The uploader's picture
 
 A video extraction carries no avatar. yt-dlp's `thumbnails` on a video are that
@@ -912,6 +921,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
 | GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
+| POST | `/api/watch-later/by-id/{id}` | save a video we're given nothing but the id of — the extension's button. Metadata is resolved here |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
@@ -954,7 +964,7 @@ no per-test decorator). What's covered:
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete |
-| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import |
+| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |

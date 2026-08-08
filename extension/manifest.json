@@ -1,8 +1,15 @@
 {
   "manifest_version": 3,
   "name": "YT Feed companion",
-  "version": "1.1.0",
-  "description": "Strips YouTube's overlays off embedded players, and adds an \"open in YT Feed\" button to video cards on YouTube.",
+  "version": "1.2.0",
+  "description": "Strips YouTube's overlays off embedded players, and adds \"open in YT Feed\" and \"save to Watch Later\" buttons to video cards on YouTube.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
