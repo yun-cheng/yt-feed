@@ -16,7 +16,7 @@ behaviour is the default that ships.
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
 | `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>` |
 | `open-in-app.js` | `youtube.com/*` | The corner buttons on video cards |
-| `background.js` | service worker | Relays the save to the app's API |
+| `background.js` | service worker | Talks to the app's API, and caches the Watch Later list |
 
 ## Open in YT Feed, and Save to Watch Later
 
@@ -31,8 +31,34 @@ and is the only thing here that talks to the app rather than just linking to it.
 It answers in place: the clock becomes a **tick** — same circle, same fill, so a
 column of thumbnails still reads as one set of controls rather than a scoreboard.
 The one coloured state is a failed save, which goes red because it's the only
-thing here you have to *notice* rather than merely read. Both clear the moment
-you hover a different video.
+thing here you have to *notice* rather than merely read; it clears the moment you
+hover a different video. The tick doesn't, because it isn't a flash of feedback
+but the answer to "have I got this one already".
+
+### The tick you get before you click
+
+Hovering a video that's already on the list shows the tick straight away. That
+comes from a copy of the list, not from a request per hover: a request can't
+answer before you've looked, so the button would still have to draw a guess
+first — and hovering is something you do dozens of times per scroll.
+
+What's cached is **the list itself**, refreshed from `GET /api/watch-later`,
+rather than a private tally of what this extension saved. A tally would be wrong
+twice over: blind to anything you saved in the app, and still claiming "saved"
+after you removed something there. One small GET buys the true answer, so
+there's nothing to gain by tracking a subset of it.
+
+It re-reads the list when it's more than a minute old (checked on hover, so a
+tab left open in the background isn't polling all day) and, unconditionally,
+**whenever the tab is switched back to** — coming back from the app is exactly
+when it's most likely to be out of date, and it costs one request per switch
+rather than one per minute of reading. A save updates the copy directly, so the
+tick survives scrolling past the card and back.
+
+The list is kept in `chrome.storage.local` as well as in the worker's memory,
+because an MV3 service worker is evicted after ~30s idle. That also means the
+ticks still show when the app is closed — the last known list beats no list, and
+the save itself still goes to the API, which is what actually decides.
 
 It reads `APP_ORIGIN` at the top of `open-in-app.js`, which is Vite's default
 `http://localhost:5173`. **If you run the app on another port, change that
@@ -50,7 +76,9 @@ A `fetch` from `open-in-app.js` carries `Origin: https://www.youtube.com`, and
 the API allows the app's own origin only — so the browser discards the reply. A
 fetch from the service worker isn't subject to CORS at all; the extension's
 `host_permissions` (`localhost` and `127.0.0.1`, any port) are the check
-instead. That's the whole reason `background.js` exists: it relays one message.
+instead. That's the whole reason `background.js` exists: it answers two
+messages, `save-watch-later` and `saved-ids`, and owns the cached list behind
+them. `storage` is the only permission it needs beyond those hosts.
 
 The request itself is a bare `POST /api/watch-later/by-id/<id>`. The button
 knows an id and nothing else, and deliberately doesn't scrape a title and

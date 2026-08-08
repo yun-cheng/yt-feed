@@ -43,7 +43,8 @@ real video (muted, with custom captions and scrubbing).
   exactly like the home feed (watch, download, playlist, watch later)
 - **Open from YouTube** — with the extension installed, hovering any thumbnail on
   youtube.com puts two buttons on its corner: open that video here instead, or
-  save it straight to Watch Later without leaving the page. Whatever you send
+  save it straight to Watch Later without leaving the page — already-saved
+  videos show a tick before you click. Whatever you send
   over gets its title, channel and stats resolved on arrival, and stays off the
   Imported page — that page is what you chose to keep
 - **Local folders** — point the app at a directory on the backend's machine and

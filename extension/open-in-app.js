@@ -198,6 +198,29 @@ root.append(style, stack)
 let anchored = null
 let currentId = null
 
+/*
+ * What's already on the Watch Later list.
+ *
+ * A copy of the service worker's copy, kept here because hovering has to paint
+ * NOW — an awaited answer arrives after you've looked. The worker owns
+ * freshness (it re-reads the list from the app on a timer); this just asks
+ * again, in the background, whenever a hover finds it might be stale.
+ */
+const saved = new Set()
+let askedAt = 0
+const ASK_EVERY_MS = 60_000
+
+async function refreshSaved(force = false) {
+  askedAt = Date.now()
+  const reply = await chrome.runtime.sendMessage({ type: 'saved-ids', force })
+  if (!reply?.ok) return
+  saved.clear()
+  for (const id of reply.ids) saved.add(id)
+  // The video under the pointer may be one of them, and it isn't going to be
+  // hovered again just because we finally know.
+  if (currentId && !saveButton.classList.contains('failed')) resetSave(currentId)
+}
+
 function place() {
   if (!anchored || !anchored.isConnected) return hide()
   const box = anchored.getBoundingClientRect()
@@ -222,9 +245,16 @@ function drawSave(state, title) {
   saveButton.title = title
 }
 
-/** Back to "not saved yet" — how every video starts out. */
-function resetSave() {
-  drawSave('unsaved', 'Save to YT Feed Watch Later')
+/**
+ * The button as it should look for a video we haven't just clicked it for.
+ *
+ * Which is a tick if the video is already on the list — that's the whole point
+ * of the cache, and it has to be readable the instant the pointer lands, so it
+ * reads a Set held here rather than awaiting the worker.
+ */
+function resetSave(id) {
+  if (saved.has(id)) drawSave('saved', 'Already in Watch Later')
+  else drawSave('unsaved', 'Save to YT Feed Watch Later')
 }
 
 document.addEventListener('mouseover', (e) => {
@@ -240,11 +270,24 @@ document.addEventListener('mouseover', (e) => {
   if (thumb.getBoundingClientRect().width < MIN_THUMB_WIDTH) return hide()
 
   // Only on a change of video: re-entering the same card (crossing from the
-  // thumbnail to its title, say) must not wipe the answer you just asked for.
-  if (id !== currentId) resetSave()
+  // thumbnail to its title, say) must not wipe a "couldn't save" you need to
+  // read, nor re-run this for every pixel of a card you're already on.
+  if (id !== currentId) resetSave(id)
   anchored = thumb
   currentId = id
   place()
+
+  // Off the back of a hover rather than on a timer, so a tab left open in the
+  // background isn't polling the app all day.
+  if (Date.now() - askedAt > ASK_EVERY_MS) refreshSaved()
+})
+
+// Coming back from another tab is the one moment staleness is likely and
+// visible: you just saved or unsaved something in the app itself. Cheaper than
+// a shorter timer and better aimed — one request per switch back, not per
+// minute of reading.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshSaved(true)
 })
 
 // Capture, because YouTube scrolls inner containers (sidebars, chip rows) whose
@@ -278,15 +321,19 @@ saveButton.addEventListener('click', async (e) => {
   saveButton.disabled = true
   const reply = await chrome.runtime.sendMessage({ type: 'save-watch-later', videoId: id })
 
-  // Hovered away mid-flight: the save still landed, but the pair now belongs to
-  // a different video and drawing the answer on it would report the wrong one.
-  if (currentId !== id) return resetSave()
-
   // `saved: false` is the API resolving nothing — a private or deleted video —
   // which is a failure to the person who clicked, whatever the HTTP status was.
   const ok = reply?.ok && reply.saved
+  if (ok) saved.add(id)
+
+  // Hovered away mid-flight: the save still landed and is now in the Set, but
+  // the pair belongs to a different video and drawing this answer on it would
+  // report the wrong one.
+  if (currentId !== id) return resetSave(currentId)
+
   if (ok) drawSave('saved', reply.already ? 'Already in Watch Later' : 'Saved to Watch Later')
   else drawSave('failed', `Couldn't save — is the app running?`)
 })
 
 document.documentElement.append(host)
+refreshSaved()
