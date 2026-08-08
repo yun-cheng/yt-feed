@@ -2,6 +2,7 @@
 Channel management endpoints — list channels with tags, manage groups.
 """
 
+import asyncio
 import json
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session
 from app.models import Channel, ChannelTag, Video, WatchHistory
 from app.categorizer import get_categories, get_channel_groups, set_channel_group
+from app.youtube_api import ARCHIVE_CEILING
 
 router = APIRouter(prefix="/channels")
 
@@ -292,6 +294,100 @@ async def assign_video_labels(channel_id: str, body: AssignLabelsBody, db: Async
 
     labeled = await video_labels.assign_labels(db, channel_id, body.video_ids[:200])
     return {"labels": labeled}
+
+
+# One archive fill at a time per channel, so a double-click doesn't run two
+# walks against the same cursor. Maps channel_id → the running task.
+_archive_jobs: dict[str, asyncio.Task] = {}
+
+
+@router.get("/{channel_id}/archive")
+async def archive_status(channel_id: str, db: AsyncSession = Depends(get_db)):
+    """How much of this channel's history we hold, and whether a fill is running.
+
+    The UI polls this while a fill runs, the same shape the label build uses.
+    """
+    from app.archive import channel_progress, refresh_lifetime_counts
+
+    channel = (
+        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
+    ).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+
+    # One quota unit, once per channel ever — and without it there's no
+    # denominator to show. Cheap enough to do on demand rather than make the
+    # readout wait for the next cron pass.
+    if channel.lifetime_count is None:
+        try:
+            await refresh_lifetime_counts([channel_id])
+            await db.refresh(channel)
+        except Exception as e:
+            print(f"[archive] lifetime count for {channel_id} unavailable: {e}")
+
+    job = _archive_jobs.get(channel_id)
+    if job is not None and job.done():
+        _archive_jobs.pop(channel_id, None)
+        job = None
+    progress = await channel_progress(db, channel)
+    return {**progress, "filling": job is not None}
+
+
+@router.post("/{channel_id}/archive")
+async def archive_fill(
+    channel_id: str,
+    units: int = Query(default=0, description="quota units to spend; 0 = as many as it takes"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch this channel's remaining history, in the background.
+
+    Runs whether or not the unattended sweep is enabled: this one you asked for,
+    by name, while looking at the channel. Idempotent — it resumes from the
+    stored cursor and inserts only what's missing, so pressing it again after it
+    finishes adds nothing.
+
+    Returns immediately; poll GET /archive for progress. A whole-history walk on
+    a large channel is minutes, which is not a request to hold open.
+    """
+    from app.archive import channel_progress, fill_channel
+    from app.cron_update import batch_update_stats, label_channel_shorts
+
+    channel = (
+        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
+    ).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+    if channel.archive_exhausted:
+        return {"status": "complete", **await channel_progress(db, channel)}
+
+    existing = _archive_jobs.get(channel_id)
+    if existing is not None and not existing.done():
+        return {"status": "running", **await channel_progress(db, channel)}
+
+    # ARCHIVE_CEILING pages at 50 each is the most any single channel can ever
+    # cost, so an unbounded request is still bounded.
+    budget = units if units > 0 else ARCHIVE_CEILING // 50 + 1
+
+    async def _run():
+        result = await fill_channel(channel_id, budget)
+        new_ids = result.get("new_ids") or []
+        if new_ids:
+            try:
+                await batch_update_stats(new_ids, ytdlp_fallback=True)
+            except Exception as e:
+                print(f"[archive] stats for {channel_id} incomplete: {e}")
+            try:
+                from app import search_index
+                await search_index.index_videos(new_ids)
+            except Exception:
+                pass
+        if result.get("exhausted") or new_ids:
+            await label_channel_shorts(channel_id)
+        print(f"[archive] {channel_id}: +{result['added']} videos, "
+              f"~{result['spent']} units ({result['stopped']})")
+
+    _archive_jobs[channel_id] = asyncio.create_task(_run())
+    return {"status": "started", **await channel_progress(db, channel)}
 
 
 @router.post("/{channel_id}/group")

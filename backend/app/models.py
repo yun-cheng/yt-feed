@@ -35,7 +35,37 @@ class Channel(Base):
     # automatically on its next visit. NULL = pre-versioning / needs rebuild.
     video_label_version = Column(Integer, nullable=True)
     last_video_fetched = Column(DateTime, nullable=True)
+
+    # --- Archive fill (app/archive.py) ---
+    # Where the uploads-playlist walk stopped. A page token is a self-contained
+    # cursor: store it, come back in another process days later, and paging
+    # resumes exactly where it left off. NULL = never walked / start at the top.
+    archive_cursor = Column(String, nullable=True)
+    # The walk ran out of pages: we hold this channel's whole fetchable history
+    # and there is nothing left to ask for.
+    archive_exhausted = Column(Boolean, nullable=False, default=False, server_default="0")
+    # Lifetime uploads as YouTube reports them, cached so the UI can say
+    # "3,260 of 8,917" without a request per render. Note this is the channel's
+    # TRUE count, which can exceed what the uploads playlist will hand over —
+    # see ARCHIVE_CEILING.
+    lifetime_count = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class QuotaLedger(Base):
+    """Data API units spent, per YouTube quota-day (midnight US/Pacific).
+
+    One row per day. Persisted because a budget that resets when the process
+    does is not a budget — see app/quota.py.
+    """
+
+    __tablename__ = "quota_ledger"
+
+    quota_day = Column(String, primary_key=True)  # ISO date in US/Pacific
+    units = Column(Integer, nullable=False, default=0)
+    archive_units = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ChannelTag(Base):

@@ -37,8 +37,41 @@ CACHE_TTL = 3600  # 1 hour cache for recently-fetched video IDs
 # Simple in-memory cache: vid → timestamp of last fetch
 _fetch_cache: dict[str, float] = {}
 
-# Track quota usage
+# The uploads playlist stops handing out pages here, whatever the channel's true
+# videoCount says (a 40,097-video channel reports 20,000 as its totalResults).
+# 400 pages × 50 = exactly that ceiling, so the pager's own bound IS YouTube's.
+ARCHIVE_CEILING = 20_000
+
+# Track quota usage. In-memory and therefore per-process — it's what the run
+# summaries print. `take_quota_delta()` hands the spend since the last call to
+# app.quota, which is where a budget that survives a restart lives.
 _quota_used = 0
+_quota_flushed = 0
+
+
+class QuotaExceeded(RuntimeError):
+    """The Data API refused because the day's allowance is gone.
+
+    Distinct from an auth failure, which arrives with the same 403 and which we
+    answer by refreshing the token and retrying. Retrying a quota refusal just
+    burns requests against an API that will keep saying no until midnight
+    Pacific, so callers stop for the day instead.
+    """
+
+
+# Error reasons that mean "you have spent your allowance", as opposed to the
+# authError/forbidden reasons that mean "your token is stale".
+_QUOTA_REASONS = {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded",
+                  "userRateLimitExceeded"}
+
+
+def _quota_refusal(resp: httpx.Response) -> bool:
+    """Is this 403 about the allowance rather than the credentials?"""
+    try:
+        errors = resp.json().get("error", {}).get("errors", [])
+    except (ValueError, AttributeError):
+        return False
+    return any(e.get("reason") in _QUOTA_REASONS for e in errors)
 
 
 def _save_creds(path: str, creds: Credentials) -> None:
@@ -133,6 +166,11 @@ def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
             _quota_used += 1
 
             if resp.status_code == 403:
+                if _quota_refusal(resp):
+                    # Out of allowance, not out of token. Every remaining batch
+                    # would be refused the same way, so stop rather than spend
+                    # the rest of the run being told no.
+                    raise QuotaExceeded("video stats lookup hit the daily allowance")
                 # Token expired, refresh and retry once
                 try:
                     creds.refresh(GoogleRequest())
@@ -189,18 +227,29 @@ def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
     return results
 
 
-def fetch_uploads_since(
-    channel_id: str,
-    since: datetime | None = None,
-    max_pages: int = 400,
-) -> list[dict[str, Any]]:
-    """List a channel's uploads (newest-first) via the Data API uploads playlist.
+def take_quota_delta() -> int:
+    """Units spent since the last call, and reset. Feeds the persisted ledger."""
+    global _quota_used, _quota_flushed
+    delta = _quota_used - _quota_flushed
+    _quota_flushed = _quota_used
+    return max(0, delta)
 
-    Returns [{"youtube_id", "published_at" (datetime)}] for every upload published
-    on/after `since`. `since=None` walks the whole history (bounded by max_pages,
-    ~50 videos/page). Unlike the flat yt-dlp scan this is date-native, so it
-    reliably covers a full year even for high-volume channels. Reused by the
-    initial 1-year backfill and any on-demand "fetch older videos" action.
+
+def fetch_uploads_page(
+    channel_id: str,
+    page_token: str | None = None,
+    pages: int = 1,
+) -> dict[str, Any]:
+    """Walk `pages` pages of a channel's uploads playlist, newest-first.
+
+    Returns {"items": [{"youtube_id", "published_at"}], "cursor": str|None,
+    "exhausted": bool}. `cursor` is where to resume — it is self-contained, so
+    persisting it and coming back in another process days later picks up exactly
+    where this left off, which is what makes a budgeted fill possible at all.
+    `exhausted` means the playlist ran out: this channel has no more to give.
+
+    Costs 1 quota unit per page (50 videos). Raises QuotaExceeded when the day's
+    allowance is gone, so a caller can stop rather than hammer.
     """
     # A channel's uploads live in a playlist whose id is the channel id with the
     # "UC" prefix swapped for "UU".
@@ -209,20 +258,23 @@ def fetch_uploads_since(
         creds = _get_creds()
     except Exception as e:
         print(f"[youtube_api] credentials unavailable, skipping uploads fetch: {e}")
-        return []
+        return {"items": [], "cursor": page_token, "exhausted": False}
     global _quota_used
 
     out: list[dict[str, Any]] = []
-    page_token: str | None = None
+    cursor = page_token
+    exhausted = False
+    refreshed = False
     with httpx.Client(timeout=30.0) as client:
-        for _ in range(max_pages):
+        walked = 0
+        while walked < pages:
             params = {
                 "part": "contentDetails",
                 "playlistId": uploads_id,
                 "maxResults": 50,
             }
-            if page_token:
-                params["pageToken"] = page_token
+            if cursor:
+                params["pageToken"] = cursor
             try:
                 resp = client.get(
                     "https://www.googleapis.com/youtube/v3/playlistItems",
@@ -230,17 +282,25 @@ def fetch_uploads_since(
                     params=params,
                 )
             except httpx.HTTPError as e:
-                # A flaky page shouldn't sink the whole fetch — stop and return
-                # what we have (the caller's backfill is idempotent, so a later
-                # run picks up the rest).
+                # A flaky page shouldn't sink the whole walk — stop and keep the
+                # cursor. The caller's insert is idempotent and the next run
+                # resumes from exactly here.
                 print(f"[youtube_api] uploads page failed ({e!r}); returning {len(out)} so far")
                 break
             _quota_used += 1
+            walked += 1
 
             if resp.status_code == 403:
-                # Token expired — refresh once and retry the same page.
+                if _quota_refusal(resp):
+                    raise QuotaExceeded(f"uploads walk for {channel_id} hit the daily allowance")
+                # A stale token — refresh once and retry this page. Once, not
+                # forever: a refresh that doesn't fix it never will.
+                if refreshed:
+                    break
+                refreshed = True
                 try:
                     creds.refresh(GoogleRequest())
+                    walked -= 1  # the retry shouldn't count against the page budget
                     continue
                 except Exception:
                     break
@@ -248,7 +308,6 @@ def fetch_uploads_since(
                 break  # 404 = no uploads playlist; anything else = give up
 
             data = resp.json()
-            crossed = False
             for item in data.get("items", []):
                 cd = item.get("contentDetails", {})
                 vid = cd.get("videoId")
@@ -260,15 +319,51 @@ def fetch_uploads_since(
                 except (ValueError, AttributeError):
                     # Private/deleted items lack a publish date — skip them.
                     continue
-                if since and pub < since:
-                    crossed = True  # older than the cutoff; stop after this page
-                    continue
                 out.append({"youtube_id": vid, "published_at": pub})
 
-            page_token = data.get("nextPageToken")
-            if crossed or not page_token:
+            cursor = data.get("nextPageToken")
+            if not cursor:
+                exhausted = True
                 break
-    return out
+
+    return {"items": out, "cursor": cursor, "exhausted": exhausted}
+
+
+def fetch_channel_video_counts(channel_ids: list[str]) -> dict[str, int]:
+    """Lifetime upload count per channel — 50 channels for one quota unit.
+
+    This is the channel's TRUE count, which for very large channels exceeds what
+    the uploads playlist will actually page through (ARCHIVE_CEILING).
+    """
+    if not channel_ids:
+        return {}
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping video counts: {e}")
+        return {}
+    global _quota_used
+
+    counts: dict[str, int] = {}
+    with httpx.Client(timeout=30.0) as client:
+        for i in range(0, len(channel_ids), BATCH_SIZE):
+            chunk = channel_ids[i:i + BATCH_SIZE]
+            resp = client.get(
+                "https://www.googleapis.com/youtube/v3/channels",
+                headers={"Authorization": f"Bearer {creds.token}"},
+                params={"part": "statistics", "id": ",".join(chunk)},
+            )
+            _quota_used += 1
+            if resp.status_code == 403 and _quota_refusal(resp):
+                raise QuotaExceeded("channel video-count lookup hit the daily allowance")
+            if resp.status_code != 200:
+                break
+            for item in resp.json().get("items", []):
+                try:
+                    counts[item["id"]] = int(item["statistics"]["videoCount"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+    return counts
 
 
 def get_quota_used() -> int:

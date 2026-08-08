@@ -22,7 +22,13 @@ from sqlalchemy import select
 from app.database import async_session, init_db
 from app.models import Channel, Video
 from app.fetcher import fetch_latest_videos, fetch_video_details
-from app.youtube_api import batch_fetch_video_stats, fetch_uploads_since, get_quota_used
+from app import archive, quota
+from app.youtube_api import (
+    QuotaExceeded,
+    batch_fetch_video_stats,
+    get_quota_used,
+    take_quota_delta,
+)
 
 
 YOUTUBE_THUMB = "https://i.ytimg.com/vi/{vid}/mqdefault.jpg"
@@ -32,8 +38,9 @@ YOUTUBE_THUMB = "https://i.ytimg.com/vi/{vid}/mqdefault.jpg"
 # membership. Shorts older than this cap fall back to long-form (rare tail).
 SHORTS_LABEL_CAP = 500
 
-# Default history depth for a channel's first-ever scan.
-BACKFILL_WINDOW = timedelta(days=365)
+# Historical note: a channel's first scan used to also walk a year of uploads
+# through the Data API. Depth now belongs to app/archive.py, which does it under
+# a quota budget instead of as an unpriced side effect of adding a channel.
 
 
 def _publication_time(entry: dict) -> datetime:
@@ -184,97 +191,41 @@ async def batch_update_stats(new_ids: list[str], ytdlp_fallback: bool = False):
         print(f"  [stats] YouTube API: {updated} videos updated")
 
 
-async def backfill_channel(channel: Channel, since: datetime | None) -> list[str]:
-    """Insert a channel's uploads back to `since` (None = entire history).
+async def label_channel_shorts(channel_id: str) -> int:
+    """Correct the is_short flag for a channel, from the /shorts tab.
 
-    Uses the Data API uploads playlist (date-accurate, so it covers a full year
-    even for firehose channels — the flat scan can't). Only inserts videos not
-    already stored; Shorts are flagged via the /shorts tab. Returns the newly
-    inserted IDs so the caller can run `batch_update_stats` to fill in
-    titles/stats/durations. Does NOT touch `last_video_fetched`.
+    Shorts have no Data API listing of their own, so tab membership is the only
+    signal — and it costs a fixed ~4s yt-dlp call however few videos are being
+    checked. That's why the archive fill calls this once, when a channel's walk
+    finishes, rather than once per page it fetched.
 
-    Shared by the first-scan deep fetch and the on-demand "fetch older" endpoint.
+    Shorts older than SHORTS_LABEL_CAP stay filed as long-form (rare tail, and
+    it self-corrects if the cap is ever raised).
     """
     loop = asyncio.get_event_loop()
-    uploads = await loop.run_in_executor(
-        None, fetch_uploads_since, channel.youtube_id, since
-    )
-    if not uploads:
-        return []
-
-    # Flag which of these uploads are Shorts (separate tab; no Data API listing).
-    url = f"https://www.youtube.com/channel/{channel.youtube_id}"
+    url = f"https://www.youtube.com/channel/{channel_id}"
     shorts_data = await loop.run_in_executor(
         None,
-        lambda: fetch_latest_videos(
-            url, max_results=SHORTS_LABEL_CAP, detailed=False, tab="shorts"
-        ),
+        lambda: fetch_latest_videos(url, max_results=SHORTS_LABEL_CAP, detailed=False, tab="shorts"),
     )
     short_ids = {v["youtube_id"] for v in shorts_data if v.get("youtube_id")}
+    if not short_ids:
+        return 0
 
-    new_ids: list[str] = []
+    fixed = 0
     async with async_session() as session:
-        for u in uploads:
-            vid = u["youtube_id"]
-            existing = (
-                await session.execute(select(Video).where(Video.youtube_id == vid))
-            ).scalar_one_or_none()
-            if existing:
-                # Correct a previously mislabelled Short if the tab now shows it.
-                if vid in short_ids and not existing.is_short:
-                    existing.is_short = True
-                continue
-            session.add(Video(
-                youtube_id=vid,
-                channel_id=channel.youtube_id,
-                title="",  # filled by batch_update_stats
-                thumbnail_url=YOUTUBE_THUMB.format(vid=vid),
-                published_at=u["published_at"],
-                duration_seconds=0,
-                is_short=vid in short_ids,
-                view_count=0,
-                like_count=0,
-                last_updated=datetime.now(timezone.utc),
-            ))
-            new_ids.append(vid)
+        rows = (await session.execute(
+            select(Video).where(
+                Video.channel_id == channel_id,
+                Video.youtube_id.in_(short_ids),
+                Video.is_short.is_(False),
+            )
+        )).scalars().all()
+        for v in rows:
+            v.is_short = True
+            fixed += 1
         await session.commit()
-
-    return new_ids
-
-
-async def backfill_all_channels(since: datetime | None) -> dict:
-    """One-time helper: backfill every channel to `since`, then fetch stats.
-
-    Idempotent — only inserts videos not already stored. Used to give existing
-    high-volume channels their missing history after the date-aware backfill
-    landed. Reindexes search at the end.
-    """
-    await init_db()
-    async with async_session() as session:
-        channels = list((await session.execute(select(Channel))).scalars().all())
-
-    all_new: list[str] = []
-    for ch in channels:
-        try:
-            new_ids = await backfill_channel(ch, since)
-            all_new.extend(new_ids)
-            if new_ids:
-                print(f"  [{ch.title[:30]:30s}] +{len(new_ids):4d} backfilled")
-        except Exception as e:
-            print(f"  [ERROR] {ch.title[:30]:30s}: {e}")
-
-    if all_new:
-        print(f"Fetching stats for {len(all_new)} backfilled videos...")
-        await batch_update_stats(all_new, ytdlp_fallback=True)
-        try:
-            from app import search_index
-            await search_index.reindex_all()
-        except Exception as e:
-            print(f"  [search] reindex skipped: {e}")
-
-    print(f"Backfill done: {len(all_new)} videos across {len(channels)} channels; "
-          f"~{get_quota_used()} quota units")
-    return {"added": len(all_new), "channels": len(channels)}
+    return fixed
 
 
 async def run_update():
@@ -294,11 +245,10 @@ async def run_update():
     for ch in channels:
         try:
             if ch.last_video_fetched is None:
-                # First time we've seen this channel. The cheap flat scan gets
-                # recent videos + Shorts labels (and works without the Data API);
-                # the date-aware backfill then fills a full year of history.
+                # First time we've seen this channel: take everything the free
+                # flat scan will give. Depth is the archive fill's job (phase 4),
+                # which is quota-priced and therefore budgeted.
                 new_ids = await scan_channel_videos(ch, since=None)
-                new_ids += await backfill_channel(ch, since=start - BACKFILL_WINDOW)
             else:
                 since = ch.last_video_fetched - timedelta(hours=12)
                 new_ids = await scan_channel_videos(ch, since=since)
@@ -316,9 +266,15 @@ async def run_update():
 
     # Phase 2: Batch-fetch stats via YouTube API for new videos (yt-dlp fallback
     # so newly-added videos still get real counts if the Data API is unavailable).
+    out_of_quota = False
     if all_new_ids:
         print(f"Fetching stats for {len(all_new_ids)} new videos via YouTube API...")
-        await batch_update_stats(all_new_ids, ytdlp_fallback=True)
+        try:
+            await batch_update_stats(all_new_ids, ytdlp_fallback=True)
+        except QuotaExceeded as e:
+            out_of_quota = True
+            print(f"  [quota] {e}")
+        await quota.record(take_quota_delta())
         print(f"  API quota used: ~{get_quota_used()} units")
     else:
         print("No new videos to update.")
@@ -359,17 +315,40 @@ async def run_update():
             )
             stale_ids = {r[0] for r in result}
 
-    if stale_ids:
+    if stale_ids and not out_of_quota:
         stale_list = list(stale_ids)
         print(f"Phase 3: {len(stale_list)} stale videos need stats refresh")
         # Process in batches of 50 to keep quota usage low
         for i in range(0, len(stale_list), 250):
             batch = stale_list[i:i + 250]
-            await batch_update_stats(batch)
+            try:
+                await batch_update_stats(batch)
+            except QuotaExceeded as e:
+                out_of_quota = True
+                print(f"  [quota] {e}; stopping the refresh")
+                break
             print(f"  refreshed {min(i + 250, len(stale_list))}/{len(stale_list)}")
+        await quota.record(take_quota_delta())
         print(f"  Total API quota: ~{get_quota_used()} units")
     else:
         print("No stale videos to refresh.")
+
+    # Lifetime upload counts, so the channel pages can say how much of each
+    # archive we hold. ~3 units for a whole library; never gated, because the
+    # readout is useful whether or not the fill below is switched on.
+    try:
+        await archive.refresh_lifetime_counts()
+        await quota.record(take_quota_delta())
+    except Exception as e:
+        print(f"  [archive] lifetime counts skipped: {e}")
+
+    # Phase 4: deep history, under whatever quota the phases above left. Does
+    # nothing unless archive_fill_enabled — see app/archive.py.
+    if not out_of_quota:
+        try:
+            await archive.archive_phase()
+        except Exception as e:
+            print(f"  [archive] skipped: {e}")
 
     print(f"\nDone. {total} new videos across {len(channels)} channels.")
 

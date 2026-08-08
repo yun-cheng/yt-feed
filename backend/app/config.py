@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # sentences) — see _to_sentences — and it went 10/10 once that was fixed.
     llm_translate_model: str = "google/gemini-2.5-flash-lite"
 
+    # --- Archive fill (deep per-channel history; see app/archive.py) ---
+    # Off by default: switching it on commits the API quota and the disk for
+    # every channel's whole back catalogue, which should be a thing you chose
+    # rather than something a deploy started. The per-channel "fetch the rest"
+    # action works either way — this flag only governs the unattended sweep.
+    archive_fill_enabled: bool = False
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property

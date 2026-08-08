@@ -39,6 +39,11 @@ _COLUMN_MIGRATIONS = [
     ("videos", "title_labels", "TEXT"),
     ("local_videos", "probed", "BOOLEAN NOT NULL DEFAULT 0"),
     ("channels", "label_stop_words", "TEXT"),
+    # Archive fill: the resume cursor, the "nothing left to fetch" flag, and the
+    # cached lifetime upload count. NULL cursor = never walked.
+    ("channels", "archive_cursor", "TEXT"),
+    ("channels", "archive_exhausted", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("channels", "lifetime_count", "INTEGER"),
 ]
 
 

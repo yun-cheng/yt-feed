@@ -123,6 +123,50 @@ async def reindex_all() -> dict[str, int]:
         return {"channels": 0, "videos": 0}
 
 
+async def index_videos(video_ids: list[str]) -> int:
+    """Push just these videos. Best-effort; returns how many were sent.
+
+    `reindex_all` costs the whole corpus however few documents actually changed,
+    which is the wrong price for an archive fill that adds a page at a time.
+    """
+    if not video_ids:
+        return 0
+    try:
+        async with async_session() as session:
+            vid_rows = (await session.execute(
+                select(Video).where(Video.youtube_id.in_(video_ids))
+            )).scalars().all()
+            if not vid_rows:
+                return 0
+            names = dict((await session.execute(
+                select(Channel.youtube_id, Channel.title).where(
+                    Channel.youtube_id.in_({v.channel_id for v in vid_rows})
+                )
+            )).all())
+
+        docs = [
+            {
+                "youtube_id": v.youtube_id,
+                "title": v.title or "",
+                "channel_id": v.channel_id,
+                "channel_name": names.get(v.channel_id, ""),
+                "thumbnail_url": v.thumbnail_url or "",
+                "published_at": v.published_at.isoformat() if v.published_at else "",
+                "published_ts": int(v.published_at.timestamp()) if v.published_at else 0,
+                "view_count": v.view_count or 0,
+                "like_count": v.like_count or 0,
+                "duration_seconds": v.duration_seconds or 0,
+            }
+            for v in vid_rows
+        ]
+        async with await _client(_ADMIN_TIMEOUT) as c:
+            await c.post(f"/indexes/{VIDEOS_INDEX}/documents", json=docs)
+        return len(docs)
+    except Exception as e:
+        print(f"[search] index_videos skipped (Meilisearch unavailable?): {e}")
+        return 0
+
+
 async def remove_documents(
     channel_ids: list[str] | None = None, video_ids: list[str] | None = None
 ) -> None:
