@@ -5,42 +5,8 @@ Ranking engine — score = view_count / hours_since_published.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from enum import Enum
 
 from app.models import Video
-
-
-class TimeWindow(str, Enum):
-    ONE_DAY = "1d"
-    THREE_DAYS = "3d"
-    ONE_WEEK = "1w"
-    TWO_WEEKS = "2w"
-    ONE_MONTH = "1m"
-    THREE_MONTHS = "3m"
-    SIX_MONTHS = "6m"
-    ONE_YEAR = "1y"
-
-
-# Each window is a discrete bucket: (lower_bound, upper_bound) in timedeltas from now.
-# 1d  = past 24h
-# 3d  = 1–3 days ago
-# 1w  = 3–7 days ago
-# 2w  = 7–14 days ago
-# 1m  = 14–30 days ago
-# 3m  = 30–90 days ago
-# 6m  = 90–180 days ago
-# 1y  = 180–365 days ago
-WINDOW_RANGES = {
-    TimeWindow.ONE_DAY:        (timedelta(days=0),   timedelta(days=1)),
-    TimeWindow.THREE_DAYS:     (timedelta(days=1),   timedelta(days=3)),
-    TimeWindow.ONE_WEEK:       (timedelta(days=3),   timedelta(days=7)),
-    TimeWindow.TWO_WEEKS:      (timedelta(days=7),   timedelta(days=14)),
-    TimeWindow.ONE_MONTH:      (timedelta(days=14),  timedelta(days=30)),
-    TimeWindow.THREE_MONTHS:   (timedelta(days=30),  timedelta(days=90)),
-    TimeWindow.SIX_MONTHS:     (timedelta(days=90),  timedelta(days=180)),
-    TimeWindow.ONE_YEAR:       (timedelta(days=180), timedelta(days=365)),
-}
-
 
 # Hot-score "burn-in": hours added to a video's age before dividing views by it.
 # Without it, a video published minutes ago divides by ~0.1h and a handful of
@@ -64,49 +30,75 @@ def score_video(view_count: int, published_at: datetime) -> float:
     return view_count / (hours + HOT_HOUR_OFFSET)
 
 
-# The ladder of day boundaries a window's edges may sit on — the same numbers
-# WINDOW_RANGES is built from, which is what lets the UI's two-handled slider
-# and the old (window, time_mode) pair mean the same things.
+# The ladder of day boundaries a window's edges may sit on. The UI's two-handled
+# slider snaps to these, so every range that can arrive is one of the pairs the
+# ladder allows.
 TICK_DAYS = [0, 1, 3, 7, 14, 30, 90, 180, 365]
+
+# The ladder's last rung is unbounded: "all" means "however far back we hold".
+# It spells itself rather than picking a day count, because any finite stand-in
+# would be a sentinel that reads as data everywhere it travels.
+ALL_TOKEN = "all"
+
+# What a request that names no window means: the past three days.
+DEFAULT_AGE = "0-3"
+
+# A resolved range: offsets back from now for the newer and older edges. The
+# older edge is None when the range is unbounded.
+DateRange = tuple[timedelta, "timedelta | None"]
 
 
 def _nearest_tick(days: int) -> int:
     return min(TICK_DAYS, key=lambda t: abs(t - days))
 
 
-def resolve_range(
-    age: str | None = None,
-    window: str | None = None,
-    time_mode: str = "wide",
-) -> tuple[timedelta, timedelta]:
-    """The (newer, older) offsets from now that a request's time filter means.
+def resolve_range(age: str | None = None) -> DateRange:
+    """The (newer, older) offsets from now that a request's `age` means.
 
-    `age` is the current spelling — "3-14" for "published 3 to 14 days ago".
-    `window` + `time_mode` is what the UI sent before the slider; it still
-    resolves, so old bookmarks and any cached links keep working.
+    "3-14" is "published 3 to 14 days ago"; "3-all" is "published more than 3
+    days ago". Finite edges snap to TICK_DAYS, so a hand-edited URL still lands
+    on the ladder the UI speaks.
     """
-    if age:
-        try:
-            lo_s, hi_s = age.split("-", 1)
-            lo, hi = _nearest_tick(int(lo_s)), _nearest_tick(int(hi_s))
-        except ValueError:
-            raise ValueError(f"malformed age range: {age!r}") from None
-        if lo > hi:
-            lo, hi = hi, lo
-        if lo == hi:
-            raise ValueError(f"empty age range: {age!r}")
-        return timedelta(days=lo), timedelta(days=hi)
+    if not age:
+        age = DEFAULT_AGE
+    try:
+        lo_s, hi_s = age.split("-", 1)
+        lo = _nearest_tick(int(lo_s))
+        hi = None if hi_s.strip() == ALL_TOKEN else _nearest_tick(int(hi_s))
+    except ValueError:
+        raise ValueError(f"malformed age range: {age!r}") from None
+    if hi is None:
+        return timedelta(days=lo), None
+    if lo > hi:
+        lo, hi = hi, lo
+    if lo == hi:
+        raise ValueError(f"empty age range: {age!r}")
+    return timedelta(days=lo), timedelta(days=hi)
 
-    win = TimeWindow(window) if window else TimeWindow.THREE_DAYS
-    lower_offset, upper_offset = WINDOW_RANGES[win]
-    return (lower_offset if time_mode == "narrow" else timedelta(0)), upper_offset
+
+def format_range(date_range: DateRange) -> str:
+    """A resolved range back in the wire spelling, for a response to echo."""
+    newer, older = date_range
+    return f"{newer.days}-{ALL_TOKEN if older is None else older.days}"
 
 
-def filter_by_range(videos: list[Video], lower_offset: timedelta, upper_offset: timedelta) -> list[Video]:
-    """Filter videos to publish times between two offsets back from now."""
-    now = datetime.now(timezone.utc)
-    lower = now - upper_offset  # older bound (inclusive)
-    upper = now - lower_offset  # newer bound (exclusive)
+def range_cutoffs(date_range: DateRange, now: datetime | None = None) -> tuple[datetime | None, datetime]:
+    """A range as absolute (older, newer) datetimes, for a SQL WHERE clause.
+
+    The older bound is None when the range is unbounded — a query should then
+    omit its lower comparison rather than invent a floor.
+    """
+    now = now or datetime.now(timezone.utc)
+    newer_offset, older_offset = date_range
+    return (None if older_offset is None else now - older_offset), now - newer_offset
+
+
+def filter_by_range(videos: list[Video], lower_offset: timedelta, upper_offset: timedelta | None) -> list[Video]:
+    """Filter videos to publish times between two offsets back from now.
+
+    `upper_offset=None` leaves the range open at the older end.
+    """
+    lower, upper = range_cutoffs((lower_offset, upper_offset))
 
     result = []
     for v in videos:
@@ -116,21 +108,12 @@ def filter_by_range(videos: list[Video], lower_offset: timedelta, upper_offset: 
         pub = v.published_at
         if pub.tzinfo is None:
             pub = pub.replace(tzinfo=timezone.utc)
-        if lower <= pub < upper:
+        if pub < upper and (lower is None or lower <= pub):
             result.append(v)
     return result
 
 
-def filter_by_window(videos: list[Video], window: TimeWindow, time_mode: str = "wide") -> list[Video]:
-    """Filter videos to the given time window.
-
-    narrow: discrete non-overlapping bucket, e.g. 3d = 1d–3d ago
-    wide (default): accumulated from 0, e.g. 3d = 0–3d ago
-    """
-    return filter_by_range(videos, *resolve_range(window=window.value, time_mode=time_mode))
-
-
-def rank_videos(videos: list[Video], window: TimeWindow | None = None, channel_names: dict[str, str] | None = None, sort: str = "likes", time_mode: str = "wide", channel_thumbnails: dict[str, str] | None = None, date_range: tuple[timedelta, timedelta] | None = None) -> list[dict]:
+def rank_videos(videos: list[Video], channel_names: dict[str, str] | None = None, sort: str = "likes", channel_thumbnails: dict[str, str] | None = None, date_range: DateRange | None = None) -> list[dict]:
     """
     Rank videos filtered by time window, sorted by the given criteria.
 
@@ -144,10 +127,10 @@ def rank_videos(videos: list[Video], window: TimeWindow | None = None, channel_n
 
     Returns list of dicts with score included.
     channel_names: optional dict of channel_id → channel_title.
-    date_range: a resolved (newer, older) pair, which wins over window/time_mode.
+    date_range: a resolved (newer, older) pair; omitted means DEFAULT_AGE.
     """
     if date_range is None:
-        date_range = resolve_range(window=window.value if window else None, time_mode=time_mode)
+        date_range = resolve_range()
     filtered = filter_by_range(videos, *date_range)
     ranked = []
     for v in filtered:

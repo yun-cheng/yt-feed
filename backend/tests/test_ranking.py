@@ -10,10 +10,9 @@ from app.ranking import (
     LIKE_PCT_FALLBACK_PRIOR,
     LIKE_PCT_PSEUDO_VIEWS,
     TICK_DAYS,
-    TimeWindow,
-    WINDOW_RANGES,
     filter_by_range,
-    filter_by_window,
+    format_range,
+    range_cutoffs,
     rank_videos,
     resolve_range,
     score_video,
@@ -67,34 +66,33 @@ def test_a_video_from_the_future_does_not_score_negative():
     assert score_video(1000, datetime.now(timezone.utc) + timedelta(hours=5)) == 1000 / HOT_HOUR_OFFSET
 
 
-# ── filter_by_window ─────────────────────────────────────────────────
+# ── filter_by_range ──────────────────────────────────────────────────
 
 
-def test_narrow_is_a_discrete_bucket():
-    """3d means 1–3 days ago, so yesterday's video is NOT in it."""
+def test_a_range_off_the_origin_is_a_discrete_bucket():
+    """1-3 means 1–3 days ago, so today's video is NOT in it."""
     videos = [video("today", hours_ago=2), video("two-days", hours_ago=48)]
-    kept = filter_by_window(videos, TimeWindow.THREE_DAYS, time_mode="narrow")
+    kept = filter_by_range(videos, *resolve_range("1-3"))
     assert [v.youtube_id for v in kept] == ["two-days"]
 
 
-def test_wide_accumulates_from_now():
+def test_a_range_anchored_at_the_origin_accumulates_from_now():
     videos = [video("today", hours_ago=2), video("two-days", hours_ago=48)]
-    kept = filter_by_window(videos, TimeWindow.THREE_DAYS, time_mode="wide")
+    kept = filter_by_range(videos, *resolve_range("0-3"))
     assert {v.youtube_id for v in kept} == {"today", "two-days"}
 
 
-def test_anything_older_than_the_window_is_excluded_either_way():
+def test_anything_older_than_the_range_is_excluded_either_way():
     old = [video("old", hours_ago=24 * 10)]
-    assert filter_by_window(old, TimeWindow.THREE_DAYS, "wide") == []
-    assert filter_by_window(old, TimeWindow.THREE_DAYS, "narrow") == []
+    assert filter_by_range(old, *resolve_range("0-3")) == []
+    assert filter_by_range(old, *resolve_range("1-3")) == []
 
 
-@pytest.mark.parametrize("window", list(TimeWindow))
-def test_every_window_admits_a_video_at_its_own_upper_bound(window):
-    _lower, upper = WINDOW_RANGES[window]
-    inside = video("in", hours_ago=upper.total_seconds() / 3600 - 1)
-    outside = video("out", hours_ago=upper.total_seconds() / 3600 + 1)
-    kept = {v.youtube_id for v in filter_by_window([inside, outside], window, "wide")}
+@pytest.mark.parametrize("hi", TICK_DAYS[1:])
+def test_every_range_admits_a_video_at_its_own_older_edge(hi):
+    inside = video("in", hours_ago=hi * 24 - 1)
+    outside = video("out", hours_ago=hi * 24 + 1)
+    kept = {v.youtube_id for v in filter_by_range([inside, outside], *resolve_range(f"0-{hi}"))}
     assert kept == {"in"}
 
 
@@ -105,25 +103,11 @@ def test_an_age_range_becomes_two_offsets():
     assert resolve_range("3-14") == (timedelta(days=3), timedelta(days=14))
 
 
-def test_the_slider_reaches_a_range_the_old_params_could_not():
-    """3d–2w ago: not anchored at 0, not one notch wide — unreachable before."""
+def test_a_range_can_float_free_of_the_origin():
+    """3d–2w ago: a band with both edges named, which the slider reaches."""
     videos = [video("recent", hours_ago=24), video("mid", hours_ago=24 * 8), video("old", hours_ago=24 * 40)]
     kept = filter_by_range(videos, *resolve_range("3-14"))
     assert [v.youtube_id for v in kept] == ["mid"]
-
-
-@pytest.mark.parametrize("window", list(TimeWindow))
-@pytest.mark.parametrize("mode", ["wide", "narrow"])
-def test_legacy_params_resolve_to_what_they_always_meant(window, mode):
-    """An old bookmark keeps selecting exactly the videos it used to."""
-    videos = [video(f"v{h}", hours_ago=h) for h in (1, 24 * 2, 24 * 5, 24 * 20, 24 * 200)]
-    legacy = filter_by_window(videos, window, mode)
-    viaage = filter_by_range(videos, *resolve_range(None, window.value, mode))
-    assert [v.youtube_id for v in legacy] == [v.youtube_id for v in viaage]
-
-
-def test_age_wins_over_the_legacy_params():
-    assert resolve_range("0-1", "1y", "narrow") == (timedelta(days=0), timedelta(days=1))
 
 
 def test_a_reversed_range_is_read_in_the_order_it_meant():
@@ -137,7 +121,7 @@ def test_off_ladder_days_snap_to_the_nearest_tick():
 
 
 @pytest.mark.parametrize("bad", ["", None])
-def test_no_age_falls_back_to_the_legacy_default(bad):
+def test_no_age_falls_back_to_the_default_window(bad):
     assert resolve_range(bad) == (timedelta(days=0), timedelta(days=3))
 
 
@@ -152,17 +136,57 @@ def test_every_tick_pairs_with_the_one_after_it():
         assert resolve_range(f"{lo}-{hi}") == (timedelta(days=lo), timedelta(days=hi))
 
 
+# ── the unbounded edge ───────────────────────────────────────────────
+
+
+def test_all_leaves_the_older_edge_open():
+    assert resolve_range("0-all") == (timedelta(days=0), None)
+    assert resolve_range("30-all") == (timedelta(days=30), None)
+
+
+def test_an_unbounded_range_reaches_videos_no_finite_one_could():
+    """The ladder stops at a year; the archive does not."""
+    ancient = video("ancient", hours_ago=24 * 365 * 8)
+    assert filter_by_range([ancient], *resolve_range("0-365")) == []
+    assert [v.youtube_id for v in filter_by_range([ancient], *resolve_range("0-all"))] == ["ancient"]
+
+
+def test_an_unbounded_range_still_honours_its_newer_edge():
+    videos = [video("today", hours_ago=2), video("ancient", hours_ago=24 * 365 * 8)]
+    kept = filter_by_range(videos, *resolve_range("30-all"))
+    assert [v.youtube_id for v in kept] == ["ancient"]
+
+
+def test_only_the_older_edge_may_be_unbounded():
+    """"all-30" would read as "from forever ago to 30 days ago", which is the
+    same range spelled backwards — and an unbounded NEWER edge means nothing."""
+    with pytest.raises(ValueError):
+        resolve_range("all-30")
+
+
+def test_a_range_says_itself_back_the_way_it_arrived():
+    for age in ("0-3", "3-14", "0-all", "30-all"):
+        assert format_range(resolve_range(age)) == age
+
+
+def test_an_unbounded_range_gives_a_query_no_older_bound():
+    now = datetime(2026, 8, 8, tzinfo=timezone.utc)
+    assert range_cutoffs(resolve_range("0-all"), now) == (None, now)
+    older, newer = range_cutoffs(resolve_range("3-14"), now)
+    assert (older, newer) == (now - timedelta(days=14), now - timedelta(days=3))
+
+
 def test_member_only_videos_are_excluded():
     """Gated content reports zero views but real likes — it would top like%
     and sit meaninglessly in every other order."""
     videos = [video("normal", views=100, likes=5), video("members", views=0, likes=500)]
-    kept = filter_by_window(videos, TimeWindow.ONE_DAY, "wide")
+    kept = filter_by_range(videos, *resolve_range("0-1"))
     assert [v.youtube_id for v in kept] == ["normal"]
 
 
 def test_a_genuinely_unwatched_video_is_kept():
     """Zero views AND zero likes is a new upload, not gated content."""
-    kept = filter_by_window([video("new", views=0, likes=0)], TimeWindow.ONE_DAY, "wide")
+    kept = filter_by_range([video("new", views=0, likes=0)], *resolve_range("0-1"))
     assert [v.youtube_id for v in kept] == ["new"]
 
 
@@ -172,7 +196,7 @@ def test_a_genuinely_unwatched_video_is_kept():
 def test_ranked_rows_carry_what_a_card_renders():
     names = {"chan1": "A Channel"}
     thumbs = {"chan1": "https://example.test/avatar.jpg"}
-    (row,) = rank_videos([video("v1", views=1000)], TimeWindow.ONE_DAY, names, "views", "wide", thumbs)
+    (row,) = rank_videos([video("v1", views=1000)], names, "views", thumbs)
     assert row["youtube_id"] == "v1"
     assert row["channel_name"] == "A Channel"
     assert row["channel_thumbnail"] == "https://example.test/avatar.jpg"
@@ -183,7 +207,7 @@ def test_ranked_rows_carry_what_a_card_renders():
 
 
 def test_an_unknown_channel_gets_a_blank_name_not_a_crash():
-    (row,) = rank_videos([video("v1")], TimeWindow.ONE_DAY, {}, "views", "wide")
+    (row,) = rank_videos([video("v1")], {}, "views")
     assert row["channel_name"] == ""
     assert row["channel_thumbnail"] == ""
 
@@ -201,22 +225,22 @@ def test_simple_sorts(sort, expected):
         video("most-views" if sort == "views" else "most-likes", views=900, likes=90),
         video("fewest-views" if sort == "views" else "fewest-likes", views=100, likes=10),
     ]
-    ordered = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, sort, "wide")]
+    ordered = [r["youtube_id"] for r in rank_videos(videos, {}, sort)]
     assert ordered == expected
 
 
 def test_newest_and_oldest_are_mirror_images():
     videos = [video("a", hours_ago=1), video("b", hours_ago=5), video("c", hours_ago=3)]
-    newest = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, "newest", "wide")]
-    oldest = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, "oldest", "wide")]
+    newest = [r["youtube_id"] for r in rank_videos(videos, {}, "newest")]
+    oldest = [r["youtube_id"] for r in rank_videos(videos, {}, "oldest")]
     assert newest == ["a", "c", "b"]
     assert oldest == list(reversed(newest))
 
 
 def test_unknown_sort_falls_back_to_the_hot_score():
     videos = [video("old-hit", hours_ago=20, views=5000), video("new-hit", hours_ago=1, views=3000)]
-    ordered = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, "nonsense", "wide")]
-    by_score = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, "score", "wide")]
+    ordered = [r["youtube_id"] for r in rank_videos(videos, {}, "nonsense")]
+    by_score = [r["youtube_id"] for r in rank_videos(videos, {}, "score")]
     assert ordered == by_score
 
 
@@ -233,7 +257,7 @@ def test_like_pct_does_not_let_a_tiny_sample_top_the_list():
     ordered = [
         r["youtube_id"]
         for r in rank_videos(field + [video("tiny", views=10, likes=9)],
-                             TimeWindow.ONE_DAY, {}, "like%", "wide")
+                             {}, "like%")
     ]
     assert ordered[0] != "tiny"
     assert 0 < ordered.index("tiny") < len(ordered) - 1
@@ -243,7 +267,7 @@ def test_like_pct_collapses_a_tiny_sample_almost_all_the_way_to_the_prior():
     """The mechanism behind the test above: with 10 views against a 1500
     pseudo-view constant, essentially none of the raw ratio survives."""
     videos = [video("tiny", views=10, likes=9), video("real", views=200_000, likes=16_000)]
-    ranked = rank_videos(videos, TimeWindow.ONE_DAY, {}, "like%", "wide")
+    ranked = rank_videos(videos, {}, "like%")
     prior = (9 + 16_000) / (10 + 200_000)
     shrunk = (9 + prior * LIKE_PCT_PSEUDO_VIEWS) / (10 + LIKE_PCT_PSEUDO_VIEWS)
     assert shrunk == pytest.approx(prior, abs=0.006)  # 0.90 raw → within 0.6pp of 0.08
@@ -259,7 +283,7 @@ def test_like_pct_still_favours_a_genuinely_better_ratio_at_scale():
         video("engaging", views=100_000, likes=10_000),  # 10%
         video("popular", views=400_000, likes=12_000),   # 3%
     ]
-    ordered = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, "like%", "wide")]
+    ordered = [r["youtube_id"] for r in rank_videos(videos, {}, "like%")]
     assert ordered == ["engaging", "popular"]
 
 
@@ -267,7 +291,7 @@ def test_like_pct_prior_is_the_fields_own_average():
     """The prior is computed from the result set, so a low-engagement field
     doesn't get judged against a high-engagement one."""
     videos = [video("a", views=1000, likes=100), video("b", views=1000, likes=50)]
-    ranked = rank_videos(videos, TimeWindow.ONE_DAY, {}, "like%", "wide")
+    ranked = rank_videos(videos, {}, "like%")
     prior = 150 / 2000
     c = LIKE_PCT_PSEUDO_VIEWS
     expected = sorted(
@@ -280,16 +304,16 @@ def test_like_pct_prior_is_the_fields_own_average():
 def test_like_pct_with_no_views_at_all_uses_the_fallback_prior():
     """Every video at zero views would divide by zero deriving the prior."""
     videos = [video("a", views=0, likes=0), video("b", views=0, likes=0)]
-    ranked = rank_videos(videos, TimeWindow.ONE_DAY, {}, "like%", "wide")
+    ranked = rank_videos(videos, {}, "like%")
     assert len(ranked) == 2
     assert LIKE_PCT_FALLBACK_PRIOR > 0
 
 
 def test_ranking_an_empty_set_is_empty():
-    assert rank_videos([], TimeWindow.ONE_DAY, {}, "views", "wide") == []
+    assert rank_videos([], {}, "views") == []
 
 
 def test_the_window_filter_applies_before_the_sort():
     videos = [video("recent", hours_ago=2, views=10), video("ancient", hours_ago=24 * 40, views=10_000)]
-    ordered = [r["youtube_id"] for r in rank_videos(videos, TimeWindow.ONE_DAY, {}, "views", "wide")]
+    ordered = [r["youtube_id"] for r in rank_videos(videos, {}, "views")]
     assert ordered == ["recent"]

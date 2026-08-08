@@ -22,7 +22,7 @@ import LocalFolderPage from './components/LocalFolderPage'
 import LocalWatchPage from './components/LocalWatchPage'
 import { fetchFolders, fetchFolderVideos } from './lib/local'
 import type { LocalFolder, LocalVideo } from './lib/local'
-import { DEFAULT_RANGE, formatAge, parseAge, rangeBounds, rangeFromLegacy } from './lib/timeWindow'
+import { DEFAULT_RANGE, formatAge, parseAge, rangeBounds } from './lib/timeWindow'
 import type { TimeRange } from './lib/timeWindow'
 
 export type DownloadItem = {
@@ -245,12 +245,7 @@ function parseQuery(page: Page): QueryState {
   const watch = p.get('watch')
   return {
     tags: p.get('tags')?.split(',').filter(Boolean) ?? [],
-    // `window` + `time_mode` are the pre-slider spelling. They still resolve, so
-    // old bookmarks land on the range they always meant.
-    age: parseAge(p.get('age'))
-      ?? rangeFromLegacy(p.get('window'), p.get('time_mode'))
-      ?? parseAge(d.age)
-      ?? DEFAULT_RANGE,
+    age: parseAge(p.get('age')) ?? parseAge(d.age) ?? DEFAULT_RANGE,
     sort: p.get('sort') || d.sort,
     shorts: p.get('shorts') === '1',
     watch: watch === null ? null : watch === 'none' ? [] : watch.split(',').filter(Boolean),

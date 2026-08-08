@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import async_session
 from app.models import CaptionLangs, CaptionTranslation, Channel, ImportedVideo, Video
-from app.ranking import rank_videos, resolve_range, score_video
+from app.ranking import format_range, rank_videos, resolve_range, score_video
 from app.categorizer import get_categories, get_channel_groups
 
 router = APIRouter(prefix="/feed")
@@ -603,8 +603,6 @@ async def get_db():
 @router.get("")
 async def get_feed(
     age: str = Query(default="", description="publish-age range in days, e.g. 0-7"),
-    window: str = Query(default="", description="legacy: 1w, 2w, ... — superseded by age"),
-    time_mode: str = Query(default="wide", description="legacy: narrow | wide"),
     sort: str = Query(default="likes", description="score | views | newest | oldest"),
     group: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
@@ -612,12 +610,12 @@ async def get_feed(
     """
     Return ranked videos, grouped by category.
 
-    - age: time filter as a day range, e.g. 0-7 (legacy: window + time_mode)
+    - age: time filter as a day range, e.g. 0-7
     - sort: sort mode (score, views, newest, oldest)
     - group: filter to a specific category (omit for all)
     """
     try:
-        date_range = resolve_range(age, window or None, time_mode)
+        date_range = resolve_range(age)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
 
@@ -658,7 +656,7 @@ async def get_feed(
         if not group_videos:
             continue
 
-        ranked = rank_videos(group_videos, None, chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
+        ranked = rank_videos(group_videos, chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
         response_groups.append({
             "name": name,
             "icon": cat.get("icon", ""),
@@ -670,7 +668,7 @@ async def get_feed(
     if not group:
         uncategorized = [v for v in all_videos if v.channel_id not in channel_groups]
         if uncategorized:
-            ranked_uncat = rank_videos(uncategorized, None, chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
+            ranked_uncat = rank_videos(uncategorized, chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
             if ranked_uncat:
                 response_groups.append({
                     "name": "其他",
@@ -685,7 +683,7 @@ async def get_feed(
     return {
         "categories": categories,
         "groups": response_groups,
-        "age": f"{date_range[0].days}-{date_range[1].days}",
+        "age": format_range(date_range),
     }
 
 

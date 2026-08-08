@@ -3,6 +3,7 @@ Channel management endpoints — list channels with tags, manage groups.
 """
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -13,6 +14,12 @@ from app.models import Channel, ChannelTag, Video, WatchHistory
 from app.categorizer import get_categories, get_channel_groups, set_channel_group
 
 router = APIRouter(prefix="/channels")
+
+# A safety net on how much of one window we will hold in memory to rank. Ranking
+# needs the whole windowed set (score and like% are relative to it), so this can
+# not be a page size — it is the point at which we would rather truncate loudly
+# than exhaust the process.
+WINDOW_FETCH_CAP = 10_000
 
 
 async def get_db():
@@ -90,9 +97,7 @@ async def list_channels(
 async def channel_videos(
     channel_id: str,
     age: str = Query(default="", description="publish-age range in days, e.g. 0-30 or 3-14"),
-    window: str = Query(default="", description="legacy: 3d, 1w, ... — superseded by age"),
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
-    time_mode: str = Query(default="wide", description="legacy: narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     label: str = Query(default="", description="filter to videos carrying this title-label"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
@@ -101,7 +106,7 @@ async def channel_videos(
     db: AsyncSession = Depends(get_db),
 ):
     """Get ranked videos for a single channel, same as feed."""
-    from app.ranking import rank_videos, resolve_range
+    from app.ranking import format_range, range_cutoffs, rank_videos, resolve_range
 
     # Get channel info
     chan_result = await db.execute(
@@ -117,20 +122,31 @@ async def channel_videos(
     )
     tags = [r[0] for r in tag_result]
 
-    # Get videos
-    vid_result = await db.execute(
-        select(Video)
-        .where(Video.channel_id == channel_id, Video.is_short == shorts)
-        .order_by(Video.published_at.desc())
-        .limit(2000)
-    )
-    videos = list(vid_result.scalars().all())
-
     try:
-        date_range = resolve_range(age, window or None, time_mode)
+        date_range = resolve_range(age)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
-    ranked = rank_videos(videos, None, {channel_id: channel.title}, sort=sort, channel_thumbnails={channel_id: channel.thumbnail_url}, date_range=date_range)
+
+    # Fetch the window itself, not the newest N and hope the window is inside it.
+    # A flat cap trimmed to the most recent videos before the date filter ran, so
+    # on a channel with more than the cap the older half of the ladder could
+    # never match anything — the rows were there, the query just never saw them.
+    # Ranking (score / like%) is computed over the whole windowed set, so we take
+    # all of it and paginate after; the cap that remains is a safety net, not the
+    # thing that decides how far back you can look.
+    # published_at is stored as naive UTC, so compare against a naive now.
+    older, newer = range_cutoffs(date_range, datetime.utcnow())
+    conds = [Video.channel_id == channel_id, Video.is_short == shorts, Video.published_at < newer]
+    if older is not None:
+        conds.append(Video.published_at >= older)
+    vid_result = await db.execute(
+        select(Video).where(*conds).order_by(Video.published_at.desc()).limit(WINDOW_FETCH_CAP)
+    )
+    videos = list(vid_result.scalars().all())
+    if len(videos) == WINDOW_FETCH_CAP:
+        print(f"[channels] {channel_id} hit the {WINDOW_FETCH_CAP}-video window cap; list is truncated")
+
+    ranked = rank_videos(videos, {channel_id: channel.title}, sort=sort, channel_thumbnails={channel_id: channel.thumbnail_url}, date_range=date_range)
 
     # Attach each video's title-derived labels (null = not labeled yet).
     labels_by_id = {v.youtube_id: v.title_labels for v in videos}
@@ -147,8 +163,17 @@ async def channel_videos(
     label_vocab = _vocab_counts(built, ranked)
     # Whether this mode has any labeled videos at all, independent of the window —
     # lets the UI say "none in this window" instead of "none for this channel"
-    # when the window simply has no matches. (`videos` isn't window-filtered.)
-    has_topics = built and any(v.title_labels not in (None, "", "[]") for v in videos)
+    # when the window simply has no matches. Its own query, because `videos` is
+    # the window now: asking it would only ever say "labels in this window",
+    # which is what label_vocab above already answers.
+    has_topics = built and bool((await db.execute(
+        select(Video.youtube_id).where(
+            Video.channel_id == channel_id,
+            Video.is_short == shorts,
+            Video.title_labels.isnot(None),
+            Video.title_labels.notin_(("", "[]")),
+        ).limit(1)
+    )).first())
 
     # Server-side label filter, applied before pagination so a selected topic
     # returns all its videos in the window regardless of sort or scroll position.
@@ -184,7 +209,7 @@ async def channel_videos(
             "label_vocab": label_vocab,
             "has_topics": has_topics,
         },
-        "age": f"{date_range[0].days}-{date_range[1].days}",
+        "age": format_range(date_range),
         "sort": sort,
         "videos": ranked[offset:offset + limit],
         "total": len(ranked),
@@ -267,46 +292,6 @@ async def assign_video_labels(channel_id: str, body: AssignLabelsBody, db: Async
 
     labeled = await video_labels.assign_labels(db, channel_id, body.video_ids[:200])
     return {"labels": labeled}
-
-
-@router.post("/{channel_id}/backfill")
-async def backfill_channel_history(
-    channel_id: str,
-    years: float = Query(default=1.0, description="how far back to fetch; <=0 = entire history"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Fetch older videos for a channel via the date-aware uploads pager.
-
-    Adds any uploads from the last `years` years (or the whole history when
-    `years<=0`) that aren't stored yet, then fills their stats. Idempotent —
-    re-running only adds what's missing. This is the primitive a "load more
-    history" UI action can call with whatever depth the user picks.
-    """
-    from datetime import datetime, timezone, timedelta
-
-    from app.cron_update import backfill_channel, batch_update_stats
-
-    channel = (
-        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
-    ).scalar_one_or_none()
-    if not channel:
-        raise HTTPException(404, "Channel not found")
-
-    since = None if years <= 0 else datetime.now(timezone.utc) - timedelta(days=365 * years)
-    new_ids = await backfill_channel(channel, since)
-    await batch_update_stats(new_ids, ytdlp_fallback=True)
-    if new_ids:
-        try:
-            from app import search_index
-            await search_index.reindex_all()
-        except Exception:
-            pass
-
-    return {
-        "channel": channel.title,
-        "since": since.isoformat() if since else "all",
-        "added": len(new_ids),
-    }
 
 
 @router.post("/{channel_id}/group")

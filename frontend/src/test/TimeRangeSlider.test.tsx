@@ -32,9 +32,11 @@ describe('TimeRangeSlider', () => {
     const notches = screen.getAllByTestId('time-tick')
     expect(notches).toHaveLength(TICK_LABELS.length - 2)
     // Each notch sits where its label does, so the ladder reads as one thing.
-    // (Read as numbers: jsdom rewrites '12.50%' to '12.5%'.)
+    // (Read as numbers at the component's own precision: jsdom rewrites
+    // '12.50%' to '12.5%', and a 9-gap ladder lands on repeating decimals.)
     expect(notches.map(n => parseFloat(n.style.left))).toEqual(
-      TICK_LABELS.slice(1, -1).map((_, i) => ((i + 1) / (TICK_LABELS.length - 1)) * 100),
+      TICK_LABELS.slice(1, -1).map((_, i) =>
+        parseFloat((((i + 1) / (TICK_LABELS.length - 1)) * 100).toFixed(2))),
     )
   })
 

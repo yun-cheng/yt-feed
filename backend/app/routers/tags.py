@@ -21,6 +21,10 @@ WATCH_STATUSES = ("unwatched", "in_progress", "watched")
 
 router = APIRouter(prefix="/tags")
 
+# See channels.WINDOW_FETCH_CAP — same reasoning, same number: ranking needs the
+# whole window in memory, so this is the point at which we truncate out loud.
+WINDOW_FETCH_CAP = 10_000
+
 
 async def get_db():
     async with async_session() as session:
@@ -577,9 +581,7 @@ async def set_channel_tags(
 async def feed_by_tags(
     tags: str = "",
     age: str = Query(default="", description="publish-age range in days, e.g. 0-3 or 3-14"),
-    window: str = Query(default="", description="legacy: 3d, 1w, ... — superseded by age"),
     sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
-    time_mode: str = Query(default="wide", description="legacy: narrow | wide"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     include_hidden: bool = Query(default=False, description="include channels hidden from home (peek mode)"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
@@ -595,7 +597,7 @@ async def feed_by_tags(
     """
     from datetime import datetime
 
-    from app.ranking import rank_videos, resolve_range
+    from app.ranking import format_range, range_cutoffs, rank_videos, resolve_range
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
@@ -630,23 +632,26 @@ async def feed_by_tags(
     # Only fetch videos within the window's widest extent so wide windows
     # (6m, 1y) actually differ. A flat "2000 most recent" made them identical:
     # the newest ~2000 videos all fall within ~3 months, so the window filter
-    # (applied afterwards) never reached the older 6m–1y videos.
+    # (applied afterwards) never reached the older 6m–1y videos. An unbounded
+    # window ("all") has no older cutoff at all, and leans on the cap below.
     # published_at is stored as naive UTC, so compare against a naive cutoff.
     # Ranking (score / like%) depends on the whole windowed set, so we must fetch
     # and rank all of it, then return just the requested page. 10000 is a safety
     # cap far above any realistic window.
     try:
-        date_range = resolve_range(age, window or None, time_mode)
+        date_range = resolve_range(age)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
-    cutoff = datetime.utcnow() - date_range[1]
-    stmt = select(Video).where(
-        Video.channel_id.in_(channel_ids),
-        Video.published_at >= cutoff,
-        Video.is_short == shorts,
-    ).order_by(Video.published_at.desc()).limit(10000)
+    older, _newer = range_cutoffs(date_range, datetime.utcnow())
+    conds = [Video.channel_id.in_(channel_ids), Video.is_short == shorts]
+    if older is not None:
+        conds.append(Video.published_at >= older)
+    stmt = select(Video).where(*conds).order_by(Video.published_at.desc()).limit(WINDOW_FETCH_CAP)
     result = await db.execute(stmt)
     all_videos = result.scalars().all()
+    if len(all_videos) == WINDOW_FETCH_CAP:
+        print(f"[tags] window {format_range(date_range)} hit the {WINDOW_FETCH_CAP}-video cap; "
+              "the oldest of it is not being ranked")
 
     # Include channel names
     chan_result = await db.execute(select(Channel.youtube_id, Channel.title, Channel.thumbnail_url))
@@ -667,9 +672,9 @@ async def feed_by_tags(
         }
         all_videos = [v for v in all_videos if hist.get(v.youtube_id, "unwatched") in wanted]
 
-    ranked = rank_videos(list(all_videos), None, chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
+    ranked = rank_videos(list(all_videos), chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
     return {
-        "age": f"{date_range[0].days}-{date_range[1].days}",
+        "age": format_range(date_range),
         "sort": sort,
         "tags": tag_list,
         "watch": sorted(wanted),

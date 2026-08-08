@@ -9,7 +9,6 @@ import {
   nearestTick,
   parseAge,
   rangeBounds,
-  rangeFromLegacy,
   rangeLabel,
   sameRange,
 } from '../lib/timeWindow'
@@ -24,6 +23,10 @@ describe('the ladder', () => {
     for (let i = 1; i < TICK_DAYS.length; i++) {
       expect(TICK_DAYS[i]).toBeGreaterThan(TICK_DAYS[i - 1])
     }
+  })
+
+  it('opens on the past three days', () => {
+    expect(DEFAULT_RANGE).toEqual(parseAge('0-3'))
   })
 })
 
@@ -51,8 +54,10 @@ describe('clampRange', () => {
 })
 
 describe('nearestTick', () => {
-  it('is exact on the ladder', () => {
-    TICK_DAYS.forEach((d, i) => expect(nearestTick(d)).toBe(i))
+  it('is exact on every finite rung of the ladder', () => {
+    TICK_DAYS.forEach((d, i) => {
+      if (Number.isFinite(d)) expect(nearestTick(d)).toBe(i)
+    })
   })
 
   it('snaps a day count that sits between ticks', () => {
@@ -63,6 +68,12 @@ describe('nearestTick', () => {
   it('breaks a dead tie toward the tighter window', () => {
     // 5 is two days from both 3 and 7 — the backend resolves it the same way.
     expect(TICK_DAYS[nearestTick(5)]).toBe(3)
+  })
+
+  it('never reaches the unbounded rung from a day count', () => {
+    // However large the number, "a lot of days" is 1y — only the `all` token
+    // itself means everything, so a hand-edited URL can't fall off the end.
+    expect(nearestTick(99_999)).toBe(TICK_DAYS.indexOf(365))
   })
 })
 
@@ -80,6 +91,13 @@ describe('the wire format', () => {
     expect(formatAge({ lo: 2, hi: 4 })).toBe('3-14')
   })
 
+  it('spells the unbounded edge as a word, not a number', () => {
+    expect(formatAge({ lo: 0, hi: MAX_TICK })).toBe('0-all')
+    expect(formatAge({ lo: 5, hi: MAX_TICK })).toBe('30-all')
+    expect(parseAge('0-all')).toEqual({ lo: 0, hi: MAX_TICK })
+    expect(parseAge('30-all')).toEqual({ lo: 5, hi: MAX_TICK })
+  })
+
   it('snaps a hand-edited range instead of giving up', () => {
     expect(parseAge('0-6')).toEqual({ lo: 0, hi: 3 })
   })
@@ -92,32 +110,6 @@ describe('the wire format', () => {
 
   it('refuses to yield an empty window', () => {
     expect(parseAge('7-7')).toEqual({ lo: 2, hi: 3 })
-  })
-})
-
-describe('legacy URLs', () => {
-  it('reads wide as running from now', () => {
-    expect(rangeFromLegacy('3d', 'wide')).toEqual({ lo: 0, hi: 2 })
-    expect(rangeFromLegacy('1y', 'wide')).toEqual({ lo: 0, hi: 8 })
-  })
-
-  it('reads narrow as the bucket alone', () => {
-    expect(rangeFromLegacy('3d', 'narrow')).toEqual({ lo: 1, hi: 2 })
-    expect(rangeFromLegacy('1m', 'narrow')).toEqual({ lo: 4, hi: 5 })
-  })
-
-  it('treats a missing mode as wide, the way the old default did', () => {
-    expect(rangeFromLegacy('1w', null)).toEqual({ lo: 0, hi: 3 })
-  })
-
-  it('has nothing to say about a window that never existed', () => {
-    expect(rangeFromLegacy('now', 'wide')).toBeNull()
-    expect(rangeFromLegacy('5d', 'wide')).toBeNull()
-    expect(rangeFromLegacy(null, 'wide')).toBeNull()
-  })
-
-  it('agrees with the default the feed opens on', () => {
-    expect(rangeFromLegacy('3d', 'wide')).toEqual(DEFAULT_RANGE)
   })
 })
 
