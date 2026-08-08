@@ -30,8 +30,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 
-from app import quota
-from app.config import settings
+from app import app_settings, quota
 from app.database import async_session
 from app.models import Channel, Video
 from app.youtube_api import (
@@ -239,6 +238,51 @@ async def channels_by_remaining() -> list[tuple[str, int]]:
     return [(cid, rem) for cid, rem, _ in out]
 
 
+async def library_summary() -> dict:
+    """How much of the whole library is still unfetched.
+
+    The number you want before switching the fill on, rather than after. Days
+    are an estimate from the daily budget, and deliberately a floor of 1: "about
+    a day" is honest, "0 days" reads as "instant".
+    """
+    async with async_session() as session:
+        total_channels = (await session.execute(
+            select(func.count(Channel.youtube_id))
+        )).scalar() or 0
+        # A channel with no cached lifetime count can't be sized yet. Counted
+        # separately rather than guessed at, so the total never quietly means
+        # "plus an unknown amount more".
+        unsized = (await session.execute(
+            select(func.count(Channel.youtube_id)).where(
+                Channel.lifetime_count.is_(None), Channel.archive_exhausted.is_(False)
+            )
+        )).scalar() or 0
+    queue = await channels_by_remaining()
+    # channels_by_remaining stands unsized channels in at 1; don't let that
+    # placeholder masquerade as a real video count.
+    remaining = sum(r for _cid, r in queue) - unsized
+    pending = len(queue)
+    # Complete is defined as "not pending", not as `archive_exhausted` — a
+    # channel can hold everything reachable without its walk having formally
+    # ended, and counting only the flag left those unaccounted for, so the two
+    # numbers didn't add up to the total. A summary whose arithmetic is visibly
+    # wrong is worse than no summary.
+    done = total_channels - pending
+
+    # 1 unit lists 50 videos and 1 unit stats 50, so a unit moves 25 videos.
+    per_day = int(quota.DAILY_UNITS * quota.ARCHIVE_SHARE) * 25
+    days = max(1, -(-remaining // per_day)) if remaining > 0 else 0
+
+    return {
+        "channels_total": total_channels,
+        "channels_complete": done,
+        "channels_pending": pending,
+        "channels_unsized": unsized,
+        "videos_remaining": remaining,
+        "days_estimate": days,
+    }
+
+
 async def run_archive_fill(budget_units: int | None = None) -> dict:
     """One pass of the budgeted sweep across every channel that still owes videos.
 
@@ -265,6 +309,12 @@ async def run_archive_fill(budget_units: int | None = None) -> dict:
     for channel_id, _remaining in queue:
         if spent >= budget:
             stopped = "budget"
+            break
+        # Re-read between channels rather than trusting the value we started
+        # with: switching the fill off has to actually stop it, not stop the
+        # next one. A sweep can run for many minutes.
+        if not await app_settings.get("archive_fill_enabled") and budget_units is None:
+            stopped = "disabled"
             break
         result = await fill_channel(channel_id, budget - spent)
         # Charged in pages, for the same reason fill_channel is: the budget has
@@ -302,8 +352,13 @@ async def run_archive_fill(budget_units: int | None = None) -> dict:
 
 
 async def archive_phase() -> dict | None:
-    """The cron's hook. Does nothing at all unless the fill is switched on."""
-    if not settings.archive_fill_enabled:
+    """The cron's hook. Does nothing at all unless the fill is switched on.
+
+    The switch is an app setting (Settings → Library), not an env var: turning
+    it on should be deliberate, but turning it off has to take effect without a
+    restart — see app/app_settings.py.
+    """
+    if not await app_settings.get("archive_fill_enabled"):
         return None
     budget = await quota.archive_budget()
     if budget <= 0:

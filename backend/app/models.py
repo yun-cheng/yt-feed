@@ -53,6 +53,17 @@ class Channel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AppSetting(Base):
+    """A user-facing preference, stored so the app can change it without a
+    restart. See app/app_settings.py for what the keys mean."""
+
+    __tablename__ = "app_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class QuotaLedger(Base):
     """Data API units spent, per YouTube quota-day (midnight US/Pacific).
 

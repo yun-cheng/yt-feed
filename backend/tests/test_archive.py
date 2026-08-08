@@ -207,6 +207,58 @@ async def test_counting_the_library_does_not_eat_the_fetching_budget(monkeypatch
     assert await quota.spent_today() == (1, 0)
 
 
+# ── the library summary ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_summary_totals_add_up():
+    """Complete + pending must equal the total. Counting complete from the
+    `exhausted` flag alone left out channels that hold everything reachable but
+    never had their walk formally end — and a summary whose arithmetic is
+    visibly wrong is worse than none."""
+    await channel("done-flag", lifetime=100, exhausted=True)
+    await channel("full-but-unflagged", lifetime=50)
+    await videos("full-but-unflagged", 50)
+    await channel("owing", lifetime=1000)
+    await videos("owing", 100)
+
+    s = await archive.library_summary()
+    assert s["channels_total"] == 3
+    assert s["channels_pending"] == 1
+    assert s["channels_complete"] + s["channels_pending"] == s["channels_total"]
+    assert s["videos_remaining"] == 900
+
+
+@pytest.mark.asyncio
+async def test_an_unsized_channel_is_named_rather_than_guessed_at():
+    """Its placeholder must not inflate the video count — 'plus N not yet
+    sized' is honest where a total silently short by a channel is not."""
+    await channel("sized", lifetime=200)
+    await channel("unsized")
+
+    s = await archive.library_summary()
+    assert s["channels_unsized"] == 1
+    assert s["videos_remaining"] == 200
+
+
+@pytest.mark.asyncio
+async def test_a_fully_fetched_library_has_nothing_left_to_say():
+    await channel("done", lifetime=10, exhausted=True)
+    s = await archive.library_summary()
+    assert s["channels_pending"] == 0
+    assert s["videos_remaining"] == 0
+    assert s["days_estimate"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_small_remainder_still_reads_as_about_a_day():
+    """Rounding down would print '0 days', which reads as 'instant'."""
+    await channel("c", lifetime=60)
+    s = await archive.library_summary()
+    assert s["videos_remaining"] == 60
+    assert s["days_estimate"] == 1
+
+
 @pytest.mark.asyncio
 async def test_progress_reports_what_is_reachable_not_what_exists():
     """The uploads playlist stops at 20,000 however many videos a channel really

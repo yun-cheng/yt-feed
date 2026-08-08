@@ -20,6 +20,7 @@ import type { ImportResult } from './components/ImportDialog'
 import LocalPage, { addLocalFolder } from './components/LocalPage'
 import LocalFolderPage from './components/LocalFolderPage'
 import LocalWatchPage from './components/LocalWatchPage'
+import SettingsPage from './components/SettingsPage'
 import { fetchFolders, fetchFolderVideos } from './lib/local'
 import type { LocalFolder, LocalVideo } from './lib/local'
 import { DEFAULT_RANGE, formatAge, parseAge, rangeBounds } from './lib/timeWindow'
@@ -136,7 +137,7 @@ export function loadWatchStatuses(): string[] {
 // mounted underneath with its scroll and loaded videos intact.
 // 'local' is the list of local folders; 'localfolder' is one folder's videos.
 // /local/:folderId/:videoId is likewise an OVERLAY over the folder page.
-type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history' | 'local' | 'localfolder'
+type Page = 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history' | 'local' | 'localfolder' | 'settings'
 
 type PathState = {
   page: Page
@@ -158,6 +159,7 @@ function parsePath(): PathState {
   if (path === '/search') return { page: 'search', ...base }
   if (path === '/playlists') return { page: 'playlists', ...base }
   if (path === '/local') return { page: 'local', ...base }
+  if (path === '/settings') return { page: 'settings', ...base }
   // /local/:folderId, optionally with a video — the video is an overlay over the
   // folder page, the same arrangement /watch/:id has over the feed.
   const lm = path.match(/^\/local\/(\d+)(?:\/([^/]+))?/)
@@ -1172,7 +1174,7 @@ export default function App() {
 
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
-  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history' | 'local') => {
+  const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history' | 'local' | 'settings') => {
     // Push the bare page path; the URL-sync effect appends that page's filters
     // (replaceState) once the state below has settled.
     history.pushState(null, '', buildPath({ page: p, channelId: selectedChannelId, tags: selectedTags }))
@@ -1429,7 +1431,7 @@ export default function App() {
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
         <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'history' ? 'history' : page === 'playlists' || page === 'playlist' ? 'playlists' : page === 'local' || page === 'localfolder' ? 'local' : 'feed'}
+          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'history' ? 'history' : page === 'playlists' || page === 'playlist' ? 'playlists' : page === 'local' || page === 'localfolder' ? 'local' : page === 'settings' ? 'settings' : 'feed'}
           onImport={page === 'imported' ? () => setImportOpen(true) : undefined}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
@@ -1478,7 +1480,9 @@ export default function App() {
             </button>
           </div>
         )}
-        {page === 'search' ? (
+        {page === 'settings' ? (
+          <SettingsPage />
+        ) : page === 'search' ? (
           <SearchPage
             query={searchInput}
             onChannelClick={selectChannel}

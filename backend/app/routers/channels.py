@@ -301,6 +301,37 @@ async def assign_video_labels(channel_id: str, body: AssignLabelsBody, db: Async
 _archive_jobs: dict[str, asyncio.Task] = {}
 
 
+@router.get("/archive/summary")
+async def archive_summary():
+    """One line on how much of the library is still unfetched.
+
+    Declared before the `/{channel_id}/...` routes so "archive" is never read as
+    a channel id. Shown against the archive-fill setting, because the size of
+    what you're committing to belongs next to the switch that commits it.
+    """
+    from app.archive import library_summary
+
+    s = await library_summary()
+    if s["channels_total"] == 0:
+        return {**s, "text": "No channels yet."}
+    if s["channels_pending"] == 0:
+        return {**s, "text": f"Complete — all {s['channels_total']} channels fully fetched."}
+
+    videos = f"{s['videos_remaining']:,} videos"
+    if s["channels_unsized"]:
+        # Saying "plus N not yet sized" beats folding them into a total that
+        # would then be quietly wrong.
+        videos += f" (plus {s['channels_unsized']} channels not yet sized)"
+    days = "about a day" if s["days_estimate"] <= 1 else f"about {s['days_estimate']} days"
+    return {
+        **s,
+        "text": (
+            f"{s['channels_complete']} of {s['channels_total']} channels complete · "
+            f"{videos} left to fetch · {days} at the daily budget"
+        ),
+    }
+
+
 @router.get("/{channel_id}/archive")
 async def archive_status(channel_id: str, db: AsyncSession = Depends(get_db)):
     """How much of this channel's history we hold, and whether a fill is running.

@@ -2,7 +2,7 @@ import TimeSortControls from './TimeSortControls'
 import type { TimeRange } from '../lib/timeWindow'
 
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'imported' | 'history' | 'local'
+  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'imported' | 'history' | 'local' | 'settings'
   age: TimeRange
   onAgeChange: (r: TimeRange) => void
   count?: number
@@ -21,7 +21,7 @@ type Props = {
 export default function TopBar({ variant, age, onAgeChange, count, sort, onSortChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
   // Downloads, search, playlists and local folders have nothing to sort or
   // window — their order is the library's own.
-  const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' || variant === 'local' ? null : variant === 'imported' || variant === 'history' ? (
+  const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' || variant === 'local' || variant === 'settings' ? null : variant === 'imported' || variant === 'history' ? (
     <TimeSortControls
       variant={variant}
       sort={sort}
