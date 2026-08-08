@@ -1,9 +1,15 @@
 {
   "manifest_version": 3,
-  "name": "YT Feed — clean embed",
-  "version": "1.0.0",
-  "description": "Strips YouTube's overlays off embedded players so YT Feed can draw its own controls.",
+  "name": "YT Feed companion",
+  "version": "1.1.0",
+  "description": "Strips YouTube's overlays off embedded players, and adds an \"open in YT Feed\" button to video cards on YouTube.",
   "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "exclude_matches": ["https://www.youtube.com/embed/*"],
+      "all_frames": false,
+      "js": ["open-in-app.js"]
+    },
     {
       "matches": [
         "https://www.youtube.com/embed/*",
