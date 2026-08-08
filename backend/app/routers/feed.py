@@ -710,7 +710,9 @@ async def _resolve_from_youtube(video_id: str, db: AsyncSession) -> dict:
     Kept with source="youtube", so it serves the watch page and history while
     staying off the Imported page — that page means "videos I chose to keep".
     """
-    from app.routers.imported import _extract, _import_pool, _serialize, _to_record
+    from app.routers.imported import (
+        _extract, _import_pool, _serialize, _to_record, fill_channel_avatars,
+    )
 
     loop = asyncio.get_event_loop()
     try:
@@ -722,6 +724,7 @@ async def _resolve_from_youtube(video_id: str, db: AsyncSession) -> dict:
         return {}
 
     rec = _to_record(video_id, info, source="youtube")
+    await fill_channel_avatars([rec], db)
     # Serialised BEFORE the commit: committing expires the instance, and the
     # rollback path below detaches it entirely.
     payload = _serialize(rec)

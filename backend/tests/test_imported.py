@@ -262,3 +262,100 @@ async def test_pasting_a_link_you_really_did_import_is_still_a_skip(client, db):
     assert res["skipped"] == ["keptAAAAAAA"]
     assert res["added"] == []
 
+
+# ── the uploader's picture ───────────────────────────────────────────
+#
+# A video extraction carries no avatar — its `thumbnails` are the video's own
+# frames — so the picture has to come from the channel, not the video.
+
+
+def test_a_video_extraction_yields_no_avatar():
+    """The shape yt-dlp really returns: frames, numbered, no avatar among them."""
+    frames = [{"id": str(i), "url": f"https://example.test/{i}.jpg"} for i in range(42)]
+    assert _to_record("vid1", info(thumbnails=frames)).channel_thumbnail == ""
+
+
+@pytest.mark.asyncio
+async def test_a_subscribed_channels_picture_costs_nothing(db, monkeypatch):
+    """We already hold it, so reaching for the API would be paying for a copy."""
+    from app.models import Channel
+    from app.routers import imported as imported_mod
+
+    db.add(Channel(youtube_id="chan1", title="A Channel",
+                   thumbnail_url="https://example.test/avatar.jpg"))
+    await db.commit()
+
+    def unexpected(ids):
+        raise AssertionError(f"asked the API for {ids}")
+
+    monkeypatch.setattr(imported_mod, "fetch_channel_avatars", unexpected)
+
+    rec = _to_record("vid1", info())
+    await imported_mod.fill_channel_avatars([rec], db)
+    assert rec.channel_thumbnail == "https://example.test/avatar.jpg"
+
+
+@pytest.mark.asyncio
+async def test_an_unsubscribed_channels_picture_is_fetched_once_for_the_batch(db, monkeypatch):
+    from app.routers import imported as imported_mod
+
+    asked = []
+
+    def fake(ids):
+        asked.append(sorted(ids))
+        return {"chan1": "https://example.test/a.jpg"}
+
+    monkeypatch.setattr(imported_mod, "fetch_channel_avatars", fake)
+
+    recs = [_to_record("v1", info()), _to_record("v2", info())]  # same channel
+    await imported_mod.fill_channel_avatars(recs, db)
+
+    assert asked == [["chan1"]]  # one call, one id — not one per video
+    assert all(r.channel_thumbnail == "https://example.test/a.jpg" for r in recs)
+
+
+@pytest.mark.asyncio
+async def test_no_avatar_anywhere_leaves_the_card_to_its_fallback(db, monkeypatch):
+    """Quota gone, credentials stale, channel deleted — the card drew an initial
+    before this existed and can go on doing that."""
+    from app.routers import imported as imported_mod
+    from app.youtube_api import QuotaExceeded
+
+    def refuse(ids):
+        raise QuotaExceeded("out of units")
+
+    monkeypatch.setattr(imported_mod, "fetch_channel_avatars", refuse)
+
+    rec = _to_record("vid1", info())
+    await imported_mod.fill_channel_avatars([rec], db)
+    assert rec.channel_thumbnail == ""
+
+
+@pytest.mark.asyncio
+async def test_a_picture_already_on_the_record_is_left_alone(db, monkeypatch):
+    from app.routers import imported as imported_mod
+
+    def unexpected(ids):
+        raise AssertionError("looked up a channel we already had a picture for")
+
+    monkeypatch.setattr(imported_mod, "fetch_channel_avatars", unexpected)
+
+    rec = _to_record("vid1", info(thumbnails=[
+        {"id": "avatar_uncropped", "url": "https://example.test/from-extraction.jpg"},
+    ]))
+    await imported_mod.fill_channel_avatars([rec], db)
+    assert rec.channel_thumbnail == "https://example.test/from-extraction.jpg"
+
+
+@pytest.mark.asyncio
+async def test_a_video_opened_from_youtube_arrives_with_its_avatar(client, db, monkeypatch):
+    """The watch page reads the avatar off this response, so it has to be on the
+    payload rather than only in the row."""
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: info())
+    monkeypatch.setattr(imported_mod, "fetch_channel_avatars",
+                        lambda ids: {"chan1": "https://example.test/a.jpg"})
+
+    body = (await client.get("/api/feed/video/never-seen")).json()
+    assert body["channel_thumbnail"] == "https://example.test/a.jpg"

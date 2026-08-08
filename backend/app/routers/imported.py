@@ -11,15 +11,18 @@ import asyncio
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from typing import Any, Sequence
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import quota
 from app.database import async_session
-from app.models import ImportedVideo
+from app.models import Channel, ImportedVideo
 from app.ranking import score_video
+from app.youtube_api import fetch_channel_avatars, take_quota_delta
 
 router = APIRouter(prefix="/imported")
 
@@ -131,12 +134,61 @@ def _to_record(video_id: str, info: dict, source: str = "import") -> ImportedVid
 
 
 def _channel_thumb(info: dict) -> str:
-    """The uploader's avatar, if this extraction happened to carry one."""
+    """The uploader's avatar, if this extraction happened to carry one.
+
+    A VIDEO extraction doesn't: its `thumbnails` are that video's frames, ids
+    "0".."41", with no `avatar_uncropped` among them. Kept because a channel or
+    playlist extraction does carry one, and because it costs nothing to look —
+    but `fill_channel_avatars` is what actually finds the picture.
+    """
     for t in info.get("thumbnails") or []:
         if t.get("id") == "avatar_uncropped":
             return t.get("url") or ""
     return ""
 
+
+async def fill_channel_avatars(records: Sequence[Any], db: AsyncSession) -> None:
+    """Give each record its uploader's avatar, in place.
+
+    Takes anything carrying `channel_id` and `channel_thumbnail` — ImportedVideo
+    here, WatchHistory in scripts/fix_channel_avatars.py — because every snapshot
+    table holds the same two columns and has the same hole in it.
+
+    Two sources, cheapest first: a channel you're subscribed to already has its
+    picture in `channels`, and only what's left costs an API call — one unit per
+    50 channels, so a whole paste is a single unit.
+
+    Best-effort throughout. No credentials, no quota, a channel that's gone: the
+    card falls back to its initial, which is what it did before this existed.
+    """
+    need = {r.channel_id for r in records if r.channel_id and not r.channel_thumbnail}
+    if not need:
+        return
+
+    known = {
+        r[0]: r[1] for r in await db.execute(
+            select(Channel.youtube_id, Channel.thumbnail_url)
+            .where(Channel.youtube_id.in_(need))
+        )
+    }
+    avatars = {cid: url for cid, url in known.items() if url}
+
+    missing = sorted(need - set(avatars))
+    if missing:
+        loop = asyncio.get_event_loop()
+        try:
+            fetched = await loop.run_in_executor(None, fetch_channel_avatars, missing)
+            avatars.update(fetched)
+        except Exception as e:  # QuotaExceeded, auth, network
+            print(f"[imported] could not fetch channel avatars: {e}")
+        finally:
+            # Against the day but NOT the archive's share — this is incidental to
+            # opening a video, and must not eat the fetching budget.
+            await quota.record(take_quota_delta(), archive=False)
+
+    for rec in records:
+        if not rec.channel_thumbnail:
+            rec.channel_thumbnail = avatars.get(rec.channel_id, "")
 
 
 def _serialize(v: ImportedVideo) -> dict:
@@ -215,11 +267,17 @@ async def import_videos(req: ImportRequest, db: AsyncSession = Depends(get_db)):
         return_exceptions=True,
     )
 
+    fresh = []
     for vid, info in zip(todo, infos):
         if isinstance(info, BaseException) or not info:
             failed.append({"input": vid, "error": str(info)[:200] or "could not fetch"})
             continue
-        rec = _to_record(vid, info)
+        fresh.append(_to_record(vid, info))
+
+    # One lookup for the whole paste, before serialising — the payload goes
+    # straight to the cards, so the avatar has to be on it already.
+    await fill_channel_avatars(fresh, db)
+    for rec in fresh:
         db.add(rec)
         added.append(_serialize(rec))
     if added:

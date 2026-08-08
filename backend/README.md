@@ -516,6 +516,28 @@ Pasting the link of a video you'd already opened **promotes** its row to
 `"import"` and restamps `created_at`, rather than reporting "already imported"
 about something absent from the page.
 
+### The uploader's picture
+
+A video extraction carries no avatar. yt-dlp's `thumbnails` on a video are that
+video's own frames — ids `"0"`..`"41"`, no `avatar_uncropped` among them — so
+every row written before this had a blank one and drew the fallback initial.
+
+`fill_channel_avatars()` fixes that from the channel instead, cheapest source
+first: a channel you're subscribed to already has its picture in `channels` and
+costs nothing, and only what's left reaches `channels.list?part=snippet` at one
+unit per 50. A whole paste is a single unit. It takes anything carrying
+`channel_id` and `channel_thumbnail`, so the same function serves imported rows,
+history rows and the repair script.
+
+The 88px (`default`) size is deliberate: it's what all the subscribed channels'
+avatars already use, and what these are drawn at. `high` is 800px — an
+800-pixel image for a 40-pixel circle.
+
+Best-effort throughout. No credentials, spent quota or a deleted channel leaves
+the field blank and the card falls back to its initial. The spend is recorded
+against the day but **not** against the archive's share (`archive=False`), so
+opening videos can't eat the fetching budget.
+
 ---
 
 ## Local folders (`routers/local.py`)
@@ -937,7 +959,7 @@ no per-test decorator). What's covered:
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
-| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video |
+| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
 
 `conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import
@@ -955,9 +977,10 @@ change rather than a surprise — `test_a_mixed_script_japanese_name_is_currentl
 has the two rules backwards).
 
 `scripts/` holds one-off maintenance scripts (stat backfills, date/count fixes,
-subscription import) — run ad hoc, not part of the app. One of them repairs rows
-written before the fix that made it unnecessary, and takes `--dry-run`:
+subscription import) — run ad hoc, not part of the app. Two of them repair rows
+written before the fix that made them unnecessary, and both take `--dry-run`:
 
 ```bash
 python -m scripts.fix_blank_history    # nameless history rows, via get_video
+python -m scripts.fix_channel_avatars  # missing uploader pictures, ~1 unit / 50 channels
 ```

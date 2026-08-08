@@ -366,6 +366,50 @@ def fetch_channel_video_counts(channel_ids: list[str]) -> dict[str, int]:
     return counts
 
 
+def fetch_channel_avatars(channel_ids: list[str]) -> dict[str, str]:
+    """Channel avatar URLs — 50 channels for one quota unit.
+
+    A video extraction carries no avatar at all: yt-dlp's `thumbnails` on a video
+    are that video's frames, so the uploader's picture has to come from
+    somewhere else. This is the cheap somewhere.
+    """
+    if not channel_ids:
+        return {}
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping avatars: {e}")
+        return {}
+    global _quota_used
+
+    avatars: dict[str, str] = {}
+    with httpx.Client(timeout=30.0) as client:
+        for i in range(0, len(channel_ids), BATCH_SIZE):
+            chunk = channel_ids[i:i + BATCH_SIZE]
+            resp = client.get(
+                "https://www.googleapis.com/youtube/v3/channels",
+                headers={"Authorization": f"Bearer {creds.token}"},
+                params={"part": "snippet", "id": ",".join(chunk)},
+            )
+            _quota_used += 1
+            if resp.status_code == 403 and _quota_refusal(resp):
+                raise QuotaExceeded("channel avatar lookup hit the daily allowance")
+            if resp.status_code != 200:
+                break
+            for item in resp.json().get("items", []):
+                thumbs = (item.get("snippet") or {}).get("thumbnails") or {}
+                # Smallest first, which is 88px — the size every subscribed
+                # channel's avatar already uses (`=s88` on all 145 of them), and
+                # the size these are actually drawn at. "high" is 800px, an
+                # eight-hundred-pixel image for a forty-pixel circle.
+                for size in ("default", "medium", "high"):
+                    url = (thumbs.get(size) or {}).get("url")
+                    if url:
+                        avatars[item["id"]] = url
+                        break
+    return avatars
+
+
 def get_quota_used() -> int:
     """Return total YouTube Data API quota units used this session."""
     return _quota_used
