@@ -27,6 +27,8 @@ async def test_saved_video_round_trips_its_snapshot(client):
         score=1.5,
     )
     (row,) = (await client.get("/api/watch-later")).json()
+    # `created_at` is stamped by the server, so it's checked separately below.
+    saved_at = row.pop("created_at")
     assert row == {
         "youtube_id": "vid1",
         "title": "A Video",
@@ -39,6 +41,19 @@ async def test_saved_video_round_trips_its_snapshot(client):
         "like_count": 9,
         "score": 1.5,
     }
+    assert saved_at, "the page windows and orders by when you saved it"
+
+
+async def test_the_moment_you_saved_it_is_reported(client):
+    """The Watch Later page both orders and windows by when a row was saved —
+    neither works if the only date on the row is the video's publish date, which
+    can be a decade before you ever heard of it."""
+    from datetime import datetime
+
+    before = datetime.utcnow()
+    await save(client, published_at="2015-01-01T00:00:00")
+    (row,) = (await client.get("/api/watch-later")).json()
+    assert before <= datetime.fromisoformat(row["created_at"]) <= datetime.utcnow()
 
 
 async def test_saving_twice_is_a_no_op(client):

@@ -920,7 +920,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/tags` | tags in use with per-tag counts (`?include_empty=1` = full taxonomy, for the picker) |
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
-| GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD |
+| GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD. All three list most-recently-added first and report `created_at` — the date the Watch Later and Downloads pages order *and* window by, since a video's publish date says nothing about when it became yours |
 | POST | `/api/watch-later/by-id/{id}` | save a video we're given nothing but the id of — the extension's button. Metadata is resolved here |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
@@ -964,7 +964,7 @@ no per-test decorator). What's covered:
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete |
-| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone |
+| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |

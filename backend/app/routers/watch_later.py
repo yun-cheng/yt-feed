@@ -43,6 +43,11 @@ def _serialize(w: WatchLater) -> dict:
         "view_count": w.view_count,
         "like_count": w.like_count,
         "score": w.score,
+        # When you saved it — the axis the page both orders and windows by, the
+        # same way Imported uses its `created_at` and History its `watched_at`.
+        # Publish date is a property of the video; this is the only record of
+        # when it became yours.
+        "created_at": w.created_at.isoformat() if w.created_at else None,
     }
 
 
