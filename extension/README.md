@@ -15,7 +15,7 @@ behaviour is the default that ships.
 |---|---|---|
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
 | `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>` |
-| `open-in-app.js` | `youtube.com/*` | The corner buttons on video cards |
+| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, and the watch-page pair |
 | `background.js` | service worker | Talks to the app's API, and caches the Watch Later list |
 
 ## Open in YT Feed, and Save to Watch Later
@@ -132,6 +132,57 @@ Three details worth knowing if you touch this file:
   owes it nothing.
 - They carry a `title` rather than a visible label, matching the buttons they're
   modelled on. The save button's tooltip doubles as its result message.
+
+### On the watch page
+
+The hover pair needs a thumbnail to sit on, and the one video a watch page is
+*about* hasn't got one — its thumbnail is the player. So a watch page carries a
+second copy of the same two buttons, in YouTube's own action row, **just before
+the `⋯`**:
+
+> 👍 19M ｜ 👎 ｜ Share ｜ Save ｜ **▶ YT Feed ｜ 🕐 Watch Later** ｜ ⋯
+
+That row is the one place on the page meaning "things I do to this video", which
+is what makes it worth doing the thing this file otherwise refuses to do:
+**naming YouTube's markup**. Two mitigations. The anchor is looked up fresh on
+every sync rather than held, and every lookup may come back empty — a redesign
+costs the buttons, not an exception on every watch page.
+
+They're pills rather than dark circles, measured off Share: 40px tall, 20px
+radius, `rgba(255,255,255,.1)` under `#f1f1f1` at 14px/500, `0 16px` padding.
+The circle is shaped for sitting on a photograph and would read as a foreign
+object in a text row. Under 900px the labels drop and they become icon-only,
+which is roughly where YouTube starts folding its own buttons into the `⋯`.
+
+The one non-obvious number is the icon's `margin: 0 6px 0 -6px`. YouTube's icon
+pulls itself 6px back *into* the button's padding, so a labelled pill measures
+**10px** from its left edge to the icon and 16px from the label to its right.
+Reaching for `gap: 6px` with symmetric padding — the obvious way — sits 6px
+wider on the left, which is enough to read as not-quite-one-of-theirs when it's
+sitting next to the real ones. With the label hidden there's nothing to make
+room for, so the narrow rule puts the margin back to zero.
+
+Two traps, both real, both hit while building this:
+
+- **`#top-level-buttons-computed` is on three elements**, two of them zero-width
+  layout variants — so `querySelector` returns the wrong one. The anchor is
+  `#flexible-item-buttons` (the Save/Download group), and the fallback picks the
+  like/share row *by measured width* rather than by id.
+- **YouTube rebuilds that row**, both on in-page navigation and on its own. So
+  `syncBar` re-checks for ~5s after every `yt-navigate-finish` rather than
+  mounting once; re-mounting is a no-op when nothing moved.
+
+The open button hands over **where you'd got to**, as `/watch/:id?t=<seconds>`,
+so the app picks up mid-video rather than restarting. Under 5s in there's
+nothing worth carrying, and `?t=0` would be worse than silence — it would
+override the app's own resume position with the top of the video. It also
+pauses YouTube's player on the way out, or this tab keeps playing behind the
+app's copy of the same thing.
+
+Which `<video>` is "the player" is decided by **size**: a hovered card in the
+sidebar is a `<video>` too, so `mainVideo()` takes the widest one on the page.
+Same trick as `thumbnailLink`, and for the same reason — it names no YouTube
+element.
 
 ## Clean embed
 

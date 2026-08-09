@@ -40,6 +40,9 @@ const MIN_THUMB_WIDTH = 80
 /* Inset from the thumbnail's corner, matching YouTube's own overlay buttons. */
 const INSET = 8
 
+/* Below this many seconds in, there's no position worth handing to the app. */
+const HANDOFF_MIN_SEC = 5
+
 /** The YouTube video id in a link, or null if it isn't a link to a video. */
 function videoId(href) {
   let url
@@ -232,8 +235,10 @@ async function refreshSaved(force = false) {
   saved.clear()
   for (const id of reply.ids) saved.add(id)
   // The video under the pointer may be one of them, and it isn't going to be
-  // hovered again just because we finally know.
+  // hovered again just because we finally know. Same for the one the watch page
+  // is about, which isn't going anywhere at all.
   if (currentId && !saveButton.classList.contains('failed')) hoverSave.reset(currentId)
+  if (barId && !savePill.classList.contains('failed')) barSave.reset(barId)
 }
 
 function place() {
@@ -379,5 +384,178 @@ saveButton.addEventListener('click', (e) => {
   clickSave(hoverSave, currentId, () => currentId)
 })
 
+/* ── The watch page ─────────────────────────────────────────
+ *
+ * The pair above needs a thumbnail to sit on, and the one video a watch page is
+ * about hasn't got one — its thumbnail is the player. So a watch page gets a
+ * second copy of the same two buttons, in YouTube's own action row, just before
+ * the ⋯.
+ *
+ * That row is the one place on the page that means "things I do to this video",
+ * which is what makes it worth the thing this file otherwise refuses to do:
+ * naming YouTube's markup. Two mitigations. The anchor is looked up fresh on
+ * every sync rather than held, and every lookup is allowed to come back empty —
+ * a redesign costs the buttons, not an exception on every watch page. And
+ * nothing is pinned to `#top-level-buttons-computed`, which is on THREE
+ * elements here, two of them zero-width layout variants, so a plain id lookup
+ * picks the wrong one.
+ */
+
+const barHost = document.createElement('div')
+barHost.style.cssText = 'display:inline-flex;align-items:center;align-self:center'
+const barRoot = barHost.attachShadow({ mode: 'open' })
+
+const barStyle = document.createElement('style')
+// YouTube's own action-row pill, measured off Share rather than eyeballed: 40px
+// tall, 20px radius, rgba(255,255,255,.1) under #f1f1f1 text at 14px/500, with
+// 16px of side padding. The dark circle the hover pair wears would read as a
+// foreign object here — that one is shaped for sitting on a photograph.
+barStyle.textContent = `
+  .bar {
+    display: flex;
+    /* The ⋯ we sit in front of carries exactly this much on its own left. */
+    gap: 8px;
+    margin-left: 8px;
+  }
+  button {
+    display: inline-flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #f1f1f1;
+    font-family: "Roboto", "Arial", sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 40px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.2); }
+  button:disabled { cursor: default; }
+  /* The icon's own margin rather than a flex gap, because YouTube's pulls
+     itself 6px back INTO the padding: a labelled pill is 10px from its left
+     edge to the icon and 16px from the label to its right. A 6px gap with
+     symmetric padding — the obvious way — sits 6px wider on the left, which is
+     enough to read as not-quite-one-of-theirs beside the real ones. */
+  svg { width: 24px; height: 24px; display: block; margin: 0 6px 0 -6px; }
+  button.failed { background: rgba(153, 27, 27, 0.9); }
+  /* Narrow enough that YouTube is already folding its own buttons into the ⋯:
+     ours drop their labels rather than push the row wider than the player. With
+     no label there's nothing to pull the icon back from, so it re-centres. */
+  @media (max-width: 900px) {
+    .label { display: none }
+    button { padding: 0 8px }
+    svg { margin: 0 }
+  }
+`
+
+const openPill = makeButton('Open in YT Feed', openIcon())
+const openLabel = document.createElement('span')
+openLabel.className = 'label'
+openLabel.textContent = 'YT Feed'
+openPill.append(openLabel)
+
+const savePill = makeButton('Save to YT Feed Watch Later', clockIcon())
+const barSave = saveControl(savePill, (state) => (state === 'saved' ? 'Saved' : 'Watch Later'))
+
+const bar = document.createElement('div')
+bar.className = 'bar'
+bar.append(openPill, savePill)
+barRoot.append(barStyle, bar)
+
+/** The video a watch page is about, or null if this isn't a watch page. */
+function watchId() {
+  if (location.pathname !== '/watch') return null
+  return new URLSearchParams(location.search).get('v')
+}
+
+/** Put the bar back in the action row, unless it's already sitting there. */
+function mountBar() {
+  const menu = document.querySelector('#actions ytd-menu-renderer')
+  if (!menu) return
+  // After the Save/Download group is what puts us before the ⋯. Falling back to
+  // the like/share row covers a video that offers neither of those.
+  const after = menu.querySelector('#flexible-item-buttons')
+    ?? [...menu.querySelectorAll('#top-level-buttons-computed')]
+      .find((el) => el.getBoundingClientRect().width > 0)
+  if (!after || barHost.previousElementSibling === after) return
+  after.after(barHost)
+}
+
+/** The video the bar currently belongs to, so a save can tell if it moved. */
+let barId = null
+let barTimer = null
+
+/*
+ * A watch page swaps videos without a page load, and YouTube rebuilds that row
+ * when it does — so this keeps re-checking for a few seconds after each
+ * navigation rather than mounting once and trusting it to stick. `mountBar` is
+ * a no-op when nothing moved, so the repeats cost one `querySelector` each.
+ */
+function syncBar(tries = 12) {
+  clearTimeout(barTimer)
+
+  const id = watchId()
+  if (!id) {
+    barHost.remove()
+    barId = null
+    return
+  }
+
+  if (id !== barId) {
+    barId = id
+    barSave.reset(id)
+  }
+  mountBar()
+  if (tries > 0) barTimer = setTimeout(() => syncBar(tries - 1), 400)
+}
+
+/**
+ * The page's main player.
+ *
+ * The BIGGEST `<video>` on it, because a hovered card in the sidebar is a
+ * `<video>` too — just a small one — and `querySelector` would hand back
+ * whichever the DOM happens to reach first. Same trick as `thumbnailLink`, and
+ * for the same reason: it names no YouTube element.
+ */
+function mainVideo() {
+  let best = null
+  let bestWidth = 0
+  for (const el of document.querySelectorAll('video')) {
+    const width = el.getBoundingClientRect().width
+    if (width > bestWidth) {
+      best = el
+      bestWidth = width
+    }
+  }
+  return best
+}
+
+openPill.addEventListener('click', () => {
+  if (!barId) return
+  const player = mainVideo()
+
+  // Hand over where YouTube had got to, so the app picks up mid-video rather
+  // than restarting. Under a few seconds there's nothing worth carrying, and
+  // `?t=0` would be worse than silence — it would override the app's own resume
+  // position with the top of the video.
+  const at = Math.floor(player?.currentTime ?? 0)
+  const t = at > HANDOFF_MIN_SEC ? `?t=${at}` : ''
+
+  // Otherwise this tab keeps playing behind the app's copy of the same video.
+  player?.pause()
+  window.open(`${APP_ORIGIN}/watch/${barId}${t}`, APP_TAB)
+})
+
+savePill.addEventListener('click', () => clickSave(barSave, barId, () => barId))
+
+// Fired by YouTube's own router on every in-page navigation.
+addEventListener('yt-navigate-finish', () => syncBar())
+
 document.documentElement.append(host)
+syncBar()
 refreshSaved()
