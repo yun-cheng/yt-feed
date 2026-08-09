@@ -228,9 +228,30 @@ const saved = new Set()
 let askedAt = 0
 const ASK_EVERY_MS = 60_000
 
+/**
+ * Ask the service worker something, and treat "couldn't ask" as an answer.
+ *
+ * `chrome.runtime.sendMessage` REJECTS rather than resolving when the messaging
+ * itself fails, and two of those failures are ordinary here rather than
+ * exceptional: the worker is asleep and doesn't answer in time, and — the
+ * common one during development — the extension has been reloaded, which leaves
+ * the copy of this script already running in an open tab holding a dead handle
+ * ("Extension context invalidated"). Every caller below already treats a
+ * missing `ok` as "the app didn't answer", so the rejection has nowhere useful
+ * to go: unawaited, it surfaces as an uncaught error on the line that awaited
+ * it, which is a console full of noise about a tab that simply needs reloading.
+ */
+async function ask(message) {
+  try {
+    return await chrome.runtime.sendMessage(message)
+  } catch {
+    return null
+  }
+}
+
 async function refreshSaved(force = false) {
   askedAt = Date.now()
-  const reply = await chrome.runtime.sendMessage({ type: 'saved-ids', force })
+  const reply = await ask({ type: 'saved-ids', force })
   if (!reply?.ok) return
   saved.clear()
   for (const id of reply.ids) saved.add(id)
@@ -312,7 +333,7 @@ async function clickSave(ctl, id, stillOn) {
   // one hands the video to another tab and is finished; this one's whole reply
   // is the button changing, so there has to be a button to change.
   ctl.el.disabled = true
-  const reply = await chrome.runtime.sendMessage({ type: 'save-watch-later', videoId: id })
+  const reply = await ask({ type: 'save-watch-later', videoId: id })
 
   // `saved: false` is the API resolving nothing — a private or deleted video —
   // which is a failure to the person who clicked, whatever the HTTP status was.
