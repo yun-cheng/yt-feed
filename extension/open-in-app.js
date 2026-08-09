@@ -156,38 +156,53 @@ function makeButton(label, icon) {
   return el
 }
 
-const openIcon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
-openIcon.append(
-  svg('rect', {
-    x: 3, y: 4, width: 18, height: 16, rx: 3,
-    stroke: 'currentColor', 'stroke-width': 2,
-  }),
-  svg('path', { d: 'M10 9.5v5l4-2.5z', fill: 'currentColor' }),
-)
-const openButton = makeButton('Open in YT Feed', openIcon)
+/*
+ * The icons are FUNCTIONS rather than elements because a watch page carries two
+ * copies of this pair — the hover one and the one in YouTube's action row — and
+ * appending a node MOVES it rather than copying it. A shared instance would
+ * teleport out of one button and into the other.
+ */
+function openIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  el.append(
+    svg('rect', {
+      x: 3, y: 4, width: 18, height: 16, rx: 3,
+      stroke: 'currentColor', 'stroke-width': 2,
+    }),
+    svg('path', { d: 'M10 9.5v5l4-2.5z', fill: 'currentColor' }),
+  )
+  return el
+}
 
 // A clock, which is what YouTube's own Watch Later is drawn as — the app's list
 // is a different list, but the gesture is the one people already know.
-const saveIcon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
-saveIcon.append(
-  svg('circle', {
-    cx: 12, cy: 12, r: 9, stroke: 'currentColor', 'stroke-width': 2,
-  }),
-  svg('path', {
-    d: 'M12 7v5.5l3.5 2', stroke: 'currentColor', 'stroke-width': 2,
-    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
-  }),
-)
+function clockIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  el.append(
+    svg('circle', {
+      cx: 12, cy: 12, r: 9, stroke: 'currentColor', 'stroke-width': 2,
+    }),
+    svg('path', {
+      d: 'M12 7v5.5l3.5 2', stroke: 'currentColor', 'stroke-width': 2,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    }),
+  )
+  return el
+}
 
 // Saved. The icon is the whole difference — same circle, same fill — so a
 // column of thumbnails reads as one set of controls rather than a scoreboard.
-const savedIcon = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
-savedIcon.append(svg('path', {
-  d: 'M5 12.5l4.5 4.5L19 7.5', stroke: 'currentColor', 'stroke-width': 2.5,
-  'stroke-linecap': 'round', 'stroke-linejoin': 'round',
-}))
+function tickIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  el.append(svg('path', {
+    d: 'M5 12.5l4.5 4.5L19 7.5', stroke: 'currentColor', 'stroke-width': 2.5,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  }))
+  return el
+}
 
-const saveButton = makeButton('Save to YT Feed Watch Later', saveIcon)
+const openButton = makeButton('Open in YT Feed', openIcon())
+const saveButton = makeButton('Save to YT Feed Watch Later', clockIcon())
 
 const stack = document.createElement('div')
 stack.className = 'stack'
@@ -218,7 +233,7 @@ async function refreshSaved(force = false) {
   for (const id of reply.ids) saved.add(id)
   // The video under the pointer may be one of them, and it isn't going to be
   // hovered again just because we finally know.
-  if (currentId && !saveButton.classList.contains('failed')) resetSave(currentId)
+  if (currentId && !saveButton.classList.contains('failed')) hoverSave.reset(currentId)
 }
 
 function place() {
@@ -237,24 +252,73 @@ function hide() {
   currentId = null
 }
 
-/** Draw the save button in one of its three states. */
-function drawSave(state, title) {
-  saveButton.disabled = false
-  saveButton.classList.toggle('failed', state === 'failed')
-  saveButton.replaceChildren(state === 'saved' ? savedIcon : saveIcon)
-  saveButton.title = title
+/**
+ * A save button and the two operations every copy of one needs.
+ *
+ * `label`, when given, turns the icon-only circle into a labelled pill: it's
+ * called with the state and its answer sits beside the icon.
+ */
+function saveControl(el, label) {
+  /** Draw the button in one of its three states. */
+  function draw(state, title) {
+    el.disabled = false
+    el.classList.toggle('failed', state === 'failed')
+    el.replaceChildren(state === 'saved' ? tickIcon() : clockIcon())
+    if (label) {
+      const span = document.createElement('span')
+      span.className = 'label'
+      span.textContent = label(state)
+      el.append(span)
+    }
+    el.title = title
+  }
+
+  return {
+    el,
+    draw,
+    /**
+     * The button as it should look for a video we haven't just clicked it for.
+     *
+     * Which is a tick if the video is already on the list — that's the whole
+     * point of the cache, and it has to be readable the instant the pointer
+     * lands, so it reads a Set held here rather than awaiting the worker.
+     */
+    reset(id) {
+      if (saved.has(id)) draw('saved', 'Already in Watch Later')
+      else draw('unsaved', 'Save to YT Feed Watch Later')
+    },
+  }
 }
 
+const hoverSave = saveControl(saveButton)
+
 /**
- * The button as it should look for a video we haven't just clicked it for.
+ * Click a save button: ask the worker, then answer on the button itself.
  *
- * Which is a tick if the video is already on the list — that's the whole point
- * of the cache, and it has to be readable the instant the pointer lands, so it
- * reads a Set held here rather than awaiting the worker.
+ * `stillOn` is re-read AFTER the round trip, because the pointer (or the page)
+ * may have moved to another video meanwhile. The save still landed and is now
+ * in the Set, but drawing its answer on a button that has since changed hands
+ * would report it against the wrong video.
  */
-function resetSave(id) {
-  if (saved.has(id)) drawSave('saved', 'Already in Watch Later')
-  else drawSave('unsaved', 'Save to YT Feed Watch Later')
+async function clickSave(ctl, id, stillOn) {
+  if (!id || ctl.el.disabled) return
+
+  // Deliberately stays put rather than hiding like the open button does. That
+  // one hands the video to another tab and is finished; this one's whole reply
+  // is the button changing, so there has to be a button to change.
+  ctl.el.disabled = true
+  const reply = await chrome.runtime.sendMessage({ type: 'save-watch-later', videoId: id })
+
+  // `saved: false` is the API resolving nothing — a private or deleted video —
+  // which is a failure to the person who clicked, whatever the HTTP status was.
+  const ok = reply?.ok && reply.saved
+  if (ok) saved.add(id)
+
+  const now = stillOn()
+  if (now !== id) return ctl.reset(now)
+
+  if (ok) ctl.draw('saved', reply.already ? 'Already in Watch Later' : 'Saved to Watch Later')
+  else ctl.draw('failed', `Couldn't save — is the app running?`)
 }
 
 document.addEventListener('mouseover', (e) => {
@@ -272,7 +336,7 @@ document.addEventListener('mouseover', (e) => {
   // Only on a change of video: re-entering the same card (crossing from the
   // thumbnail to its title, say) must not wipe a "couldn't save" you need to
   // read, nor re-run this for every pixel of a card you're already on.
-  if (id !== currentId) resetSave(id)
+  if (id !== currentId) hoverSave.reset(id)
   anchored = thumb
   currentId = id
   place()
@@ -310,29 +374,9 @@ openButton.addEventListener('click', (e) => {
   hide()
 })
 
-saveButton.addEventListener('click', async (e) => {
+saveButton.addEventListener('click', (e) => {
   e.stopPropagation()
-  const id = currentId
-  if (!id || saveButton.disabled) return
-
-  // Deliberately stays put rather than hiding like the open button does. That
-  // one hands the video to another tab and is finished; this one's whole reply
-  // is the button changing, so there has to be a button to change.
-  saveButton.disabled = true
-  const reply = await chrome.runtime.sendMessage({ type: 'save-watch-later', videoId: id })
-
-  // `saved: false` is the API resolving nothing — a private or deleted video —
-  // which is a failure to the person who clicked, whatever the HTTP status was.
-  const ok = reply?.ok && reply.saved
-  if (ok) saved.add(id)
-
-  // Hovered away mid-flight: the save still landed and is now in the Set, but
-  // the pair belongs to a different video and drawing this answer on it would
-  // report the wrong one.
-  if (currentId !== id) return resetSave(currentId)
-
-  if (ok) drawSave('saved', reply.already ? 'Already in Watch Later' : 'Saved to Watch Later')
-  else drawSave('failed', `Couldn't save — is the app running?`)
+  clickSave(hoverSave, currentId, () => currentId)
 })
 
 document.documentElement.append(host)
