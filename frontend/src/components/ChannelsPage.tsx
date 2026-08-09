@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../lib/api'
+import AddChannelDialog from './AddChannelDialog'
 
 type ChannelInfo = {
   youtube_id: string
@@ -8,6 +9,9 @@ type ChannelInfo = {
   thumbnail_url: string
   subscriber_count: number
   tags: string[]
+  // "subscription" (came from YouTube) or "manual" (added by hand). Only the
+  // hand-added ones can be removed here — see remove_channel on the server.
+  source: string
   last_video_fetched: string | null
 }
 
@@ -39,9 +43,20 @@ const EyeOffIcon = () => (
   </svg>
 )
 
+const TrashIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />
+  </svg>
+)
+
 export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hiddenChannels, onToggleHidden }: Props) {
   const [channels, setChannels] = useState<ChannelInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  // The hand-added channel whose delete button has been pressed once. Removing
+  // a channel deletes its videos, so it asks — in place, on the card, because
+  // that's where you can still see which channel you're about to lose.
+  const [confirming, setConfirming] = useState<string | null>(null)
 
   useEffect(() => {
     fetchChannels()
@@ -60,6 +75,35 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
     setLoading(false)
   }
 
+  async function removeChannel(channelId: string) {
+    setConfirming(null)
+    setChannels((prev) => prev.filter((c) => c.youtube_id !== channelId))
+    try { await apiFetch(`/api/channels/${channelId}`, { method: 'DELETE' }) }
+    catch { fetchChannels() }
+  }
+
+  // The dialog and the header button belong to the page rather than to the
+  // list, so they survive the loading and empty states below — an empty
+  // Channels page is exactly where "add one" needs to be reachable.
+  const dialog = adding && (
+    <AddChannelDialog
+      onClose={() => setAdding(false)}
+      onAdded={(id) => { setAdding(false); fetchChannels(); onSelectChannel(id) }}
+    />
+  )
+
+  const addButton = (
+    <button
+      onClick={() => setAdding(true)}
+      className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a]"
+    >
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
+      </svg>
+      Add channel
+    </button>
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
@@ -70,8 +114,12 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
 
   if (channels.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-        {selectedTags.length > 0 ? 'No channels match the selected tags.' : 'No channels found.'}
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaaaaa]">
+        <p className="text-sm">
+          {selectedTags.length > 0 ? 'No channels match the selected tags.' : 'No channels yet.'}
+        </p>
+        {addButton}
+        {dialog}
       </div>
     )
   }
@@ -80,10 +128,14 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
 
   return (
     <div className="p-6">
-      <p className="text-sm text-[#777] mb-4">
-        {channels.length} channels
-        {hiddenCount > 0 && <span className="text-[#666]"> · {hiddenCount} hidden from home</span>}
-      </p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-[#777]">
+          {channels.length} channels
+          {hiddenCount > 0 && <span className="text-[#666]"> · {hiddenCount} hidden from home</span>}
+        </p>
+        {addButton}
+      </div>
+      {dialog}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {channels.map((ch) => {
@@ -94,6 +146,19 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
             onClick={() => onSelectChannel(ch.youtube_id)}
             className={`group relative bg-[#1a1a1a] rounded-xl p-4 border transition-colors cursor-pointer ${isHidden ? 'border-[#333] opacity-60 hover:opacity-100' : 'border-[#272727] hover:border-[#444]'}`}
           >
+            {/* Remove — only for the hand-added ones. A subscribed channel is
+                here because YouTube says you're subscribed, so deleting it
+                would last until the next resync put it back. */}
+            {ch.source === 'manual' && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirming(confirming === ch.youtube_id ? null : ch.youtube_id) }}
+                title="Remove channel"
+                aria-label="Remove channel"
+                className="absolute top-2 right-10 z-10 p-1.5 rounded-full text-[#aaa] opacity-0 transition-colors hover:bg-white/10 hover:text-white group-hover:opacity-100"
+              >
+                <TrashIcon />
+              </button>
+            )}
             {/* Hide/show toggle */}
             <button
               onClick={(e) => { e.stopPropagation(); onToggleHidden(ch.youtube_id) }}
@@ -144,6 +209,29 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
               <p className="text-xs text-[#555] mt-2 line-clamp-2 leading-relaxed">
                 {ch.description}
               </p>
+            )}
+
+            {confirming === ch.youtube_id && (
+              <div
+                className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-[#2a1a1a] px-3 py-2 ring-1 ring-red-500/30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span className="text-xs text-[#ccc]">Remove this channel and its videos?</span>
+                <div className="flex flex-shrink-0 gap-1">
+                  <button
+                    onClick={() => setConfirming(null)}
+                    className="rounded-full px-2 py-1 text-xs text-[#aaa] hover:bg-white/10 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => removeChannel(ch.youtube_id)}
+                    className="rounded-full bg-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/30"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
             )}
           </div>
           )
