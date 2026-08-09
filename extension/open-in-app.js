@@ -574,9 +574,170 @@ openPill.addEventListener('click', () => {
 
 savePill.addEventListener('click', () => clickSave(barSave, barId, () => barId))
 
+/* ── Channel pages ──────────────────────────────────────────
+ *
+ * The app's feed is the videos of the channels it holds, and until now the only
+ * way in was your YouTube subscription list. So: a channel page gets a pill that
+ * adds the channel you're looking at, subscribed or not.
+ *
+ * It sits in `yt-flexible-actions-view-model`, the header's own row of
+ * per-channel actions — Subscribe, Join, and whatever else that channel offers.
+ * Anchoring to the ROW rather than to the Subscribe button is deliberate: the
+ * button's label is localised and changes once you're subscribed, so anything
+ * that recognised it by its text would work in English and nowhere else.
+ */
+
+/* The channel URL shapes: current (@handle), canonical (/channel/UC…), and the
+ * two legacy vanity forms. A trailing tab (/videos, /streams) is still one. */
+const CHANNEL_PATH_RE = /^\/(?:@[^/]+|channel\/UC[\w-]{22}|c\/[^/]+|user\/[^/]+)(?:\/|$)/
+
+/** The channel this page is about: {url, id}, or null if it isn't one. */
+function channelPage() {
+  if (!CHANNEL_PATH_RE.test(location.pathname)) return null
+  // The canonical link is always the /channel/UC… form whatever URL you came in
+  // by, which is how a page reached by handle knows its own id. On a page that
+  // hasn't got one, the app resolves the URL server-side; only the "already
+  // added" tick needs the id up front.
+  const canonical = document.querySelector('link[rel="canonical"]')?.href ?? ''
+  const m = canonical.match(/\/channel\/(UC[\w-]{22})/)
+  return {
+    url: `${location.origin}${location.pathname}`,
+    id: m ? m[1] : null,
+  }
+}
+
+const channelHost = document.createElement('div')
+channelHost.style.cssText = 'display:inline-flex;align-items:center;align-self:center'
+const channelRoot = channelHost.attachShadow({ mode: 'open' })
+// The same pill as the watch page's, because it's going in the same kind of
+// place — a row of YouTube's own action buttons — and a second set of numbers
+// would only be a second thing to keep in step.
+channelRoot.append(barStyle.cloneNode(true))
+
+function plusIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  el.append(svg('path', {
+    d: 'M12 6v12M6 12h12', stroke: 'currentColor', 'stroke-width': 2,
+    'stroke-linecap': 'round',
+  }))
+  return el
+}
+
+const addPill = makeButton('Add this channel to YT Feed', plusIcon())
+const addBar = document.createElement('div')
+addBar.className = 'bar'
+addBar.append(addPill)
+channelRoot.append(addBar)
+
+/**
+ * Which channels the app already holds, so the pill can say so on arrival.
+ *
+ * Same shape as `saved` above and for the same reason: the header paints before
+ * any answer could come back, so it reads a Set held here and the worker owns
+ * how fresh that Set is.
+ */
+const known = new Set()
+let knownAskedAt = 0
+
+/** The channel the pill currently belongs to, so an add can tell if it moved. */
+let channelId = null
+let channelUrl = null
+let channelTimer = null
+
+function drawAdd(state, title) {
+  addPill.disabled = state === 'added'
+  addPill.classList.toggle('failed', state === 'failed')
+  addPill.replaceChildren(state === 'added' ? tickIcon() : plusIcon())
+  const span = document.createElement('span')
+  span.className = 'label'
+  span.textContent = state === 'added' ? 'In YT Feed' : 'YT Feed'
+  addPill.append(span)
+  addPill.title = title
+}
+
+/** The pill as it should look for a channel we haven't just clicked it for. */
+function resetAdd() {
+  if (channelId && known.has(channelId)) drawAdd('added', 'Already in YT Feed')
+  else drawAdd('absent', 'Add this channel to YT Feed')
+}
+
+async function refreshKnown(force = false) {
+  knownAskedAt = Date.now()
+  const reply = await ask({ type: 'channel-ids', force })
+  if (!reply?.ok) return
+  known.clear()
+  for (const id of reply.ids) known.add(id)
+  if (!addPill.classList.contains('failed')) resetAdd()
+}
+
+/** Put the pill back in the header's action row, unless it's already there. */
+function mountAdd() {
+  // Widest visible one: the same trick as `mainVideo`, because a channel page
+  // can carry more than one of these rows and the hidden ones measure zero.
+  const row = [...document.querySelectorAll('yt-flexible-actions-view-model')]
+    .filter((el) => el.getBoundingClientRect().width > 0)[0]
+  if (!row || channelHost.parentElement === row) return
+  row.append(channelHost)
+}
+
+/*
+ * Re-checks for a few seconds after each navigation, exactly like `syncBar` —
+ * YouTube rebuilds the header when you move between channels, and the canonical
+ * link that carries the id lands some time after the URL does.
+ */
+function syncAdd(tries = 12) {
+  clearTimeout(channelTimer)
+
+  const page = channelPage()
+  if (!page) {
+    channelHost.remove()
+    channelId = null
+    channelUrl = null
+    return
+  }
+
+  channelUrl = page.url
+  if (page.id !== channelId) {
+    channelId = page.id
+    resetAdd()
+  }
+  mountAdd()
+  if (tries > 0) channelTimer = setTimeout(() => syncAdd(tries - 1), 400)
+}
+
+addPill.addEventListener('click', async () => {
+  if (!channelUrl || addPill.disabled) return
+  const url = channelUrl
+  addPill.disabled = true
+  const reply = await ask({ type: 'add-channel', url })
+
+  if (reply?.ok && reply.youtube_id) known.add(reply.youtube_id)
+
+  // The header may have moved to another channel during the round trip — the
+  // add still landed, but its answer belongs to the channel it was about.
+  if (channelUrl !== url) return resetAdd()
+
+  if (reply?.ok) {
+    // A page reached by handle may not have surrendered an id yet; the reply
+    // carries the one the app resolved, so the tick survives the next redraw.
+    channelId = reply.youtube_id ?? channelId
+    drawAdd('added', reply.already ? 'Already in YT Feed' : 'Added to YT Feed')
+  } else {
+    drawAdd('failed', `Couldn't add — is the app running?`)
+  }
+})
+
 // Fired by YouTube's own router on every in-page navigation.
-addEventListener('yt-navigate-finish', () => syncBar())
+addEventListener('yt-navigate-finish', () => { syncBar(); syncAdd() })
+
+// Coming back from the app is when this is most likely to be stale — you may
+// have just added or removed the very channel you're looking at.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && Date.now() - knownAskedAt > ASK_EVERY_MS) refreshKnown(true)
+})
 
 document.documentElement.append(host)
 syncBar()
 refreshSaved()
+syncAdd()
+refreshKnown()

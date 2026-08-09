@@ -74,11 +74,57 @@ async function saveWatchLater(videoId) {
   return data
 }
 
+/*
+ * Which channels the app holds, so the pill on a YouTube channel page can say
+ * "in YT Feed" without a round trip. Same two-layer cache as the Watch Later
+ * list above, and the same reasoning: the list itself is the cache, because
+ * anything else would be blind to what you did in the app.
+ */
+const CHANNELS_KEY = 'channelIds'
+let channelMemo = null // { ids: string[], at: number }
+
+async function channelIds(force = false) {
+  if (!force && channelMemo && Date.now() - channelMemo.at < FRESH_MS) return channelMemo.ids
+  try {
+    const res = await fetch(`${APP_ORIGIN}/api/channels`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const ids = (await res.json()).map((c) => c.youtube_id)
+    channelMemo = { ids, at: Date.now() }
+    await chrome.storage.local.set({ [CHANNELS_KEY]: ids })
+    return ids
+  } catch {
+    const stored = (await chrome.storage.local.get(CHANNELS_KEY))[CHANNELS_KEY] || []
+    channelMemo = { ids: stored, at: Date.now() }
+    return stored
+  }
+}
+
+async function addChannel(url) {
+  const res = await fetch(`${APP_ORIGIN}/api/channels/add`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    // The app resolves the URL itself — handle, id or vanity, it takes any of
+    // them, which is why this hands over the page's address rather than trying
+    // to work out which kind of channel reference it's looking at.
+    body: JSON.stringify({ query: url }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  const ids = await channelIds()
+  if (!ids.includes(data.youtube_id)) {
+    channelMemo = { ids: [...ids, data.youtube_id], at: channelMemo?.at ?? Date.now() }
+    await chrome.storage.local.set({ [CHANNELS_KEY]: channelMemo.ids })
+  }
+  return data
+}
+
 const HANDLERS = {
   'save-watch-later': (msg) => saveWatchLater(msg.videoId),
   // `force` skips the TTL — the caller knows something the timer doesn't, e.g.
   // the tab was just switched back to from the app.
   'saved-ids': async (msg) => ({ ids: await savedIds(msg.force) }),
+  'channel-ids': async (msg) => ({ ids: await channelIds(msg.force) }),
+  'add-channel': (msg) => addChannel(msg.url),
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

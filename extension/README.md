@@ -6,7 +6,8 @@ different site:
 - on **the app**, it removes YouTube's overlays from embedded players so the app
   can draw its own control bar over bare video;
 - on **youtube.com**, it puts *open in YT Feed* and *save to Watch Later*
-  buttons on the corner of every video thumbnail.
+  buttons on the corner of every video thumbnail, and an *add this channel*
+  pill on every channel page.
 
 The app works without it. Everything below is additive, and the no-extension
 behaviour is the default that ships.
@@ -15,8 +16,8 @@ behaviour is the default that ships.
 |---|---|---|
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
 | `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>` |
-| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, and the watch-page pair |
-| `background.js` | service worker | Talks to the app's API, and caches the Watch Later list |
+| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the watch-page pair, and the channel-page pill |
+| `background.js` | service worker | Talks to the app's API, and caches the Watch Later list and the channel list |
 
 ## Open in YT Feed, and Save to Watch Later
 
@@ -76,9 +77,28 @@ A `fetch` from `open-in-app.js` carries `Origin: https://www.youtube.com`, and
 the API allows the app's own origin only — so the browser discards the reply. A
 fetch from the service worker isn't subject to CORS at all; the extension's
 `host_permissions` (`localhost` and `127.0.0.1`, any port) are the check
-instead. That's the whole reason `background.js` exists: it answers two
-messages, `save-watch-later` and `saved-ids`, and owns the cached list behind
-them. `storage` is the only permission it needs beyond those hosts.
+instead. That's the whole reason `background.js` exists: it answers four
+messages — `save-watch-later` / `saved-ids` for videos, `add-channel` /
+`channel-ids` for channels — and owns the cached lists behind them. `storage` is
+the only permission it needs beyond those hosts.
+
+Every one of those goes through `ask()` rather than `chrome.runtime.sendMessage`
+directly, because that call **rejects** when the messaging itself fails, and two
+of those failures are ordinary rather than exceptional: the worker is asleep, or
+— the common one while developing — the extension has just been reloaded, which
+leaves the copy of the content script already running in an open tab holding a
+dead handle (*"Extension context invalidated"*). `ask()` turns both into a
+`null` reply, which every caller already reads as "the app didn't answer" and
+draws as the button's failed state. Without it the rejection is unhandled, and
+since two of the calls are made unawaited at startup it surfaces as an uncaught
+error against whichever line did the `await` — a console full of noise about a
+tab that just needs reloading.
+
+That reload is also the fix if you ever see *"Identifier 'APP_ORIGIN' has
+already been declared"*: it means this script ran twice in one document, and the
+second run's top-level `const` collided with the first's. Nothing in the script
+can guard against it — a redeclaration is a parse-time error, raised before any
+code of ours runs.
 
 The request itself is a bare `POST /api/watch-later/by-id/<id>`. The button
 knows an id and nothing else, and deliberately doesn't scrape a title and
@@ -183,6 +203,36 @@ Which `<video>` is "the player" is decided by **size**: a hovered card in the
 sidebar is a `<video>` too, so `mainVideo()` takes the widest one on the page.
 Same trick as `thumbnailLink`, and for the same reason — it names no YouTube
 element.
+
+## Add this channel to YT Feed
+
+The app's feed is the videos of the channels it holds, and its subscription list
+is only one way in. So a **channel page** — `/@handle`, `/channel/UC…`, and the
+legacy `/c/` and `/user/` forms, on any of their tabs — gets one more pill, in
+the header's own row of actions:
+
+> **Subscribe ｜ + YT Feed**
+
+The anchor is `yt-flexible-actions-view-model`, which is that row: Subscribe,
+Join, and whatever else the channel offers. Anchoring to the **row** rather than
+to the Subscribe button is the point — the button's label is localised and
+changes once you're subscribed, so anything that recognised it by its text would
+work in English and nowhere else. As on the watch page, the row is looked up
+fresh on every sync, the widest visible one wins (a channel page can carry more
+than one, and the hidden ones measure zero), and a lookup is allowed to come
+back empty.
+
+The pill knows whether the channel is already in the app, the same way the save
+button knows about Watch Later: the service worker caches
+`GET /api/channels` and hands the id list over, so the header can paint
+"In YT Feed" the instant it renders instead of after a round trip. A click posts
+the **page's URL** — the app resolves handles, ids and vanity URLs itself, so
+there's nothing to work out on this side.
+
+The channel's id comes from `link[rel="canonical"]`, which is always the
+`/channel/UC…` form whatever URL you arrived by. A page that hasn't surrendered
+one yet can still be added; only the "already in" tick needs it up front, and the
+reply carries the id the app resolved so the tick survives the next redraw.
 
 ## Clean embed
 
