@@ -4,6 +4,9 @@ import type { VideoItem, LabelCount, WatchProgress } from '../App'
 import { formatAge } from '../lib/timeWindow'
 import type { TimeRange } from '../lib/timeWindow'
 import VideoRow from './VideoRow'
+import { addChannel, lookupChannel } from '../lib/channels'
+import type { ChannelLookup } from '../lib/channels'
+import ChannelHeader from './ChannelHeader'
 import ChannelTags from './ChannelTags'
 import ChannelArchive, { useArchiveStatus } from './ChannelArchive'
 
@@ -15,6 +18,9 @@ type ChannelInfo = {
   subscriber_count: number
   tags: string[]
   suggested_tags: string[]
+  // The first scan of a just-added channel is still running, so an empty grid
+  // means "not here yet" rather than "nothing matches your filters".
+  scanning?: boolean
   // This channel's video-label vocabulary with counts; null = not built yet.
   label_vocab: LabelCount[] | null
   // Whether the channel has any topics at all, independent of the window.
@@ -53,12 +59,6 @@ type Props = {
   onHasTopicsChange?: (has: boolean) => void
 }
 
-function formatSubs(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-
 const CHANNEL_PAGE_SIZE = 60
 
 export default function ChannelPage({ channelId, age, sort, onSortChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses }: Props) {
@@ -67,9 +67,12 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-  const [descExpanded, setDescExpanded] = useState(false)
-  const [descOverflows, setDescOverflows] = useState(false)
-  const descRef = useRef<HTMLParagraphElement>(null)
+  // A channel we don't hold, looked up on YouTube after the 404. Clicking
+  // through to one is how you find out it isn't here — an imported video's
+  // uploader, a link from anywhere — and "Channel not found" was a dead end
+  // when the channel plainly exists and could simply be added.
+  const [unknown, setUnknown] = useState<ChannelLookup | null>(null)
+  const [addingUnknown, setAddingUnknown] = useState(false)
   const loadingMoreRef = useRef(false)
 
   // How much of this channel's back catalogue we hold, plus the action that
@@ -133,7 +136,10 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     })
     if (labelFilter) params.set('label', labelFilter)
     if (watchStatuses?.length) params.set('watch', watchStatuses.join(','))
-    const res = await apiFetch(`/api/channels/${channelId}/videos?${params}`)
+    // A 404 here isn't a failure any more — it's how this page finds out the
+    // channel isn't one of ours, and it answers by offering to add it. Toasting
+    // it as an error would be shouting about the page's own normal path.
+    const res = await apiFetch(`/api/channels/${channelId}/videos?${params}`, { quietStatuses: [404] })
     if (!res.ok) throw new Error('Not found')
     const d: ChannelResponse = await res.json()
     setChannel(d.channel)
@@ -193,20 +199,53 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
   // Reset to the first page when the channel or filters change.
   useEffect(() => {
     let cancelled = false
-    setLoading(true); setNotFound(false); setVideos([]); setTotal(0); setDescExpanded(false)
+    setLoading(true); setNotFound(false); setUnknown(null); setVideos([]); setTotal(0)
     fetchPage(0, true)
       .catch(() => { if (!cancelled) setNotFound(true) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [fetchPage])
 
-  // Only offer a Show more/less toggle when the clamped text is actually clipped.
-  // Measured off the (initially clamped) element, so it must run before expansion.
+  // We don't hold this channel — ask YouTube who it is, so the page can show
+  // the real thing and offer to add it rather than just refusing.
   useEffect(() => {
-    const el = descRef.current
-    if (!el) { setDescOverflows(false); return }
-    setDescOverflows(el.scrollHeight > el.clientHeight + 1)
-  }, [channel?.description, loading])
+    if (!notFound) return
+    // A channel we don't hold has no videos and so no topics — say so, or the
+    // sidebar's Topics section pulses "Loading…" for as long as you're here.
+    onVocabChange?.([])
+    onBuildingChange?.(false)
+    onHasTopicsChange?.(false)
+    let cancelled = false
+    lookupChannel(channelId).then((info) => { if (!cancelled) setUnknown(info) })
+    return () => { cancelled = true }
+  }, [notFound, channelId, onVocabChange, onBuildingChange, onHasTopicsChange])
+
+  const addUnknown = useCallback(async () => {
+    setAddingUnknown(true)
+    let res = null
+    try { res = await addChannel(channelId) }
+    finally { setAddingUnknown(false) }
+    if (!res) return
+    // It's one of ours now: drop the not-found state and load the page for real.
+    // Its videos are still arriving — the poll below is what brings them in.
+    setNotFound(false)
+    setUnknown(null)
+    setLoading(true)
+    fetchPageRef.current(0, true).finally(() => setLoading(false))
+  }, [channelId])
+
+  // A channel added moments ago is still being scanned. Refetch until it isn't,
+  // so the grid fills itself rather than waiting to be reloaded by hand. The
+  // tick is what re-arms the timer: every refetch replaces `channel` with an
+  // equal-looking one, so nothing else in the deps would change.
+  const [scanTick, setScanTick] = useState(0)
+  useEffect(() => {
+    if (!channel?.scanning) return
+    const t = window.setTimeout(() => {
+      fetchPageRef.current(0, true).finally(() => setScanTick((n) => n + 1))
+    }, 3000)
+    return () => clearTimeout(t)
+  }, [channel?.scanning, scanTick])
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || videos.length >= total) return
@@ -225,9 +264,36 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
   }
 
   if (notFound || !channel) {
+    // The lookup is still out, or it came back with nothing (a deleted channel,
+    // or no network) — which is the only case left with nothing to show.
+    if (!unknown) {
+      return (
+        <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+          Channel not found.
+        </div>
+      )
+    }
     return (
-      <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-        Channel not found.
+      <div className="px-6 py-4">
+        {/* The same header the held channel below gets — this page differs in
+            what hangs off it, not in what a channel looks like. */}
+        <ChannelHeader
+          channel={unknown}
+          actions={
+            <button
+              onClick={addUnknown}
+              disabled={addingUnknown}
+              className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40"
+            >
+              {addingUnknown ? 'Adding…' : 'Add to your feed'}
+            </button>
+          }
+        />
+        <p className="text-sm text-[#717171]">
+          {addingUnknown
+            ? 'Fetching its recent videos…'
+            : "You're not following this channel, so there's nothing of theirs here yet. Adding it fetches their recent uploads and keeps them coming."}
+        </p>
       </div>
     )
   }
@@ -236,18 +302,9 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
 
   return (
     <div className="px-6 py-4">
-      {/* Channel header */}
-      <div className="flex items-start gap-4 mb-6 pb-6 border-b border-[#272727]">
-        <img
-          src={ch.thumbnail_url}
-          alt={ch.title}
-          className="w-20 h-20 rounded-full object-cover bg-[#333] flex-shrink-0"
-        />
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold text-white">{ch.title}</h2>
-          <p className="text-sm text-[#777] mt-1">
-            {formatSubs(ch.subscriber_count)} subscribers
-          </p>
+      <ChannelHeader
+        channel={ch}
+        aside={
           <ChannelTags
             channelId={ch.youtube_id}
             tags={ch.tags}
@@ -256,36 +313,10 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
               setChannel((c) => (c ? { ...c, tags, suggested_tags: suggested } : c))
             }
           />
-          {ch.description && (
-            <div className="max-w-xl">
-              <p
-                ref={descRef}
-                className={`text-xs text-[#555] mt-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${descExpanded ? '' : 'line-clamp-2'}`}
-              >
-                {ch.description}
-              </p>
-              {(descOverflows || descExpanded) && (
-                <button
-                  onClick={() => setDescExpanded((v) => !v)}
-                  className="mt-1 text-xs font-medium text-[#777] hover:text-[#aaa]"
-                >
-                  {descExpanded ? 'Show less' : 'Show more'}
-                </button>
-              )}
-            </div>
-          )}
-          <ChannelArchive status={archive.status} onStart={archive.start} />
-          <a
-            href={`https://www.youtube.com/channel/${ch.youtube_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block mt-2 text-xs text-blue-400 hover:text-blue-300"
-          >
-            Open on YouTube →
-          </a>
-        </div>
-      </div>
-
+        }
+      >
+        <ChannelArchive status={archive.status} onStart={archive.start} />
+      </ChannelHeader>
 
       {/* Active label filter indicator */}
       {labelFilter && (
@@ -302,9 +333,13 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
       {videos.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-2 h-40 text-[#aaaaaa] text-sm">
           <span>
-            {labelFilter
-              ? `No "${labelFilter}" videos in this time range.`
-              : 'No videos in this time range.'}
+            {ch.scanning
+              // Just added: the grid is empty because its videos are still on
+              // their way, which is a different thing from an empty window.
+              ? 'Fetching this channel’s recent videos…'
+              : labelFilter
+                ? `No "${labelFilter}" videos in this time range.`
+                : 'No videos in this time range.'}
           </span>
           {/* The moment you want more history is the moment a window comes back
               empty, so the action lives here rather than behind a setting. Only

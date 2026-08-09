@@ -13,7 +13,13 @@
  */
 import { pushToast } from '../hooks/toastStore'
 
-export type ApiInit = RequestInit & { quiet?: boolean }
+/**
+ * `quietStatuses` silences the toast for statuses the caller EXPECTS and
+ * answers itself — a channel page's 404, say, which now offers to add the
+ * channel rather than merely failing. Everything else still shouts, which is
+ * the difference between this and `quiet`.
+ */
+export type ApiInit = RequestInit & { quiet?: boolean; quietStatuses?: number[] }
 
 function pathOf(input: RequestInfo | URL): string {
   if (typeof input === 'string') return input
@@ -46,7 +52,7 @@ async function detailOf(res: Response): Promise<string> {
 }
 
 export async function apiFetch(input: RequestInfo | URL, init: ApiInit = {}): Promise<Response> {
-  const { quiet, ...rest } = init
+  const { quiet, quietStatuses, ...rest } = init
   let res: Response
   try {
     res = await fetch(input, rest)
@@ -54,7 +60,7 @@ export async function apiFetch(input: RequestInfo | URL, init: ApiInit = {}): Pr
     if (!quiet) pushToast(`${methodOf(input, rest)} ${pathOf(input)} — network error`)
     throw err
   }
-  if (!res.ok && !quiet) {
+  if (!res.ok && !quiet && !quietStatuses?.includes(res.status)) {
     // Read the body off a clone so the caller's res.json()/res.text() still works.
     detailOf(res).then((detail) => {
       const where = `${methodOf(input, rest)} ${pathOf(input)}`

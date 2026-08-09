@@ -307,6 +307,47 @@ Two details in `lib/timeWindow.ts` that only matter here:
   predates the row, not that the row is infinitely old, and dropping it would
   make it unreachable even at "All time".
 
+### Adding a channel (`AddChannelDialog.tsx`, `lib/channels.ts`)
+
+The feed is the videos of the channels the app holds, and a subscription isn't
+the only way one can get there. Two entry points, one pair of calls
+(`lib/channels.ts`, shared with the extension's service worker):
+
+- **The Channels page** has an *Add channel* button. Paste a link, an `@handle`
+  or a bare id, press *Look up*, and the resolved channel appears as a card —
+  avatar, subscriber count, description — before anything is written. Two steps
+  rather than one because a handle is easy to mistype into a *different real
+  channel*, and a picture answers "is this the one I meant?" in a way a spinner
+  can't. A hand-added channel's card also grows a remove button (an in-place
+  confirm, because removing takes its videos with it); a subscribed one doesn't,
+  since the server refuses those.
+- **`/channel/:id` for a channel we don't hold** used to say "Channel not
+  found." and stop. It now looks the channel up and renders its real header with
+  an *Add to your feed* button — which is what you want, because the way you
+  arrive here is by clicking through to the uploader of an imported video.
+
+Both channel pages draw that header through **`ChannelHeader.tsx`**, which is
+where the avatar, name, subscriber count, description (with its own Show
+more/less, since the measurement that gates it is a fact about that element) and
+the Open-on-YouTube link live. The pages differ only in what hangs off it, so it
+takes three slots: `aside` for the tag editor, `children` for the archive
+readout, and `actions` for the Add button. It was extracted rather than written
+that way — the first version of the not-yet-added page copied the markup, which
+is how two headers quietly stop looking alike.
+
+**Neither waits for the videos.** `POST /api/channels/add` returns as soon as the
+channel exists, carrying `scanning: true`; `ChannelPage` re-fetches every 3s
+while `channel.scanning` holds, and the empty grid says "Fetching this channel's
+recent videos…" rather than "No videos in this time range" — a distinction the
+page can only make because the server sends the flag. The poll re-arms off a
+tick counter: every refetch replaces `channel` with an equal-looking object, so
+nothing in the effect's deps would otherwise change.
+
+`apiFetch` gained `quietStatuses` for this: the channel page's 404 is now its own
+normal path (it's how the page learns the channel isn't ours), so it shouldn't
+raise an error toast, while everything else still does. That's the difference
+between it and the blanket `quiet`.
+
 ### The Imported page
 
 `/imported` lists videos added by pasting a link (`ImportedPage.tsx`), rendered
@@ -379,6 +420,9 @@ components/
   VideoCard.tsx                   the card + hover preview (the complex one)
   VideoRow.tsx                    list-row variant
   ChannelPage.tsx / ChannelsPage.tsx
+  ChannelHeader.tsx               avatar/name/subs/description/YouTube link —
+                                  shared by the held and not-yet-added pages
+  AddChannelDialog.tsx            paste a link or @handle, preview, add
   ChannelTags.tsx                 per-channel label editor (apply/remove/suggest)
   ChannelArchive.tsx              how much of a channel's history is held, and
                                   the button that fetches the rest
