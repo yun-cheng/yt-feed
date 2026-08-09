@@ -1,9 +1,10 @@
 import VideoRow from './VideoRow'
 import type { HistoryItem, VideoItem, WatchProgress } from '../App'
-import { sortWatchLater } from '../App'
+import { sortVideos } from '../App'
 
 type Props = {
-  // Already filtered by the Videos/Shorts toggle and the sidebar tags.
+  // Already filtered by the time window, the Videos/Shorts toggle and the
+  // sidebar tags.
   history: HistoryItem[]
   // How many rows exist before those filters — tells "nothing watched yet"
   // apart from "nothing matches what you've selected".
@@ -42,11 +43,10 @@ export default function HistoryPage({
     )
   }
 
-  // 'recent' keeps the server's order (most recently watched first); the other
-  // modes are the same client-side sort the Watch Later page uses. No time
-  // window — when you watched something has nothing to do with when it was
-  // published, and filtering by publish date would hide most of the list.
-  const ordered = sort === 'recent' ? history : sortWatchLater(history, sort)
+  // 'recent' keeps the server's order — most recently watched first, which is
+  // also the axis the time window filters on (see `filterByTime`). Every other
+  // mode reorders by a property of the video itself.
+  const ordered = sortVideos(history, sort)
 
   return (
     <div className="px-6 py-4">

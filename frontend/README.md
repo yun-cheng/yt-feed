@@ -248,6 +248,39 @@ for the keyboard and ARIA handling; what it does **not** do is drag the filled
 band as a unit to sweep a fixed-width window through time. That was cut, and
 it's purely additive on top of the same controlled value if it's ever wanted.
 
+### The library pages
+
+Watch Later, Imported, Downloads and History are lists **you built**, not a
+stream of what's new, and they share one control bar because they share one
+shape. All four open on **All time**, sorted by the order the list keeps itself
+in — labelled for what that order means on each: `Saved`, `Added`, `Added`,
+`Watched`. That token is `recent` everywhere, because it means the same thing
+everywhere; only the word differs.
+
+The reason for both defaults is the same. A list you assembled has no "too old
+to bother with" — you put something there to come back to it, so a three-day
+window would hide nearly all of it on the first visit, and ranking it by likes
+answers a question about the videos rather than about your list.
+
+**Their window filters a different date.** The feed and a channel page window by
+publish date, because they're asking what's new. A library page windows by the
+moment a row *joined the list* — `created_at` on Watch Later, Imported and
+Downloads, `watched_at` on History. `filterByTime(items, age, stampOf)` takes
+that accessor as an argument, which is the whole point: windowing History by
+publish date would drop a decade-old video you watched an hour ago, and it
+wouldn't agree with the sort sitting right next to it.
+
+Two details in `lib/timeWindow.ts` that only matter here:
+
+- `stampMs` assumes **UTC** for a zoneless timestamp. The API writes
+  `datetime.utcnow().isoformat()`, and `new Date` reads a zoneless *datetime* as
+  local — enough to push something you saved this morning out of a `1d` window.
+  A bare date has the opposite rule (already UTC by spec), so only the `T` form
+  is corrected.
+- A row with **no** stamp is kept, on every window. Missing means the field
+  predates the row, not that the row is infinitely old, and dropping it would
+  make it unreachable even at "All time".
+
 ### The Imported page
 
 `/imported` lists videos added by pasting a link (`ImportedPage.tsx`), rendered
@@ -258,10 +291,9 @@ the TopBar grows an **Import** button at the top right on this page only.
 
 Three deliberate differences from the feed:
 
-- **No time window.** An import is an explicit pick, not a stream of new
-  uploads, so filtering it by publish date would hide most of what you just
-  added. It gets its own sort (`listSortOptions('Added')`) defaulting to
-  `recent` — import order, which is what the API already returns.
+- **A library control bar, not the feed's.** It opens on all time and on import
+  order (`Added`), and its window filters by when you imported something rather
+  than when it was published — see "The library pages" below.
 - **Its own remove action.** The card menu shows "Remove from imported"
   (`onRemoveImported`), alongside the existing playlist/download variants.
 - **The watch status is its only sidebar filter.** Tags are attached to

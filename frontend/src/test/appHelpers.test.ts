@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterWatchLater, sortWatchLater, buildPath, pageFilters } from '../App'
+import { filterByTime, sortVideos, buildPath, pageFilters } from '../App'
 import type { VideoItem } from '../App'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
@@ -17,10 +17,11 @@ function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
   }
 }
 
-// ── filterWatchLater ─────────────────────────────────────────
+// ── filterByTime ─────────────────────────────────────────────
 
-describe('filterWatchLater', () => {
+describe('filterByTime', () => {
   const NOW = new Date('2024-06-01T12:00:00Z').getTime()
+  const published = (v: VideoItem) => v.published_at
 
   beforeEach(() => { vi.setSystemTime(NOW) })
   afterEach(() => { vi.useRealTimers() })
@@ -28,14 +29,14 @@ describe('filterWatchLater', () => {
   it('keeps videos inside the window and drops the rest', () => {
     const recent = makeVideo({ published_at: new Date(NOW - 1 * 3600_000).toISOString() }) // 1h ago
     const old    = makeVideo({ youtube_id: 'v2', published_at: new Date(NOW - 100 * 3600_000).toISOString() }) // 100h ago
-    const result = filterWatchLater([recent, old], { lo: 0, hi: 2 }) // 0–3d = 0–72h
+    const result = filterByTime([recent, old], { lo: 0, hi: 2 }, published) // 0–3d = 0–72h
     expect(result).toHaveLength(1)
     expect(result[0].youtube_id).toBe('v1')
   })
 
   it('excludes videos older than the window', () => {
     const old = makeVideo({ published_at: new Date(NOW - 200 * 3600_000).toISOString() })
-    expect(filterWatchLater([old], { lo: 0, hi: 3 })).toHaveLength(0)
+    expect(filterByTime([old], { lo: 0, hi: 3 }, published)).toHaveLength(0)
   })
 
   // The old narrow mode never applied its recent edge here, so a range that
@@ -43,58 +44,84 @@ describe('filterWatchLater', () => {
   it('excludes videos newer than the recent edge', () => {
     const recent = makeVideo({ published_at: new Date(NOW - 1 * 3600_000).toISOString() }) // 1h ago
     const mid    = makeVideo({ youtube_id: 'v2', published_at: new Date(NOW - 100 * 3600_000).toISOString() }) // ~4d ago
-    const result = filterWatchLater([recent, mid], { lo: 2, hi: 4 }) // 3d–2w ago
+    const result = filterByTime([recent, mid], { lo: 2, hi: 4 }, published) // 3d–2w ago
     expect(result).toHaveLength(1)
     expect(result[0].youtube_id).toBe('v2')
   })
+
+  // The whole point of the per-page stamp: a library page windows by when the
+  // row joined the list, and a video published years ago can have joined today.
+  it('windows by the stamp it is given, not by publish date', () => {
+    const v = makeVideo({
+      published_at: '2015-01-01T00:00:00Z',
+      created_at: new Date(NOW - 3600_000).toISOString(),
+    })
+    expect(filterByTime([v], { lo: 0, hi: 1 }, x => x.created_at)).toHaveLength(1)
+    expect(filterByTime([v], { lo: 0, hi: 1 }, published)).toHaveLength(0)
+  })
+
+  // The API writes `datetime.utcnow().isoformat()` — no zone on it. Read as
+  // local time it would land hours out, enough to fall out of a 1d window.
+  it('reads a zoneless stamp as UTC', () => {
+    const v = makeVideo({ created_at: new Date(NOW - 3600_000).toISOString().replace('Z', '') })
+    expect(filterByTime([v], { lo: 0, hi: 1 }, x => x.created_at)).toHaveLength(1)
+  })
+
+  // Missing means the field predates the row, not that the row is infinitely
+  // old — dropping it would hide it even at "All time".
+  it('keeps a row that has no stamp at all', () => {
+    const v = makeVideo({ created_at: null })
+    expect(filterByTime([v], { lo: 0, hi: 1 }, x => x.created_at)).toHaveLength(1)
+    expect(filterByTime([v], { lo: 0, hi: 9 }, x => x.created_at)).toHaveLength(1)
+  })
 })
 
-// ── sortWatchLater ───────────────────────────────────────────
+// ── sortVideos ───────────────────────────────────────────
 
-describe('sortWatchLater', () => {
+describe('sortVideos', () => {
   const a = makeVideo({ youtube_id: 'a', view_count: 500, like_count: 50, score: 5, published_at: '2024-01-01T00:00:00Z' })
   const b = makeVideo({ youtube_id: 'b', view_count: 1000, like_count: 200, score: 20, published_at: '2024-03-01T00:00:00Z' })
   const c = makeVideo({ youtube_id: 'c', view_count: 200, like_count: 10, score: 1, published_at: '2024-02-01T00:00:00Z' })
 
   it('sorts by views descending', () => {
-    const result = sortWatchLater([a, b, c], 'views')
+    const result = sortVideos([a, b, c], 'views')
     expect(result.map(v => v.youtube_id)).toEqual(['b', 'a', 'c'])
   })
 
   it('sorts by likes descending', () => {
-    const result = sortWatchLater([a, b, c], 'likes')
+    const result = sortVideos([a, b, c], 'likes')
     expect(result.map(v => v.youtube_id)).toEqual(['b', 'a', 'c'])
   })
 
   it('sorts by score descending', () => {
-    const result = sortWatchLater([a, b, c], 'score')
+    const result = sortVideos([a, b, c], 'score')
     expect(result.map(v => v.youtube_id)).toEqual(['b', 'a', 'c'])
   })
 
   it('sorts by like% descending', () => {
     // a: 50/500=10%, b: 200/1000=20%, c: 10/200=5%
-    const result = sortWatchLater([a, b, c], 'like%')
+    const result = sortVideos([a, b, c], 'like%')
     expect(result.map(v => v.youtube_id)).toEqual(['b', 'a', 'c'])
   })
 
   it('sorts by newest (published_at desc)', () => {
-    const result = sortWatchLater([a, b, c], 'newest')
+    const result = sortVideos([a, b, c], 'newest')
     expect(result.map(v => v.youtube_id)).toEqual(['b', 'c', 'a'])
   })
 
   it('sorts by oldest (published_at asc)', () => {
-    const result = sortWatchLater([a, b, c], 'oldest')
+    const result = sortVideos([a, b, c], 'oldest')
     expect(result.map(v => v.youtube_id)).toEqual(['a', 'c', 'b'])
   })
 
   it('returns videos unchanged for unknown sort', () => {
-    const result = sortWatchLater([a, b, c], 'unknown')
+    const result = sortVideos([a, b, c], 'unknown')
     expect(result.map(v => v.youtube_id)).toEqual(['a', 'b', 'c'])
   })
 
   it('does not mutate the input array', () => {
     const input = [b, a, c]
-    sortWatchLater(input, 'views')
+    sortVideos(input, 'views')
     expect(input.map(v => v.youtube_id)).toEqual(['b', 'a', 'c'])
   })
 })
@@ -150,8 +177,19 @@ describe('buildPath', () => {
   })
 
   it('omits sort and window on pages that have no such control', () => {
-    expect(buildPath({ page: 'downloads', sort: 'views', age: { lo: 0, hi: 3 } })).toBe('/downloads')
-    expect(buildPath({ page: 'history', age: { lo: 0, hi: 3 }, sort: 'views' })).toBe('/history?sort=views')
+    expect(buildPath({ page: 'playlists', sort: 'views', age: { lo: 0, hi: 3 } })).toBe('/playlists')
+    expect(buildPath({ page: 'local', sort: 'views', age: { lo: 0, hi: 3 } })).toBe('/local')
+  })
+
+  // The library pages open on all time and on their own order, so those two
+  // values are the ones left out of the URL — a three-day window is now the
+  // unusual thing to say there, and gets written.
+  it('treats all-time and list order as the library default', () => {
+    for (const page of ['watchlater', 'imported', 'downloads', 'history']) {
+      expect(buildPath({ page, age: { lo: 0, hi: 9 }, sort: 'recent' })).toBe(`/${page}`)
+      expect(buildPath({ page, age: { lo: 0, hi: 2 }, sort: 'recent' })).toBe(`/${page}?age=0-3`)
+      expect(buildPath({ page, age: { lo: 0, hi: 9 }, sort: 'views' })).toBe(`/${page}?sort=views`)
+    }
   })
 
   it('writes the watch-status filter only when it differs from the page default', () => {

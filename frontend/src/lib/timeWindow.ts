@@ -34,6 +34,9 @@ export type TimeRange = { lo: number; hi: number }
 /** Past 3 days — what the feed opens on. */
 export const DEFAULT_RANGE: TimeRange = { lo: 0, hi: 2 }
 
+/** Everything, back to whenever — what the library pages open on. */
+export const ALL_RANGE: TimeRange = { lo: 0, hi: MAX_TICK }
+
 /**
  * Force a pair onto the ladder: whole numbers, in bounds, in order, and at
  * least one bucket wide. A zero-width range would select nothing at all, so
@@ -89,6 +92,37 @@ export function rangeLabel(r: TimeRange): string {
 export function rangeBounds(r: TimeRange, now: number): { from: number; to: number } {
   // An unbounded older edge yields -Infinity, which every `t >= from` accepts.
   return { from: now - TICK_DAYS[r.hi] * DAY_MS, to: now - TICK_DAYS[r.lo] * DAY_MS }
+}
+
+const ZONED = /(Z|[+-]\d{2}:?\d{2})$/
+
+/**
+ * Epoch ms for a timestamp the API wrote — or null if there isn't a usable one.
+ *
+ * The backend stamps rows with `datetime.utcnow().isoformat()`, which carries no
+ * zone, and `new Date` reads a zoneless *datetime* as LOCAL time. Left alone,
+ * every row would sit hours away from where it belongs — enough to push
+ * something you saved this morning out of a "past 1d" window. A bare date has
+ * the opposite rule (already UTC by spec), so only the `T` form is corrected.
+ */
+export function stampMs(s: string | null | undefined): number | null {
+  if (!s) return null
+  const t = Date.parse(s.includes('T') && !ZONED.test(s) ? `${s}Z` : s)
+  return Number.isNaN(t) ? null : t
+}
+
+/**
+ * Is a moment inside the window?
+ *
+ * A row with no timestamp is **kept**, on every window including this one.
+ * Missing means the field predates the row, not that the row is infinitely old,
+ * and dropping it would make it unreachable even at "All time".
+ */
+export function inWindow(stamp: string | null | undefined, r: TimeRange, now: number): boolean {
+  const t = stampMs(stamp)
+  if (t === null) return true
+  const { from, to } = rangeBounds(r, now)
+  return t >= from && t < to
 }
 
 export function sameRange(a: TimeRange, b: TimeRange): boolean {

@@ -24,7 +24,7 @@ import LocalWatchPage from './components/LocalWatchPage'
 import SettingsPage from './components/SettingsPage'
 import { fetchFolders, fetchFolderVideos } from './lib/local'
 import type { LocalFolder, LocalVideo } from './lib/local'
-import { DEFAULT_RANGE, formatAge, parseAge, rangeBounds } from './lib/timeWindow'
+import { DEFAULT_RANGE, formatAge, inWindow, parseAge } from './lib/timeWindow'
 import type { TimeRange } from './lib/timeWindow'
 
 export type DownloadItem = {
@@ -57,6 +57,9 @@ export type VideoItem = {
   duration_seconds: number
   is_short?: boolean
   score: number
+  // When this row joined the list it came from — set on Watch Later and
+  // Imported, absent in the feed, where there's no such moment.
+  created_at?: string | null
   // Channel-specific labels drawn from the title (channel page only).
   // undefined = not present in payload; null = not labeled yet; [] = no labels.
   title_labels?: string[] | null
@@ -186,16 +189,27 @@ function parsePath(): PathState {
 // that default is left out, so ordinary URLs stay short.
 const PAGE_DEFAULTS: Record<string, { age: string; sort: string; watch: string[] }> = {
   feed: { age: '0-3', sort: 'likes', watch: DEFAULT_WATCH_STATUSES },
-  watchlater: { age: '0-3', sort: 'likes', watch: DEFAULT_WATCH_STATUSES },
   // A channel page opens on a wider window (one channel posts far less often)
   // and with nothing filtered out — you came to see what it has.
   channel: { age: '0-30', sort: 'likes', watch: [] },
   channels: { age: '0-3', sort: 'subs', watch: [] },
-  // Imported and History lead with 'recent' — the order the API returns them in.
+
+  // ── The library pages ──
+  // Watch Later, Imported, Downloads, History: lists you built on purpose,
+  // rather than a stream of what's new. All four open on ALL TIME and in the
+  // order the list keeps itself in ('recent'), because a list you assembled has
+  // no "too old to bother with" — you put it there to come back to it, and a
+  // three-day window would hide almost all of it on the first visit.
+  //
+  // Their window filters the moment a row JOINED the list — saved, imported,
+  // downloaded, watched — not the video's publish date, which is what the sort
+  // beside it orders by too. See `filterByTime`.
+  watchlater: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
   // Imported shares the global watch-status selection (like Watch Later), so it
-  // shares its default too; History keeps its own, which starts unfiltered.
-  imported: { age: '0-3', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
-  history: { age: '0-3', sort: 'recent', watch: [] },
+  // shares its default too; History and Downloads keep their own, unfiltered.
+  imported: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
+  downloads: { age: '0-all', sort: 'recent', watch: [] },
+  history: { age: '0-all', sort: 'recent', watch: [] },
 }
 const DEFAULTS = PAGE_DEFAULTS.feed
 const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
@@ -208,8 +222,8 @@ const defaultRange = (page: string) => parseAge(defaultsFor(page).age) ?? DEFAUL
 // These same sets decide what the sidebar renders: a filter that can't change
 // what you're looking at shouldn't be there to click, and it shouldn't be in the
 // URL either. One table, so the two can't disagree.
-const USES_WINDOW = new Set(['feed', 'watchlater', 'channel'])
-const USES_SORT = new Set(['feed', 'watchlater', 'channel', 'channels', 'imported', 'history'])
+const USES_WINDOW = new Set(['feed', 'channel', 'watchlater', 'imported', 'downloads', 'history'])
+const USES_SORT = new Set(['feed', 'channel', 'channels', 'watchlater', 'imported', 'downloads', 'history'])
 const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history', 'imported'])
 const USES_SHORTS = new Set(['feed', 'channel', 'history'])
 // Tags are attached to channels, so they only filter lists of subscribed
@@ -342,16 +356,29 @@ function stateFromUrl() {
   }
 }
 
-// ── Watch Later helpers ──────────────────────────────────────
+// ── List helpers ─────────────────────────────────────────────
 
-// Watch Later is filtered here rather than by the API, but to the same bounds
-// the backend would apply — one range, one pair of comparisons.
-export function filterWatchLater(videos: VideoItem[], age: TimeRange): VideoItem[] {
-  const { from, to } = rangeBounds(age, Date.now())
-  return videos.filter(v => {
-    const t = new Date(v.published_at).getTime()
-    return t >= from && t < to
-  })
+/**
+ * Keep the rows whose moment falls inside the window.
+ *
+ * *Which* moment is the caller's to say, and that's the point. The home feed
+ * and a channel page window by publish date, because they're asking what's new.
+ * A library page windows by the moment the row joined the list — when you saved
+ * it, imported it, downloaded it, watched it — because that's the only date
+ * that page is about. Windowing Watch Later by publish date would answer a
+ * question nobody asked (you save decade-old videos all the time) and it
+ * wouldn't agree with the sort sitting right next to it.
+ *
+ * Filtered here rather than by the API, but to the same bounds the backend
+ * would apply — one range, one pair of comparisons.
+ */
+export function filterByTime<T>(
+  items: T[],
+  age: TimeRange,
+  stampOf: (item: T) => string | null | undefined,
+): T[] {
+  const now = Date.now()
+  return items.filter(item => inWindow(stampOf(item), age, now))
 }
 
 export function watchStatusOf(videoId: string, progressById: Map<string, WatchProgress>): string {
@@ -394,7 +421,13 @@ export function filterByTags<T extends VideoItem>(
   return videos.filter(v => allowed.has(v.channel_id))
 }
 
-export function sortWatchLater(videos: VideoItem[], sort: string): VideoItem[] {
+/**
+ * Order an already-loaded list. Anything it doesn't recognise — 'recent' above
+ * all — leaves the order alone, which is how the library pages get "newest
+ * first by when it joined the list" for free: that's the order the API returns
+ * them in, and every filter above preserves it.
+ */
+export function sortVideos<T extends VideoItem>(videos: T[], sort: string): T[] {
   const v = [...videos]
   if (sort === 'views') return v.sort((a, b) => b.view_count - a.view_count)
   if (sort === 'score') return v.sort((a, b) => b.score - a.score)
@@ -1000,19 +1033,34 @@ export default function App() {
   // History obeys the same two global controls as the feed: the Videos/Shorts
   // toggle and the sidebar's tag selection. Both are applied client-side — the
   // list is already loaded, and it's small.
+  // History windows by when you WATCHED something, which is the only date this
+  // page is a record of — a video published years ago can have been watched an
+  // hour ago, and that's exactly the row "past 1d" should keep.
   const visibleHistory = useMemo(() => {
     const shorts = contentMode === 'shorts'
     const byMode = watchHistory.filter(v => !!v.is_short === shorts)
-    const byStatus = filterByWatchStatus(byMode, historyWatchStatuses, progressById)
+    const byTime = filterByTime(byMode, views.history.age, v => v.watched_at)
+    const byStatus = filterByWatchStatus(byTime, historyWatchStatuses, progressById)
     return filterByTags(byStatus, selectedTags, tags, tagChannels)
-  }, [watchHistory, contentMode, selectedTags, tags, tagChannels, historyWatchStatuses, progressById])
+  }, [watchHistory, contentMode, views.history.age, selectedTags, tags, tagChannels, historyWatchStatuses, progressById])
 
-  // Imported videos take the global watch-status filter, like Watch Later. Tags
-  // don't apply — these come from channels you don't follow, so none of them are
-  // tagged — and neither does the Videos/Shorts toggle: it's one flat list.
+  // Imported videos take the global watch-status filter, like Watch Later, and
+  // window by when they were imported. Tags don't apply — these come from
+  // channels you don't follow, so none of them are tagged — and neither does the
+  // Videos/Shorts toggle: it's one flat list.
   const visibleImported = useMemo(
-    () => filterByWatchStatus(imported, watchStatuses, progressById),
-    [imported, watchStatuses, progressById],
+    () => filterByWatchStatus(
+      filterByTime(imported, views.imported.age, v => v.created_at),
+      watchStatuses, progressById,
+    ),
+    [imported, views.imported.age, watchStatuses, progressById],
+  )
+
+  // Downloads window by when the file was fetched. No watch-status or tag
+  // filter here: the page is the shelf of what's on disk.
+  const visibleDownloads = useMemo(
+    () => sortVideos(filterByTime(downloads, views.downloads.age, d => d.created_at), views.downloads.sort),
+    [downloads, views.downloads],
   )
 
   // ── URL sync (continued) ──────────────────────────────
@@ -1562,7 +1610,12 @@ export default function App() {
             onOpen={openLocalVideo}
           />
         ) : page === 'downloads' ? (
-          <DownloadsPage downloads={downloads} onDelete={deleteDownload} onRetry={startDownload} />
+          <DownloadsPage
+            downloads={visibleDownloads}
+            totalCount={downloads.length}
+            onDelete={deleteDownload}
+            onRetry={startDownload}
+          />
         ) : page === 'watchlater' ? (
           <div className="px-6 py-4">
             {watchLater.length === 0 ? (
@@ -1574,10 +1627,11 @@ export default function App() {
                 <p className="text-xs text-[#555]">Hover a video and click the bookmark icon to save it.</p>
               </div>
             ) : (() => {
-              let result = filterWatchLater(watchLater, view.age)
+              // Windowed by when you saved it, not when it was published.
+              let result = filterByTime(watchLater, view.age, v => v.created_at)
               result = filterByTags(result, selectedTags, tags, tagChannels)
               result = filterByWatchStatus(result, watchStatuses, progressById)
-              result = sortWatchLater(result, view.sort)
+              result = sortVideos(result, view.sort)
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
                   No saved videos match the current filters.

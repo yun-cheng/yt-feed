@@ -1,9 +1,9 @@
 import VideoRow from './VideoRow'
 import type { VideoItem, WatchProgress } from '../App'
-import { sortWatchLater } from '../App'
+import { sortVideos } from '../App'
 
 type Props = {
-  // Already filtered by the sidebar's watch status.
+  // Already filtered by the time window and the sidebar's watch status.
   videos: VideoItem[]
   // How many are imported before that filter — tells "nothing imported yet"
   // apart from "nothing matches what you've selected".
@@ -45,10 +45,9 @@ export default function ImportedPage({
     )
   }
 
-  // 'recent' keeps the server's order (most recently imported first); every other
-  // mode is the same client-side sort the Watch Later page uses. No time window
-  // here — see recentSortOptions.
-  const ordered = sort === 'recent' ? videos : sortWatchLater(videos, sort)
+  // 'recent' keeps the server's order — most recently imported first, the same
+  // axis the time window filters on (see `filterByTime`).
+  const ordered = sortVideos(videos, sort)
 
   return (
     <div className="px-6 py-4">

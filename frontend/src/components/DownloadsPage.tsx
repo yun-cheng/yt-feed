@@ -4,7 +4,11 @@ import VideoCard from './VideoCard'
 import type { DownloadItem, VideoItem } from '../App'
 
 type Props = {
+  // Already windowed and sorted by the page's control bar.
   downloads: DownloadItem[]
+  // How many are on disk before that — tells "nothing downloaded yet" apart
+  // from "nothing matches the window you've picked".
+  totalCount: number
   onDelete: (videoId: string) => void
   onRetry: (d: DownloadItem) => void
 }
@@ -26,7 +30,7 @@ function toVideoItem(d: DownloadItem): VideoItem {
   }
 }
 
-export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
+export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   // The whole downloaded file, loaded into memory as a blob URL, so the hover
   // preview seeks entirely offline — no per-jump range fetch that a lost network
@@ -53,7 +57,7 @@ export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
   // Release blob URLs on unmount to free the memory.
   useEffect(() => () => { Object.values(blobUrlsRef.current).forEach(URL.revokeObjectURL) }, [])
 
-  if (downloads.length === 0) {
+  if (totalCount === 0) {
     return (
       <div className="px-6 py-4">
         <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
@@ -62,6 +66,16 @@ export default function DownloadsPage({ downloads, onDelete, onRetry }: Props) {
           </svg>
           <p className="text-sm">No downloads yet.</p>
           <p className="text-xs text-[#555]">Open a video's ⋮ menu and choose “下載” to save it here.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (downloads.length === 0) {
+    return (
+      <div className="px-6 py-4">
+        <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
+          No downloads match the current filters.
         </div>
       </div>
     )

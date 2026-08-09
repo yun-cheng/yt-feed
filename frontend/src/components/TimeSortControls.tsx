@@ -12,10 +12,10 @@ export const SORT_OPTIONS = [
   { value: 'oldest', label: 'Oldest' },
 ] as const
 
-// Imported and History have no time window: neither is a stream of new uploads,
-// and filtering by publish date would hide most of the list (you watch and
-// import old videos all the time). Both lead with 'recent' — the order the API
-// already returns them in — labelled for what that order means on each page.
+// The library pages lead with 'recent' — the order the API already returns them
+// in — labelled for what that order means on each one. It's the same token
+// everywhere because it means the same thing everywhere: the order this list
+// keeps itself in, which is when each row joined it. Only the word differs.
 function listSortOptions(label: string) {
   return [{ value: 'recent', label }, ...SORT_OPTIONS]
 }
@@ -33,8 +33,9 @@ const PAGE_SORTS: Record<string, readonly SortOption[]> = {
   feed: SORT_OPTIONS,
   channel: SORT_OPTIONS,
   channels: CHANNEL_SORT_OPTIONS,
-  watchlater: SORT_OPTIONS,
+  watchlater: listSortOptions('Saved'),
   imported: listSortOptions('Added'),
+  downloads: listSortOptions('Added'),
   history: listSortOptions('Watched'),
 }
 

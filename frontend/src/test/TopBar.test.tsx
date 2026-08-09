@@ -24,18 +24,22 @@ describe('TopBar', () => {
     expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
   })
 
-  // The leading sort is named for what that list's own order means.
+  // The four library pages each open on all time and on their own order, so
+  // their bar has to carry both halves — the slider and a leading sort named
+  // for what that list's order means.
   it.each([
+    ['watchlater', 'Saved'],
     ['imported', 'Added'],
+    ['downloads', 'Added'],
     ['history', 'Watched'],
-  ] as const)('gives %s a "%s" sort and no window', (variant, label) => {
-    render(<TopBar {...defaultProps} variant={variant} sort="recent" age={undefined} />)
-    expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
+  ] as const)('gives %s a window and a "%s" sort', (variant, label) => {
+    render(<TopBar {...defaultProps} variant={variant} sort="recent" age={{ lo: 0, hi: 9 }} />)
+    expect(screen.getByText('All time')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: label })[0]).toBeInTheDocument()
   })
 
   // Nothing to order and nothing to window: no second row at all.
-  it.each(['downloads', 'search', 'playlists', 'local', 'settings'] as const)('shows no controls on %s', (variant) => {
+  it.each(['search', 'playlists', 'local', 'settings'] as const)('shows no controls on %s', (variant) => {
     render(<TopBar {...defaultProps} variant={variant} />)
     expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Likes' })).not.toBeInTheDocument()
