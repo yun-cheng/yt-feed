@@ -34,6 +34,12 @@ class Channel(Base):
     # the current version (e.g. after a prompt change), the channel is re-labeled
     # automatically on its next visit. NULL = pre-versioning / needs rebuild.
     video_label_version = Column(Integer, nullable=True)
+    # How this channel got here: "subscription" (it came from your YouTube
+    # subscriptions) or "manual" (you added it by hand). The distinction exists
+    # for exactly one reason — resync deletes every channel that isn't in your
+    # live subscription list, and a hand-added one never will be. See
+    # _prune_channels' caller in routers/subscriptions.py.
+    source = Column(String, nullable=False, default="subscription", server_default="subscription")
     last_video_fetched = Column(DateTime, nullable=True)
 
     # --- Archive fill (app/archive.py) ---

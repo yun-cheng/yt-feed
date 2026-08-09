@@ -162,6 +162,15 @@ live YouTube subscriptions is a separate job that runs **once a day**: it
 `POST /api/subscriptions/resync` forces one by hand; add `?dry_run=true` to preview
 the prune first.
 
+**You can also add a channel you're not subscribed to** — from the *Add channel*
+button on the Channels page, from the pill the browser extension puts on a
+YouTube channel page, or from the channel page of a video's uploader when the app
+doesn't hold them yet. Paste a link, an `@handle` or a bare id. Such a channel is
+marked `manual`, which is what keeps the daily resync from deleting it again; in
+every other respect it's an ordinary channel, so it's scanned, tagged, ranked and
+eventually archived like the rest. `DELETE /api/channels/{id}` (or the remove
+button on its card) takes it back out.
+
 ## Tests
 
 ```bash

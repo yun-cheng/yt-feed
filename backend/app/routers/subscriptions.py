@@ -74,6 +74,10 @@ async def import_subscriptions(
             # subscriptions.list import doesn't carry them.
             if topics_json:
                 exists.topics = topics_json
+            # Subscribing on YouTube to a channel you'd added by hand makes it a
+            # subscription: it's in the live list now, so the resync exemption
+            # above should stop applying to it.
+            exists.source = "subscription"
         else:
             db.add(Channel(
                 youtube_id=ch.youtube_id,
@@ -215,12 +219,16 @@ async def resync_subscriptions(
         raise HTTPException(400, "YouTube returned no subscriptions; refusing to prune.")
 
     existing_rows = (
-        await db.execute(select(Channel.youtube_id, Channel.title))
+        await db.execute(select(Channel.youtube_id, Channel.title, Channel.source))
     ).all()
     existing_ids = {r.youtube_id for r in existing_rows}
     titles = {r.youtube_id: r.title for r in existing_rows}
+    # Channels you added by hand are not subscriptions and will never appear in
+    # the live list — so "not in the live list" can't mean "delete it" for them.
+    # Without this, adding a channel and then syncing would silently undo it.
+    manual_ids = {r.youtube_id for r in existing_rows if r.source == "manual"}
 
-    stale_ids = sorted(existing_ids - live_ids)
+    stale_ids = sorted(existing_ids - live_ids - manual_ids)
     new_ids = sorted(live_ids - existing_ids)
 
     if dry_run:

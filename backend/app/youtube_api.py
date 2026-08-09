@@ -410,6 +410,65 @@ def fetch_channel_avatars(channel_ids: list[str]) -> dict[str, str]:
     return avatars
 
 
+def fetch_channel_details(channel_id: str = "", handle: str = "") -> dict[str, Any] | None:
+    """One channel's full metadata — title, description, avatar, subs, topics.
+
+    Give it an id or a handle ("@someone"); the handle form is how a /@name URL
+    becomes a channel, without asking yt-dlp to load the page. One quota unit
+    either way, and `topicDetails` rides along free — the same shape
+    subscriptions' importer takes, so an added channel arrives auto-taggable.
+
+    Returns None when the channel doesn't exist, or when there are no usable
+    credentials — the caller falls back to yt-dlp, which needs neither.
+    """
+    if not channel_id and not handle:
+        return None
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping channel lookup: {e}")
+        return None
+    global _quota_used
+
+    params = {"part": "snippet,statistics,topicDetails"}
+    params["id" if channel_id else "forHandle"] = channel_id or handle
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.get(
+            "https://www.googleapis.com/youtube/v3/channels",
+            headers={"Authorization": f"Bearer {creds.token}"},
+            params=params,
+        )
+        _quota_used += 1
+        if resp.status_code == 403 and _quota_refusal(resp):
+            raise QuotaExceeded("channel lookup hit the daily allowance")
+        if resp.status_code != 200:
+            return None
+        items = resp.json().get("items") or []
+    if not items:
+        return None
+
+    item = items[0]
+    snippet = item.get("snippet") or {}
+    stats = item.get("statistics") or {}
+    thumbs = snippet.get("thumbnails") or {}
+    # Smallest first — see fetch_channel_avatars for why 88px is the right size.
+    thumb = ""
+    for size in ("default", "medium", "high"):
+        thumb = (thumbs.get(size) or {}).get("url") or ""
+        if thumb:
+            break
+    # topicCategories are Wikipedia URLs; keep just the article name.
+    cats = (item.get("topicDetails") or {}).get("topicCategories") or []
+    return {
+        "youtube_id": item["id"],
+        "title": snippet.get("title", ""),
+        "description": snippet.get("description", ""),
+        "thumbnail_url": thumb,
+        "subscriber_count": int(stats.get("subscriberCount") or 0),
+        "topics": [u.rsplit("/", 1)[-1].replace("_", " ") for u in cats],
+    }
+
+
 def get_quota_used() -> int:
     """Return total YouTube Data API quota units used this session."""
     return _quota_used

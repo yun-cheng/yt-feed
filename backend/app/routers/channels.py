@@ -89,10 +89,193 @@ async def list_channels(
             "thumbnail_url": ch.thumbnail_url,
             "subscriber_count": ch.subscriber_count,
             "tags": tags_map.get(ch.youtube_id, []),
+            "source": ch.source or "subscription",
             "last_video_fetched": ch.last_video_fetched.isoformat() if ch.last_video_fetched else None,
         }
         for ch in channels
     ]
+
+
+# ── Adding a channel by hand ──────────────────────────────────
+#
+# The feed is the videos of the channels in this table, and a subscription is
+# only one way for a channel to get here. These three endpoints are the other
+# way: look one up, add it, and (only for the ones added this way) remove it.
+
+
+class AddChannelRequest(BaseModel):
+    # Whatever the user had: a channel URL of any vintage, an @handle, or the
+    # bare id. See app/channel_lookup.parse_channel_query.
+    query: str
+
+
+async def _channel_summary(db: AsyncSession, info: dict) -> dict:
+    """A resolved channel, plus whether this app already holds it."""
+    row = (
+        await db.execute(select(Channel).where(Channel.youtube_id == info["youtube_id"]))
+    ).scalar_one_or_none()
+    return {
+        **info,
+        "known": row is not None,
+        "source": (row.source or "subscription") if row else "",
+    }
+
+
+@router.get("/lookup")
+async def lookup_channel(
+    q: str = Query(description="channel URL, @handle, or id"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Who is this channel, and do we already have it? Writes nothing.
+
+    Declared before the `/{channel_id}/...` routes so "lookup" is never read as
+    a channel id. Both the add dialog and the page you land on after clicking a
+    channel we don't hold call this before offering to add anything — being
+    shown the avatar and title is what makes "Add" a decision rather than a bet.
+    """
+    from app.channel_lookup import resolve_channel
+
+    info = await resolve_channel(q)
+    if not info:
+        raise HTTPException(404, "No YouTube channel found for that link.")
+    return await _channel_summary(db, info)
+
+
+# One first-scan per channel at a time, so a double-click doesn't run two.
+_scan_jobs: dict[str, asyncio.Task] = {}
+
+
+def _scanning(channel_id: str) -> bool:
+    """Is this channel's first scan still running? Forgets finished ones."""
+    job = _scan_jobs.get(channel_id)
+    if job is not None and job.done():
+        _scan_jobs.pop(channel_id, None)
+        return False
+    return job is not None
+
+
+def _first_scan(channel_id: str) -> None:
+    """Fetch a newly-added channel's recent uploads, in the background.
+
+    Not awaited by the request, and that isn't only about the wait: the scan is
+    yt-dlp, which is blocking, and `scan_channel_videos` calls it straight from
+    async code — so for the twenty-odd seconds it runs, the whole event loop
+    stops. Awaited inside the handler, that freeze lands between the response
+    being made and its being written, and the browser sits on a request the
+    server has already finished. Everything downstream of the scan (stats, the
+    search index, the Shorts flag) is slow for its own reasons and rides along
+    behind it. The page polls `scanning` and fills in when they're done.
+    """
+    from app.cron_update import batch_update_stats, label_channel_shorts, scan_channel_videos
+
+    async def _run():
+        async with async_session() as session:
+            channel = await session.get(Channel, channel_id)
+        if channel is None:
+            return
+
+        new_ids = await scan_channel_videos(channel)
+        if new_ids:
+            try:
+                await batch_update_stats(new_ids, ytdlp_fallback=True)
+            except Exception as e:
+                print(f"[channels] stats for {channel_id} incomplete: {e}")
+            try:
+                from app import search_index
+                await search_index.index_videos(new_ids)
+            except Exception:
+                pass
+        await label_channel_shorts(channel_id)
+
+        # Tags come from the channel's own description and topics, so this could
+        # have run first — it's last because it's an LLM call, and nothing on the
+        # page is waiting for it the way the video grid waits for the scan.
+        from app.routers.tags import assign_auto_tags
+
+        try:
+            async with async_session() as session:
+                chan = await session.get(Channel, channel_id)
+                if chan is not None:
+                    await assign_auto_tags(session, [chan])
+                    await session.commit()
+        except Exception as e:
+            # An unreachable LLM costs the channel its tags, not its place in the
+            # feed — the tags page can re-run this later.
+            print(f"[channels] auto-tagging {channel_id} failed: {e}")
+
+        print(f"[channels] first scan of {channel_id}: +{len(new_ids)} videos")
+
+    _scan_jobs[channel_id] = asyncio.create_task(_run())
+
+
+@router.post("/add")
+async def add_channel(req: AddChannelRequest, db: AsyncSession = Depends(get_db)):
+    """Add a channel to the feed by hand.
+
+    Marked `source="manual"`, which is what stops the next subscription resync
+    deleting it again (see routers/subscriptions.py). Idempotent: a channel
+    that's already here comes back with `already: true` and is left alone,
+    including its source — re-adding something you're subscribed to must not
+    quietly exempt it from resync.
+
+    Returns as soon as the channel exists, with `scanning: true` — its videos
+    arrive over the following seconds and the channel page polls for them.
+    """
+    from app.channel_lookup import resolve_channel
+
+    info = await resolve_channel(req.query)
+    if not info:
+        raise HTTPException(404, "No YouTube channel found for that link.")
+
+    existing = (
+        await db.execute(select(Channel).where(Channel.youtube_id == info["youtube_id"]))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return {"status": "ok", "already": True, "scanning": False,
+                **await _channel_summary(db, info)}
+
+    db.add(Channel(
+        youtube_id=info["youtube_id"],
+        title=info["title"],
+        description=info["description"],
+        thumbnail_url=info["thumbnail_url"],
+        subscriber_count=info["subscriber_count"],
+        topics=json.dumps(info["topics"]) if info["topics"] else "",
+        source="manual",
+    ))
+    await db.commit()
+
+    _first_scan(info["youtube_id"])
+
+    return {"status": "ok", "already": False, "scanning": True,
+            **await _channel_summary(db, info)}
+
+
+@router.delete("/{channel_id}")
+async def remove_channel(channel_id: str, db: AsyncSession = Depends(get_db)):
+    """Remove a hand-added channel and everything the feed built from it.
+
+    Only the hand-added ones: a subscribed channel is here because YouTube says
+    you're subscribed, so deleting it here would last exactly until the next
+    resync put it back. Unsubscribe on YouTube instead, and resync.
+
+    Your own saved data survives — see _prune_channels, which this reuses.
+    """
+    from app.routers.subscriptions import _prune_channels
+
+    channel = (
+        await db.execute(select(Channel).where(Channel.youtube_id == channel_id))
+    ).scalar_one_or_none()
+    if not channel:
+        raise HTTPException(404, "Channel not found")
+    if (channel.source or "subscription") != "manual":
+        raise HTTPException(
+            400, "That channel came from your YouTube subscriptions. "
+                 "Unsubscribe on YouTube, then resync."
+        )
+
+    pruned = await _prune_channels(db, [channel_id])
+    return {"status": "ok", "deleted_videos": pruned["videos"]}
 
 
 @router.get("/{channel_id}/videos")
@@ -206,6 +389,11 @@ async def channel_videos(
             "description": channel.description or "",
             "thumbnail_url": channel.thumbnail_url,
             "subscriber_count": channel.subscriber_count,
+            "source": channel.source or "subscription",
+            # A just-added channel's first scan is still running, so the grid is
+            # empty for reasons that have nothing to do with your filters. The
+            # page polls on this rather than guessing from an empty result.
+            "scanning": _scanning(channel_id),
             "tags": tags,
             "suggested_tags": await channel_suggestions(db, channel),
             "label_vocab": label_vocab,

@@ -53,6 +53,9 @@ _COLUMN_MIGRATIONS = [
     ("watch_later", "channel_thumbnail", "TEXT DEFAULT ''"),
     ("downloads", "channel_thumbnail", "TEXT DEFAULT ''"),
     ("playlist_items", "channel_thumbnail", "TEXT DEFAULT ''"),
+    # Every channel that predates hand-adding arrived from a subscription, which
+    # is what the default says — so there's no backfill pass to run.
+    ("channels", "source", "TEXT NOT NULL DEFAULT 'subscription'"),
 ]
 
 

@@ -55,6 +55,7 @@ app/
   cron_update.py   run_update(): the actual channel-scan job (Phases 1–5)
   app_settings.py  user-facing preferences (DB-backed; .env is deployment)
   archive.py       deep per-channel history, under a daily quota budget
+  channel_lookup.py  a pasted link/@handle/id → a channel (see "Adding a channel by hand")
   quota.py         Data API units spent per quota-day (midnight US/Pacific)
   fetcher.py       yt-dlp wrappers (channel listings, video details)
   youtube_api.py   YouTube Data API v3 batch stats (+ token handling)
@@ -260,6 +261,47 @@ and never re-spends LLM tokens — only genuinely new channels get scanned from
 scratch and auto-tagged.
 
 The endpoint remains for forcing one by hand, and `?dry_run=true` still previews.
+
+### Adding a channel by hand (`channel_lookup.py`, `routers/channels.py`)
+
+A subscription is one way for a channel to reach the `channels` table, not the
+only one. `POST /api/channels/add` takes whatever you had — a channel URL of any
+vintage, an `@handle`, or the bare id — and writes the same row a subscription
+import would have. From there it's an ordinary channel: the scan picks it up
+(`run_update` reads the table, not `subscriptions.yaml`), it's auto-tagged, it
+ranks in the feed, and the archive fill will eventually walk its back catalogue.
+
+**`Channel.source` is the whole reason this is more than one INSERT.** Resync
+deletes every channel that isn't in your live subscription list, and a
+hand-added one never will be — so it's marked `"manual"` and the prune skips it
+(`_prune_channels`' caller). Subscribing to it on YouTube later flips it back to
+`"subscription"`, because then the live list really does own it.
+
+Resolving is two-tier, cheapest first:
+
+- **The Data API** answers an id or an `@handle` for one quota unit and brings
+  `topicDetails` with it, which is what the auto-tagger reads.
+- **yt-dlp** answers anything, including the legacy `/c/` and `/user/` vanity
+  URLs the API has no field for, and needs no credentials — so it's also the
+  fallback for an expired token or a spent allowance.
+
+`GET /api/channels/lookup?q=` runs the same resolver and writes nothing: it's
+what the add dialog and the you-don't-hold-this-channel page show you *before*
+offering to add anything.
+
+**The first scan is a background task, and must stay one.** `scan_channel_videos`
+calls yt-dlp straight from async code, so for the twenty-odd seconds it runs the
+event loop stops dead. Awaited inside the request handler, that freeze lands
+between the response being built and its being written — the browser sits on a
+request the server has already finished. So the endpoint returns as soon as the
+row exists, with `scanning: true`; the channel page polls the same flag on
+`GET /channels/{id}/videos` and fills itself in. Stats, the search index, the
+Shorts flag and the LLM tagging all ride along behind the scan.
+
+`DELETE /api/channels/{id}` removes a hand-added channel and its videos (reusing
+`_prune_channels`, so your downloads, playlists and Watch Later survive). It
+refuses a subscribed channel on purpose: deleting one would last exactly until
+the next resync put it back. Unsubscribe on YouTube, then resync.
 
 ### The archive fill (`archive.py`) — deep history, on a budget
 
@@ -767,7 +809,7 @@ cut off) rather than returning `None` for a caller to trip over.
 
 | Table | Purpose |
 |---|---|
-| `channels` | subscribed channels (id, title, `last_video_fetched`, `topics`, `llm_labels`, `video_label_vocab` + `video_label_version`, `label_stop_words`) |
+| `channels` | the channels the feed is built from (id, title, `source`, `last_video_fetched`, `topics`, `llm_labels`, `video_label_vocab` + `video_label_version`, `label_stop_words`). `source` is `subscription` or `manual` — see "Adding a channel by hand", which is the only thing that reads it |
 | `videos` | scraped videos (stats, `published_at`, `is_short`, `title_labels`, `last_updated`) |
 | `channel_tags` | channel↔tag assignments (`auto_assigned`: 1 = LLM, 0 = manual) |
 | `channel_tag_rejections` | auto tags the user removed, so re-tagging won't re-add them |
@@ -925,7 +967,10 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
-| GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic) |
+| GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic). The channel block carries `source` and `scanning` |
+| GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
+| POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |
+| DELETE | `/api/channels/{id}` | remove a hand-added channel and its videos. 400 for a subscribed one — unsubscribe on YouTube instead |
 | POST | `/api/channels/{id}/labels/build` | build this channel's video-topic vocabulary (background; `?force=1` rebuilds) |
 | GET | `/api/channels/{id}/labels/status` | `{building, built, progress}` for the topic build |
 | POST | `/api/channels/{id}/labels/assign` | label the given (rendered) videos against the vocab |
@@ -978,6 +1023,7 @@ no per-test decorator). What's covered:
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete |
 | `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp, the avatar filled in on save |
+| `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
