@@ -19,9 +19,26 @@ describe('TopBar', () => {
   })
 
   it('renders channels sort for channels variant', () => {
-    render(<TopBar {...defaultProps} variant="channels" channelsSort="subs" onChannelsSortChange={vi.fn()} />)
+    render(<TopBar {...defaultProps} variant="channels" sort="subs" age={undefined} />)
     expect(screen.getAllByRole('button', { name: 'Subs' })[0]).toBeInTheDocument()
     expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
+  })
+
+  // The leading sort is named for what that list's own order means.
+  it.each([
+    ['imported', 'Added'],
+    ['history', 'Watched'],
+  ] as const)('gives %s a "%s" sort and no window', (variant, label) => {
+    render(<TopBar {...defaultProps} variant={variant} sort="recent" age={undefined} />)
+    expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: label })[0]).toBeInTheDocument()
+  })
+
+  // Nothing to order and nothing to window: no second row at all.
+  it.each(['downloads', 'search', 'playlists', 'local', 'settings'] as const)('shows no controls on %s', (variant) => {
+    render(<TopBar {...defaultProps} variant={variant} />)
+    expect(screen.queryByTestId('time-thumb-lo')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Likes' })).not.toBeInTheDocument()
   })
 
   it('renders collapse toggle button', () => {

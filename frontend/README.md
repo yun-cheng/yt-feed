@@ -76,9 +76,17 @@ does client-side routing itself:
 
 Pages keep **separate** sort / window / watch-status state — a channel page's
 sort isn't the feed's — but the URL carries **one** `sort`, `age` and `watch`.
-The page being shown owns them; every other page's copy sits at its own default. `PAGE_DEFAULTS` is that table, and the `USES_*` sets say
-which controls a page actually has, so a param a page can't change is never
-written.
+The page being shown owns them; every other page's copy sits at its own default.
+`PAGE_DEFAULTS` is that table, and the `USES_*` sets say which controls a page
+actually has, so a param a page can't change is never written.
+
+Each page's pair lives in one `views` record keyed by page (`PageView = {age,
+sort}`), rather than a `useState` per page per control. The bar reads
+`views[page]`, so adding a page's controls is a row in a table instead of two
+more pieces of state and two more branches in the ternary that used to pick
+between them. `TimeSortControls` holds the matching sort table (`PAGE_SORTS`)
+and renders the slider only when a window is passed to it — a page absent from
+that table has no control bar at all.
 
 Those same sets feed `pageFilters(page)`, which is what the **sidebar** renders
 from — so a filter is either usable *and* in the URL, or in neither:
@@ -252,7 +260,7 @@ Three deliberate differences from the feed:
 
 - **No time window.** An import is an explicit pick, not a stream of new
   uploads, so filtering it by publish date would hide most of what you just
-  added. It gets its own sort (`recentSortOptions('Added')`) defaulting to
+  added. It gets its own sort (`listSortOptions('Added')`) defaulting to
   `recent` — import order, which is what the API already returns.
 - **Its own remove action.** The card menu shows "Remove from imported"
   (`onRemoveImported`), alongside the existing playlist/download variants.

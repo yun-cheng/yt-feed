@@ -13,6 +13,7 @@ import PlaylistsPage from './components/PlaylistsPage'
 import type { PlaylistSummary } from './components/PlaylistsPage'
 import PlaylistPage from './components/PlaylistPage'
 import WatchPage from './components/WatchPage'
+import type { TopBarVariant } from './components/TopBar'
 import ImportedPage from './components/ImportedPage'
 import HistoryPage from './components/HistoryPage'
 import ImportDialog from './components/ImportDialog'
@@ -228,6 +229,12 @@ export const pageFilters = (page: string) => ({
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v => b.includes(v))
 
+// The bar is named for the page, with the two overlay-ish pages folded into the
+// list they sit on top of — a playlist's bar is the playlists bar.
+const TOPBAR_ALIAS: Record<string, TopBarVariant> = { playlist: 'playlists', localfolder: 'local' }
+const topBarVariant = (page: Page): TopBarVariant =>
+  TOPBAR_ALIAS[page] ?? (page as TopBarVariant)
+
 type QueryState = {
   tags: string[]
   age: TimeRange
@@ -299,6 +306,19 @@ export function buildPath(s: UrlState): string {
   return qs ? `${path}?${qs}` : path
 }
 
+// What one page's control bar is set to. Every page in PAGE_DEFAULTS has its
+// own, so switching pages never carries a window or a sort across — the feed's
+// "past 3 days, by likes" and Watch Later's "all time, by when I saved it" are
+// both live at once, each where it belongs.
+export type PageView = { age: TimeRange; sort: string }
+
+/** Every page at its own opening settings. */
+function defaultViews(): Record<string, PageView> {
+  return Object.fromEntries(Object.entries(PAGE_DEFAULTS).map(([p, d]) => [
+    p, { age: parseAge(d.age) ?? DEFAULT_RANGE, sort: d.sort },
+  ]))
+}
+
 // Map the URL onto app state: whichever page is showing takes the URL's sort /
 // window / watch values, everything else starts at its own default. Used both
 // on a cold load and on back/forward, so the two can't drift apart.
@@ -306,19 +326,15 @@ function stateFromUrl() {
   const path = parsePath()
   const q = parseQuery(path.page)
   const owns = (...pages: Page[]) => pages.includes(path.page)
+  const views = defaultViews()
+  if (views[path.page]) views[path.page] = { age: q.age, sort: q.sort }
   return {
     ...path,
     q: q.q,
     tags: q.tags,
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
-    age: owns('channel') ? (parseAge(DEFAULTS.age) ?? DEFAULT_RANGE) : q.age,
-    channelAge: owns('channel') ? q.age : (parseAge(PAGE_DEFAULTS.channel.age) ?? DEFAULT_RANGE),
-    sort: owns('feed', 'watchlater') ? q.sort : DEFAULTS.sort,
-    channelsSort: owns('channels') ? q.sort : PAGE_DEFAULTS.channels.sort,
-    channelSort: owns('channel') ? q.sort : PAGE_DEFAULTS.channel.sort,
-    importedSort: owns('imported') ? q.sort : PAGE_DEFAULTS.imported.sort,
-    historySort: owns('history') ? q.sort : PAGE_DEFAULTS.history.sort,
+    views,
     watchStatuses: owns('feed', 'watchlater', 'imported') && q.watch !== null ? q.watch : loadWatchStatuses(),
     channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
     historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : [],
@@ -432,9 +448,22 @@ export default function App() {
   const [channelHasTopics, setChannelHasTopics] = useState(false)
   const [selectedLabel, setSelectedLabel] = useState<string | null>(init.selectedLabel)
   const [loading, setLoading] = useState(true)
-  const [age, setAge] = useState(init.age)
-  const [sort, setSort] = useState(init.sort)
-  const [channelsSort, setChannelsSort] = useState(init.channelsSort)
+  // Every page's window + sort, at once. The page being shown reads `view`;
+  // the others sit where you left them until you go back.
+  const [views, setViews] = useState<Record<string, PageView>>(init.views)
+  // The control bar belongs to whatever page is showing. Pages with no bar of
+  // their own (search, playlists, a local folder) fall back to the feed's so
+  // there's always something to read; nothing renders it for them.
+  const view = views[page] ?? views.feed
+  const setView = useCallback((patch: Partial<PageView>) => {
+    setViews(v => ({ ...v, [page]: { ...v[page], ...patch } }))
+  }, [page])
+  const setAge = useCallback((age: TimeRange) => setView({ age }), [setView])
+  const setSort = useCallback((sort: string) => setView({ sort }), [setView])
+  /** Put one page back to its opening settings — what arriving at it means. */
+  const resetView = useCallback((p: string) => {
+    setViews(v => ({ ...v, [p]: { age: defaultRange(p), sort: defaultsFor(p).sort } }))
+  }, [])
   // Videos ↔ Shorts: switches the feed / channel pages between long-form and
   // vertical short-form. Shorts live on a separate channel tab and rank very
   // differently, so they're a distinct browse mode rather than mixed in.
@@ -624,9 +653,6 @@ export default function App() {
   // but arrive shaped like feed videos so the same cards and actions apply.
   const [imported, setImported] = useState<VideoItem[]>([])
   const [importOpen, setImportOpen] = useState(false)
-  // The Imported page has no time window, and its default order is import order
-  // — so it keeps its own sort rather than sharing the feed's.
-  const [importedSort, setImportedSort] = useState(init.importedSort)
 
   const fetchImported = useCallback(async () => {
     try {
@@ -723,7 +749,6 @@ export default function App() {
   // History page, the resume bar drawn on every card, and the watch page's
   // "continue where you left off". Written by WatchPage while a video plays.
   const [watchHistory, setWatchHistory] = useState<HistoryItem[]>([])
-  const [historySort, setHistorySort] = useState(init.historySort)
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -833,10 +858,6 @@ export default function App() {
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
 
-  // ── Channel page state ────────────────────────────────
-  const [channelAge, setChannelAge] = useState(init.channelAge)
-  const [channelSort, setChannelSort] = useState(init.channelSort)
-
   // ── URL sync ──────────────────────────────────────────
   // (currentPath / syncUrl live further down — they read the watch-status state,
   // which is declared with the rest of the filtering below.)
@@ -879,13 +900,7 @@ export default function App() {
       setLocalFolderId(s.localFolderId)
       setSelectedLocalVideoId(null)
       setSelectedTags(s.tags)
-      setAge(s.age)
-      setSort(s.sort)
-      setChannelsSort(s.channelsSort)
-      setChannelAge(s.channelAge)
-      setChannelSort(s.channelSort)
-      setImportedSort(s.importedSort)
-      setHistorySort(s.historySort)
+      setViews(s.views)
       setContentMode(s.contentMode)
       setShowHidden(s.showHidden)
       setWatchStatuses(s.watchStatuses)
@@ -1007,12 +1022,8 @@ export default function App() {
     page,
     channelId: selectedChannelId,
     tags: selectedTags,
-    age: page === 'channel' ? channelAge : age,
-    sort: page === 'channel' ? channelSort
-      : page === 'channels' ? channelsSort
-      : page === 'imported' ? importedSort
-      : page === 'history' ? historySort
-      : sort,
+    age: view.age,
+    sort: view.sort,
     shorts: contentMode === 'shorts',
     watch: page === 'channel' ? channelWatchStatuses
       : page === 'history' ? historyWatchStatuses
@@ -1020,8 +1031,7 @@ export default function App() {
     label: selectedLabel,
     showHidden,
     q: searchInput,
-  }), [page, selectedChannelId, selectedTags, age, sort, channelsSort,
-    channelAge, channelSort, importedSort, historySort, contentMode,
+  }), [page, selectedChannelId, selectedTags, view, contentMode,
     watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden, searchInput])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
@@ -1112,9 +1122,12 @@ export default function App() {
   }, [])
 
   // Fetch one page of the feed; append to the existing list unless replacing.
+  // Named off `views.feed` rather than the page in front, so a sort chosen on
+  // another page can't leak into the feed's query.
+  const feedView = views.feed
   const fetchFeedPage = useCallback(async (offset: number, replace: boolean, size = FEED_PAGE_SIZE) => {
     const params = new URLSearchParams({
-      age: formatAge(age), sort,
+      age: formatAge(feedView.age), sort: feedView.sort,
       shorts: String(contentMode === 'shorts'),
       offset: String(offset), limit: String(size),
     })
@@ -1132,7 +1145,7 @@ export default function App() {
         age: data.age,
       }
     })
-  }, [age, sort, selectedTags, contentMode, showHidden, watchStatuses])
+  }, [feedView, selectedTags, contentMode, showHidden, watchStatuses])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
@@ -1187,10 +1200,7 @@ export default function App() {
       setSelectedLabel(null)
       setChannelWatchStatuses([])
     }
-    if (p === 'channel') {
-      setChannelAge(defaultRange('channel'))
-      setChannelSort(PAGE_DEFAULTS.channel.sort)
-    }
+    if (p === 'channel') resetView('channel')
     // Every visit to History starts unfiltered — see historyWatchStatuses.
     if (p === 'history') setHistoryWatchStatuses([])
     if (p === 'local') { setLocalFolderId(null); setSelectedLocalVideoId(null) }
@@ -1269,8 +1279,7 @@ export default function App() {
     setSelectedChannelId(channelId)
     setSelectedPlaylistId(null)
     setPageRaw('channel')
-    setChannelAge(defaultRange('channel'))
-    setChannelSort(PAGE_DEFAULTS.channel.sort)
+    resetView('channel')
     setChannelWatchStatuses([])
     setSelectedLabel(null)
     mainRef.current?.scrollTo({ top: 0 })
@@ -1328,8 +1337,7 @@ export default function App() {
     setSelectedPlaylistId(null)
     setSelectedLabel(null)
     setPageRaw('feed')
-    setAge(defaultRange('feed'))
-    setSort(DEFAULTS.sort)
+    resetView('feed')
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
   }
@@ -1430,19 +1438,20 @@ export default function App() {
           ref={topbarRef}
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
+        {/* The bar shows the CURRENT page's window and sort, straight off its
+            view. Passing no window is what hides the slider, so the one table
+            that keeps `age` out of the URL keeps it out of the bar too. */}
         <TopBar
-          variant={page === 'channels' ? 'channels' : page === 'channel' ? 'channel' : page === 'watchlater' ? 'watchlater' : page === 'downloads' ? 'downloads' : page === 'search' ? 'search' : page === 'imported' ? 'imported' : page === 'history' ? 'history' : page === 'playlists' || page === 'playlist' ? 'playlists' : page === 'local' || page === 'localfolder' ? 'local' : page === 'settings' ? 'settings' : 'feed'}
+          variant={topBarVariant(page)}
           onImport={page === 'imported' ? () => setImportOpen(true) : undefined}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
-          age={page === 'channel' ? channelAge : age}
-          onAgeChange={page === 'channel' ? setChannelAge : setAge}
+          age={USES_WINDOW.has(page) ? view.age : undefined}
+          onAgeChange={setAge}
           count={page === 'feed' ? feedTotal : undefined}
-          sort={page === 'channel' ? channelSort : page === 'imported' ? importedSort : page === 'history' ? historySort : sort}
-          onSortChange={page === 'channel' ? setChannelSort : page === 'imported' ? setImportedSort : page === 'history' ? setHistorySort : setSort}
-          channelsSort={channelsSort}
-          onChannelsSortChange={setChannelsSort}
+          sort={view.sort}
+          onSortChange={setSort}
           onToggleCollapse={() => {
             if (matchMedia('(max-width: 767px)').matches) {
               setMobileMenuOpen(prev => !prev)
@@ -1486,7 +1495,7 @@ export default function App() {
           <SearchPage
             query={searchInput}
             onChannelClick={selectChannel}
-            sort={sort}
+            sort={view.sort}
             watchLaterIds={watchLaterIds}
             onToggleWatchLater={toggleWatchLater}
             onDownload={startDownload}
@@ -1512,7 +1521,7 @@ export default function App() {
           <HistoryPage
             history={visibleHistory}
             totalCount={watchHistory.length}
-            sort={historySort}
+            sort={view.sort}
             progressById={progressById}
             onChannelClick={selectChannel}
             watchLaterIds={watchLaterIds}
@@ -1525,7 +1534,7 @@ export default function App() {
           <ImportedPage
             videos={visibleImported}
             totalCount={imported.length}
-            sort={importedSort}
+            sort={view.sort}
             onChannelClick={selectChannel}
             watchLaterIds={watchLaterIds}
             onToggleWatchLater={toggleWatchLater}
@@ -1565,10 +1574,10 @@ export default function App() {
                 <p className="text-xs text-[#555]">Hover a video and click the bookmark icon to save it.</p>
               </div>
             ) : (() => {
-              let result = filterWatchLater(watchLater, age)
+              let result = filterWatchLater(watchLater, view.age)
               result = filterByTags(result, selectedTags, tags, tagChannels)
               result = filterByWatchStatus(result, watchStatuses, progressById)
-              result = sortWatchLater(result, sort)
+              result = sortWatchLater(result, view.sort)
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
                   No saved videos match the current filters.
@@ -1578,7 +1587,7 @@ export default function App() {
                   group={{ name: 'Watch Later', icon: '', sort_order: 0, videos: result }}
                   progressById={progressById}
                   onChannelClick={selectChannel}
-                  sort={sort}
+                  sort={view.sort}
                   watchLaterIds={watchLaterIds}
                   onToggleWatchLater={toggleWatchLater}
                   onDownload={startDownload}
@@ -1590,9 +1599,9 @@ export default function App() {
         ) : page === 'channel' && selectedChannelId ? (
           <ChannelPage
             channelId={selectedChannelId}
-            age={channelAge}
-            sort={channelSort}
-            onSortChange={setChannelSort}
+            age={view.age}
+            sort={view.sort}
+            onSortChange={setSort}
             watchLaterIds={watchLaterIds}
             onToggleWatchLater={toggleWatchLater}
             onDownload={startDownload}
@@ -1644,7 +1653,7 @@ export default function App() {
                   progressById={progressById}
                   group={{ name: 'Feed', icon: '', sort_order: 0, videos }}
                   onChannelClick={selectChannel}
-                  sort={sort}
+                  sort={view.sort}
                   watchLaterIds={watchLaterIds}
                   onToggleWatchLater={toggleWatchLater}
                   onDownload={startDownload}
@@ -1658,7 +1667,7 @@ export default function App() {
             })()}
           </div>
         ) : (
-          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={channelsSort} onSortChange={setChannelsSort} hiddenChannels={hiddenChannels} onToggleHidden={toggleHiddenChannel} />
+          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={view.sort} onSortChange={setSort} hiddenChannels={hiddenChannels} onToggleHidden={toggleHiddenChannel} />
         )}
       </main>
       </div>

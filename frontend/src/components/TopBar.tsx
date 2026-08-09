@@ -1,15 +1,18 @@
-import TimeSortControls from './TimeSortControls'
+import TimeSortControls, { sortOptionsFor } from './TimeSortControls'
 import type { TimeRange } from '../lib/timeWindow'
 
+export type TopBarVariant =
+  | 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'
+  | 'playlists' | 'imported' | 'history' | 'local' | 'settings'
+
 type Props = {
-  variant?: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'imported' | 'history' | 'local' | 'settings'
-  age: TimeRange
+  variant?: TopBarVariant
+  // Absent on a page with no time window — that's what hides the slider.
+  age?: TimeRange
   onAgeChange: (r: TimeRange) => void
   count?: number
   sort: string
   onSortChange: (s: string) => void
-  channelsSort?: string
-  onChannelsSortChange?: (s: string) => void
   onToggleCollapse: () => void
   searchQuery?: string
   onSearchChange?: (q: string) => void
@@ -18,31 +21,11 @@ type Props = {
   onImport?: () => void
 }
 
-export default function TopBar({ variant, age, onAgeChange, count, sort, onSortChange, channelsSort, onChannelsSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
-  // Downloads, search, playlists and local folders have nothing to sort or
-  // window — their order is the library's own.
-  const controls = variant === 'downloads' || variant === 'search' || variant === 'playlists' || variant === 'local' || variant === 'settings' ? null : variant === 'imported' || variant === 'history' ? (
-    <TimeSortControls
-      variant={variant}
-      sort={sort}
-      onSortChange={onSortChange}
-    />
-  ) : variant === 'watchlater' ? (
-    <TimeSortControls
-      variant="watchlater"
-      sort={sort}
-      onSortChange={onSortChange}
-      age={age}
-      onAgeChange={onAgeChange}
-      count={count}
-    />
-  ) : variant === 'channels' ? (
-    <TimeSortControls
-      variant="channels"
-      sort={channelsSort ?? 'subs'}
-      onSortChange={onChannelsSortChange ?? (() => {})}
-    />
-  ) : (
+export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
+  // Search, playlists, local folders and settings show no bar at all: their
+  // order is the library's own and there's nothing to window. Every other page
+  // gets its own sort buttons, and the slider only if a window came with them.
+  const controls = sortOptionsFor(variant) && (
     <TimeSortControls
       variant={variant}
       age={age}
