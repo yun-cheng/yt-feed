@@ -475,6 +475,17 @@ overlay and the underlying `page` is never touched when opening or closing it.
 page alone) / real page navigation — and `syncUrl` leaves the `/watch` URL alone
 while it's open.
 
+The middle case is gated on `overlayOpenRef`, which means *the overlay is open
+over a page we navigated from* rather than merely *the overlay is open*. The
+difference is a **refresh on a video**: the overlay comes back, but nothing is
+behind it — `parsePath` reports `page: 'feed'` for a `/watch/:id` URL because
+that's the sensible default when there's no history to say otherwise. Treating
+the next back as a close would leave you on that default feed instead of the
+channel page you actually came from, so the ref starts `false` on a cold load
+and back rebuilds the previous page from its URL like any other navigation.
+That branch also clears `selectedVideoId`: the URL it's going to has no video in
+it, so an overlay still open is one we're leaving, not one we're closing.
+
 Other details:
 
 - **Volume is shared with previews** both ways: the store's volume is applied on

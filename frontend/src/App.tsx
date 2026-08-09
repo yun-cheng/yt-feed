@@ -489,9 +489,17 @@ export default function App() {
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null)
   // Where in that video to start, when the URL said so (see `parseStartAt`).
   const [startAt, setStartAt] = useState<number | null>(init.startAt)
-  // Whether the watch overlay is currently open — lets popstate tell "closing
-  // the overlay" (leave the underlying page untouched) from a real page nav.
-  const overlayOpenRef = useRef<boolean>(!!init.videoId)
+  // Whether the overlay is open OVER A PAGE WE NAVIGATED FROM — which is what
+  // lets popstate tell "closing the overlay" (leave the underlying page exactly
+  // as it was) from a real page nav.
+  //
+  // False on a cold load of /watch/:id even though the overlay is open, because
+  // there's nothing behind it: the page under the overlay is the default `feed`
+  // parsePath falls back to, not somewhere you were. Refreshing on a video and
+  // pressing back has to rebuild the previous page from its URL like any other
+  // navigation — treating it as a close would strand you on that default feed.
+  // A cold load of /local/:folder/:video has always worked this way.
+  const overlayOpenRef = useRef<boolean>(false)
   const [searchInput, setSearchInput] = useState<string>(init.q)
   // True once we've pushed a /search history entry, so clearing the box can go
   // back() to the page (and its state) we were on before searching.
@@ -960,6 +968,11 @@ export default function App() {
       // A genuine page navigation (back/forward between real pages): rebuild
       // every filter from the URL, the same mapping a cold load uses.
       const s = stateFromUrl()
+      // The URL we're going to has no video in it, so any overlay still open is
+      // one we're leaving rather than closing — reached by refreshing on a video
+      // and pressing back, where there was no page behind it to close onto.
+      setSelectedVideoId(null)
+      setSelectedVideo(null)
       setPageRaw(s.page)
       setSearchInput(s.q)
       setSelectedChannelId(s.channelId)
