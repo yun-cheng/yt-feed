@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterByTime, sortVideos, buildPath, pageFilters } from '../App'
+import { filterByTime, sortVideos, buildPath, pageFilters, parseStartAt } from '../App'
 import type { VideoItem } from '../App'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
@@ -250,4 +250,26 @@ describe('pageFilters', () => {
   it('swaps tags for the channel page (which shows topics instead)', () => {
     expect(on('channel')).toEqual(['contentMode', 'watchStatus'])
   })
+})
+
+describe('parseStartAt', () => {
+  it('reads whole seconds off ?t=', () => {
+    expect(parseStartAt('?t=125')).toBe(125)
+    // Zero is a real answer, not an absent one — the caller decides what to do
+    // with "start at the top", and `null` would silently mean something else.
+    expect(parseStartAt('?t=0')).toBe(0)
+  })
+
+  it('is absent when the URL says nothing', () => {
+    expect(parseStartAt('')).toBeNull()
+    expect(parseStartAt('?sort=views')).toBeNull()
+  })
+
+  // A timestamp we only half understand would start at 0 while looking like it
+  // worked, which is worse than ignoring it. Nothing that links here writes
+  // YouTube's own `1m30s` spelling.
+  it.each(['?t=1m30s', '?t=90s', '?t=abc', '?t=', '?t=12.5', '?t=-30'])(
+    'ignores %s rather than guessing', (search) => {
+      expect(parseStartAt(search)).toBeNull()
+    })
 })

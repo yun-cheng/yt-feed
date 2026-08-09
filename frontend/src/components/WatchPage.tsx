@@ -37,6 +37,9 @@ type Props = {
   // Metadata when we arrived from a card (renders instantly, no fetch flash).
   // Absent on a cold load / back-forward, where we fetch by id instead.
   video?: VideoItem | null
+  // Seconds to start at, when the URL's `?t=` said so — a handoff from
+  // somewhere that already knew the position, which beats stored history.
+  startAt?: number | null
   onChannelClick: (channelId: string) => void
   onDownload: (video: VideoItem) => void
   isDownloaded: boolean
@@ -376,7 +379,7 @@ function CaptionBlock({ lines }: { lines: CaptionLine[] }) {
   )
 }
 
-export default function WatchPage({ videoId, video, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
+export default function WatchPage({ videoId, video, startAt, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
@@ -617,7 +620,22 @@ export default function WatchPage({ videoId, video, onChannelClick, onDownload, 
   // tell "not loaded yet" from "start at 0".
   const [resumeAt, setResumeAt] = useState<number | null>(null)
   const resumedRef = useRef(false)
+  // Read once, on mount. App strips `?t=` from the URL as soon as it's handed
+  // over, and this component is keyed by video id so a different video gets a
+  // fresh instance — between them, "start here" can't be applied twice.
+  const startAtRef = useRef(startAt)
   useEffect(() => {
+    // An explicit `?t=` came from something that already knew the position —
+    // the extension's watch-page button, handing over where YouTube had got to.
+    // It's an instruction rather than a guess, so it beats stored history and
+    // skips the near-the-end rule below: landing on the credits is exactly what
+    // you asked for if that's where you were.
+    const handoff = startAtRef.current
+    if (handoff !== null && handoff !== undefined) {
+      setResumeAt(handoff)
+      return
+    }
+
     let cancelled = false
     apiFetch(`/api/history/${videoId}`, { quiet: true })
       .then((r) => r.json())

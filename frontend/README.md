@@ -123,6 +123,32 @@ panel is empty.
   `[page]`/`[channelId]` — an effect would also fire on a cold load and wipe the
   very value the URL just restored. A reload isn't a fresh visit.
 
+#### `?t=` is the one param that isn't view state
+
+`/watch/:id?t=300` starts the overlay 300 seconds in. It's a **handoff**, not a
+filter: something that already knew the position saying so, once. The browser
+extension's watch-page button is what writes it, passing YouTube's own playback
+position so the app picks up mid-video instead of restarting.
+
+That difference is why it's parsed by `parseStartAt` alongside `videoId` in
+`parsePath` rather than by `parseQuery` with the sort and the window. Those
+describe a view and survive every filter change; this one is **spent on
+arrival**:
+
+- `WatchPage` reads it once, into a ref, on mount. It's keyed by video id, so a
+  different video gets a fresh instance and "start here" can't apply twice.
+- `App` `replaceState`s it out of the URL as soon as the overlay has it.
+  Otherwise it outlives its usefulness — half an hour later a refresh would jump
+  back to the handoff point, when history has been recording where you actually
+  are the whole time.
+- It **beats stored history** and skips the near-the-end rule that would
+  otherwise restart a nearly-finished video. Landing on the credits is exactly
+  what you asked for if that's where you were.
+- Whole non-negative seconds only. YouTube's own `1m30s` spelling is rejected
+  rather than half-understood, and an empty `?t=` is absent rather than zero —
+  `Number('')` is `0`, which would read as a deliberate "start at the top" and
+  override the resume position it was meant to leave alone.
+
 ### Watch history
 
 Every video remembers where you stopped. `WatchPage` reports its position every

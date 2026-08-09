@@ -148,13 +148,41 @@ type PathState = {
   channelId: string | null
   playlistId: number | null
   videoId: string | null
+  startAt: number | null
   localFolderId: number | null
   localVideoId: string | null
 }
 
+/**
+ * `?t=` — where to start the video, in whole seconds.
+ *
+ * A HANDOFF rather than a filter: something that already knows where you are
+ * says so, once. The browser extension's watch-page button is the one thing
+ * that writes it, passing YouTube's own playback position so the app picks up
+ * mid-video instead of restarting.
+ *
+ * That's why it lives here with `videoId` — "which video, and where in it" —
+ * rather than in `parseQuery` beside the sort and the window. Those describe a
+ * view and survive every filter change; this one is spent on arrival.
+ */
+export function parseStartAt(search: string = window.location.search): number | null {
+  const t = new URLSearchParams(search).get('t')
+  // An empty `?t=` is absent, not zero — `Number('')` is 0, which would read as
+  // a deliberate "start at the top" and override the app's own resume position.
+  if (t === null || t.trim() === '') return null
+  // Whole seconds only. YouTube's own `1m30s` spelling is deliberately not
+  // accepted: nothing that links here writes it, and a timestamp we half
+  // understand would silently start at 0, which is worse than ignoring it.
+  const n = Number(t)
+  return Number.isInteger(n) && n >= 0 ? n : null
+}
+
 function parsePath(): PathState {
   const path = window.location.pathname
-  const base = { channelId: null, playlistId: null, videoId: null, localFolderId: null, localVideoId: null }
+  const base = {
+    channelId: null, playlistId: null, videoId: null, startAt: null,
+    localFolderId: null, localVideoId: null,
+  }
   if (path === '/channels') return { page: 'channels', ...base }
   if (path === '/watchlater') return { page: 'watchlater', ...base }
   if (path === '/downloads') return { page: 'downloads', ...base }
@@ -172,7 +200,7 @@ function parsePath(): PathState {
   // mounted behind it. `page` is the underlying page (feed by default on a cold
   // load); `videoId` drives the overlay.
   const wm = path.match(/^\/watch\/([^/]+)/)
-  if (wm) return { page: 'feed', ...base, videoId: wm[1] }
+  if (wm) return { page: 'feed', ...base, videoId: wm[1], startAt: parseStartAt() }
   const pm = path.match(/^\/playlist\/(\d+)/)
   if (pm) return { page: 'playlist', ...base, playlistId: Number(pm[1]) }
   const m = path.match(/^\/channel\/([^/]+)/)
@@ -458,6 +486,8 @@ export default function App() {
   // with (null on cold load / back-forward, where WatchPage fetches by id).
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(init.videoId)
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null)
+  // Where in that video to start, when the URL said so (see `parseStartAt`).
+  const [startAt, setStartAt] = useState<number | null>(init.startAt)
   // Whether the watch overlay is currently open — lets popstate tell "closing
   // the overlay" (leave the underlying page untouched) from a real page nav.
   const overlayOpenRef = useRef<boolean>(!!init.videoId)
@@ -904,6 +934,7 @@ export default function App() {
         // untouched (no scroll reset, no refetch).
         setSelectedVideo(null)  // refetch metadata by id
         setSelectedVideoId(p.videoId)
+        setStartAt(p.startAt)
         overlayOpenRef.current = true
         return
       }
@@ -1095,6 +1126,16 @@ export default function App() {
 
   // Sync URL on filter state changes (replaceState — no new history entry)
   useEffect(() => { syncUrl() }, [syncUrl])
+
+  // `?t=` is spent the moment the overlay has been handed it, so drop it from
+  // the URL. Otherwise it outlives its usefulness: half an hour later a refresh
+  // would jump back to the handoff point, when history has been recording where
+  // you actually are the whole time. `startAt` stays in state — WatchPage reads
+  // it once on mount, and this is only about what a reload would see.
+  useEffect(() => {
+    if (startAt === null || !selectedVideoId) return
+    history.replaceState(null, '', `/watch/${selectedVideoId}`)
+  }, [startAt, selectedVideoId])
 
 
   // Per-tag channel count that updates as tags are selected.
@@ -1365,6 +1406,9 @@ export default function App() {
     history.pushState(null, '', `/watch/${video.youtube_id}`)
     setSelectedVideo(video)
     setSelectedVideoId(video.youtube_id)
+    // Opened from inside the app, so there's no handoff position to honour —
+    // this one resumes from history like every other click on a card.
+    setStartAt(null)
     overlayOpenRef.current = true
   }
 
@@ -1777,6 +1821,7 @@ export default function App() {
             key={selectedVideoId}
             videoId={selectedVideoId}
             video={selectedVideo}
+            startAt={startAt}
             onChannelClick={selectChannelFromWatch}
             onDownload={startDownload}
             isDownloaded={downloadIds.has(selectedVideoId)}
