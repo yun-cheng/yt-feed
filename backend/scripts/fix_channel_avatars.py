@@ -1,15 +1,18 @@
 """
 Fill in missing uploader avatars on the snapshot tables.
 
-Imported and history rows each carry their own copy of the uploader's picture,
-snapshotted when the row was written. That copy came from the yt-dlp extraction,
-which never carries one: a VIDEO extraction's `thumbnails` are that video's
-frames, ids "0".."41", with no avatar among them. So every row written this way
-has had a blank avatar and drawn the fallback initial instead.
+Every snapshot table carries its own copy of the uploader's picture, taken when
+the row was written, and each has arrived at a blank one by its own route:
 
-New rows now get theirs from `fill_channel_avatars` (subscribed channels for
-free, one API unit per 50 for the rest). This repairs the ones already written,
-through that same function.
+- imported and history rows got theirs from the yt-dlp extraction, which never
+  carries one — a VIDEO extraction's `thumbnails` are that video's frames, ids
+  "0".."41", with no avatar among them;
+- watch later, downloads and playlist items had no column to put it in until
+  the schema grew one, so every row predating that is blank.
+
+Either way the card drew the fallback initial. New rows now get theirs from
+`fill_channel_avatars` (subscribed channels for free, one API unit per 50 for
+the rest). This repairs the ones already written, through that same function.
 
 Run from the backend directory:
     python -m scripts.fix_channel_avatars
@@ -21,11 +24,17 @@ import sys
 from sqlalchemy import or_, select
 
 from app.database import async_session, init_db
-from app.models import ImportedVideo, WatchHistory
+from app.models import Download, ImportedVideo, PlaylistItem, WatchHistory, WatchLater
 from app.routers.imported import fill_channel_avatars
 from app.youtube_api import get_quota_used
 
-TABLES = (("imported", ImportedVideo), ("history", WatchHistory))
+TABLES = (
+    ("imported", ImportedVideo),
+    ("history", WatchHistory),
+    ("watch later", WatchLater),
+    ("downloads", Download),
+    ("playlist items", PlaylistItem),
+)
 
 
 async def main(dry_run: bool = False) -> int:

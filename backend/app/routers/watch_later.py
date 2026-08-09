@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import WatchLater
+# The module rather than the function: `imported` owns avatar-filling, and the
+# tests reach in and replace it there. A `from … import` would bind a copy that
+# a monkeypatch on the module can no longer reach.
+from app.routers import imported
 
 router = APIRouter(prefix="/watch-later")
 
@@ -23,6 +27,7 @@ class WatchLaterItem(BaseModel):
     title: str = ""
     channel_id: str = ""
     channel_name: str = ""
+    channel_thumbnail: str = ""
     thumbnail_url: str = ""
     duration_seconds: int = 0
     published_at: str = ""
@@ -37,6 +42,7 @@ def _serialize(w: WatchLater) -> dict:
         "title": w.title,
         "channel_id": w.channel_id,
         "channel_name": w.channel_name,
+        "channel_thumbnail": w.channel_thumbnail or "",
         "thumbnail_url": w.thumbnail_url,
         "duration_seconds": w.duration_seconds,
         "published_at": w.published_at,
@@ -65,7 +71,9 @@ async def add_watch_later(item: WatchLaterItem, db: AsyncSession = Depends(get_d
     """Add a video (idempotent — re-adding an existing one is a no-op)."""
     existing = await db.get(WatchLater, item.youtube_id)
     if existing is None:
-        db.add(WatchLater(**item.model_dump(), created_at=datetime.utcnow()))
+        rec = WatchLater(**item.model_dump(), created_at=datetime.utcnow())
+        db.add(rec)
+        await imported.fill_channel_avatars([rec], db)
         await db.commit()
     return {"status": "ok"}
 
@@ -102,7 +110,9 @@ async def add_watch_later_by_id(video_id: str, db: AsyncSession = Depends(get_db
         for field in WatchLaterItem.model_fields
         if field != "youtube_id" and meta.get(field) is not None
     })
-    db.add(WatchLater(**item.model_dump(), created_at=datetime.utcnow()))
+    rec = WatchLater(**item.model_dump(), created_at=datetime.utcnow())
+    db.add(rec)
+    await imported.fill_channel_avatars([rec], db)
     await db.commit()
     return {"status": "ok", "saved": True, "already": False, "title": item.title}
 

@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session
 from app.models import Playlist, PlaylistItem
+# See watch_later.py — the module, not the function, so a monkeypatch reaches it.
+from app.routers import imported
 
 router = APIRouter(prefix="/playlists")
 
@@ -31,6 +33,7 @@ class VideoPayload(BaseModel):
     title: str = ""
     channel_id: str = ""
     channel_name: str = ""
+    channel_thumbnail: str = ""
     thumbnail_url: str = ""
     duration_seconds: int = 0
     published_at: str = ""
@@ -45,6 +48,7 @@ def _video_dict(it: PlaylistItem) -> dict:
         "title": it.title,
         "channel_id": it.channel_id,
         "channel_name": it.channel_name,
+        "channel_thumbnail": it.channel_thumbnail or "",
         "thumbnail_url": it.thumbnail_url,
         "duration_seconds": it.duration_seconds,
         "published_at": it.published_at,
@@ -146,7 +150,9 @@ async def add_item(playlist_id: int, video: VideoPayload, db: AsyncSession = Dep
         )
     )).scalar_one_or_none()
     if exists is None:
-        db.add(PlaylistItem(playlist_id=playlist_id, added_at=datetime.utcnow(), **video.model_dump()))
+        item = PlaylistItem(playlist_id=playlist_id, added_at=datetime.utcnow(), **video.model_dump())
+        db.add(item)
+        await imported.fill_channel_avatars([item], db)
         await db.commit()
     return {"status": "ok"}
 

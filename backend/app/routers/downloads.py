@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import async_session
 from app.models import Download
+# See watch_later.py — the module, not the function, so a monkeypatch reaches it.
+from app.routers import imported
 
 router = APIRouter(prefix="/downloads")
 
@@ -29,6 +31,7 @@ class DownloadRequest(BaseModel):
     title: str = ""
     channel_id: str = ""
     channel_name: str = ""
+    channel_thumbnail: str = ""
     thumbnail_url: str = ""
     duration_seconds: int = 0
     published_at: str = ""
@@ -47,6 +50,7 @@ def _serialize(d: Download) -> dict:
         "title": d.title,
         "channel_id": d.channel_id,
         "channel_name": d.channel_name,
+        "channel_thumbnail": d.channel_thumbnail or "",
         "thumbnail_url": d.thumbnail_url,
         "duration_seconds": d.duration_seconds,
         "published_at": d.published_at or "",
@@ -122,6 +126,7 @@ async def create_download(req: DownloadRequest, db: AsyncSession = Depends(get_d
             title=req.title,
             channel_id=req.channel_id,
             channel_name=req.channel_name,
+            channel_thumbnail=req.channel_thumbnail,
             thumbnail_url=req.thumbnail_url,
             duration_seconds=req.duration_seconds,
             published_at=req.published_at,
@@ -131,6 +136,7 @@ async def create_download(req: DownloadRequest, db: AsyncSession = Depends(get_d
             status="downloading",
         )
         db.add(rec)
+        await imported.fill_channel_avatars([rec], db)
     await db.commit()
 
     asyncio.create_task(_run_download(req.youtube_id))

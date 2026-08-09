@@ -21,6 +21,7 @@ function toVideoItem(d: DownloadItem): VideoItem {
     title: d.title,
     channel_id: d.channel_id,
     channel_name: d.channel_name,
+    channel_thumbnail: d.channel_thumbnail,
     thumbnail_url: d.thumbnail_url,
     published_at: d.published_at || d.created_at || '',
     view_count: d.view_count,

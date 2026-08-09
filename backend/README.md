@@ -535,8 +535,19 @@ every row written before this had a blank one and drew the fallback initial.
 first: a channel you're subscribed to already has its picture in `channels` and
 costs nothing, and only what's left reaches `channels.list?part=snippet` at one
 unit per 50. A whole paste is a single unit. It takes anything carrying
-`channel_id` and `channel_thumbnail`, so the same function serves imported rows,
-history rows and the repair script.
+`channel_id` and `channel_thumbnail`, so the same function serves every snapshot
+table and the repair script.
+
+**All five snapshot tables carry the column**, and every write path runs it. The
+feed pages get the picture joined live from `channels`, so the same `VideoCard`
+drew an avatar there and an initial on Watch Later, Downloads and Playlists —
+those three had no column to snapshot it into until this. The filler is a no-op
+when the caller already sent one, which the app always does; it only reaches for
+a channel when the caller couldn't, as the extension's id-only save can't.
+
+Each of the routers imports the **module** (`from app.routers import imported`)
+rather than the function, so a test that replaces `fill_channel_avatars` on
+`imported` reaches the copy they call.
 
 The 88px (`default`) size is deliberate: it's what all the subscribed channels'
 avatars already use, and what these are drawn at. `high` is 800px — an
@@ -774,7 +785,9 @@ cut off) rather than returning `None` for a caller to trip over.
 `watch_later`, `playlist_items`, `downloads`, `imported_videos` and
 `watch_history` each store a
 **metadata snapshot** of the video so a card still renders even after the video
-ages out of the feed window. `imported_videos` is deliberately NOT `videos`:
+ages out of the feed window — including `channel_thumbnail`, since the feed's
+live join to `channels` isn't available on a page built from a snapshot.
+`imported_videos` is deliberately NOT `videos`:
 every feed query joins `videos` to the SUBSCRIBED channel set, and an imported
 video's channel has no `channels` row, so a row there would be invisible anyway
 while polluting the scan and ranking paths. Schema is created by `Base.metadata.create_all`; new columns
@@ -964,7 +977,7 @@ no per-test decorator). What's covered:
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete |
-| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp |
+| `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp, the avatar filled in on save |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
@@ -992,5 +1005,5 @@ written before the fix that made them unnecessary, and both take `--dry-run`:
 
 ```bash
 python -m scripts.fix_blank_history    # nameless history rows, via get_video
-python -m scripts.fix_channel_avatars  # missing uploader pictures, ~1 unit / 50 channels
+python -m scripts.fix_channel_avatars  # missing uploader pictures across all five snapshot tables, ~1 unit / 50 channels
 ```

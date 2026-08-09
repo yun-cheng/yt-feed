@@ -32,6 +32,7 @@ export type DownloadItem = {
   title: string
   channel_id: string
   channel_name: string
+  channel_thumbnail?: string
   thumbnail_url: string
   duration_seconds: number
   published_at: string
@@ -683,12 +684,14 @@ export default function App() {
 
   const startDownload = useCallback(async (video: {
     youtube_id: string; title: string; channel_id: string
-    channel_name?: string; thumbnail_url: string; duration_seconds: number
+    channel_name?: string; channel_thumbnail?: string
+    thumbnail_url: string; duration_seconds: number
     published_at?: string; view_count?: number; like_count?: number; score?: number
   }) => {
     const meta = {
       youtube_id: video.youtube_id, title: video.title, channel_id: video.channel_id,
-      channel_name: video.channel_name || '', thumbnail_url: video.thumbnail_url,
+      channel_name: video.channel_name || '', channel_thumbnail: video.channel_thumbnail || '',
+      thumbnail_url: video.thumbnail_url,
       duration_seconds: video.duration_seconds, published_at: video.published_at || '',
       view_count: video.view_count || 0, like_count: video.like_count || 0, score: video.score || 0,
     }

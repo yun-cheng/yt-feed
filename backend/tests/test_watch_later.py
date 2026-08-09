@@ -19,6 +19,7 @@ async def test_saved_video_round_trips_its_snapshot(client):
         title="A Video",
         channel_id="chan1",
         channel_name="A Channel",
+        channel_thumbnail="https://example.test/avatar.jpg",
         thumbnail_url="https://example.test/t.jpg",
         duration_seconds=300,
         published_at="2026-01-01T00:00:00",
@@ -34,6 +35,7 @@ async def test_saved_video_round_trips_its_snapshot(client):
         "title": "A Video",
         "channel_id": "chan1",
         "channel_name": "A Channel",
+        "channel_thumbnail": "https://example.test/avatar.jpg",
         "thumbnail_url": "https://example.test/t.jpg",
         "duration_seconds": 300,
         "published_at": "2026-01-01T00:00:00",
@@ -42,6 +44,28 @@ async def test_saved_video_round_trips_its_snapshot(client):
         "score": 1.5,
     }
     assert saved_at, "the page windows and orders by when you saved it"
+
+
+async def test_a_save_that_brings_no_avatar_gets_one(client, db, monkeypatch):
+    """The card draws the uploader's picture, and the caller doesn't always have
+    one to send — the extension's button knows an id and nothing else. A channel
+    we're subscribed to already has its picture on file, so the row is filled
+    from there rather than left to draw the fallback initial."""
+    from app.models import Channel
+    from app.routers import imported as imported_mod
+
+    def unexpected(ids):
+        raise AssertionError(f"asked the API for {ids}")
+
+    monkeypatch.setattr(imported_mod, "fetch_channel_avatars", unexpected)
+
+    db.add(Channel(youtube_id="chan1", title="A Channel",
+                   thumbnail_url="https://example.test/avatar.jpg"))
+    await db.commit()
+
+    await save(client, channel_id="chan1")
+    (row,) = (await client.get("/api/watch-later")).json()
+    assert row["channel_thumbnail"] == "https://example.test/avatar.jpg"
 
 
 async def test_the_moment_you_saved_it_is_reported(client):

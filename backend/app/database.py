@@ -47,6 +47,12 @@ _COLUMN_MIGRATIONS = [
     # Existing rows were all deliberate imports, which is exactly what the
     # default says — so the backfill needs no separate pass.
     ("imported_videos", "source", "TEXT NOT NULL DEFAULT 'import'"),
+    # The uploader's avatar, which imported/history rows have always carried and
+    # these three never did — so their cards drew the fallback initial. Existing
+    # rows come out blank and are repaired by scripts/fix_channel_avatars.py.
+    ("watch_later", "channel_thumbnail", "TEXT DEFAULT ''"),
+    ("downloads", "channel_thumbnail", "TEXT DEFAULT ''"),
+    ("playlist_items", "channel_thumbnail", "TEXT DEFAULT ''"),
 ]
 
 

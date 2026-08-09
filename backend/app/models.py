@@ -156,6 +156,7 @@ class Download(Base):
     title = Column(String, nullable=False, default="")
     channel_id = Column(String, default="")
     channel_name = Column(String, default="")
+    channel_thumbnail = Column(String, default="")
     thumbnail_url = Column(String, default="")
     duration_seconds = Column(Integer, default=0)
     # Snapshot of the feed metadata so a reused VideoCard renders faithfully.
@@ -177,6 +178,7 @@ class WatchLater(Base):
     title = Column(String, nullable=False, default="")
     channel_id = Column(String, default="")
     channel_name = Column(String, default="")
+    channel_thumbnail = Column(String, default="")
     thumbnail_url = Column(String, default="")
     duration_seconds = Column(Integer, default=0)
     # Snapshot of the feed metadata so a reused VideoCard renders even after the
@@ -324,6 +326,7 @@ class PlaylistItem(Base):
     title = Column(String, default="")
     channel_id = Column(String, default="")
     channel_name = Column(String, default="")
+    channel_thumbnail = Column(String, default="")
     thumbnail_url = Column(String, default="")
     duration_seconds = Column(Integer, default=0)
     published_at = Column(String, default="")  # ISO string
