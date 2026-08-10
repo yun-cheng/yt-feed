@@ -118,6 +118,28 @@ async function addChannel(url) {
   return data
 }
 
+/*
+ * How far a video on youtube.com has got, handed to the app's own watch history.
+ *
+ * Nothing but the id and the play head goes over: the app resolves the title,
+ * channel and thumbnail itself, by the same lookup its watch page uses. That's
+ * the same bargain `saveWatchLater` strikes, and here there's a second reason —
+ * YouTube's watch page gives a content script no dependable channel id (the one
+ * place it exists is a Polymer property, which an isolated world can't read).
+ *
+ * Best-effort by design: the app being closed loses a progress ping, and the
+ * next one ten seconds later carries a position that supersedes it anyway.
+ */
+async function reportProgress(videoId, position, duration) {
+  const res = await fetch(`${APP_ORIGIN}/api/history/by-id/${videoId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ position_seconds: position, duration_seconds: duration }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return await res.json()
+}
+
 const HANDLERS = {
   'save-watch-later': (msg) => saveWatchLater(msg.videoId),
   // `force` skips the TTL — the caller knows something the timer doesn't, e.g.
@@ -125,6 +147,7 @@ const HANDLERS = {
   'saved-ids': async (msg) => ({ ids: await savedIds(msg.force) }),
   'channel-ids': async (msg) => ({ ids: await channelIds(msg.force) }),
   'add-channel': (msg) => addChannel(msg.url),
+  'report-progress': (msg) => reportProgress(msg.videoId, msg.position, msg.duration),
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

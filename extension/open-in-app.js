@@ -569,10 +569,98 @@ openPill.addEventListener('click', () => {
 
   // Otherwise this tab keeps playing behind the app's copy of the same video.
   player?.pause()
+
+  // The app takes the position from here on. Dropping the pending sample stops
+  // this tab reporting a now-older one over the top of the app's, whenever it
+  // eventually closes.
+  seen = null
+  samples = 0
+
   window.open(`${APP_ORIGIN}/watch/${barId}${t}`, APP_TAB)
 })
 
 savePill.addEventListener('click', () => clickSave(barSave, barId, () => barId))
+
+/* ── Watch history ──────────────────────────────────────────
+ *
+ * Watching something on youtube.com writes to the app's history, the same as
+ * watching it in the app: the red progress bar on the card, the resume point,
+ * and a row on the History page.
+ *
+ * Only this direction. YouTube has no way in — the Data API has never had a
+ * write endpoint for watch history, and the playlist that used to stand in for
+ * one was withdrawn years ago. The only thing that would register is a browser
+ * actually playing the video, which is a worse idea than the gap it fills.
+ *
+ * Nothing about the video is read off the page beyond its id: see
+ * `reportProgress` in background.js for why.
+ */
+
+/* Sampled every second so a video left by an in-page navigation still reports
+ * where it actually got to; sent every tenth sample, which matches the app's own
+ * watch page, so the two write history at the same granularity. */
+const SAMPLE_MS = 1000
+const SAMPLES_PER_REPORT = 10
+
+/** Last sampled play head, kept so navigating away can still report it. */
+let seen = null // { id, position, duration }
+let samples = 0
+
+/**
+ * Whether the player is showing an ad rather than the video.
+ *
+ * It's the same `<video>` element either way, so without this a pre-roll's
+ * play head is reported as the video's — and since ads are short, a 15-second
+ * one read against its own duration marks the video finished. `watched` is
+ * sticky in the app, so that mistake wouldn't wash out.
+ */
+function adShowing() {
+  return !!document.querySelector('.html5-video-player.ad-showing')
+}
+
+function send(sample) {
+  ask({
+    type: 'report-progress',
+    videoId: sample.id,
+    position: sample.position,
+    duration: sample.duration,
+  })
+}
+
+function sample() {
+  // `watchId` is /watch only, so Shorts report nothing — they're a
+  // scroll-through, and a page of them would bury everything else in history
+  // within a minute.
+  const id = watchId()
+  const player = mainVideo()
+  if (!id || !player || player.paused || player.ended || adShowing()) return
+
+  const position = player.currentTime
+  if (!position) return
+  seen = { id, position, duration: Math.round(player.duration) || 0 }
+
+  // Counted in samples rather than wall clock, so ten seconds means ten seconds
+  // of playback — a paused tab left open overnight reports nothing.
+  if (++samples >= SAMPLES_PER_REPORT) {
+    samples = 0
+    send(seen)
+  }
+}
+
+/** Report where the last video got to, if that hasn't been said already. */
+function flushHistory() {
+  if (!seen) return
+  send(seen)
+  samples = 0
+  seen = null
+}
+
+setInterval(sample, SAMPLE_MS)
+
+// Closing the tab, or a real navigation out of it. `pagehide` rather than
+// `beforeunload` because a page restored from the back/forward cache never
+// fires the latter.
+addEventListener('pagehide', flushHistory)
 
 /* ── Channel pages ──────────────────────────────────────────
  *
@@ -728,7 +816,13 @@ addPill.addEventListener('click', async () => {
 })
 
 // Fired by YouTube's own router on every in-page navigation.
-addEventListener('yt-navigate-finish', () => { syncBar(); syncAdd() })
+addEventListener('yt-navigate-finish', () => {
+  // Before anything else: the player is already on the new video, so the last
+  // sample is the only remaining record of where the old one got to.
+  if (seen && seen.id !== watchId()) flushHistory()
+  syncBar()
+  syncAdd()
+})
 
 // Coming back from the app is when this is most likely to be stale — you may
 // have just added or removed the very channel you're looking at.

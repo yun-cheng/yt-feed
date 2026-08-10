@@ -6,8 +6,9 @@ different site:
 - on **the app**, it removes YouTube's overlays from embedded players so the app
   can draw its own control bar over bare video;
 - on **youtube.com**, it puts *open in YT Feed* and *save to Watch Later*
-  buttons on the corner of every video thumbnail, and an *add this channel*
-  pill on every channel page.
+  buttons on the corner of every video thumbnail, an *add this channel* pill on
+  every channel page, and it writes what you watch there into the app's own
+  watch history.
 
 The app works without it. Everything below is additive, and the no-extension
 behaviour is the default that ships.
@@ -16,7 +17,7 @@ behaviour is the default that ships.
 |---|---|---|
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
 | `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>` |
-| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the watch-page pair, and the channel-page pill |
+| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the watch-page pair, the channel-page pill, and the watch-history sampler |
 | `background.js` | service worker | Talks to the app's API, and caches the Watch Later list and the channel list |
 
 ## Open in YT Feed, and Save to Watch Later
@@ -77,10 +78,11 @@ A `fetch` from `open-in-app.js` carries `Origin: https://www.youtube.com`, and
 the API allows the app's own origin only — so the browser discards the reply. A
 fetch from the service worker isn't subject to CORS at all; the extension's
 `host_permissions` (`localhost` and `127.0.0.1`, any port) are the check
-instead. That's the whole reason `background.js` exists: it answers four
+instead. That's the whole reason `background.js` exists: it answers five
 messages — `save-watch-later` / `saved-ids` for videos, `add-channel` /
-`channel-ids` for channels — and owns the cached lists behind them. `storage` is
-the only permission it needs beyond those hosts.
+`channel-ids` for channels, `report-progress` for watch history — and owns the
+cached lists behind them. `storage` is the only permission it needs beyond those
+hosts.
 
 Every one of those goes through `ask()` rather than `chrome.runtime.sendMessage`
 directly, because that call **rejects** when the messaging itself fails, and two
@@ -203,6 +205,59 @@ Which `<video>` is "the player" is decided by **size**: a hovered card in the
 sidebar is a `<video>` too, so `mainVideo()` takes the widest one on the page.
 Same trick as `thumbnailLink`, and for the same reason — it names no YouTube
 element.
+
+## Watch history, from YouTube into the app
+
+Watching something on youtube.com writes to the app's history, the same as
+watching it in the app: the red progress bar on the card, the resume point, and
+a row on the History page. There's no button for it — it's what the watch page
+does while you're on it.
+
+**Only this direction.** YouTube has no way in. The Data API has never had a
+write endpoint for watch history, and the playlist that used to stand in for one
+(`HL`) was withdrawn years ago, so there is nothing to POST to. The only thing
+that would actually register is a browser playing the video for real — the
+extension opening background tabs to fake views — which is slow, breaks
+constantly, and poisons your recommendations with things you watched elsewhere.
+That's a worse outcome than the gap it fills, so this half doesn't exist.
+
+The play head is sampled **every second** and sent **every tenth sample**, which
+is the same granularity the app's own watch page reports at. Two reasons it isn't
+simply a ten-second timer:
+
+- Ten samples means ten seconds of *playback*, not of wall clock — a paused tab
+  left open overnight reports nothing.
+- A watch page swaps videos without a page load, and by the time
+  `yt-navigate-finish` fires the player is already on the new one. The last
+  sample is then the only remaining record of where the old video got to, so
+  navigation flushes it. Sampling once a second bounds what that loses to a
+  second; a ten-second timer would lose up to ten.
+
+`pagehide` flushes it too — that rather than `beforeunload`, which a page
+restored from the back/forward cache never fires.
+
+**Ads are skipped**, on `.html5-video-player.ad-showing`. It's the same `<video>`
+element either way, so without that check a pre-roll's play head is reported as
+the video's — and since ads are short, a 15-second one read against its own
+duration marks the video *finished*. `watched` is sticky in the app, so that
+mistake wouldn't wash out on the next report.
+
+Shorts are left out. They're a scroll-through, and a page of them would bury
+everything else in History within a minute.
+
+Clicking **Open in YT Feed** drops the pending sample, because from that point
+the app owns the position: otherwise, whenever this tab eventually closed, it
+would flush a now-older position over the top of the app's newer one.
+
+What goes over is the video id and the play head, nothing else — `POST
+/api/history/by-id/<id>`, and the app resolves the title, channel and thumbnail
+itself. That's the same bargain the Watch Later button strikes, and here there's
+a second reason: YouTube's watch page gives a content script no dependable
+channel id. The `<meta itemprop>` block has the video's id, its publish date and
+its counts, but not the channel's; the owner link is a `/@handle`; and the one
+place the id does appear is a Polymer property on the subscribe button, which an
+isolated world can't read. The backend already knows every video from a channel
+you hold, and resolves the rest once.
 
 ## Add this channel to YT Feed
 

@@ -47,6 +47,10 @@ real video (muted, with custom captions and scrubbing).
   videos show a tick before you click. Whatever you send
   over gets its title, channel and stats resolved on arrival, and stays off the
   Imported page — that page is what you chose to keep
+- **Watch history from YouTube** — the extension also reports what you watch *on*
+  youtube.com, so a video you started there keeps its place here: same progress
+  bar, same resume point, same History page. One direction only; YouTube offers
+  nothing to write history back into
 - **Local folders** — point the app at a directory on the backend's machine and
   its video files become their own feed: poster frames, durations, hover previews
   and resume, played in the same control bar downloads use. Each folder stays a
@@ -124,7 +128,9 @@ All three are also defined in [`.claude/launch.json`](.claude/launch.json).
 A companion extension does two things, each on a different site. On **youtube.com**
 it puts *open in YT Feed* and *save to Watch Later* buttons on the corner of
 every video thumbnail, so a video you find there opens — or is kept — here
-instead, styled to pass for YouTube's own circular hover controls. On
+instead, styled to pass for YouTube's own circular hover controls; it adds a
+channel to the feed from that channel's page, and reports what you watch there
+into the app's watch history. On
 **embedded players** it strips YouTube's overlays —
 title, avatar, centre play button, share row, "More videos" — so the app draws
 its own control bar over bare video.
