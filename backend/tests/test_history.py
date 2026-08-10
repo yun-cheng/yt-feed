@@ -169,3 +169,131 @@ async def test_delete_removes_one_video_from_history(client):
 
 async def test_delete_of_unwatched_video_is_not_an_error(client):
     assert (await client.delete("/api/history/never-watched")).status_code == 200
+
+
+# ── Reporting with nothing but an id ─────────────────────────
+#
+# What the extension posts while you watch on youtube.com: it has the play head
+# and the video id, and the metadata is resolved on this side.
+
+
+def _info(**over):
+    return {
+        "title": "A Video", "channel": "A Channel", "channel_id": "chan1",
+        "view_count": 1000, "like_count": 10, "duration": 300,
+        "upload_date": "20260102", **over,
+    }
+
+
+async def report_by_id(client, youtube_id="vid1", position=100.0, duration=600):
+    r = await client.post(
+        f"/api/history/by-id/{youtube_id}",
+        json={"position_seconds": position, "duration_seconds": duration},
+    )
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+async def test_reporting_by_id_fills_the_snapshot_in(client, monkeypatch):
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info())
+
+    await report_by_id(client, "openedAAAAA")
+    row = (await client.get("/api/history/openedAAAAA")).json()
+    assert (row["title"], row["channel_name"]) == ("A Video", "A Channel")
+    assert row["position_seconds"] == 100.0
+
+
+async def test_a_video_we_already_hold_costs_no_extraction(client, db, monkeypatch):
+    """A subscribed channel's video is already a row — reporting progress on it
+    must not go to YouTube for what's sitting in the database."""
+    from datetime import datetime
+
+    from app.models import Channel, Video
+    from app.routers import imported as imported_mod
+
+    def unexpected(vid):
+        raise AssertionError("went to YouTube for a video we already have")
+
+    monkeypatch.setattr(imported_mod, "_extract", unexpected)
+
+    db.add(Channel(youtube_id="chan1", title="A Channel"))
+    db.add(Video(
+        youtube_id="knownAAAAAA", channel_id="chan1", title="Known",
+        published_at=datetime(2026, 1, 2), view_count=500, duration_seconds=120,
+    ))
+    await db.commit()
+
+    await report_by_id(client, "knownAAAAAA", duration=120)
+    row = (await client.get("/api/history/knownAAAAAA")).json()
+    assert (row["title"], row["channel_id"]) == ("Known", "chan1")
+
+
+async def test_the_snapshot_is_resolved_once_not_every_ten_seconds(client, monkeypatch):
+    """This fires for as long as the video plays. Once the row has a title
+    there's nothing left to look up, and looking anyway would put a lookup on a
+    path that runs every ten seconds forever."""
+    from app.routers import imported as imported_mod
+
+    calls = []
+
+    def counted(vid):
+        calls.append(vid)
+        return _info()
+
+    monkeypatch.setattr(imported_mod, "_extract", counted)
+
+    await report_by_id(client, "openedAAAAA", position=100.0)
+    await report_by_id(client, "openedAAAAA", position=110.0)
+    await report_by_id(client, "openedAAAAA", position=120.0)
+    assert calls == ["openedAAAAA"]
+    assert (await client.get("/api/history/openedAAAAA")).json()["position_seconds"] == 120.0
+
+
+async def test_a_glancing_open_resolves_nothing(client, monkeypatch):
+    """Below the threshold there's no row to fill, so the lookup mustn't run
+    either — an ad or a misclick would otherwise cost a YouTube fetch."""
+    from app.routers import imported as imported_mod
+
+    def unexpected(vid):
+        raise AssertionError("resolved a video that was never really watched")
+
+    monkeypatch.setattr(imported_mod, "_extract", unexpected)
+
+    out = await report_by_id(client, position=MIN_POSITION_SECONDS - 1)
+    assert out["status"] == "ignored"
+    assert (await client.get("/api/history")).json() == []
+
+
+async def test_the_players_duration_beats_the_resolved_one(client, monkeypatch):
+    """The player is watching the actual video; the feed's copy can be stale or
+    missing. `is_watched` turns on this number, so which one wins matters."""
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info(duration=300))
+
+    await report_by_id(client, "openedAAAAA", position=100.0, duration=600)
+    assert (await client.get("/api/history/openedAAAAA")).json()["duration_seconds"] == 600
+
+
+async def test_a_player_with_no_duration_falls_back_to_the_resolved_one(client, monkeypatch):
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info(duration=300))
+
+    await report_by_id(client, "openedAAAAA", position=100.0, duration=0)
+    assert (await client.get("/api/history/openedAAAAA")).json()["duration_seconds"] == 300
+
+
+async def test_watching_on_youtube_and_in_the_app_is_one_row(client, monkeypatch):
+    """Both sides write the same history, and the later position wins — which is
+    what makes resuming in one place follow the other."""
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info())
+
+    await report_by_id(client, "openedAAAAA", position=100.0)
+    await report(client, youtube_id="openedAAAAA", position=400.0, title="A Video")
+    assert len((await client.get("/api/history")).json()) == 1
+    assert (await client.get("/api/history/openedAAAAA")).json()["position_seconds"] == 400.0

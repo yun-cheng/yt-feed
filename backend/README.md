@@ -467,9 +467,10 @@ the YouTube embed — so downloaded videos preview and play fully offline.
 
 ## Watch history (`routers/history.py`)
 
-One row per video ever played, upserted by the watch page every ten seconds and
-once more on the way out. Three things read it: the watch page (resume), every
-video card (the red bar drawn before you hover), and the History page.
+One row per video ever played, upserted every ten seconds by whatever is playing
+it — the app's watch page, or the extension on youtube.com — and once more on the
+way out. Three things read it: the watch page (resume), every video card (the red
+bar drawn before you hover), and the History page.
 
 The `watch=` filter on `/api/tags/feed` and `/api/channels/{id}/videos` reads
 the same table: `unwatched`
@@ -495,6 +496,29 @@ Two guards keep the data honest:
 - A progress ping that carries no title doesn't overwrite the metadata snapshot.
   The watch page can report a position before its metadata resolves, and without
   this that ping would blank a row that already had one.
+
+### Reporting with nothing but an id
+
+`POST /api/history/by-id/{id}` takes a play head and a duration and works the
+rest out. It's what the extension posts while you watch on youtube.com, so that
+watching there and watching here write the same history — one row per video,
+latest position wins, `watched` still sticky. Resuming in one place therefore
+follows the other.
+
+The caller is on YouTube's page rather than in the app: it has a `<video>`
+element and an id. Rather than have it scrape a title and channel out of markup
+that changes, the metadata is resolved here by `feed.get_video` — the same
+lookup `POST /api/watch-later/by-id/{id}` uses, and for the same reason. (There
+is a second reason here: YouTube's watch page exposes no dependable channel id to
+a content script at all. See `extension/README.md`.)
+
+The lookup runs **only while the row still has no title**. This endpoint fires
+every ten seconds for as long as a video plays, and the answer can't change —
+resolving each time would put a YouTube fetch on a path that repeats forever. The
+5-second floor is checked first, so a misclick or an ad costs nothing either.
+
+The player's duration wins over the resolved one when both exist: the player is
+watching the actual video, and `is_watched` turns on that number.
 
 ---
 
@@ -982,6 +1006,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/watch-later/by-id/{id}` | save a video we're given nothing but the id of — the extension's button. Metadata is resolved here |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
+| POST | `/api/history/by-id/{id}` | report a position for a video we're given nothing but the id of — what the extension posts while you watch on youtube.com. Metadata is resolved here |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
@@ -1018,7 +1043,7 @@ no per-test decorator). What's covered:
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |
-| `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot |
+| `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, and reporting from an id alone: resolved once rather than every ten seconds, and one row shared with the app |
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete |

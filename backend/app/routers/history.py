@@ -138,6 +138,60 @@ async def report_progress(p: ProgressUpdate, db: AsyncSession = Depends(get_db))
     return {"status": "ok", "watched": h.watched}
 
 
+class ProgressById(BaseModel):
+    position_seconds: float = 0.0
+    duration_seconds: int = 0
+
+
+@router.post("/by-id/{video_id}")
+async def report_progress_by_id(
+    video_id: str, p: ProgressById, db: AsyncSession = Depends(get_db)
+):
+    """Progress from a caller that knows the play head and nothing else.
+
+    The extension reports what you watch on youtube.com itself (see
+    `extension/open-in-app.js`), and it is on YouTube's page rather than in the
+    app: it has a video id and a `<video>` element. The same argument as
+    `add_watch_later_by_id` applies — the metadata is resolved here instead of
+    scraped out of markup that changes, and YouTube gives a content script no
+    reliable channel id anyway. So a video from a channel we hold costs a row
+    read, and one we've never seen is fetched once and cached like any other.
+
+    Only looked up while the row still has no snapshot, because this is called
+    every ten seconds of playback and the answer can't change.
+    """
+    if p.position_seconds < MIN_POSITION_SECONDS:
+        return {"status": "ignored"}
+
+    snapshot: dict = {}
+    existing = await db.get(WatchHistory, video_id)
+    if existing is None or not existing.title:
+        from app.routers.feed import get_video
+
+        meta = await get_video(video_id, db)
+        snapshot = {
+            field: meta[field]
+            for field in ProgressUpdate.model_fields
+            if field not in ("youtube_id", "position_seconds")
+            and meta.get(field) is not None
+        }
+
+    # The player's own duration is authoritative and wins; the resolved one is
+    # there for the case it can't be read (a live stream reports none).
+    resolved_duration = int(snapshot.pop("duration_seconds", 0) or 0)
+    duration = p.duration_seconds or resolved_duration
+
+    return await report_progress(
+        ProgressUpdate(
+            youtube_id=video_id,
+            **snapshot,
+            position_seconds=p.position_seconds,
+            duration_seconds=duration,
+        ),
+        db,
+    )
+
+
 @router.delete("/{video_id}")
 async def remove_history(video_id: str, db: AsyncSession = Depends(get_db)):
     await db.execute(delete(WatchHistory).where(WatchHistory.youtube_id == video_id))
