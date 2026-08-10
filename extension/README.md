@@ -80,9 +80,9 @@ fetch from the service worker isn't subject to CORS at all; the extension's
 `host_permissions` (`localhost` and `127.0.0.1`, any port) are the check
 instead. That's the whole reason `background.js` exists: it answers five
 messages — `save-watch-later` / `saved-ids` for videos, `add-channel` /
-`channel-ids` for channels, `report-progress` for watch history — and owns the
-cached lists behind them. `storage` is the only permission it needs beyond those
-hosts.
+`channel-ids` for channels, `report-progress` / `history-sync` for watch history
+— and owns the cached lists behind them. `storage` is the only permission it
+needs beyond those hosts.
 
 Every one of those goes through `ask()` rather than `chrome.runtime.sendMessage`
 directly, because that call **rejects** when the messaging itself fails, and two
@@ -220,6 +220,33 @@ that would actually register is a browser playing the video for real — the
 extension opening background tabs to fake views — which is slow, breaks
 constantly, and poisons your recommendations with things you watched elsewhere.
 That's a worse outcome than the gap it fills, so this half doesn't exist.
+
+### Turning it off
+
+The switch is **"Record what you watch on youtube.com"** on the app's own
+Settings page, not in an options page here. What it governs is what gets written
+to the app's database, and the app is where you'd go looking for it — which is
+also why the extension still has no options page and no second place for
+settings to live.
+
+Off, the sampler **stops**. It doesn't keep watching and let the app refuse the
+answers: an off switch that still watches you and merely discards the result is
+not off. The extension reads the flag through the worker's cache, the same way
+it reads the Watch Later and channel lists, refreshed once a minute off the
+sampler's own tick (a tab playing nothing never asks) and whenever you switch
+back to a YouTube tab — which is when you'd have just flipped it.
+
+The app checks the same setting on the endpoint. That's the backstop, not the
+mechanism: it covers the up-to-a-minute window where this copy is stale, so a
+report already in flight when you flip the switch is refused rather than
+written. It's checked before the metadata lookup, or turning the feature off
+would still cost a YouTube fetch.
+
+An unreachable app answers *on*. A report sent while it's down fails harmlessly,
+whereas defaulting to *off* would quietly disable the feature for a minute every
+time the app restarted.
+
+### How often it reports
 
 The play head is sampled **every second** and sent **every tenth sample**, which
 is the same granularity the app's own watch page reports at. Two reasons it isn't

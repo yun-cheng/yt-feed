@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import app_settings
 from app.database import async_session
 from app.models import WatchHistory
 
@@ -159,7 +160,15 @@ async def report_progress_by_id(
 
     Only looked up while the row still has no snapshot, because this is called
     every ten seconds of playback and the answer can't change.
+
+    The `youtube_history_sync` setting is checked here as well as in the
+    extension, which is what makes turning it off take effect at once: the
+    extension holds the flag for up to a minute, so a report already on its way
+    when you flip the switch has to be refused rather than written.
     """
+    if not await app_settings.get("youtube_history_sync"):
+        return {"status": "off"}
+
     if p.position_seconds < MIN_POSITION_SECONDS:
         return {"status": "ignored"}
 

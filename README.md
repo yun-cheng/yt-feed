@@ -50,7 +50,8 @@ real video (muted, with custom captions and scrubbing).
 - **Watch history from YouTube** — the extension also reports what you watch *on*
   youtube.com, so a video you started there keeps its place here: same progress
   bar, same resume point, same History page. One direction only; YouTube offers
-  nothing to write history back into
+  nothing to write history back into. A switch on the Settings page turns it off,
+  and the extension stops watching rather than merely stops being listened to
 - **Local folders** — point the app at a directory on the backend's machine and
   its video files become their own feed: poster frames, durations, hover previews
   and resume, played in the same control bar downloads use. Each folder stays a

@@ -119,6 +119,38 @@ async function addChannel(url) {
 }
 
 /*
+ * Whether the app wants to hear about what you watch on youtube.com.
+ *
+ * The switch is on the app's own Settings page rather than in an options page
+ * here, because what it governs is what gets written to the app's database —
+ * and the app is where you'd go to look for it. This is the copy the sampler
+ * reads, cached like the two lists above so the decision costs nothing per tick.
+ *
+ * An unreachable app answers `true`: a report sent while it's down fails
+ * harmlessly, whereas defaulting to `false` would quietly disable the feature
+ * for a minute every time the app restarted.
+ */
+const SYNC_KEY = 'historySync'
+let syncMemo = null // { on: boolean, at: number }
+
+async function historySync(force = false) {
+  if (!force && syncMemo && Date.now() - syncMemo.at < FRESH_MS) return syncMemo.on
+  try {
+    const res = await fetch(`${APP_ORIGIN}/api/settings`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const on = (await res.json()).values?.youtube_history_sync !== false
+    syncMemo = { on, at: Date.now() }
+    await chrome.storage.local.set({ [SYNC_KEY]: on })
+    return on
+  } catch {
+    const stored = (await chrome.storage.local.get(SYNC_KEY))[SYNC_KEY]
+    const on = stored !== false
+    syncMemo = { on, at: Date.now() }
+    return on
+  }
+}
+
+/*
  * How far a video on youtube.com has got, handed to the app's own watch history.
  *
  * Nothing but the id and the play head goes over: the app resolves the title,
@@ -147,6 +179,7 @@ const HANDLERS = {
   'saved-ids': async (msg) => ({ ids: await savedIds(msg.force) }),
   'channel-ids': async (msg) => ({ ids: await channelIds(msg.force) }),
   'add-channel': (msg) => addChannel(msg.url),
+  'history-sync': async (msg) => ({ enabled: await historySync(msg.force) }),
   'report-progress': (msg) => reportProgress(msg.videoId, msg.position, msg.duration),
 }
 

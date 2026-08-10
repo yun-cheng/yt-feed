@@ -59,6 +59,22 @@ SPEC: tuple[Spec, ...] = (
         group="Library",
         status="/api/channels/archive/summary",
     ),
+    Spec(
+        key="youtube_history_sync",
+        type="bool",
+        # No .env twin: this governs the browser extension, which is optional and
+        # has nothing to do with how the server is deployed.
+        default=lambda: True,
+        label="Record what you watch on youtube.com",
+        description=(
+            "With the extension installed, a video you watch on YouTube itself "
+            "keeps its place here — the same progress bar, resume point and "
+            "History row as one watched in the app. Off, the extension stops "
+            "watching within a minute and nothing is recorded in the meantime. "
+            "Nothing is ever written the other way; YouTube offers no way in."
+        ),
+        group="Library",
+    ),
 )
 
 _BY_KEY = {s.key: s for s in SPEC}

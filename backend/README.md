@@ -520,6 +520,14 @@ resolving each time would put a YouTube fetch on a path that repeats forever. Th
 The player's duration wins over the resolved one when both exist: the player is
 watching the actual video, and `is_watched` turns on that number.
 
+This endpoint — and only this one — is gated on the `youtube_history_sync`
+setting. The extension reads the same flag and stops sampling when it's off, so
+the check here is the backstop for the up-to-a-minute window where the
+extension's copy is stale. It's checked **before** the metadata lookup, or
+turning the feature off would still cost a YouTube fetch. Reporting from the
+app's own watch page (`POST /api/history`) is untouched by it: the switch is
+about the extension, and a shared gate would turn off more than was asked.
+
 ---
 
 ## Bookmarks (`routers/bookmarks.py`)
@@ -904,6 +912,11 @@ renders its controls from it, so a new setting needs no endpoint, no form field,
 and no frontend change. Defaults are lazy callables, which is what lets an
 `.env` value act as a bootstrap default without becoming a second source of
 truth: it seeds the first read and is ignored once a value is stored.
+
+Two settings so far: `archive_fill_enabled` (the nightly history fill) and
+`youtube_history_sync` (whether the extension records what you watch on
+youtube.com). The second has no `.env` twin — it governs an optional browser
+extension, which is nothing to do with how the server is deployed.
 
 ---
 

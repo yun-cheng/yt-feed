@@ -286,6 +286,35 @@ async def test_a_player_with_no_duration_falls_back_to_the_resolved_one(client, 
     assert (await client.get("/api/history/openedAAAAA")).json()["duration_seconds"] == 300
 
 
+async def test_the_switch_refuses_a_report_and_resolves_nothing(client, monkeypatch):
+    """The extension holds the setting for up to a minute, so a report already
+    on its way when you turn it off has to be refused here. Checked before the
+    lookup, or turning it off would still cost a YouTube fetch."""
+    from app import app_settings
+    from app.routers import imported as imported_mod
+
+    def unexpected(vid):
+        raise AssertionError("resolved a video for a report we don't want")
+
+    monkeypatch.setattr(imported_mod, "_extract", unexpected)
+    await app_settings.put({"youtube_history_sync": False})
+
+    out = await report_by_id(client, "openedAAAAA", position=100.0)
+    assert out == {"status": "off"}
+    assert (await client.get("/api/history")).json() == []
+
+
+async def test_the_switch_leaves_the_app_s_own_reporting_alone(client):
+    """It's about the extension. Watching in the app is not what it governs, and
+    a shared endpoint would be an easy way to turn off more than was asked."""
+    from app import app_settings
+
+    await app_settings.put({"youtube_history_sync": False})
+
+    await report(client, position=100.0)
+    assert (await client.get("/api/history/vid1")).json()["position_seconds"] == 100.0
+
+
 async def test_watching_on_youtube_and_in_the_app_is_one_row(client, monkeypatch):
     """Both sides write the same history, and the later position wins — which is
     what makes resuming in one place follow the other."""

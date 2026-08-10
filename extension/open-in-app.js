@@ -606,6 +606,27 @@ const SAMPLES_PER_REPORT = 10
 let seen = null // { id, position, duration }
 let samples = 0
 
+/*
+ * Whether the app wants this at all — the "Record what you watch on youtube.com"
+ * switch on its Settings page, cached by the worker.
+ *
+ * Turned off, the sampler stops entirely rather than sending reports for the
+ * app to refuse: an off switch that still watches you and merely discards the
+ * answer is not off. The app checks the same setting anyway, which is what
+ * covers the up-to-a-minute window where this copy is stale.
+ *
+ * Starts true so the first sample isn't lost to a round trip; the first refresh
+ * lands well inside the ten seconds before anything is sent.
+ */
+let syncOn = true
+let syncAskedAt = 0
+
+async function refreshSync(force = false) {
+  syncAskedAt = Date.now()
+  const reply = await ask({ type: 'history-sync', force })
+  if (reply?.ok) syncOn = reply.enabled
+}
+
 /**
  * Whether the player is showing an ad rather than the video.
  *
@@ -628,6 +649,11 @@ function send(sample) {
 }
 
 function sample() {
+  // Re-read on the sampler's own tick rather than on a second timer: a tab
+  // that isn't playing anything never asks, and one that is asks once a minute.
+  if (Date.now() - syncAskedAt > ASK_EVERY_MS) refreshSync(true)
+  if (!syncOn) return
+
   // `watchId` is /watch only, so Shorts report nothing — they're a
   // scroll-through, and a page of them would bury everything else in history
   // within a minute.
@@ -827,7 +853,11 @@ addEventListener('yt-navigate-finish', () => {
 // Coming back from the app is when this is most likely to be stale — you may
 // have just added or removed the very channel you're looking at.
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && Date.now() - knownAskedAt > ASK_EVERY_MS) refreshKnown(true)
+  if (document.hidden) return
+  if (Date.now() - knownAskedAt > ASK_EVERY_MS) refreshKnown(true)
+  // The same argument applies to the history switch, and more sharply: coming
+  // back from the app is when you'd have just flipped it.
+  refreshSync(true)
 })
 
 document.documentElement.append(host)
