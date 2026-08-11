@@ -1079,7 +1079,10 @@ python -m scripts.migrate_personal_tables
 ```
 
 `init_db` refuses to serve a database that has had the first but not the second,
-naming the command that fixes it — otherwise every personal query would filter on
+naming the command that fixes it. The migration scripts pass
+`init_db(assert_migrated=False)`, because the database they exist to migrate is
+exactly the shape that check rejects — with it on, neither script could go first
+and an existing install would have no path forward at all — otherwise every personal query would filter on
 a column that isn't there, giving a hundred identical `OperationalError`s and no
 sign of the one thing that resolves them.
 
@@ -1408,10 +1411,10 @@ no per-test decorator). What's covered:
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
-| `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), and which row a Google account lands on — adoption, its guard, and the old token file |
+| `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), and which row a Google account lands on — adoption, its guard, the old token file, and the startup migration guard in both directions |
 | `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, and the whole sign-in end to end against a stubbed Google |
 | `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
-| `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data and refusing the last account |
+| `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
 
 `conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before

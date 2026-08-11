@@ -118,11 +118,20 @@ async def _assert_migrated(conn):
         )
 
 
-async def init_db():
+async def init_db(assert_migrated: bool = True):
+    """Bring the schema up to date.
+
+    `assert_migrated=False` is for the migration scripts themselves. They run ON
+    a database that predates accounts — the one shape the check exists to reject
+    — and the first thing `scripts/migrate_multiuser` needs is the new tables
+    `create_all` builds. Refusing it there would leave an existing install with
+    no path forward at all: neither script could go first.
+    """
     async with engine.begin() as conn:
         # WAL lets readers (feed queries) proceed while the background scan writes,
         # so a running/failing update never blocks the locally-cached feed.
         await conn.execute(text("PRAGMA journal_mode=WAL"))
-        await _assert_migrated(conn)
+        if assert_migrated:
+            await _assert_migrated(conn)
         await conn.run_sync(Base.metadata.create_all)
         await _apply_column_migrations(conn)

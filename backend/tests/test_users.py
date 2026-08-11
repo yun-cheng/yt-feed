@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import func, select
 
 from app import users
+from app.database import async_session
 from app.models import Channel, User, UserChannel
 
 # These tests are ABOUT accounts, so they need the users table empty — the
@@ -287,3 +288,57 @@ async def test_a_token_already_moved_is_not_overwritten(db, legacy_token):
 
     assert await users.seed_token_from_legacy_file(db, user) is False
     assert user.refresh_token == "refreshed-since"
+
+
+# ── The migration guard ──────────────────────────────────────────────
+
+
+@pytest.fixture
+async def legacy_watch_history():
+    """A `watch_history` shaped the way it was before accounts.
+
+    `fresh_db` rebuilds the schema for the next test, so the damage stops here.
+    """
+    from sqlalchemy import text
+
+    from app.database import Base, engine
+
+    async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS watch_history"))
+        await conn.execute(text(
+            "CREATE TABLE watch_history ("
+            "youtube_id VARCHAR NOT NULL PRIMARY KEY, "
+            "position_seconds FLOAT NOT NULL DEFAULT 0, "
+            "duration_seconds INTEGER NOT NULL DEFAULT 0)"
+        ))
+    yield
+    async with engine.begin() as conn:
+        await conn.execute(text("DROP TABLE IF EXISTS watch_history"))
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def test_startup_refuses_a_database_that_predates_per_user_data(legacy_watch_history):
+    """Serving it would filter every personal query on a column that isn't
+    there: a hundred identical OperationalErrors and no sign of the one thing
+    that fixes them."""
+    from app.database import MigrationRequired, init_db
+
+    with pytest.raises(MigrationRequired) as caught:
+        await init_db()
+    assert "migrate_personal_tables" in str(caught.value)
+    assert "watch_history" in str(caught.value)
+
+
+async def test_the_migration_itself_is_let_through(legacy_watch_history):
+    """The regression: `migrate_multiuser` opens with `init_db()`, and the
+    database it exists to migrate is exactly the shape the guard rejects. With
+    the check on, neither script could go first and an existing install had no
+    path forward at all."""
+    from app.database import init_db
+
+    await init_db(assert_migrated=False)  # must not raise
+
+    # And it did its job: the tables the migration needs are now there.
+    async with async_session() as session:
+        assert (await session.execute(select(func.count()).select_from(User))
+                ).scalar_one() == 0

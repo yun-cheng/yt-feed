@@ -35,7 +35,13 @@ from app.models import Channel, User, UserChannel
 
 async def main(dry_run: bool = False) -> int:
     # Creates the users / user_channels tables if they aren't there yet.
-    await init_db()
+    #
+    # Without the migration check: this script exists to be run on a database
+    # that predates accounts, which is exactly what that check refuses to open.
+    # The five widened tables are `scripts/migrate_personal_tables`'s job, and
+    # that one needs the `users` row this script seeds — so this has to be able
+    # to go first.
+    await init_db(assert_migrated=False)
 
     async with async_session() as session:
         channels = (await session.execute(
