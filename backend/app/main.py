@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
+from app import users
 from app.config import settings
 from app.database import async_session, init_db
 from app.models import User
@@ -91,13 +92,27 @@ def _seconds_until_due(last: datetime | None) -> float:
 async def _due_users() -> list[int]:
     """Ids of the people whose subscriptions are due a reconcile.
 
-    One list per person now, so one clock per person. Ids rather than rows
-    because each resync opens its own session and a row from this one would be
-    detached by the time it got there.
+    One clock per person, but for now only ONE person: the live subscription
+    list is fetched with the machine's single YouTube token, so a resync run for
+    anybody else would reconcile their channels against the token owner's
+    subscriptions — pruning everything they hold that the owner doesn't, and
+    handing them the owner's list instead. `resync_subscriptions` refuses that
+    outright; this doesn't queue it in the first place. The loop is already
+    per-user, so wiring per-user tokens through is all that's left.
+
+    Ids rather than rows because each resync opens its own session and a row
+    from this one would be detached by the time it got there.
     """
     async with async_session() as session:
-        rows = (await session.execute(select(User.id, User.last_resync_at))).all()
-    return [r.id for r in rows if _seconds_until_due(r.last_resync_at) <= 0]
+        owner = await users.owner_id(session)
+        if owner is None:
+            return []
+        row = (await session.execute(
+            select(User.id, User.last_resync_at).where(User.id == owner)
+        )).first()
+    if row is None or _seconds_until_due(row.last_resync_at) > 0:
+        return []
+    return [row.id]
 
 
 async def _resync_loop():

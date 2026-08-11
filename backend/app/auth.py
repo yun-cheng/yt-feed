@@ -20,7 +20,7 @@ alongside a rewrite of every query in the app.
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings

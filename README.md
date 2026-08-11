@@ -154,6 +154,12 @@ Google sign-in is for whoever runs the server: Google only accepts an `http`
 OAuth callback on `localhost`, so it can't be used from another machine on the
 LAN. That's what the links are for.
 
+The YouTube connection itself stays yours. It's a single token this app holds,
+and the scan, the archive fill and the subscription resync all run on it — so
+those are the owner's, and a family member signing in with Google can't repoint
+them. What everyone else gets is the shared library plus their own everything
+on top of it; they add channels by hand rather than importing subscriptions.
+
 Everything works without it; the app keeps YouTube's own controls and lays the
 bookmark / A–B marks over them instead. A video opened with the button need not
 be from a channel you follow — the watch page resolves and caches whatever it's

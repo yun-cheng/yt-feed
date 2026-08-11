@@ -57,27 +57,55 @@ async def ensure_local_user(db: AsyncSession) -> User:
     return user
 
 
+async def owner_id(db: AsyncSession) -> int | None:
+    """Whose machine this is: the lowest user id, or None on an empty database.
+
+    There are no roles here and deliberately so, but one question still needs an
+    answer — YouTube access is a SINGLE token in `config/`, shared by the scan,
+    the archive fill and every resync. Exactly one account can own it, and the
+    only non-arbitrary choice is the first row: the person the app already
+    belonged to before it could belong to anyone.
+    """
+    return (await db.execute(
+        select(User.id).order_by(User.id).limit(1)
+    )).scalar_one_or_none()
+
+
 async def adopt_or_create(
-    db: AsyncSession, google_sub: str, email: str, name: str = "", avatar_url: str = ""
+    db: AsyncSession,
+    google_sub: str,
+    email: str,
+    name: str = "",
+    avatar_url: str = "",
+    current: User | None = None,
 ) -> User:
     """Map a Google account onto a row, claiming the seeded one if it's free.
 
-    Three cases, in the order they're tried:
+    Four cases, in the order they're tried:
 
     1. We've seen this `sub` before — that's the row, refresh its profile.
-    2. Nobody has claimed the seeded local user yet, and it's the only row. It
-       becomes this account. This fires exactly once, for the person whose
-       history and subscriptions the app already holds.
-    3. Anyone else: a new row.
+    2. The browser is ALREADY signed in as somebody who has no `sub` yet. That's
+       "I am this account, and here is my Google identity for it" — the least
+       ambiguous claim there is, because the person said who they were before
+       the round trip to Google started.
+    3. Nobody has claimed the seeded local user yet, and it's the only row. It
+       becomes this account, for the person whose history the app already holds.
+    4. Anyone else: a new row.
 
-    Case 2 is guarded on being the ONLY user rather than merely being unclaimed,
+    Case 3 is guarded on being the ONLY user rather than merely being unclaimed,
     because with several people already signed in an unclaimed row would be
     ambiguous — and adopting the wrong one hands somebody else's watch history to
-    whoever signs in next.
+    whoever signs in next. Case 2 is what keeps that guard from stranding the
+    owner: adding one family member takes the count past 1, and without it the
+    owner's own first Google sign-in would mint a THIRD, empty account and leave
+    everything they had on user 1.
     """
     by_sub = (await db.execute(
         select(User).where(User.google_sub == google_sub)
     )).scalar_one_or_none()
+
+    if by_sub is None and current is not None and not current.google_sub:
+        by_sub = current
 
     if by_sub is None:
         total = (await db.execute(select(func.count()).select_from(User))).scalar_one()

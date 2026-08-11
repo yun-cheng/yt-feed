@@ -176,12 +176,13 @@ async def _fetch_userinfo(access_token: str) -> dict:
 async def callback(code: str, request: Request, state: str | None = None):
     """Exchange the code for a token, and sign the person in.
 
-    Both halves of what used to be one: the YouTube token still lands in
-    `config/youtube_oauth_token.json`, because the scanner and the stats fetcher
-    read it from there, and it now also lands on a user row along with a session
-    cookie. The file stays the source of truth for the background jobs until
-    per-user tokens are wired through — writing both is what lets sign-in ship
-    without touching the scan path.
+    Both halves of what used to be one: the YouTube token lands on the user row,
+    and — for the owner only — in `config/youtube_oauth_token.json`, because the
+    scanner and the stats fetcher read it from there. That file is machine-wide,
+    so it is written only when the person signing in is the account that owns it
+    (`users.owner_id`). Otherwise a family member signing in with Google would
+    silently repoint the background scan, the archive fill and everyone's resync
+    at their YouTube account and quota.
     """
     redirect_uri = _redirect_uri(request)
     flow = _make_flow(redirect_uri)
@@ -193,7 +194,6 @@ async def callback(code: str, request: Request, state: str | None = None):
         return _error_page(str(e)[:300])
 
     creds = flow.credentials
-    _save_token(creds)
 
     try:
         info = await _fetch_userinfo(creds.token)
@@ -212,17 +212,29 @@ async def callback(code: str, request: Request, state: str | None = None):
                 "Add it to ALLOWED_EMAILS in the backend's .env and try again."
             )
 
+        # Who the browser already said it was. A session naming a row that has
+        # no Google identity yet is that row claiming this one — see
+        # `adopt_or_create`, which without it would strand the owner's data the
+        # moment a second account existed.
+        session_id = (request.scope.get("session") or {}).get(auth.SESSION_USER_KEY)
+        current = await db.get(User, session_id) if session_id else None
+
+        owner = await users.owner_id(db)
         user = await users.adopt_or_create(
             db,
             google_sub=google_sub,
             email=email,
             name=info.get("name", ""),
             avatar_url=info.get("picture", ""),
+            current=current,
         )
         if creds.refresh_token:
             user.refresh_token = creds.refresh_token
             user.token_scopes = " ".join(creds.scopes or [])
         await db.commit()
+        # The shared file is the owner's, or nobody's yet — see the docstring.
+        if owner is None or user.id == owner:
+            _save_token(creds)
         auth.sign_in(request, user)
 
     return RedirectResponse(request.session.pop(_RETURN_KEY, settings.app_origin))

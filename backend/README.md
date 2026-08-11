@@ -1031,6 +1031,36 @@ page context, so the cookie would need `SameSite=None` and therefore HTTPS.
 Signing out of the browser leaves the API key working — separate credentials for
 separate callers.
 
+### One YouTube connection, and whose it is
+
+There are no roles here, deliberately — but one question still needs an answer.
+YouTube access is a **single token** in `config/youtube_oauth_token.json`, read
+by the scan, the archive fill, the stats fetcher and every resync. Exactly one
+account can own it, and the only non-arbitrary choice is the first row
+(`users.owner_id`): the person the app belonged to before it could belong to
+anyone.
+
+Three things follow, and each of them was a bug first:
+
+- **Signing in writes that file only for the owner.** Otherwise the last person
+  to sign in silently repoints the background scan, the archive fill and
+  everyone's resync at their YouTube account — and their quota.
+- **Only the owner can resync.** The live subscription list comes from that one
+  token, so reconciling anyone else's channels against it would prune everything
+  they hold that the owner doesn't and hand them the owner's list in exchange.
+  `POST /api/subscriptions/resync` refuses with a 400, and the scheduler doesn't
+  queue it in the first place — a new account has no `last_resync_at`, so it
+  reads as due immediately and an unattended run would have reached it within
+  the hour.
+- **Adoption listens to the session.** A browser already signed in as a row with
+  no Google identity is that row saying "this is me". Without it, the
+  only-one-account guard stranded the owner: adding a single family member takes
+  the count past one, so the owner's own first Google sign-in would mint a
+  third, empty account and leave their library on user 1.
+
+The resync loop is already per-person; per-user resync is waiting on per-user
+tokens, not on the loop. Both refusal sites say so.
+
 ### Login links (`routers/people.py`)
 
 How everyone else gets in. You add a person under **Settings → People** and send
@@ -1352,7 +1382,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | DELETE | `/api/channels/{id}` | stop following a hand-added channel; its videos go too if nobody else here follows it. 400 for a subscribed one — unsubscribe on YouTube instead |
 | GET | `/api/search?q=` | typo-tolerant search (channels + videos), narrowed to the channels you follow |
 | GET | `/api/subscriptions` | the channel ids you follow, from `user_channels` |
-| POST | `/api/subscriptions/resync` | reconcile your list against live YouTube subscriptions (`?dry_run=true` previews the prune) |
+| POST | `/api/subscriptions/resync` | reconcile your list against live YouTube subscriptions (`?dry_run=true` previews the prune). Owner only — see "One YouTube connection" |
 | POST | `/api/channels/{id}/labels/build` | build this channel's video-topic vocabulary (background; `?force=1` rebuilds) |
 | GET | `/api/channels/{id}/labels/status` | `{building, built, progress}` for the topic build |
 | POST | `/api/channels/{id}/labels/assign` | label the given (rendered) videos against the vocab |
@@ -1411,10 +1441,10 @@ no per-test decorator). What's covered:
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
-| `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), and which row a Google account lands on — adoption, its guard, the old token file, and the startup migration guard in both directions |
+| `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |
 | `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, and the whole sign-in end to end against a stubbed Google |
 | `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
-| `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account |
+| `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account, and the three guards around the single YouTube token |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
 
 `conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before

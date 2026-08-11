@@ -108,6 +108,23 @@ async def test_backfill_picks_up_a_channel_that_arrived_later(db):
     assert await users.backfill_user_channels(db, user) == 1
 
 
+# ── Who owns the machine ─────────────────────────────────────────────
+
+
+async def test_the_owner_is_the_first_row(db):
+    """There are no roles here, but one question needs an answer anyway: the
+    YouTube token in config/ is a SINGLE credential shared by the scan, the
+    archive fill and every resync, and exactly one account can own it."""
+    me = await users.ensure_local_user(db)
+    db.add(User(name="Kid", api_key=users.new_api_key()))
+    await db.commit()
+    assert await users.owner_id(db) == me.id
+
+
+async def test_an_empty_machine_has_no_owner(db):
+    assert await users.owner_id(db) is None
+
+
 # ── Identity: which row a Google account lands on ────────────────────
 
 
@@ -123,6 +140,41 @@ async def test_the_first_sign_in_adopts_the_seeded_user(db):
     assert user.id == seeded.id
     assert user.email == "me@example.test"
     assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 1
+
+
+async def test_the_owner_claims_their_own_row_even_beside_a_family_account(db):
+    """The regression that stranded a real library. Adoption is guarded on being
+    the ONLY account, and adding one family member takes the count past 1 — so
+    without the session saying "I am this row", the owner's first Google sign-in
+    minted a THIRD, empty account and left their history on user 1."""
+    me = await users.ensure_local_user(db)
+    db.add(User(name="Kid", api_key=users.new_api_key()))
+    await db.commit()
+
+    claimed = await users.adopt_or_create(
+        db, "sub-123", "me@example.test", current=me
+    )
+    await db.commit()
+
+    assert claimed.id == me.id
+    assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 2
+
+
+async def test_a_session_cannot_claim_a_row_that_already_has_an_account(db):
+    """`current` says "this row is mine", not "give me this row" — a row with a
+    Google identity already belongs to somebody."""
+    await users.ensure_local_user(db)
+    taken = User(google_sub="sub-999", email="them@example.test",
+                 api_key=users.new_api_key())
+    db.add(taken)
+    await db.commit()
+
+    arriving = await users.adopt_or_create(
+        db, "sub-123", "me@example.test", current=taken
+    )
+    await db.commit()
+    assert arriving.id != taken.id
+    assert taken.google_sub == "sub-999"
 
 
 async def test_the_adopted_user_keeps_their_api_key(db):

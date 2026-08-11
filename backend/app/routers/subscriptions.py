@@ -246,6 +246,19 @@ async def resync_subscriptions(
 
     from app.auth_google import fetch_subscriptions as _fetch_live_subs
 
+    # The live list comes from the machine's single YouTube token, which belongs
+    # to one account (`users.owner_id`). Reconciling anyone else's channels
+    # against it would compare their list to somebody else's subscriptions —
+    # pruning everything they hold that the token's owner doesn't, and handing
+    # them the owner's whole list in exchange. Refuse rather than do that; per
+    # -user resync waits on per-user tokens.
+    owner = await users.owner_id(db)
+    if owner is not None and user.id != owner:
+        raise HTTPException(
+            400,
+            "Only the account that authorized YouTube can resync — this app "
+            "holds a single YouTube token. Add or remove channels by hand.",
+        )
 
     try:
         live = (await _fetch_live_subs())["channels"]

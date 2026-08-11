@@ -5,10 +5,13 @@ http callback on localhost and nowhere else), so a login link is how the rest of
 a family gets an account at all. These tests are about that path.
 """
 
+import json
+
 import pytest
 from sqlalchemy import func, select
 
 from app import users
+from app.config import settings
 from app.models import User, WatchHistory
 
 pytestmark = pytest.mark.no_seeded_user
@@ -192,3 +195,90 @@ async def test_someone_elses_playlist_items_go_too(client, owner, db):
     assert (await db.execute(
         select(func.count()).select_from(PlaylistItem)
     )).scalar_one() == 0
+
+
+# ── The single YouTube token, and who owns it ────────────────────────
+#
+# There is one `config/youtube_oauth_token.json`, read by the scan, the archive
+# fill and every resync. Everything below is about that being one person's.
+
+
+async def test_resync_refuses_anyone_but_the_owner(client, owner, db):
+    """It would compare their channels to somebody ELSE's subscriptions —
+    pruning everything they hold that the owner doesn't, and handing them the
+    owner's whole list in exchange."""
+    made = (await client.post("/api/users", json={"name": "Sister"})).json()
+    await client.get(f"/api/users/join/{made['login_token']}")
+
+    r = await client.post("/api/subscriptions/resync")
+    assert r.status_code == 400
+    assert "single YouTube token" in r.text
+
+
+async def test_the_scheduler_only_ever_queues_the_owner(client, owner, db):
+    """A new account has no `last_resync_at`, so it reads as due immediately —
+    which is how an unattended run would have reached it within the hour."""
+    from app.main import _due_users
+
+    await client.post("/api/users", json={"name": "Sister"})
+    assert await _due_users() == [owner.id]
+
+
+async def test_the_owner_is_still_allowed_to_resync(client, owner, db, monkeypatch):
+    from app.routers import subscriptions as subs_mod
+
+    async def _live():
+        return {"channels": [{"youtube_id": "UCsubbedsubbedsubbedsub"}]}
+
+    async def _sync_all(user, db):
+        return {}
+
+    monkeypatch.setattr("app.auth_google.fetch_subscriptions", _live)
+    monkeypatch.setattr(subs_mod, "_write_subscriptions", lambda ids: None)
+    monkeypatch.setattr(subs_mod, "sync_all_from_subscriptions", _sync_all)
+
+    await client.post("/api/users", json={"name": "Sister"})
+    r = await client.post("/api/subscriptions/resync")
+    assert r.status_code == 200, r.text
+
+
+async def test_a_family_member_signing_in_leaves_the_shared_token_alone(
+    client, owner, db, monkeypatch, tmp_root
+):
+    """Otherwise the last person to sign in owns the token the scan, the archive
+    fill and everyone's resync run on — along with their API quota."""
+    from app import auth_google
+
+    token_path = tmp_root / "shared_token.json"
+    token_path.write_text('{"refresh_token": "the-owners"}')
+    monkeypatch.setattr(auth_google, "TOKEN_PATH", str(token_path))
+    monkeypatch.setattr(settings, "allowed_emails", "")
+
+    class _Creds:
+        token = "an-access-token"
+        refresh_token = "the-family-members"
+        token_uri = "https://oauth2.googleapis.com/token"
+        client_id = client_secret = "x"
+        scopes = ["openid"]
+
+    class _Flow:
+        redirect_uri = code_verifier = None
+        credentials = _Creds()
+
+        def fetch_token(self, code=None):
+            return {}
+
+    async def _userinfo(access_token):
+        return {"sub": "sub-kid", "email": "kid@example.test", "name": "Kid"}
+
+    monkeypatch.setattr(auth_google, "_make_flow", lambda redirect_uri=None: _Flow())
+    monkeypatch.setattr(auth_google, "_fetch_userinfo", _userinfo)
+
+    made = (await client.post("/api/users", json={"name": "Sister"})).json()
+    await client.get(f"/api/users/join/{made['login_token']}")
+    await client.get("/api/auth/callback", params={"code": "x"})
+
+    assert json.loads(token_path.read_text())["refresh_token"] == "the-owners"
+    # …and they're signed in as themselves, on their own row.
+    me = (await client.get("/api/auth/me")).json()
+    assert me["id"] == made["id"]
