@@ -7,6 +7,8 @@ type SettingSpec = {
   label: string
   description: string
   group: string
+  /** "user" (yours) or "app" (the machine's — see the badge below). */
+  scope?: string
   /** Optional endpoint returning `{text}` — a live line under the description. */
   status?: string
 }
@@ -126,7 +128,18 @@ export default function SettingsPage() {
             {data.settings.filter((s) => s.group === group).map((spec) => (
               <div key={spec.key} className="flex items-start gap-4">
                 <div className="min-w-0 flex-1">
-                  <label className="text-sm font-medium text-white">{spec.label}</label>
+                  <label className="text-sm font-medium text-white">
+                    {spec.label}
+                    {spec.scope === 'app' && (
+                      // Some switches govern a shared resource — the archive
+                      // fill spends one daily API quota for the whole machine —
+                      // so changing them changes them for everybody. Worth
+                      // saying before the click, not after.
+                      <span className="ml-2 rounded-full border border-[#3f3f3f] px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wide text-[#888]">
+                        everyone
+                      </span>
+                    )}
+                  </label>
                   <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
                     {spec.description}
                   </p>
@@ -146,6 +159,7 @@ export default function SettingsPage() {
           </div>
         </section>
       ))}
+
     </div>
   )
 }

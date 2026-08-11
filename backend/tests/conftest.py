@@ -52,6 +52,30 @@ async def fresh_db():
     yield
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def seeded_user(request):
+    """One account, as every real machine running this has.
+
+    The app resolves the caller through `auth.user_or_sole`, which answers "the
+    sole account" for an anonymous browser — so without a row here every endpoint
+    that owns per-user data would 401 and the suite would be testing the sign-in
+    wall rather than the feature.
+
+    Tests that are ABOUT accounts need the table empty to say anything, and mark
+    themselves `no_seeded_user`.
+    """
+    if "no_seeded_user" in request.keywords:
+        return None
+
+    from app.database import async_session
+    from app.users import ensure_local_user
+
+    async with async_session() as session:
+        user = await ensure_local_user(session)
+        await session.commit()
+        return user
+
+
 @pytest_asyncio.fixture
 async def client():
     """The real app over an in-process transport.

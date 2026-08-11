@@ -53,7 +53,7 @@ app/
   models.py        SQLAlchemy tables (see "Data model")
 
   cron_update.py   run_update(): the actual channel-scan job (Phases 1–5)
-  app_settings.py  user-facing preferences (DB-backed; .env is deployment)
+  app_settings.py  preferences (DB-backed; per-user or per-deployment by scope)
   archive.py       deep per-channel history, under a daily quota budget
   channel_lookup.py  a pasted link/@handle/id → a channel (see "Adding a channel by hand")
   quota.py         Data API units spent per quota-day (midnight US/Pacific)
@@ -64,7 +64,9 @@ app/
   llm.py           OpenRouter chat client, shared by AI features
   video_labels.py  LLM per-video topic labeling (see "Video topics")
   search_index.py  Meilisearch push + query (best-effort)
-  auth_google.py   OAuth login flow (only needed to import subscriptions)
+  auth_google.py   Google sign-in: the OAuth flow, /auth/me, /auth/logout
+  auth.py          reading the caller back: session cookie or extension API key
+  users.py         accounts: seeding, the channel backfill, adoption (see "Accounts")
 
   routers/         one file per resource, all mounted under /api
     feed.py        the main feed, storyboards, captions + AI translation
@@ -231,17 +233,23 @@ your YouTube subscription list. That's a separate, much slower loop:
 
 ### The daily subscription resync
 
-`_resync_loop()` runs `POST /api/subscriptions/resync`'s logic **once a day**
-(`RESYNC_INTERVAL_SECONDS`), so subscribes and unsubscribes land on their own.
-It's daily rather than per-scan because it costs an OAuth round-trip and its
-prune is destructive — an unsubscribed channel's videos go with it.
+`_resync_loop()` runs `POST /api/subscriptions/resync`'s logic **once a day per
+person** (`RESYNC_INTERVAL_SECONDS`), so subscribes and unsubscribes land on
+their own. It's daily rather than per-scan because it costs an OAuth round-trip
+and its prune is destructive — the last holder unsubscribing takes the channel's
+videos with it.
+
+One list per person means one clock per person: `_due_users()` reads every
+`User.last_resync_at` and reconciles whoever is overdue. A resync only ever sees
+what **that** person holds, so it can't reach another account's channels.
 
 Four things make it safe to run unattended:
 
-- **The clock is `subscriptions.yaml`'s mtime**, which a successful resync
-  rewrites — not a sleep timer. A sleep timer would either re-run the prune
-  minutes after every restart, or push the next resync a full day out on a
-  machine that reboots daily.
+- **The clock is `User.last_resync_at`**, stamped by a successful resync — not a
+  sleep timer. A sleep timer would either re-run the prune minutes after every
+  restart, or push the next resync a full day out on a machine that reboots
+  daily. (It was `subscriptions.yaml`'s mtime, back when one file could stand for
+  one person's list.)
 - **It never raises.** A dead token or an API hiccup logs and backs off
   (`RESYNC_RETRY_SECONDS`, default 1h) instead of killing the task; if there's
   no OAuth token at all it skips without even calling YouTube.
@@ -250,8 +258,11 @@ Four things make it safe to run unattended:
   start while a scan is already running.
 - **It dry-runs first and refuses a big prune.** More than `RESYNC_MAX_PRUNE`
   (default 5) channels going at once is likelier a truncated response from
-  YouTube than a real unsubscribe spree, and each one takes a year of videos
+  YouTube than a real unsubscribe spree, and each one can take a year of videos
   with it. It aborts loudly and leaves the call to the manual endpoint.
+- **Unfollowing is not deleting.** The membership always goes; the channel and
+  its videos only follow it when nobody else here holds them
+  (`users.orphaned_channel_ids`).
 
 What it deliberately does **not** touch: `last_video_fetched`, `llm_labels`,
 `video_label_vocab`, or the tags of channels you're still subscribed to.
@@ -837,21 +848,284 @@ cut off) rather than returning `None` for a caller to trip over.
 
 ---
 
+## Accounts (`users.py`)
+
+The app was single-user by construction — one OAuth token in a file, one
+`subscriptions.yaml`, and every table keyed by a YouTube id with no room for a
+second opinion. `users` and `user_channels` are the seam being opened, for a
+handful of trusted people sharing one box.
+
+**Nothing reads them yet.** They are populated and correct; the sign-in flow and
+the per-user queries come next, and the app behaves exactly as it did until they
+land.
+
+### What is shared and what is yours
+
+The split is between a **fact about YouTube** and an **opinion of yours**.
+`channels`, `videos`, `imported_videos`, the caption caches and the quota ledger
+are catalog and stay global; `watch_history`, `watch_later`, `bookmarks`,
+`hidden_channels`, playlists, channel tags and app settings are personal and grow
+a `user_id` as they move across. `downloads`, `local_folders` and `local_videos`
+are this machine's disk and stay shared on purpose — the group is trusted, the
+files are in one place, and per-user isolation there would be ceremony with no
+reader.
+
+Sharing the catalog is the whole reason this beats running the app twice: three
+people subscribed to the same channel cost one row, one fetch and one tagging
+bill, so **API quota is spent per distinct channel rather than per person**. The
+scan loop needs no change at all, because it already walks the catalog rather
+than a person.
+
+### `user_channels` replaces two things
+
+`subscriptions.yaml`, which was one person's list living in a global file; and
+`Channel.source`, which recorded "I added this one by hand" — always a fact about
+a person rather than about the channel, and unanswerable once two people
+disagree. Both move onto the membership row.
+
+`config/subscriptions.yaml` is still written, as a mirror — it's the file you'd
+look at to see what the app thinks you follow, and a hand-editable copy has
+rescued more than one bad resync. Nothing reads it back except the migration.
+`Channel.source` is likewise still written, because the channel pages read it to
+draw their badge; `user_channels.source` is the one the resync prune trusts, and
+the one `DELETE /api/channels/{id}` checks — the same channel can be a
+subscription to one person and a hand-add to another.
+
+### Every personal row has an owner
+
+`watch_history`, `watch_later`, `bookmarks`, `hidden_channels`, playlists and
+channel tags are keyed by `user_id` — so two people watching the same video hold
+two rows, resume at two positions, and finish it independently. Tags are the
+case worth stating out loud: a tag is an *opinion* about a channel, so two
+people can file the same one differently and each sidebar is built from its
+owner's answer.
+
+`playlist_items` has no owner of its own. An item belongs to whoever owns the
+playlist it's in, and a second copy of that could disagree with it — so every
+route naming a playlist id passes through `_owned()` first, and item access is
+decided once, in one place. Somebody else's playlist is **404, not 403**: a
+refusal would confirm the id exists, which is more than the asker should learn.
+The same applies to a bookmark id.
+
+What the LLM decides about a channel stays shared: `Channel.llm_labels` is a
+reading of the channel's own description and topics, the same for everyone, and
+re-deriving it per person would spend tokens to reach the same answer. What that
+verdict *turns into* — the applied tags, the rejections that suppress them, the
+hand-added ones — is per person.
+
+### The feed is your library, not the machine's
+
+`videos` and `channels` are shared catalog — one row however many people follow
+the channel — so every read of them has to ask who wants to know. `user_channels`
+is that join, and it bounds `GET /api/feed`, `/api/tags/feed`, `/api/channels`
+and `/api/feed/statistics`. Following nothing returns an empty feed, not
+everything: "no filter" and "no channels" must not collapse into the same answer.
+
+**Search is the same catalog reached a different way.** The Meilisearch indexes
+stay shared (a copy per person would be the same documents N times); instead
+`channel_id` and `youtube_id` are `filterableAttributes`, and every query carries
+`IN [...]` for the asker's channels. An empty set short-circuits to no results
+rather than an unfiltered query — that slip would hand somebody the whole
+catalog.
+
+A **channel page** is still reachable by id whether or not you follow it. That's
+deliberate: it's the preview you land on before deciding to add it, and adding it
+would show you the same videos anyway.
+
+### Imported videos: a cache and a list
+
+`imported_videos` was doing two jobs. It's the metadata snapshot for a video the
+feed doesn't hold — a **cache**, shared, so the same video costs one yt-dlp fetch
+however many people paste its link — and it was also the list of what you
+imported, which is **personal**. The list moved to `user_imports`.
+
+A membership table rather than a `user_id` on the snapshot, for the reason the
+snapshot's own primary key makes plain: a video is one row, and two people
+importing it would otherwise fight over who owns it, the second quietly taking it
+off the first's page. So pasting a link somebody already pasted takes the
+membership and skips the fetch, and removing an import drops your claim while the
+snapshot stays for the watch page and history to read.
+
+### Settings split in two
+
+`app_settings` holds what belongs to the **deployment**; `user_settings` holds
+what belongs to a **person**. Each `Spec` declares its `scope`, and `described()`
+reports it so the page can mark the switches that change things for everyone.
+
+`archive_fill_enabled` is the case that forced the split: one unattended sweep
+spends a daily API quota billed to a single Cloud project, so a per-person copy
+would let whoever flipped it last commit everybody's allowance. It stays
+`scope="app"`. `youtube_history_sync` is `scope="user"` — one person turning off
+the extension's recording must not turn off another's.
+
+### Unfollowing is not deleting
+
+The hinge of the whole thing. Unsubscribing used to delete the channel, its
+videos, its tags and its search documents outright: correct with one person in
+the app, and one person deleting somebody else's feed once there are two.
+
+So `_prune_channels` does two steps that used to be one. The membership always
+goes. The catalog follows only when `users.orphaned_channel_ids` says nobody
+holds it any more — which keeps the reclaim (a channel nobody follows is dead
+weight) without the collateral. Either way your own saved data survives:
+downloads, watch-later and playlist items are snapshots keyed by video id.
+
+Adding a channel someone else already follows costs no fetch at all — the catalog
+row exists, so only the membership is taken.
+
+### Adoption: the first sign-in claims the seeded user
+
+There is exactly one person before any of this, and they have no Google `sub`,
+because nothing ever asked for one — the old token file carries YouTube access
+without saying whose account it is. So `adopt_or_create` claims that unclaimed
+row on the first Google sign-in rather than creating a second one beside it,
+which is the difference between logging in and finding your history where you
+left it, or finding an empty app and a duplicate.
+
+Adoption is guarded on being the **only** user, not merely on the row being
+unclaimed: among several people an unclaimed row is ambiguous, and guessing hands
+somebody else's watch history to whoever signs in next.
+
+### Signing in (`auth.py`, `auth_google.py`)
+
+`auth_google.py` already did PKCE, consent and the token exchange; it now also
+asks **who** that was. Three scopes were added — `openid`, `userinfo.email`,
+`userinfo.profile` — and the callback reads Google's userinfo endpoint for the
+`sub` claim every personal row will be keyed by. Preferred over decoding the
+id_token ourselves: same authority, one less piece of signature-and-clock-skew
+handling to get wrong.
+
+`ALLOWED_EMAILS` is empty by default, which means **anyone who can reach the app
+may have an account**. On a LAN-only deployment the network is the perimeter, and
+a list of emails would not be protecting anything the bind address doesn't
+already cover — it would just be a list to maintain. Set it only if the app is
+reachable more widely than you'd like; someone who already has an account keeps
+it even if they later fall off the list, so trimming it can't lock a person out
+mid-session.
+
+Two credentials read the caller back, because there are two kinds:
+
+| | carries | who |
+|---|---|---|
+| `ytfeed_session` cookie | a user id, signed with `SECRET_KEY`, `SameSite=Lax` | the app in a browser |
+| `Authorization: Bearer <api_key>` | `users.api_key` | the browser extension |
+
+`GET /api/auth/me` answers `{"signed_in": false}` rather than 401, because the
+app asks before it knows and "nobody" is an ordinary answer.
+
+`Lax` rather than `Strict` because a strict cookie is withheld on the redirect
+back from Google's consent screen, which reads as the login silently failing.
+The extension can't use the cookie at all: its worker posts from a `youtube.com`
+page context, so the cookie would need `SameSite=None` and therefore HTTPS.
+Signing out of the browser leaves the API key working — separate credentials for
+separate callers.
+
+### Running the migrations
+
+Two, in order. The first is additive and the second rewrites tables, which is
+why they're separate — and why the second is a script you run deliberately
+rather than something startup does behind you.
+
+```bash
+cp data/youtube_feed.db data/youtube_feed.db.bak
+python -m scripts.migrate_multiuser --dry-run
+python -m scripts.migrate_multiuser
+python -m scripts.migrate_personal_tables --dry-run
+python -m scripts.migrate_personal_tables
+```
+
+`init_db` refuses to serve a database that has had the first but not the second,
+naming the command that fixes it — otherwise every personal query would filter on
+a column that isn't there, giving a hundred identical `OperationalError`s and no
+sign of the one thing that resolves them.
+
+#### 1. `migrate_multiuser` — additive
+
+```bash
+python -m scripts.migrate_multiuser --dry-run   # what it would do
+python -m scripts.migrate_multiuser             # seed, backfill, move the token
+```
+
+**Run it before starting the app** on a database that predates accounts:
+`user_channels` is now what the app believes you follow, and an empty one means
+an empty feed.
+
+Additive — no existing table is altered and no row is deleted. It seeds you as
+user 1, gives you every channel the app already holds (carrying `source` across,
+so a hand-added channel stays exempt from the resync prune), moves the refresh
+token out of `config/youtube_oauth_token.json` onto your row, and carries the
+resync schedule over from `subscriptions.yaml`'s mtime — without that last step
+the migrated user reads as "never reconciled" and the destructive prune would run
+minutes after the next restart.
+
+Safe to run again: each step is idempotent, so a re-run after subscribing to
+something new picks up just that, and the resync clock is only ever set when it's
+unset.
+
+#### 2. `migrate_personal_tables` — destructive
+
+Five tables identify a row by a YouTube id alone, which stopped being enough the
+moment two people could watch the same video. SQLite has no
+`ALTER TABLE ... ALTER PRIMARY KEY`, so each is rebuilt the only way there is:
+create the new shape, copy every row, drop the old, rename — all inside one
+transaction, so a failure rolls back rather than leaving half a schema.
+
+| table | key before | key after |
+|---|---|---|
+| `watch_history` | `youtube_id` | `(user_id, youtube_id)` |
+| `watch_later` | `youtube_id` | `(user_id, youtube_id)` |
+| `hidden_channels` | `channel_id` | `(user_id, channel_id)` |
+| `channel_tags` | `(channel_id, tag_name)` | `(user_id, channel_id, tag_name)` |
+| `channel_tag_rejections` | `(channel_id, tag_name)` | `(user_id, channel_id, tag_name)` |
+
+`bookmarks` and `playlists` have autoincrement ids, so they only need a column
+and are handled by the additive list in `database.py`. Every existing row is
+assigned to **user 1**.
+
+Two things ride along with it. Any `scope="user"` preference is moved out of
+`app_settings` into `user_settings` — left where it was it would read as unset,
+so a switch someone deliberately turned OFF would silently come back on. And
+every `source="import"` row in `imported_videos` gets a `user_imports` claim, so
+your Imported page still has its contents; the `source="youtube"` rows are cache
+and stay unclaimed.
+
+The target shapes are spelled out in the script rather than derived from the
+models: a rebuild that read its target from the same place the app does would
+happily "migrate" a database into whatever shape today's code wants, which is
+how a bad deploy eats data.
+
+Safe to run twice — a table that already has `user_id` is skipped.
+
+The first migration prints your **API key**. That is what the browser extension
+will authenticate with — a session cookie can't do that job, because the extension's
+worker posts from a `youtube.com` page context and a cookie would need
+`SameSite=None` and therefore HTTPS.
+
+> Once the migration has run, `data/youtube_feed.db` holds a Google refresh
+> token. It didn't before. If that file lives in a synced folder, that's now a
+> credential leaving the machine.
+
+---
+
 ## Data model (`models.py`)
 
 | Table | Purpose |
 |---|---|
+| `users` | one person: their Google `sub`, profile, API key, OAuth refresh token, and when their subscriptions were last reconciled. `google_sub` is empty on the seeded local user until the first sign-in adopts it |
+| `user_channels` | who follows which channel, with the `source` (`subscription` / `manual`) that used to sit on `channels` |
+| `user_settings` | one person's preferences; `app_settings` keeps the ones that govern shared resources |
+| `user_imports` | who pasted which video in — the Imported page's list, with `imported_videos` as the shared metadata behind it |
 | `channels` | the channels the feed is built from (id, title, `source`, `last_video_fetched`, `topics`, `llm_labels`, `video_label_vocab` + `video_label_version`, `label_stop_words`). `source` is `subscription` or `manual` — see "Adding a channel by hand", which is the only thing that reads it |
 | `videos` | scraped videos (stats, `published_at`, `is_short`, `title_labels`, `last_updated`) |
-| `channel_tags` | channel↔tag assignments (`auto_assigned`: 1 = LLM, 0 = manual) |
-| `channel_tag_rejections` | auto tags the user removed, so re-tagging won't re-add them |
-| `watch_later` | saved-for-later videos (server-side, syncs across devices) |
-| `playlists` / `playlist_items` | user playlists |
+| `channel_tags` | channel↔tag assignments per user (`auto_assigned`: 1 = LLM, 0 = manual) |
+| `channel_tag_rejections` | auto tags a user removed, so their re-tagging won't re-add them |
+| `watch_later` | saved-for-later videos, per user (server-side, syncs across devices) |
+| `playlists` / `playlist_items` | playlists, owned by a user; items inherit that owner through `playlist_id` |
 | `downloads` | videos downloaded to disk for offline viewing |
-| `hidden_channels` | channels hidden from the home feed (excluded in the feed query) |
-| `imported_videos` | one-off videos added by URL, from channels you don't follow — plus, under `source="youtube"`, cached metadata for videos opened via the extension's button |
-| `watch_history` | how far you got in each video, and whether you finished it |
-| `bookmarks` | moments marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
+| `hidden_channels` | channels one user hid from their home feed |
+| `imported_videos` | metadata for videos the feed doesn't hold: ones added by URL, plus (under `source="youtube"`) ones opened via the extension's button. A shared cache — `user_imports` says whose page each appears on |
+| `watch_history` | how far **each user** got in each video, and whether they finished it |
+| `bookmarks` | moments one user marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
@@ -871,20 +1145,24 @@ are added by the tiny additive-migration list in `database.py`.
 
 ## Config (`config/`)
 
-- **`subscriptions.yaml`** — the channels to follow (imported via the OAuth flow
-  in `auth_google.py`, or edited by hand). `POST /api/subscriptions/resync`
-  reconciles this against your live YouTube subscriptions: it **fully deletes**
-  channels you've unsubscribed from (their videos, tags, hidden/category entries,
-  and search docs) and adds any new ones. Your saved data — downloads,
-  watch-later, playlists — is snapshot-keyed by video id and left untouched.
-  Preview first with `?dry_run=true`; an empty subscription response aborts the
-  prune rather than wiping the DB.
+- **`subscriptions.yaml`** — a written-only mirror of what you follow.
+  `user_channels` is the list itself (see "Accounts"); this is kept because it's
+  the file you'd look at to check, and a hand-editable copy has rescued more than
+  one bad resync. `POST /api/subscriptions/resync` reconciles your memberships
+  against your live YouTube subscriptions: it drops the ones you've unsubscribed
+  from, **deleting** a channel's videos, tags, hidden/category entries and search
+  docs only if nobody else here follows it, and adds any new ones. Your saved
+  data — downloads, watch-later, playlists — is snapshot-keyed by video id and
+  left untouched. Preview first with `?dry_run=true`; an empty subscription
+  response aborts the prune rather than wiping the DB.
 - **`categories.yaml`** — legacy keyword rules that sort each channel into **one**
   feed category (`categorizer.py`). Superseded by the LLM tag system for the
   sidebar; still read by the resync prune when cleaning up removed channels.
 - **`youtube_oauth_token.json`** — the Data API token refreshed by the in-app
   "Re-authenticate" link. Stats fall back to yt-dlp if it's missing/expired, so
-  OAuth is **optional**.
+  OAuth is **optional**. Sign-in now writes the refresh token to the user's row
+  **as well as** here; the file stays the source the scanner and stats fetcher
+  read, so accounts arrived without touching the scan path.
 - **`.env`** (in `backend/`, gitignored) — secrets and switches.
   `OPENROUTER_API_KEY` powers LLM channel tagging; without it, tagging degrades
   to language-only. See "Channel tagging". The tag taxonomy itself lives in code
@@ -894,6 +1172,9 @@ are added by the tiny additive-migration list in `database.py`.
   (see "App settings"). Leave it off until you've watched one channel fill from
   its own page and checked the ledger — a library-wide sweep is the first thing
   to exercise the quota-day boundary and cursor resumption against the live API.
+  `SECRET_KEY` signs the sign-in cookie — changing it signs everybody out, which
+  is also the only revocation this app has. `ALLOWED_EMAILS` is who may sign in
+  (see "Accounts"), and `APP_ORIGIN` is where the browser lands afterwards.
 
 ### App settings (`app_settings.py`)
 
@@ -902,21 +1183,25 @@ Two config systems, split by who the setting belongs to:
 - **`.env` / `config.py`** — secrets and environment wiring: API keys, ports,
   paths. Properties of *where the app runs*. Read once at import; changing one
   means restarting.
-- **`app_settings.py`** — preferences about *how the app behaves for you*,
-  stored in the `app_settings` table and changeable from the Settings page with
-  no restart.
+- **`app_settings.py`** — preferences about *how the app behaves*, stored in the
+  database and changeable from the Settings page with no restart. Split by
+  `scope`: `user` keys live in `user_settings`, one row per person; `app` keys
+  live in `app_settings`, one row for the machine.
 
 Adding a setting is one entry in `SPEC` (key, type, default, label, description,
-group). `GET /api/settings` serves the spec alongside the values and the page
+group, scope). `GET /api/settings` serves the spec alongside the values and the page
 renders its controls from it, so a new setting needs no endpoint, no form field,
 and no frontend change. Defaults are lazy callables, which is what lets an
 `.env` value act as a bootstrap default without becoming a second source of
 truth: it seeds the first read and is ignored once a value is stored.
 
-Two settings so far: `archive_fill_enabled` (the nightly history fill) and
-`youtube_history_sync` (whether the extension records what you watch on
-youtube.com). The second has no `.env` twin — it governs an optional browser
-extension, which is nothing to do with how the server is deployed.
+Two settings so far, one of each scope. `archive_fill_enabled` (the nightly
+history fill) is **`app`**: one sweep spends a daily API quota billed to a single
+Cloud project, so a per-person copy would let whoever flipped it last commit
+everybody's allowance. `youtube_history_sync` (whether the extension records what
+you watch on youtube.com) is **`user`** — one person turning it off must not turn
+off another's — and has no `.env` twin, since it governs an optional browser
+extension that's nothing to do with how the server is deployed.
 
 ---
 
@@ -997,6 +1282,10 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/api/auth/login` | start Google sign-in (redirects to consent) |
+| GET | `/api/auth/callback` | exchange the code, admit or refuse the account, set the session, land back at `APP_ORIGIN` |
+| GET | `/api/auth/me` | who's signed in — `{"signed_in": false}` when nobody is, never a 401 |
+| POST | `/api/auth/logout` | end the session (the extension's API key keeps working) |
 | GET | `/api/feed` | ranked feed grouped by category (query: age, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
@@ -1007,11 +1296,13 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic). The channel block carries `source` and `scanning` |
 | GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
 | POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |
-| DELETE | `/api/channels/{id}` | remove a hand-added channel and its videos. 400 for a subscribed one — unsubscribe on YouTube instead |
+| DELETE | `/api/channels/{id}` | stop following a hand-added channel; its videos go too if nobody else here follows it. 400 for a subscribed one — unsubscribe on YouTube instead |
+| GET | `/api/search?q=` | typo-tolerant search (channels + videos), narrowed to the channels you follow |
+| GET | `/api/subscriptions` | the channel ids you follow, from `user_channels` |
+| POST | `/api/subscriptions/resync` | reconcile your list against live YouTube subscriptions (`?dry_run=true` previews the prune) |
 | POST | `/api/channels/{id}/labels/build` | build this channel's video-topic vocabulary (background; `?force=1` rebuilds) |
 | GET | `/api/channels/{id}/labels/status` | `{building, built, progress}` for the topic build |
 | POST | `/api/channels/{id}/labels/assign` | label the given (rendered) videos against the vocab |
-| GET | `/api/search?q=` | typo-tolerant search (channels + videos) |
 | GET | `/api/tags` | tags in use with per-tag counts (`?include_empty=1` = full taxonomy, for the picker) |
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
@@ -1067,6 +1358,10 @@ no per-test decorator). What's covered:
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
+| `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), and which row a Google account lands on — adoption, its guard, and the old token file |
+| `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, and the whole sign-in end to end against a stubbed Google |
+| `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
+| `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
 
 `conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import
@@ -1091,3 +1386,8 @@ written before the fix that made them unnecessary, and both take `--dry-run`:
 python -m scripts.fix_blank_history    # nameless history rows, via get_video
 python -m scripts.fix_channel_avatars  # missing uploader pictures across all five snapshot tables, ~1 unit / 50 channels
 ```
+
+`scripts/migrate_multiuser.py` and `scripts/migrate_personal_tables.py` are a
+different kind of one-off — schema migrations rather than repairs, run once when
+accounts arrive, in that order. The second rewrites tables: back the database up
+first. See [Accounts](#accounts-userspy).

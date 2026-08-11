@@ -3,12 +3,16 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.database import async_session, init_db
+from app.models import User
 from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local, bookmarks
 from app.routers import search as search_router
 from app.routers import settings as settings_router
@@ -69,40 +73,58 @@ async def _scheduler_loop():
         await asyncio.sleep(SCAN_INTERVAL_SECONDS)
 
 
-def _seconds_until_resync_due() -> float:
-    """How long until the subscription list is due for a reconcile.
+def _seconds_until_due(last: datetime | None) -> float:
+    """How long until a reconcile is due, given when the last one succeeded.
 
-    The clock is the mtime of subscriptions.yaml, which a successful resync
-    rewrites — so the schedule survives restarts. A plain sleep loop couldn't:
-    it would either re-run the DESTRUCTIVE prune minutes after every restart, or
-    push the next resync a full day out on a machine that reboots daily.
+    The clock is persisted (`User.last_resync_at`, previously the mtime of
+    subscriptions.yaml) so the schedule survives restarts. A plain sleep loop
+    couldn't: it would either re-run the DESTRUCTIVE prune minutes after every
+    restart, or push the next resync a full day out on a machine that reboots
+    daily.
     """
-    try:
-        last = os.path.getmtime(settings.subscriptions_path)
-    except OSError:
-        return 0.0  # never imported — let _run_resync report why it can't run
-    return max(0.0, last + RESYNC_INTERVAL_SECONDS - time.time())
+    if last is None:
+        return 0.0  # never reconciled — let _run_resync report why it can't
+    elapsed = (datetime.utcnow() - last).total_seconds()
+    return max(0.0, RESYNC_INTERVAL_SECONDS - elapsed)
+
+
+async def _due_users() -> list[int]:
+    """Ids of the people whose subscriptions are due a reconcile.
+
+    One list per person now, so one clock per person. Ids rather than rows
+    because each resync opens its own session and a row from this one would be
+    detached by the time it got there.
+    """
+    async with async_session() as session:
+        rows = (await session.execute(select(User.id, User.last_resync_at))).all()
+    return [r.id for r in rows if _seconds_until_due(r.last_resync_at) <= 0]
 
 
 async def _resync_loop():
     await asyncio.sleep(RESYNC_STARTUP_DELAY_SECONDS)
     while True:
-        wait = _seconds_until_resync_due()
-        if wait > 0:
-            await asyncio.sleep(wait)
+        due = await _due_users()
+        if not due:
+            # Nobody is due. Sleeping the full retry interval rather than until
+            # the soonest deadline keeps this simple, and the deadline is a day
+            # away — an hour of slack on it costs nothing.
+            await asyncio.sleep(RESYNC_RETRY_SECONDS)
             continue
-        # A successful resync rewrites subscriptions.yaml, so the mtime check
-        # above pushes the next one out on its own. The failures that DON'T get
+        # A successful resync stamps `last_resync_at`, so the check above pushes
+        # that person's next one out on its own. The failures that DON'T get
         # that far (no token, auth expired, YouTube down, prune refused) leave
-        # the file untouched, so back off explicitly instead of retrying in a
-        # tight loop. A failure AFTER the write — a half-done resync — is left
+        # the stamp untouched, so back off explicitly instead of retrying in a
+        # tight loop. A failure AFTER the stamp — a half-done resync — is left
         # for tomorrow on purpose rather than repeated hourly.
-        if not await _run_resync():
+        ok = True
+        for user_id in due:
+            ok = await _run_resync(user_id) and ok
+        if not ok:
             await asyncio.sleep(RESYNC_RETRY_SECONDS)
 
 
-async def _run_resync() -> bool:
-    """Reconcile the DB against live YouTube subscriptions. Returns success.
+async def _run_resync(user_id: int) -> bool:
+    """Reconcile one person's channels against their live YouTube subscriptions.
 
     Never raises: this runs unattended, and a dead token or an API hiccup must
     not take the scheduler task down with it.
@@ -126,7 +148,10 @@ async def _run_resync() -> bool:
         from app.routers.subscriptions import resync_subscriptions
 
         async with async_session() as session:
-            preview = await resync_subscriptions(dry_run=True, db=session)
+            user = await session.get(User, user_id)
+            if user is None:
+                return False
+            preview = await resync_subscriptions(dry_run=True, user=user, db=session)
             doomed = preview.get("would_prune_channels", [])
             # An unattended prune this large is far more likely to be a truncated
             # response from YouTube than a real unsubscribe spree — and it would
@@ -141,9 +166,9 @@ async def _run_resync() -> bool:
                 )
                 return False
 
-            result = await resync_subscriptions(dry_run=False, db=session)
+            result = await resync_subscriptions(dry_run=False, user=user, db=session)
         print(
-            f"[resync] {result.get('live_subscriptions')} live subs — "
+            f"[resync] user {user_id}: {result.get('live_subscriptions')} live subs — "
             f"+{result.get('added_channels')} added, "
             f"-{result.get('pruned_channels')} pruned "
             f"({result.get('deleted_videos')} videos)"
@@ -158,12 +183,32 @@ async def _run_resync() -> bool:
 
 app = FastAPI(title="Personal YouTube Feed", lifespan=lifespan)
 
+# Deliberately still just this machine. A household reaches the app through the
+# Vite dev server, which listens on every interface (`host: true`) and proxies
+# `/api` to this process over loopback — so a browser at 192.168.1.50:5173 is
+# making SAME-ORIGIN requests and CORS never enters into it. Widening this list
+# to the private ranges would only matter if the API were exposed directly,
+# which is the arrangement the proxy exists to avoid.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[settings.app_origin, "http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# The sign-in cookie (see auth.py). `lax` rather than `strict` so arriving back
+# from Google's consent screen counts as signed in — a strict cookie is withheld
+# on that cross-site redirect, which reads as the login silently failing.
+# The extension doesn't use this cookie at all; it carries an API key instead.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    session_cookie="ytfeed_session",
+    same_site="lax",
+    # Served over http://localhost, where a Secure cookie would never be stored.
+    https_only=False,
+    max_age=60 * 60 * 24 * 30,
 )
 
 app.include_router(feed.router, prefix="/api")

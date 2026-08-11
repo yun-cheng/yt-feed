@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import auth, users
 from app.database import async_session
 from app.models import (
-    Channel, ChannelTag, ChannelTagRejection, Video, HiddenChannel, WatchHistory,
+    Channel, ChannelTag, ChannelTagRejection, Video, HiddenChannel, User, WatchHistory,
 )
 
 # The three states a video can be in, derived from watch_history rather than
@@ -181,6 +182,7 @@ async def list_tags(
     include_empty: bool = Query(
         default=False, description="include tags no channel has (for the tag picker)"
     ),
+    user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
     """List tags with channel counts.
@@ -192,6 +194,7 @@ async def list_tags(
     """
     result = await db.execute(
         select(ChannelTag.tag_name, func.count(ChannelTag.channel_id))
+        .where(ChannelTag.user_id == user.id)
         .group_by(ChannelTag.tag_name)
     )
     counts = dict(result.all())
@@ -213,9 +216,11 @@ async def list_tags(
 
 
 @router.get("/channels")
-async def list_tagged_channels(db: AsyncSession = Depends(get_db)):
+async def list_tagged_channels(
+    user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
+):
     """Return all channel→tags mapping."""
-    result = await db.execute(select(ChannelTag))
+    result = await db.execute(select(ChannelTag).where(ChannelTag.user_id == user.id))
     tags_map: dict[str, list[str]] = {}
     for ct in result.scalars().all():
         tags_map.setdefault(ct.channel_id, []).append(ct.tag_name)
@@ -326,7 +331,9 @@ def _stored_labels(channel) -> dict | None:
         return None
 
 
-async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> int:
+async def assign_auto_tags(
+    db: AsyncSession, channels, user_id: int, force: bool = False
+) -> int:
     """(Re)label the given channels via the LLM and write their applied tags.
 
     For each channel: reuse the stored LLM verdict unless `force` (then re-call
@@ -334,6 +341,12 @@ async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> i
     the user removed (rejections) or added by hand (manual). Suggestions live in
     the stored verdict and are surfaced by channel_suggestions(). Commits per
     channel so a long batch saves progress. Returns applied-tag count.
+
+    The LLM verdict is cached on the CHANNEL and shared — it's a reading of the
+    channel's own description and topics, the same for everyone, and re-deriving
+    it per person would spend tokens to reach the same answer. What that verdict
+    turns into is per person: the applied tags, the rejections that suppress
+    them, and the hand-added ones all belong to `user_id`.
     """
     import asyncio
     import json
@@ -341,11 +354,15 @@ async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> i
     from sqlalchemy import delete as sa_delete
 
     rejected: dict[str, set[str]] = {}
-    for r in (await db.execute(select(ChannelTagRejection))).scalars().all():
+    for r in (await db.execute(
+        select(ChannelTagRejection).where(ChannelTagRejection.user_id == user_id)
+    )).scalars().all():
         rejected.setdefault(r.channel_id, set()).add(r.tag_name)
     manual: dict[str, set[str]] = {}
     for r in (
-        await db.execute(select(ChannelTag).where(ChannelTag.auto_assigned == 0))
+        await db.execute(select(ChannelTag).where(
+            ChannelTag.user_id == user_id, ChannelTag.auto_assigned == 0
+        ))
     ).scalars().all():
         manual.setdefault(r.channel_id, set()).add(r.tag_name)
 
@@ -376,6 +393,7 @@ async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> i
 
         await db.execute(
             sa_delete(ChannelTag).where(
+                ChannelTag.user_id == user_id,
                 ChannelTag.channel_id == ch.youtube_id,
                 ChannelTag.auto_assigned == 1,
             )
@@ -385,7 +403,8 @@ async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> i
             if tag_name in skip:
                 continue
             db.add(ChannelTag(
-                channel_id=ch.youtube_id, tag_name=tag_name, auto_assigned=1
+                user_id=user_id, channel_id=ch.youtube_id,
+                tag_name=tag_name, auto_assigned=1,
             ))
             assigned += 1
         await db.commit()
@@ -398,15 +417,17 @@ async def assign_auto_tags(db: AsyncSession, channels, force: bool = False) -> i
 _retagging = False
 
 
-async def _retag_all(force: bool):
+async def _retag_all(force: bool, user_id: int):
     from app.database import async_session
     async with async_session() as db:
         channels = list((await db.execute(select(Channel))).scalars().all())
-        await assign_auto_tags(db, channels, force=force)
+        await assign_auto_tags(db, channels, user_id, force=force)
 
 
 @router.post("/auto-assign")
-async def auto_assign_tags(force: bool = Query(default=True)):
+async def auto_assign_tags(
+    force: bool = Query(default=True), user: User = Depends(auth.account)
+):
     """Kick off a background re-tag of every channel via the LLM.
 
     force=true re-calls the API for all channels; force=false only labels ones
@@ -422,7 +443,7 @@ async def auto_assign_tags(force: bool = Query(default=True)):
     def _run():
         global _retagging
         try:
-            asyncio.run(_retag_all(force=force))
+            asyncio.run(_retag_all(force=force, user_id=user.id))
         finally:
             _retagging = False
 
@@ -436,7 +457,9 @@ async def auto_assign_status():
     return {"running": _retagging}
 
 
-async def channel_suggestions(db: AsyncSession, channel: Channel) -> list[str]:
+async def channel_suggestions(
+    db: AsyncSession, channel: Channel, user_id: int
+) -> list[str]:
     """Tags offered for one-click add on a channel.
 
     Two sources: the LLM's suggested sub-labels for this channel (from the stored
@@ -447,7 +470,8 @@ async def channel_suggestions(db: AsyncSession, channel: Channel) -> list[str]:
         r[0] for r in (
             await db.execute(
                 select(ChannelTag.tag_name).where(
-                    ChannelTag.channel_id == channel.youtube_id
+                    ChannelTag.user_id == user_id,
+                    ChannelTag.channel_id == channel.youtube_id,
                 )
             )
         ).all()
@@ -456,7 +480,8 @@ async def channel_suggestions(db: AsyncSession, channel: Channel) -> list[str]:
         r[0] for r in (
             await db.execute(
                 select(ChannelTagRejection.tag_name).where(
-                    ChannelTagRejection.channel_id == channel.youtube_id
+                    ChannelTagRejection.user_id == user_id,
+                    ChannelTagRejection.channel_id == channel.youtube_id,
                 )
             )
         ).all()
@@ -468,7 +493,10 @@ async def channel_suggestions(db: AsyncSession, channel: Channel) -> list[str]:
 
 @router.post("/{channel_id}/tag/{tag_name}")
 async def add_channel_tag(
-    channel_id: str, tag_name: str, db: AsyncSession = Depends(get_db)
+    channel_id: str,
+    tag_name: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
 ):
     """Apply a tag to a channel (accepting a suggestion, or adding any label).
 
@@ -485,6 +513,7 @@ async def add_channel_tag(
 
     await db.execute(
         sa_delete(ChannelTagRejection).where(
+            ChannelTagRejection.user_id == user.id,
             ChannelTagRejection.channel_id == channel_id,
             ChannelTagRejection.tag_name == tag_name,
         )
@@ -492,20 +521,26 @@ async def add_channel_tag(
     exists = (
         await db.execute(
             select(ChannelTag).where(
-                ChannelTag.channel_id == channel_id, ChannelTag.tag_name == tag_name
+                ChannelTag.user_id == user.id,
+                ChannelTag.channel_id == channel_id,
+                ChannelTag.tag_name == tag_name,
             )
         )
     ).scalar_one_or_none()
     if not exists:
-        db.add(ChannelTag(channel_id=channel_id, tag_name=tag_name, auto_assigned=0))
+        db.add(ChannelTag(user_id=user.id, channel_id=channel_id,
+                          tag_name=tag_name, auto_assigned=0))
     await db.commit()
 
-    return {"status": "ok", "suggested": await channel_suggestions(db, channel)}
+    return {"status": "ok", "suggested": await channel_suggestions(db, channel, user.id)}
 
 
 @router.delete("/{channel_id}/tag/{tag_name}")
 async def remove_channel_tag(
-    channel_id: str, tag_name: str, db: AsyncSession = Depends(get_db)
+    channel_id: str,
+    tag_name: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
 ):
     """Remove a tag from a channel; it becomes a suggestion again.
 
@@ -524,7 +559,9 @@ async def remove_channel_tag(
     row = (
         await db.execute(
             select(ChannelTag).where(
-                ChannelTag.channel_id == channel_id, ChannelTag.tag_name == tag_name
+                ChannelTag.user_id == user.id,
+                ChannelTag.channel_id == channel_id,
+                ChannelTag.tag_name == tag_name,
             )
         )
     ).scalar_one_or_none()
@@ -532,20 +569,24 @@ async def remove_channel_tag(
         was_auto = row.auto_assigned == 1
         await db.execute(
             sa_delete(ChannelTag).where(
-                ChannelTag.channel_id == channel_id, ChannelTag.tag_name == tag_name
+                ChannelTag.user_id == user.id,
+                ChannelTag.channel_id == channel_id,
+                ChannelTag.tag_name == tag_name,
             )
         )
         if was_auto:
-            db.add(ChannelTagRejection(channel_id=channel_id, tag_name=tag_name))
+            db.add(ChannelTagRejection(user_id=user.id, channel_id=channel_id,
+                                       tag_name=tag_name))
         await db.commit()
 
-    return {"status": "ok", "suggested": await channel_suggestions(db, channel)}
+    return {"status": "ok", "suggested": await channel_suggestions(db, channel, user.id)}
 
 
 @router.post("/{channel_id}")
 async def set_channel_tags(
     channel_id: str,
     tag_names: list[str],
+    user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
     """Manually set tags for a channel (replaces all)."""
@@ -560,6 +601,7 @@ async def set_channel_tags(
     from sqlalchemy import delete as sa_delete
     await db.execute(
         sa_delete(ChannelTag).where(
+            ChannelTag.user_id == user.id,
             ChannelTag.channel_id == channel_id,
             ChannelTag.auto_assigned == 0,
         )
@@ -568,6 +610,7 @@ async def set_channel_tags(
     # Add new tags
     for tag in tag_names:
         db.add(ChannelTag(
+            user_id=user.id,
             channel_id=channel_id,
             tag_name=tag,
             auto_assigned=0,
@@ -587,6 +630,7 @@ async def feed_by_tags(
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     offset: int = 0,     # pagination: index into the ranked list
     limit: int = 60,     # pagination: page size
+    user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
     """Get ranked videos filtered by tags.
@@ -613,6 +657,7 @@ async def feed_by_tags(
         channel_ids: set[str] | None = None
         for group_tags in groups.values():
             stmt = select(ChannelTag.channel_id).where(
+                ChannelTag.user_id == user.id,
                 ChannelTag.tag_name.in_(group_tags)
             ).distinct()
             result = await db.execute(stmt)
@@ -620,13 +665,21 @@ async def feed_by_tags(
             channel_ids = group_channels if channel_ids is None else channel_ids & group_channels
         channel_ids = channel_ids or set()
     else:
-        result = await db.execute(select(Channel.youtube_id))
-        channel_ids = {r[0] for r in result}
+        channel_ids = set()
+
+    # Whichever branch produced it, narrow to what this person actually follows.
+    # The tag branch is already theirs, but a tag can outlive the following that
+    # justified it; the untagged branch would otherwise be the whole catalog,
+    # which is everybody's.
+    held = await users.held_channel_ids(db, user)
+    channel_ids = (channel_ids & held) if tag_list else held
 
     # Exclude channels the user hid from home, so they never come down the wire.
     # `include_hidden` (the sidebar "show hidden" peek) bypasses this.
     if not include_hidden:
-        hidden = {r[0] for r in await db.execute(select(HiddenChannel.channel_id))}
+        hidden = {r[0] for r in await db.execute(
+            select(HiddenChannel.channel_id).where(HiddenChannel.user_id == user.id)
+        )}
         channel_ids = channel_ids - hidden
 
     # Only fetch videos within the window's widest extent so wide windows
@@ -668,6 +721,7 @@ async def feed_by_tags(
             r[0]: ("watched" if r[1] else "in_progress")
             for r in await db.execute(
                 select(WatchHistory.youtube_id, WatchHistory.watched)
+                .where(WatchHistory.user_id == user.id)
             )
         }
         all_videos = [v for v in all_videos if hist.get(v.youtube_id, "unwatched") in wanted]

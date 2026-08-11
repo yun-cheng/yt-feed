@@ -3,6 +3,78 @@ from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Text, Fore
 from app.database import Base
 
 
+class User(Base):
+    """A person with their own subscriptions, history and preferences.
+
+    The app was single-user for its whole life, so every other table here is
+    keyed by a YouTube id alone. These two tables are the seam being opened:
+    they carry who follows what, and everything personal is keyed by `id` as it
+    moves across (see app/users.py).
+
+    One box, a few trusted people — which is why there is no role column and no
+    password. Google says who you are, and everyone who gets in is equally
+    trusted with the downloads and local folders on the shared disk.
+    """
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    # Google's stable per-account identifier — the `sub` claim of the id_token.
+    # Empty on exactly one row: the local user the migration seeds from the
+    # pre-accounts token file, which the first Google sign-in adopts rather than
+    # duplicating. See `adopt_or_create` in app/users.py.
+    google_sub = Column(String, default="", nullable=False, index=True)
+    email = Column(String, default="", nullable=False)
+    name = Column(String, default="")
+    avatar_url = Column(String, default="")
+
+    # What the browser extension authenticates with. A session cookie can't do
+    # this job: the extension's worker posts from a youtube.com page context, so
+    # a cookie would need SameSite=None and therefore HTTPS — a lot of ceremony
+    # for a localhost app. A bearer token has neither constraint.
+    api_key = Column(String, unique=True, nullable=False)
+
+    # Per-user OAuth, replacing the single config/youtube_oauth_token.json. The
+    # refresh token is the durable half; the access token is cheap to re-mint and
+    # deliberately not stored.
+    refresh_token = Column(Text, default="")
+    # What was granted, so the sign-in flow can tell a pre-accounts token (which
+    # carries YouTube access but never asked who you are) from a current one.
+    token_scopes = Column(Text, default="")
+
+    # When this person's subscriptions were last reconciled against YouTube.
+    # subscriptions.yaml's mtime used to be this clock, which only ever worked
+    # because there was one list. See `_seconds_until_resync_due` in main.py.
+    last_resync_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserChannel(Base):
+    """Who follows which channel.
+
+    Two things collapse into this table. subscriptions.yaml, which was one
+    person's list living in a global file; and `Channel.source`, which recorded
+    "I added this one by hand" — always a fact about a person rather than about
+    the channel, and unanswerable once two people disagree.
+
+    The channel row itself stays shared. That's the whole reason multi-user is
+    worth doing rather than running the app twice: three people subscribed to the
+    same channel cost one row, one fetch and one tagging bill, so quota is spent
+    per distinct channel rather than per person.
+    """
+
+    __tablename__ = "user_channels"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    channel_id = Column(String, ForeignKey("channels.youtube_id"), primary_key=True)
+    # "subscription" (it came from your YouTube subscriptions) or "manual" (you
+    # added it by hand). Resync deletes memberships that aren't in your live
+    # list, and a hand-added one never will be.
+    source = Column(String, nullable=False, default="subscription")
+    added_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Channel(Base):
     __tablename__ = "channels"
 
@@ -60,11 +132,36 @@ class Channel(Base):
 
 
 class AppSetting(Base):
-    """A user-facing preference, stored so the app can change it without a
-    restart. See app/app_settings.py for what the keys mean."""
+    """A preference belonging to the DEPLOYMENT, not to a person.
+
+    What's left here after accounts arrived: the switches that govern shared
+    resources, where one person's answer decides the group's. `archive_fill_enabled`
+    is the case in point — it spends a daily API quota billed to one Cloud project,
+    so a per-person copy would let whoever flipped it last commit everybody's.
+
+    See app/app_settings.py, whose SPEC marks each key `scope="app"` or
+    `scope="user"` and routes it here or to UserSetting accordingly.
+    """
 
     __tablename__ = "app_settings"
 
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserSetting(Base):
+    """A preference belonging to one person.
+
+    A separate table rather than a `user_id` bolted onto `app_settings`: the two
+    kinds answer different questions ("what does this machine do" vs "what do I
+    want"), and keeping them apart means neither needs a sentinel row to say
+    which it is.
+    """
+
+    __tablename__ = "user_settings"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -88,6 +185,10 @@ class QuotaLedger(Base):
 class ChannelTag(Base):
     __tablename__ = "channel_tags"
 
+    # A tag is an opinion about a channel, not a property of it: two people can
+    # file the same channel differently, and the sidebar each of them sees is
+    # built from their own.
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     channel_id = Column(String, ForeignKey("channels.youtube_id"), primary_key=True)
     # The taxonomy lives in code (SEED_TAXONOMY in routers/tags.py), not a DB
     # table — so tag_name is a plain string, not an FK. A ForeignKey("tags.name")
@@ -106,6 +207,7 @@ class ChannelTagRejection(Base):
     """
     __tablename__ = "channel_tag_rejections"
 
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     channel_id = Column(String, primary_key=True)
     tag_name = Column(String, primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -180,6 +282,7 @@ class WatchLater(Base):
     """A video the user saved to watch later (server-side, syncs across devices)."""
     __tablename__ = "watch_later"
 
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     youtube_id = Column(String, primary_key=True)
     title = Column(String, nullable=False, default="")
     channel_id = Column(String, default="")
@@ -209,6 +312,10 @@ class WatchHistory(Base):
     """
     __tablename__ = "watch_history"
 
+    # First in the key because every query filters on it: "my history", "my
+    # position in this video". A video id alone stopped identifying a row the
+    # moment two people could watch the same video.
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     youtube_id = Column(String, primary_key=True)
     position_seconds = Column(Float, nullable=False, default=0.0)
     # The player's own duration, which is authoritative — the feed's copy can be
@@ -262,6 +369,27 @@ class ImportedVideo(Base):
     # it with the extension's button and this is just the metadata the watch page
     # and history need; see routers/feed.get_video.
     source = Column(String, nullable=False, default="import", server_default="import")
+
+
+class UserImport(Base):
+    """Who pasted which video in.
+
+    `imported_videos` does two jobs: it's a metadata snapshot for videos the
+    feed doesn't hold, AND it was the list of what you imported. The first is a
+    cache and shared — the same video costs one yt-dlp fetch however many people
+    paste it. The second is personal, so it moved here.
+
+    A membership table rather than a `user_id` on the snapshot, for the reason
+    the snapshot's own primary key makes plain: a video is one row, and two
+    people importing it would otherwise fight over who owns it — the second
+    quietly taking it off the first's page.
+    """
+
+    __tablename__ = "user_imports"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    youtube_id = Column(String, primary_key=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class LocalFolder(Base):
@@ -318,6 +446,9 @@ class Playlist(Base):
     __tablename__ = "playlists"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # `playlist_items` needs none of its own — an item belongs to whoever owns
+    # the playlist it's in, and a second copy of that could disagree with it.
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
     name = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -347,6 +478,7 @@ class HiddenChannel(Base):
     devices — unlike the old localStorage version)."""
     __tablename__ = "hidden_channels"
 
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     channel_id = Column(String, primary_key=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -366,6 +498,9 @@ class Bookmark(Base):
     __tablename__ = "bookmarks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # A plain column rather than part of the key: the id is already unique, so
+    # this only ever narrows a query.
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
     video_id = Column(String, nullable=False, index=True)
     position_seconds = Column(Float, nullable=False, default=0.0)
     note = Column(String, nullable=False, default="")

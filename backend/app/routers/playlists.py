@@ -7,8 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import auth
 from app.database import async_session
-from app.models import Playlist, PlaylistItem
+from app.models import Playlist, PlaylistItem, User
 # See watch_later.py — the module, not the function, so a monkeypatch reaches it.
 from app.routers import imported
 
@@ -42,6 +43,23 @@ class VideoPayload(BaseModel):
     score: float = 0.0
 
 
+async def _owned(db: AsyncSession, user: User, playlist_id: int) -> Playlist:
+    """This person's playlist, or 404.
+
+    `playlist_items` carries no owner of its own — an item belongs to whoever
+    owns the playlist it's in, and a second copy of that could disagree with it.
+    So every route that names a playlist id passes through here first, and item
+    access is decided once, in one place.
+
+    Somebody else's playlist is "not found" rather than "not yours": a 403 would
+    confirm the id exists, which is more than the asker should learn.
+    """
+    p = await db.get(Playlist, playlist_id)
+    if p is None or p.user_id != user.id:
+        raise HTTPException(404, "Playlist not found")
+    return p
+
+
 def _video_dict(it: PlaylistItem) -> dict:
     return {
         "youtube_id": it.youtube_id,
@@ -59,15 +77,22 @@ def _video_dict(it: PlaylistItem) -> dict:
 
 
 @router.get("")
-async def list_playlists(db: AsyncSession = Depends(get_db)):
+async def list_playlists(
+    user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
+):
     """All playlists with item count + a cover thumbnail (newest item)."""
     playlists = (await db.execute(
-        select(Playlist).order_by(Playlist.created_at.desc())
+        select(Playlist)
+        .where(Playlist.user_id == user.id)
+        .order_by(Playlist.created_at.desc())
     )).scalars().all()
 
     # counts per playlist
     counts = dict((await db.execute(
-        select(PlaylistItem.playlist_id, func.count()).group_by(PlaylistItem.playlist_id)
+        select(PlaylistItem.playlist_id, func.count())
+        .join(Playlist, Playlist.id == PlaylistItem.playlist_id)
+        .where(Playlist.user_id == user.id)
+        .group_by(PlaylistItem.playlist_id)
     )).all())
 
     out = []
@@ -89,9 +114,13 @@ async def list_playlists(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("")
-async def create_playlist(body: PlaylistCreate, db: AsyncSession = Depends(get_db)):
+async def create_playlist(
+    body: PlaylistCreate,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     name = body.name.strip() or "New playlist"
-    p = Playlist(name=name, created_at=datetime.utcnow())
+    p = Playlist(user_id=user.id, name=name, created_at=datetime.utcnow())
     db.add(p)
     await db.commit()
     await db.refresh(p)
@@ -99,17 +128,25 @@ async def create_playlist(body: PlaylistCreate, db: AsyncSession = Depends(get_d
 
 
 @router.patch("/{playlist_id}")
-async def rename_playlist(playlist_id: int, body: PlaylistRename, db: AsyncSession = Depends(get_db)):
-    p = await db.get(Playlist, playlist_id)
-    if not p:
-        raise HTTPException(404, "Playlist not found")
+async def rename_playlist(
+    playlist_id: int,
+    body: PlaylistRename,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    p = await _owned(db, user, playlist_id)
     p.name = body.name.strip() or p.name
     await db.commit()
     return {"id": p.id, "name": p.name}
 
 
 @router.delete("/{playlist_id}")
-async def delete_playlist(playlist_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_playlist(
+    playlist_id: int,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    await _owned(db, user, playlist_id)
     await db.execute(delete(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id))
     await db.execute(delete(Playlist).where(Playlist.id == playlist_id))
     await db.commit()
@@ -117,19 +154,28 @@ async def delete_playlist(playlist_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/containing/{youtube_id}")
-async def playlists_containing(youtube_id: str, db: AsyncSession = Depends(get_db)):
+async def playlists_containing(
+    youtube_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """IDs of playlists that already contain this video (for the save-to menu)."""
     rows = (await db.execute(
-        select(PlaylistItem.playlist_id).where(PlaylistItem.youtube_id == youtube_id).distinct()
+        select(PlaylistItem.playlist_id)
+        .join(Playlist, Playlist.id == PlaylistItem.playlist_id)
+        .where(Playlist.user_id == user.id, PlaylistItem.youtube_id == youtube_id)
+        .distinct()
     )).all()
     return [r[0] for r in rows]
 
 
 @router.get("/{playlist_id}")
-async def get_playlist(playlist_id: int, db: AsyncSession = Depends(get_db)):
-    p = await db.get(Playlist, playlist_id)
-    if not p:
-        raise HTTPException(404, "Playlist not found")
+async def get_playlist(
+    playlist_id: int,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    p = await _owned(db, user, playlist_id)
     items = (await db.execute(
         select(PlaylistItem)
         .where(PlaylistItem.playlist_id == playlist_id)
@@ -139,10 +185,13 @@ async def get_playlist(playlist_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{playlist_id}/items")
-async def add_item(playlist_id: int, video: VideoPayload, db: AsyncSession = Depends(get_db)):
-    p = await db.get(Playlist, playlist_id)
-    if not p:
-        raise HTTPException(404, "Playlist not found")
+async def add_item(
+    playlist_id: int,
+    video: VideoPayload,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    await _owned(db, user, playlist_id)
     exists = (await db.execute(
         select(PlaylistItem).where(
             PlaylistItem.playlist_id == playlist_id,
@@ -158,7 +207,13 @@ async def add_item(playlist_id: int, video: VideoPayload, db: AsyncSession = Dep
 
 
 @router.delete("/{playlist_id}/items/{youtube_id}")
-async def remove_item(playlist_id: int, youtube_id: str, db: AsyncSession = Depends(get_db)):
+async def remove_item(
+    playlist_id: int,
+    youtube_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    await _owned(db, user, playlist_id)
     await db.execute(delete(PlaylistItem).where(
         PlaylistItem.playlist_id == playlist_id,
         PlaylistItem.youtube_id == youtube_id,

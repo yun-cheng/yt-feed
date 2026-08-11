@@ -10,8 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from app import auth, users
 from app.database import async_session
-from app.models import Channel, ChannelTag, Video, WatchHistory
+from app.models import Channel, ChannelTag, User, UserChannel, Video, WatchHistory
 from app.categorizer import get_categories, get_channel_groups, set_channel_group
 from app.youtube_api import ARCHIVE_CEILING
 
@@ -43,13 +44,21 @@ def _labels_json(raw: str | None) -> list[str] | None:
 async def list_channels(
     tags: str = Query(default="", description="Comma-separated tag filter (AND logic)"),
     sort: str = Query(default="subs", description="subs | alpha"),
+    user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all known channels with tags, subscriber info.
+    """List the channels YOU follow, with tags and subscriber info.
 
     When `tags` is provided, only returns channels that have ALL specified tags.
+
+    Bounded by `user_channels` rather than by the `channels` table, which holds
+    everyone's — the catalog is shared so a channel two people follow costs one
+    row, and that only works if reading it asks who wants to know.
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    held = await users.held_channel_ids(db, user)
+    if not held:
+        return []
 
     # Sort order
     if sort == "alpha":
@@ -58,14 +67,14 @@ async def list_channels(
         order_col = Channel.subscriber_count.desc()
 
     # Base query
-    stmt = select(Channel).order_by(order_col)
+    stmt = select(Channel).where(Channel.youtube_id.in_(held)).order_by(order_col)
 
     # If tag filtering, restrict to channels that match all tags
     if tag_list:
         # Subquery: channel_ids that have ALL requested tags
         subq = (
             select(ChannelTag.channel_id)
-            .where(ChannelTag.tag_name.in_(tag_list))
+            .where(ChannelTag.user_id == user.id, ChannelTag.tag_name.in_(tag_list))
             .group_by(ChannelTag.channel_id)
             .having(func.count(ChannelTag.tag_name) == len(tag_list))
             .subquery()
@@ -76,7 +85,9 @@ async def list_channels(
     channels = result.scalars().all()
 
     # Fetch all channel→tag mappings in one query
-    tag_result = await db.execute(select(ChannelTag))
+    tag_result = await db.execute(
+        select(ChannelTag).where(ChannelTag.user_id == user.id)
+    )
     tags_map: dict[str, list[str]] = {}
     for ct in tag_result.scalars().all():
         tags_map.setdefault(ct.channel_id, []).append(ct.tag_name)
@@ -154,7 +165,7 @@ def _scanning(channel_id: str) -> bool:
     return job is not None
 
 
-def _first_scan(channel_id: str) -> None:
+def _first_scan(channel_id: str, user_id: int) -> None:
     """Fetch a newly-added channel's recent uploads, in the background.
 
     Not awaited by the request, and that isn't only about the wait: the scan is
@@ -196,7 +207,7 @@ def _first_scan(channel_id: str) -> None:
             async with async_session() as session:
                 chan = await session.get(Channel, channel_id)
                 if chan is not None:
-                    await assign_auto_tags(session, [chan])
+                    await assign_auto_tags(session, [chan], user_id)
                     await session.commit()
         except Exception as e:
             # An unreachable LLM costs the channel its tags, not its place in the
@@ -209,7 +220,11 @@ def _first_scan(channel_id: str) -> None:
 
 
 @router.post("/add")
-async def add_channel(req: AddChannelRequest, db: AsyncSession = Depends(get_db)):
+async def add_channel(
+    req: AddChannelRequest,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """Add a channel to the feed by hand.
 
     Marked `source="manual"`, which is what stops the next subscription resync
@@ -217,6 +232,10 @@ async def add_channel(req: AddChannelRequest, db: AsyncSession = Depends(get_db)
     that's already here comes back with `already: true` and is left alone,
     including its source — re-adding something you're subscribed to must not
     quietly exempt it from resync.
+
+    "Already here" means the *catalog* holds it, which somebody else following it
+    is enough for. The membership is taken either way, so adding a channel your
+    housemate already follows costs no fetch and still puts it in your feed.
 
     Returns as soon as the channel exists, with `scanning: true` — its videos
     arrive over the following seconds and the channel page polls for them.
@@ -231,6 +250,11 @@ async def add_channel(req: AddChannelRequest, db: AsyncSession = Depends(get_db)
         await db.execute(select(Channel).where(Channel.youtube_id == info["youtube_id"]))
     ).scalar_one_or_none()
     if existing is not None:
+        held = await users.held_channel_ids(db, user)
+        if info["youtube_id"] not in held:
+            await users.hold(db, user, info["youtube_id"],
+                             source=existing.source or "subscription")
+            await db.commit()
         return {"status": "ok", "already": True, "scanning": False,
                 **await _channel_summary(db, info)}
 
@@ -243,20 +267,26 @@ async def add_channel(req: AddChannelRequest, db: AsyncSession = Depends(get_db)
         topics=json.dumps(info["topics"]) if info["topics"] else "",
         source="manual",
     ))
+    await users.hold(db, user, info["youtube_id"], source="manual")
     await db.commit()
 
-    _first_scan(info["youtube_id"])
+    _first_scan(info["youtube_id"], user.id)
 
     return {"status": "ok", "already": False, "scanning": True,
             **await _channel_summary(db, info)}
 
 
 @router.delete("/{channel_id}")
-async def remove_channel(channel_id: str, db: AsyncSession = Depends(get_db)):
-    """Remove a hand-added channel and everything the feed built from it.
+async def remove_channel(
+    channel_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stop following a hand-added channel, and delete what the feed built from
+    it if nobody else follows it.
 
     Only the hand-added ones: a subscribed channel is here because YouTube says
-    you're subscribed, so deleting it here would last exactly until the next
+    you're subscribed, so dropping it here would last exactly until the next
     resync put it back. Unsubscribe on YouTube instead, and resync.
 
     Your own saved data survives — see _prune_channels, which this reuses.
@@ -268,13 +298,19 @@ async def remove_channel(channel_id: str, db: AsyncSession = Depends(get_db)):
     ).scalar_one_or_none()
     if not channel:
         raise HTTPException(404, "Channel not found")
-    if (channel.source or "subscription") != "manual":
+
+    membership = await db.get(UserChannel, (user.id, channel_id))
+    # The membership's own `source` decides, not the channel's: the same channel
+    # can be a subscription to one person and a hand-add to another, and it's
+    # your relationship with it that's being ended here.
+    source = (membership.source if membership else channel.source) or "subscription"
+    if source != "manual":
         raise HTTPException(
             400, "That channel came from your YouTube subscriptions. "
                  "Unsubscribe on YouTube, then resync."
         )
 
-    pruned = await _prune_channels(db, [channel_id])
+    pruned = await _prune_channels(db, user, [channel_id])
     return {"status": "ok", "deleted_videos": pruned["videos"]}
 
 
@@ -288,6 +324,7 @@ async def channel_videos(
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     offset: int = Query(default=0, description="pagination: index into the ranked list"),
     limit: int = Query(default=60, description="pagination: page size"),
+    user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
     """Get ranked videos for a single channel, same as feed."""
@@ -303,7 +340,9 @@ async def channel_videos(
 
     # Get channel tags
     tag_result = await db.execute(
-        select(ChannelTag.tag_name).where(ChannelTag.channel_id == channel_id)
+        select(ChannelTag.tag_name).where(
+            ChannelTag.user_id == user.id, ChannelTag.channel_id == channel_id
+        )
     )
     tags = [r[0] for r in tag_result]
 
@@ -373,7 +412,10 @@ async def channel_videos(
     if wanted and not wanted.issuperset(WATCH_STATUSES):
         hist = {
             r[0]: ("watched" if r[1] else "in_progress")
-            for r in await db.execute(select(WatchHistory.youtube_id, WatchHistory.watched))
+            for r in await db.execute(
+                select(WatchHistory.youtube_id, WatchHistory.watched)
+                .where(WatchHistory.user_id == user.id)
+            )
         }
         ranked = [
             item for item in ranked
@@ -395,7 +437,7 @@ async def channel_videos(
             # page polls on this rather than guessing from an empty result.
             "scanning": _scanning(channel_id),
             "tags": tags,
-            "suggested_tags": await channel_suggestions(db, channel),
+            "suggested_tags": await channel_suggestions(db, channel, user.id),
             "label_vocab": label_vocab,
             "has_topics": has_topics,
         },

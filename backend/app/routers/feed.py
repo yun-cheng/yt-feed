@@ -13,9 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import auth, users
 from app.config import settings
 from app.database import async_session
-from app.models import CaptionLangs, CaptionTranslation, Channel, ImportedVideo, Video
+from app.models import (
+    CaptionLangs, CaptionTranslation, Channel, ImportedVideo, User, Video,
+)
 from app.ranking import format_range, rank_videos, resolve_range, score_video
 from app.categorizer import get_categories, get_channel_groups
 
@@ -606,6 +609,7 @@ async def get_feed(
     age: str = Query(default="", description="publish-age range in days, e.g. 0-7"),
     sort: str = Query(default="likes", description="score | views | newest | oldest"),
     group: str | None = Query(default=None),
+    user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -632,12 +636,28 @@ async def get_feed(
         groups.setdefault(group_name, []).append(cid)
 
     # 3. Query videos (fetch more to support lazy loading)
-    stmt = select(Video).order_by(Video.published_at.desc()).limit(2000)
+    #
+    # Restricted to the channels this person follows. The videos table is shared
+    # catalog — one row however many people hold the channel — so this join is
+    # the whole of what makes the feed yours rather than the machine's.
+    held = await users.held_channel_ids(db, user)
+    if not held:
+        return {"categories": categories, "groups": [], "age": format_range(date_range)}
+
+    stmt = (
+        select(Video)
+        .where(Video.channel_id.in_(held))
+        .order_by(Video.published_at.desc())
+        .limit(2000)
+    )
     result = await db.execute(stmt)
     all_videos = result.scalars().all()
 
     # 4. Build channel_id → channel_title + group_name map
-    chan_stmt = select(Channel.youtube_id, Channel.title, Channel.group_name, Channel.thumbnail_url)
+    chan_stmt = (
+        select(Channel.youtube_id, Channel.title, Channel.group_name, Channel.thumbnail_url)
+        .where(Channel.youtube_id.in_(held))
+    )
     chan_result = await db.execute(chan_stmt)
     channel_map = {r.youtube_id: {"title": r.title, "group": r.group_name, "thumbnail": r.thumbnail_url} for r in chan_result}
     chan_titles = {cid: info["title"] for cid, info in channel_map.items()}
@@ -909,11 +929,17 @@ async def get_description(video_id: str):
 
 
 @router.get("/statistics")
-async def get_feed_statistics(db: AsyncSession = Depends(get_db)):
-    """Return total video/channel counts."""
-    chan_count = await db.execute(select(Channel).count())
-    vid_count = await db.execute(select(Video).count())
-    return {
-        "channels": chan_count.scalar_one(),
-        "videos": vid_count.scalar_one(),
-    }
+async def get_feed_statistics(
+    user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
+):
+    """How big YOUR library is — the channels you follow and their videos, not
+    everything the catalog happens to hold for other people."""
+    from sqlalchemy import func
+
+    held = await users.held_channel_ids(db, user)
+    if not held:
+        return {"channels": 0, "videos": 0}
+    vid_count = (await db.execute(
+        select(func.count()).select_from(Video).where(Video.channel_id.in_(held))
+    )).scalar_one()
+    return {"channels": len(held), "videos": vid_count}

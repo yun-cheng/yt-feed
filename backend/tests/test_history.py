@@ -297,7 +297,7 @@ async def test_the_switch_refuses_a_report_and_resolves_nothing(client, monkeypa
         raise AssertionError("resolved a video for a report we don't want")
 
     monkeypatch.setattr(imported_mod, "_extract", unexpected)
-    await app_settings.put({"youtube_history_sync": False})
+    await app_settings.put({"youtube_history_sync": False}, user_id=1)
 
     out = await report_by_id(client, "openedAAAAA", position=100.0)
     assert out == {"status": "off"}
@@ -309,7 +309,7 @@ async def test_the_switch_leaves_the_app_s_own_reporting_alone(client):
     a shared endpoint would be an easy way to turn off more than was asked."""
     from app import app_settings
 
-    await app_settings.put({"youtube_history_sync": False})
+    await app_settings.put({"youtube_history_sync": False}, user_id=1)
 
     await report(client, position=100.0)
     assert (await client.get("/api/history/vid1")).json()["position_seconds"] == 100.0

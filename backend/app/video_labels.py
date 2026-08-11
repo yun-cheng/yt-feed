@@ -351,7 +351,8 @@ async def build_channel_vocab(db, channel_id: str) -> list[str]:
     # Channel grounding (name + taxonomy themes) helps the model interpret titles.
     tags = [
         r[0] for r in (
-            await db.execute(select(ChannelTag.tag_name).where(ChannelTag.channel_id == channel_id))
+            await db.execute(select(ChannelTag.tag_name)
+                             .where(ChannelTag.channel_id == channel_id).distinct())
         ).all()
     ]
     channel_ctx = _channel_context(channel.title, tags)
@@ -471,7 +472,8 @@ async def assign_labels(db, channel_id: str, video_ids: list[str]) -> dict[str, 
 
     tags = [
         r[0] for r in (
-            await db.execute(select(ChannelTag.tag_name).where(ChannelTag.channel_id == channel_id))
+            await db.execute(select(ChannelTag.tag_name)
+                             .where(ChannelTag.channel_id == channel_id).distinct())
         ).all()
     ]
     channel_ctx = _channel_context(channel.title, tags)

@@ -56,7 +56,24 @@ _COLUMN_MIGRATIONS = [
     # Every channel that predates hand-adding arrived from a subscription, which
     # is what the default says — so there's no backfill pass to run.
     ("channels", "source", "TEXT NOT NULL DEFAULT 'subscription'"),
+    # Accounts. These two tables have autoincrement ids, so a plain column is
+    # enough and every existing row belongs to user 1 — the person who was here
+    # before there were accounts. The five tables whose PRIMARY KEY had to widen
+    # can't be done this way and are rebuilt by scripts/migrate_personal_tables.py.
+    ("bookmarks", "user_id", "INTEGER NOT NULL DEFAULT 1"),
+    ("playlists", "user_id", "INTEGER NOT NULL DEFAULT 1"),
 ]
+
+# The tables whose primary key gained `user_id`. A row here that still lacks the
+# column means the rebuild migration hasn't run, which `assert_migrated` turns
+# into a refusal to serve rather than a stream of confusing query errors.
+_REBUILT_TABLES = (
+    "watch_history",
+    "watch_later",
+    "hidden_channels",
+    "channel_tags",
+    "channel_tag_rejections",
+)
 
 
 async def _apply_column_migrations(conn):
@@ -67,10 +84,42 @@ async def _apply_column_migrations(conn):
             await conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
 
 
+class MigrationRequired(RuntimeError):
+    """The schema predates accounts and needs a migration run by hand."""
+
+
+async def _assert_migrated(conn):
+    """Refuse to serve a database that's half-way through the accounts move.
+
+    `create_all` makes missing tables and `_apply_column_migrations` adds missing
+    columns, but neither can widen a PRIMARY KEY — SQLite has no syntax for it,
+    so those five tables are rebuilt by a script the user runs deliberately, with
+    a backup. Starting without it would leave every personal query filtering on a
+    column that isn't there: a hundred identical OperationalErrors, and no
+    indication of the one thing that fixes them.
+    """
+    behind = []
+    for table in _REBUILT_TABLES:
+        rows = await conn.execute(text(f"PRAGMA table_info({table})"))
+        cols = {row[1] for row in rows}
+        # An empty PRAGMA means the table doesn't exist yet — a fresh install,
+        # where create_all is about to build it correctly.
+        if cols and "user_id" not in cols:
+            behind.append(table)
+    if behind:
+        raise MigrationRequired(
+            "This database predates per-user data. Back up "
+            "data/youtube_feed.db, then run:\n"
+            "    python -m scripts.migrate_personal_tables\n"
+            f"(waiting on: {', '.join(behind)})"
+        )
+
+
 async def init_db():
     async with engine.begin() as conn:
         # WAL lets readers (feed queries) proceed while the background scan writes,
         # so a running/failing update never blocks the locally-cached feed.
         await conn.execute(text("PRAGMA journal_mode=WAL"))
+        await _assert_migrated(conn)
         await conn.run_sync(Base.metadata.create_all)
         await _apply_column_migrations(conn)

@@ -54,7 +54,7 @@ INFO = {
 }
 
 
-def _noop_scan(channel_id):
+def _noop_scan(channel_id, user_id):
     """The background first scan: yt-dlp against YouTube, then an LLM for tags.
     Both belong to code with its own tests, and neither may run in this suite."""
 
@@ -139,7 +139,7 @@ async def test_resync_leaves_a_hand_added_channel_alone(client, db, monkeypatch,
     monkeypatch.setattr("app.auth_google.fetch_subscriptions", _live)
     monkeypatch.setattr(subs_mod, "_write_subscriptions", lambda ids: None)
 
-    async def _sync_all(db):
+    async def _sync_all(user, db):
         return {}
 
     monkeypatch.setattr(subs_mod, "sync_all_from_subscriptions", _sync_all)
@@ -162,11 +162,16 @@ async def test_a_hand_added_channel_can_be_removed(client, resolves):
     assert (await client.get("/api/channels")).json() == []
 
 
-async def test_a_subscribed_channel_is_not_removable_here(client, db):
+async def test_a_subscribed_channel_is_not_removable_here(client, db, seeded_user):
     """Deleting one would last exactly until the next resync put it back."""
+    from app import users
     from app.models import Channel
 
     db.add(Channel(youtube_id="UCsubbedsubbedsubbedsub", title="Subscribed"))
+    await db.commit()
+    # The membership, not just the channel row: /api/channels lists what you
+    # follow, so a catalog row nobody holds is correctly invisible.
+    await users.hold(db, seeded_user, "UCsubbedsubbedsubbedsub")
     await db.commit()
 
     r = await client.delete("/api/channels/UCsubbedsubbedsubbedsub")

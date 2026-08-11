@@ -169,11 +169,13 @@ def test_a_record_is_a_deliberate_import_unless_said_otherwise():
 
 
 @pytest.mark.asyncio
-async def test_a_video_cached_from_youtube_stays_off_the_imported_page(client, db):
-    from app.models import ImportedVideo
+async def test_a_video_cached_from_youtube_stays_off_the_imported_page(client, db, seeded_user):
+    from app.models import ImportedVideo, UserImport
 
     db.add(_to_record("kept", info()))
     db.add(_to_record("opened", info(), source="youtube"))
+    # The membership is the list; the snapshot is only the metadata behind it.
+    db.add(UserImport(user_id=seeded_user.id, youtube_id="kept"))
     await db.commit()
 
     listed = (await client.get("/api/imported")).json()
@@ -253,8 +255,11 @@ async def test_pasting_the_link_of_a_video_you_opened_promotes_it(client, db):
 
 
 @pytest.mark.asyncio
-async def test_pasting_a_link_you_really_did_import_is_still_a_skip(client, db):
+async def test_pasting_a_link_you_really_did_import_is_still_a_skip(client, db, seeded_user):
+    from app.models import UserImport
+
     db.add(_to_record("keptAAAAAAA", info()))
+    db.add(UserImport(user_id=seeded_user.id, youtube_id="keptAAAAAAA"))
     await db.commit()
 
     res = (await client.post(

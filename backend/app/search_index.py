@@ -65,12 +65,20 @@ async def ensure_indexes() -> None:
                 json={
                     "searchableAttributes": ["title", "channel_name"],
                     "sortableAttributes": ["view_count", "published_ts"],
+                    # So a search can be narrowed to the channels the person
+                    # asking actually follows. The index itself stays shared —
+                    # it's catalog, and a copy per person would be the same
+                    # documents N times.
+                    "filterableAttributes": ["channel_id"],
                 },
             )
             # Channels: match on the channel name.
             await c.patch(
                 f"/indexes/{CHANNELS_INDEX}/settings",
-                json={"searchableAttributes": ["title"]},
+                json={
+                    "searchableAttributes": ["title"],
+                    "filterableAttributes": ["youtube_id"],
+                },
             )
     except Exception as e:  # never let search setup break startup
         print(f"[search] ensure_indexes skipped: {e}")
@@ -193,28 +201,55 @@ async def remove_documents(
         print(f"[search] remove_documents skipped: {e}")
 
 
-async def _search_raw(index: str, q: str, limit: int, offset: int = 0) -> dict:
+async def _search_raw(
+    index: str, q: str, limit: int, offset: int = 0, filter: str | None = None
+) -> dict:
+    body: dict = {"q": q, "limit": limit, "offset": offset}
+    if filter:
+        body["filter"] = filter
     async with await _client(_SEARCH_TIMEOUT) as c:
-        r = await c.post(
-            f"/indexes/{index}/search",
-            json={"q": q, "limit": limit, "offset": offset},
-        )
+        r = await c.post(f"/indexes/{index}/search", json=body)
         r.raise_for_status()
         return r.json()
 
 
-async def search(q: str, limit: int = 20, offset: int = 0) -> dict:
+def _in_filter(field: str, values) -> str:
+    """A Meili `field IN [...]` clause. Ids are opaque YouTube strings, but they
+    are quoted anyway — an unquoted value with a space or a reserved word would
+    be read as syntax rather than data."""
+    quoted = ", ".join('"{}"'.format(v.replace('"', '')) for v in sorted(values))
+    return f"{field} IN [{quoted}]"
+
+
+async def search(
+    q: str, limit: int = 20, offset: int = 0, channel_ids: set[str] | None = None
+) -> dict:
     """Return {'channels', 'videos', 'videos_total'} for a query. Empty on failure.
 
     Channels are just the top few (no pagination); the video results paginate
     via offset/limit, with videos_total from Meilisearch's estimate.
+
+    `channel_ids` narrows both sections to the channels the asker follows. The
+    index is shared — it's catalog — so this filter is the only thing keeping one
+    person's search out of another's library. `None` means "don't narrow", which
+    is why callers pass a set rather than letting it default; an EMPTY set is
+    distinct and returns nothing, because someone who follows no channels should
+    see no results rather than everybody's.
     """
     q = (q or "").strip()
     if not q:
         return {"channels": [], "videos": [], "videos_total": 0}
+    if channel_ids is not None and not channel_ids:
+        return {"channels": [], "videos": [], "videos_total": 0}
     try:
-        channels = (await _search_raw(CHANNELS_INDEX, q, 8, 0)).get("hits", [])
-        vres = await _search_raw(VIDEOS_INDEX, q, limit, offset)
+        vfilter = cfilter = None
+        if channel_ids is not None:
+            vfilter = _in_filter("channel_id", channel_ids)
+            cfilter = _in_filter("youtube_id", channel_ids)
+        channels = (await _search_raw(
+            CHANNELS_INDEX, q, 8, 0, cfilter
+        )).get("hits", [])
+        vres = await _search_raw(VIDEOS_INDEX, q, limit, offset, vfilter)
         videos = vres.get("hits", [])
         # score isn't stored; VideoCard tolerates it missing, default to 0.
         for v in videos:

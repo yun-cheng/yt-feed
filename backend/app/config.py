@@ -13,7 +13,19 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
 
     # --- Session ---
+    # Signs the sign-in cookie. Changing it signs everybody out, which is also
+    # the only revocation this app has — deliberately, at this scale.
     secret_key: str = "change-me-in-production"
+
+    # Who may sign in, as a comma-separated list of Google account emails.
+    # Empty (the default) means anyone who can reach the server — which on a
+    # LAN-only bind is the household. Set it only if the app is reachable more
+    # widely than you'd like. See `may_sign_in` in auth.py.
+    allowed_emails: str = ""
+
+    # Where the browser should land after signing in, and the origin the app is
+    # served from. Also what CORS allows.
+    app_origin: str = "http://localhost:5173"
 
     # --- Search (Meilisearch companion service) ---
     meili_url: str = "http://127.0.0.1:7700"

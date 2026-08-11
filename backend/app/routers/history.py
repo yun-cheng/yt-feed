@@ -15,9 +15,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import app_settings
+from app import app_settings, auth
 from app.database import async_session
-from app.models import WatchHistory
+from app.models import User, WatchHistory
 
 router = APIRouter(prefix="/history")
 
@@ -84,23 +84,35 @@ def _serialize(h: WatchHistory) -> dict:
 
 
 @router.get("")
-async def list_history(db: AsyncSession = Depends(get_db)):
+async def list_history(
+    user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
+):
     """Everything you've watched, most recently watched first."""
     rows = (await db.execute(
-        select(WatchHistory).order_by(WatchHistory.updated_at.desc())
+        select(WatchHistory)
+        .where(WatchHistory.user_id == user.id)
+        .order_by(WatchHistory.updated_at.desc())
     )).scalars().all()
     return [_serialize(h) for h in rows]
 
 
 @router.get("/{video_id}")
-async def get_history(video_id: str, db: AsyncSession = Depends(get_db)):
+async def get_history(
+    video_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """One video's progress, for resuming. `{}` if it's never been watched."""
-    h = await db.get(WatchHistory, video_id)
+    h = await db.get(WatchHistory, (user.id, video_id))
     return _serialize(h) if h else {}
 
 
 @router.post("")
-async def report_progress(p: ProgressUpdate, db: AsyncSession = Depends(get_db)):
+async def report_progress(
+    p: ProgressUpdate,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """Record how far into a video the player has got (upsert).
 
     Called on a timer while playing, and once more when the page closes.
@@ -110,9 +122,9 @@ async def report_progress(p: ProgressUpdate, db: AsyncSession = Depends(get_db))
 
     watched = is_watched(p.position_seconds, p.duration_seconds)
     now = datetime.utcnow()
-    h = await db.get(WatchHistory, p.youtube_id)
+    h = await db.get(WatchHistory, (user.id, p.youtube_id))
     if h is None:
-        h = WatchHistory(youtube_id=p.youtube_id, created_at=now)
+        h = WatchHistory(user_id=user.id, youtube_id=p.youtube_id, created_at=now)
         db.add(h)
     h.position_seconds = p.position_seconds
     if p.duration_seconds:
@@ -146,7 +158,10 @@ class ProgressById(BaseModel):
 
 @router.post("/by-id/{video_id}")
 async def report_progress_by_id(
-    video_id: str, p: ProgressById, db: AsyncSession = Depends(get_db)
+    video_id: str,
+    p: ProgressById,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
 ):
     """Progress from a caller that knows the play head and nothing else.
 
@@ -166,14 +181,14 @@ async def report_progress_by_id(
     extension holds the flag for up to a minute, so a report already on its way
     when you flip the switch has to be refused rather than written.
     """
-    if not await app_settings.get("youtube_history_sync"):
+    if not await app_settings.get("youtube_history_sync", user.id):
         return {"status": "off"}
 
     if p.position_seconds < MIN_POSITION_SECONDS:
         return {"status": "ignored"}
 
     snapshot: dict = {}
-    existing = await db.get(WatchHistory, video_id)
+    existing = await db.get(WatchHistory, (user.id, video_id))
     if existing is None or not existing.title:
         from app.routers.feed import get_video
 
@@ -197,12 +212,19 @@ async def report_progress_by_id(
             position_seconds=p.position_seconds,
             duration_seconds=duration,
         ),
+        user,
         db,
     )
 
 
 @router.delete("/{video_id}")
-async def remove_history(video_id: str, db: AsyncSession = Depends(get_db)):
-    await db.execute(delete(WatchHistory).where(WatchHistory.youtube_id == video_id))
+async def remove_history(
+    video_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(delete(WatchHistory).where(
+        WatchHistory.user_id == user.id, WatchHistory.youtube_id == video_id
+    ))
     await db.commit()
     return {"status": "ok"}

@@ -16,8 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import auth
 from app.database import async_session
-from app.models import Bookmark
+from app.models import Bookmark, User
 
 router = APIRouter(prefix="/bookmarks")
 
@@ -46,20 +47,29 @@ def _serialize(b: Bookmark) -> dict:
 
 
 @router.get("/{video_id}")
-async def list_bookmarks(video_id: str, db: AsyncSession = Depends(get_db)):
+async def list_bookmarks(
+    video_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """One video's bookmarks, earliest moment first — the order they're shown and
     stepped through, which is the video's own order, not the order they were made."""
     rows = (await db.execute(
         select(Bookmark)
-        .where(Bookmark.video_id == video_id)
+        .where(Bookmark.user_id == user.id, Bookmark.video_id == video_id)
         .order_by(Bookmark.position_seconds)
     )).scalars().all()
     return [_serialize(b) for b in rows]
 
 
 @router.post("")
-async def add_bookmark(p: BookmarkCreate, db: AsyncSession = Depends(get_db)):
+async def add_bookmark(
+    p: BookmarkCreate,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     b = Bookmark(
+        user_id=user.id,
         video_id=p.video_id,
         position_seconds=max(0.0, p.position_seconds),
         note=p.note.strip(),
@@ -71,12 +81,18 @@ async def add_bookmark(p: BookmarkCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/id/{bookmark_id}")
-async def remove_bookmark(bookmark_id: int, db: AsyncSession = Depends(get_db)):
+async def remove_bookmark(
+    bookmark_id: int,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """Prefixed with /id/ so it can't be read as a video id — the GET above takes
     one of those in the same slot, and a bare {bookmark_id} would shadow nothing
     but would leave the two routes looking interchangeable when they aren't."""
     b = await db.get(Bookmark, bookmark_id)
-    if b is None:
+    # Somebody else's bookmark is "no such bookmark" rather than a refusal —
+    # a 403 would confirm the id exists, which is more than the asker should learn.
+    if b is None or b.user_id != user.id:
         raise HTTPException(status_code=404, detail="No such bookmark")
     await db.execute(delete(Bookmark).where(Bookmark.id == bookmark_id))
     await db.commit()

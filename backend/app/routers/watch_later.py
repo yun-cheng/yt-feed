@@ -7,8 +7,9 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import auth
 from app.database import async_session
-from app.models import WatchLater
+from app.models import User, WatchLater
 # The module rather than the function: `imported` owns avatar-filling, and the
 # tests reach in and replace it there. A `from … import` would bind a copy that
 # a monkeypatch on the module can no longer reach.
@@ -58,20 +59,29 @@ def _serialize(w: WatchLater) -> dict:
 
 
 @router.get("")
-async def list_watch_later(db: AsyncSession = Depends(get_db)):
+async def list_watch_later(
+    user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
+):
     """Saved videos, most-recently-added first."""
     rows = (await db.execute(
-        select(WatchLater).order_by(WatchLater.created_at.desc())
+        select(WatchLater)
+        .where(WatchLater.user_id == user.id)
+        .order_by(WatchLater.created_at.desc())
     )).scalars().all()
     return [_serialize(w) for w in rows]
 
 
 @router.post("")
-async def add_watch_later(item: WatchLaterItem, db: AsyncSession = Depends(get_db)):
+async def add_watch_later(
+    item: WatchLaterItem,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """Add a video (idempotent — re-adding an existing one is a no-op)."""
-    existing = await db.get(WatchLater, item.youtube_id)
+    existing = await db.get(WatchLater, (user.id, item.youtube_id))
     if existing is None:
-        rec = WatchLater(**item.model_dump(), created_at=datetime.utcnow())
+        rec = WatchLater(user_id=user.id, **item.model_dump(),
+                         created_at=datetime.utcnow())
         db.add(rec)
         await imported.fill_channel_avatars([rec], db)
         await db.commit()
@@ -79,7 +89,11 @@ async def add_watch_later(item: WatchLaterItem, db: AsyncSession = Depends(get_d
 
 
 @router.post("/by-id/{video_id}")
-async def add_watch_later_by_id(video_id: str, db: AsyncSession = Depends(get_db)):
+async def add_watch_later_by_id(
+    video_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """Save a video we're given nothing but the id of.
 
     The extension's button (see `extension/open-in-app.js`) is on a YouTube page,
@@ -93,7 +107,7 @@ async def add_watch_later_by_id(video_id: str, db: AsyncSession = Depends(get_db
     region-blocked), because saving a nameless row would put an unrenderable
     card on the page.
     """
-    existing = await db.get(WatchLater, video_id)
+    existing = await db.get(WatchLater, (user.id, video_id))
     if existing:
         return {"status": "ok", "saved": True, "already": True, "title": existing.title}
 
@@ -110,7 +124,8 @@ async def add_watch_later_by_id(video_id: str, db: AsyncSession = Depends(get_db
         for field in WatchLaterItem.model_fields
         if field != "youtube_id" and meta.get(field) is not None
     })
-    rec = WatchLater(**item.model_dump(), created_at=datetime.utcnow())
+    rec = WatchLater(user_id=user.id, **item.model_dump(),
+                     created_at=datetime.utcnow())
     db.add(rec)
     await imported.fill_channel_avatars([rec], db)
     await db.commit()
@@ -118,7 +133,13 @@ async def add_watch_later_by_id(video_id: str, db: AsyncSession = Depends(get_db
 
 
 @router.delete("/{youtube_id}")
-async def remove_watch_later(youtube_id: str, db: AsyncSession = Depends(get_db)):
-    await db.execute(delete(WatchLater).where(WatchLater.youtube_id == youtube_id))
+async def remove_watch_later(
+    youtube_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(delete(WatchLater).where(
+        WatchLater.user_id == user.id, WatchLater.youtube_id == youtube_id
+    ))
     await db.commit()
     return {"status": "ok"}

@@ -18,9 +18,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import quota
+from app import auth, quota
 from app.database import async_session
-from app.models import Channel, ImportedVideo
+from app.models import Channel, ImportedVideo, User, UserImport
 from app.ranking import score_video
 from app.youtube_api import fetch_channel_avatars, take_quota_delta
 
@@ -211,54 +211,75 @@ def _serialize(v: ImportedVideo) -> dict:
 
 
 @router.get("")
-async def list_imported(db: AsyncSession = Depends(get_db)):
-    """Imported videos, most recently imported first.
+async def list_imported(
+    user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
+):
+    """Videos YOU imported, most recently imported first.
 
-    Only the ones you actually imported. The table also holds metadata rows for
-    videos opened through the extension's button, which exist so the watch page
-    and history have a title to show — listing those here would turn a page of
-    things you chose to keep into a log of everything you clicked.
+    `user_imports` is the list; `imported_videos` is the metadata behind it. The
+    snapshot table also holds rows for videos opened through the extension's
+    button, which exist so the watch page and history have a title to show —
+    listing those would turn a page of things you chose to keep into a log of
+    everything you clicked. And it's shared, so listing it whole would show you
+    what somebody else kept.
     """
     rows = (await db.execute(
         select(ImportedVideo)
-        .where(ImportedVideo.source == "import")
-        .order_by(ImportedVideo.created_at.desc())
+        .join(UserImport, UserImport.youtube_id == ImportedVideo.youtube_id)
+        .where(UserImport.user_id == user.id)
+        .order_by(UserImport.created_at.desc())
     )).scalars().all()
     return [_serialize(v) for v in rows]
 
 
 @router.post("")
-async def import_videos(req: ImportRequest, db: AsyncSession = Depends(get_db)):
+async def import_videos(
+    req: ImportRequest,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """Import every YouTube link in the pasted text.
 
     Partial success is the normal case (one dead link among five), so nothing
     here raises: each input lands in exactly one of added / skipped / failed and
     the UI reports the tally.
+
+    Two writes per link: the metadata snapshot, shared with anyone who pastes the
+    same video (one yt-dlp fetch, not one each), and your membership of it.
     """
     ids, bad = parse_video_ids(req.urls)
     failed = [{"input": t, "error": "not a YouTube link"} for t in bad]
 
-    existing: dict[str, str] = {}
+    existing: set[str] = set()
+    mine: set[str] = set()
     if ids:
         existing = {
-            r[0]: r[1] for r in await db.execute(
-                select(ImportedVideo.youtube_id, ImportedVideo.source)
+            r[0] for r in await db.execute(
+                select(ImportedVideo.youtube_id)
                 .where(ImportedVideo.youtube_id.in_(ids))
             )
         }
-    skipped = [vid for vid in ids if existing.get(vid) == "import"]
-    # Already here, but only as the metadata cached when you opened it from
-    # YouTube. Pasting its link is you asking to KEEP it, so promote the row
-    # instead of reporting "already imported" about something not on the page.
-    promoted = [vid for vid in ids if existing.get(vid) == "youtube"]
+        mine = {
+            r[0] for r in await db.execute(
+                select(UserImport.youtube_id).where(
+                    UserImport.user_id == user.id, UserImport.youtube_id.in_(ids)
+                )
+            )
+        }
+    skipped = [vid for vid in ids if vid in mine]
+    # The snapshot is already here — cached when you opened it from YouTube, or
+    # fetched for somebody else who pasted it first. Either way pasting the link
+    # is you asking to KEEP it, so take the membership rather than reporting
+    # "already imported" about something that isn't on your page.
+    promoted = [vid for vid in ids if vid in existing and vid not in mine]
     todo = [vid for vid in ids if vid not in existing]
 
     added = []
     for vid in promoted:
         rec = await db.get(ImportedVideo, vid)
         rec.source = "import"
-        # Ordering is "most recently imported first", and this is that moment.
-        rec.created_at = datetime.utcnow()
+        db.add(UserImport(user_id=user.id, youtube_id=vid,
+                          created_at=datetime.utcnow()))
         added.append(_serialize(rec))
 
     loop = asyncio.get_event_loop()
@@ -279,17 +300,31 @@ async def import_videos(req: ImportRequest, db: AsyncSession = Depends(get_db)):
     await fill_channel_avatars(fresh, db)
     for rec in fresh:
         db.add(rec)
+        db.add(UserImport(user_id=user.id, youtube_id=rec.youtube_id,
+                          created_at=datetime.utcnow()))
         added.append(_serialize(rec))
-    if added:
+    if added or promoted:
         await db.commit()
 
     return {"added": added, "skipped": skipped, "failed": failed}
 
 
 @router.delete("/{video_id}")
-async def remove_imported(video_id: str, db: AsyncSession = Depends(get_db)):
-    rec = await db.get(ImportedVideo, video_id)
-    if rec:
-        await db.delete(rec)
-        await db.commit()
+async def remove_imported(
+    video_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Take it off your Imported page.
+
+    The snapshot stays. It's a cache — the watch page and history still read it
+    for a title, somebody else may have imported the same video, and re-pasting
+    the link costs no fetch. What goes is your claim on it.
+    """
+    from sqlalchemy import delete as sa_delete
+
+    await db.execute(sa_delete(UserImport).where(
+        UserImport.user_id == user.id, UserImport.youtube_id == video_id
+    ))
+    await db.commit()
     return {"status": "ok"}
