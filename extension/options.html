@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>YT Feed companion</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 28px 32px; max-width: 560px;
+      background: #0f0f0f; color: #f1f1f1;
+      font: 14px/1.5 system-ui, -apple-system, sans-serif;
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    p.lede { color: #aaa; font-size: 13px; margin: 0 0 24px; }
+    label { display: block; font-weight: 500; margin-bottom: 4px; }
+    .hint { color: #777; font-size: 12px; margin: 4px 0 0; }
+    .hint code { color: #aaa; }
+    input {
+      width: 100%; box-sizing: border-box; padding: 8px 10px;
+      background: #1c1c1c; color: #f1f1f1;
+      border: 1px solid #3f3f3f; border-radius: 8px;
+      font: inherit; font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    input:focus { outline: none; border-color: #666; }
+    .field { margin-bottom: 20px; }
+    button {
+      padding: 8px 16px; border: 0; border-radius: 999px;
+      background: #f1f1f1; color: #0f0f0f;
+      font: inherit; font-weight: 500; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { margin-left: 12px; font-size: 13px; color: #7dc98a; }
+    #status.bad { color: #e0a0a0; }
+  </style>
+</head>
+<body>
+  <h1>YT Feed companion</h1>
+  <p class="lede">
+    Usually you need nothing here. Open the app once and the extension picks up
+    both of these from the page itself. Set them by hand when it can&rsquo;t &mdash;
+    an app served from something other than <code>localhost</code>, or a key you
+    want to choose deliberately.
+  </p>
+
+  <div class="field">
+    <label for="origin">App address</label>
+    <input id="origin" type="text" placeholder="http://localhost:5173" spellcheck="false">
+    <p class="hint">
+      Where the app is served. Must be on <code>localhost</code> or
+      <code>127.0.0.1</code> — anything else needs a matching entry in the
+      extension's <code>host_permissions</code>.
+    </p>
+  </div>
+
+  <div class="field">
+    <label for="key">API key</label>
+    <input id="key" type="text" placeholder="paste from Settings → Extension" spellcheck="false">
+    <p class="hint">
+      Says whose history a video you watch is recorded in, and whose Watch Later
+      the save button reaches. Filled in automatically when you open the app;
+      Settings &rarr; Extension has it if you need to paste it. Leave it empty
+      and the app will answer only if it has exactly one account.
+    </p>
+  </div>
+
+  <button id="save">Save</button>
+  <span id="status"></span>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -16,9 +16,10 @@ behaviour is the default that ships.
 | File | Runs on | Does |
 |---|---|---|
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
-| `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>` |
+| `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>`, and hands the worker the app's address and this browser's API key |
 | `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the watch-page pair, the channel-page pill, and the watch-history sampler |
-| `background.js` | service worker | Talks to the app's API, and caches the Watch Later list and the channel list |
+| `background.js` | service worker | Talks to the app's API, owns the configuration, and caches the Watch Later list and the channel list |
+| `options.html` / `options.js` | extension options | The app's address and your API key |
 
 ## Open in YT Feed, and Save to Watch Later
 
@@ -328,14 +329,79 @@ and `showinfo` were the old ones and both are dead.
 Nothing in a web page can reach inside a cross-origin iframe to remove them.
 A content script can, so `embed.css` is one.
 
+## Settings: the app's address, and who you are
+
+**Normally you set neither.** Open the app once and the extension takes both from
+the page — see "How it knows who you are" below. The options page
+(`chrome://extensions` → **Details** → **Extension options**) is the fallback,
+and stores them together under one key in `chrome.storage.local`.
+
+**App address** — where the app is served, `http://localhost:5173` by default.
+It has to stay on `localhost` or `127.0.0.1`: those are the extension's
+`host_permissions`, and a fetch outside them is blocked whatever this says. Any
+*port* on those hosts is fine.
+
+**API key** — usually filled in for you; the app's **Settings → Extension** has
+it if you need to paste it. It says *whose* app this is: whose history a video
+you watch on youtube.com is recorded in, whose Watch Later the save button
+reaches, whose channel list the tick is drawn from. Treat it like a password.
+
+Leave the key empty and the app still answers, as long as it holds exactly one
+account — which keeps a single-person install working with nothing configured.
+Once there are two accounts an unkeyed request has no answer, and the buttons
+report the refusal rather than guessing.
+
+Saving checks the pair against `/api/auth/me` and tells you who it reached. A
+typo'd key would otherwise fail silently, and the first you'd know is your watch
+history quietly not being recorded.
+
+Changing either value drops every cached list, in **both** layers — the memory
+copy and the `chrome.storage.local` one. The stored copy is what a fetch falls
+back to when the app is unreachable, so leaving it would show the previous
+person's Watch Later ticks to the next.
+
+### How it knows who you are
+
+`marker.js` runs on the app's own pages, and that is the one place in this
+extension where a request to the API is **same-origin** — so it carries the
+session cookie, and `/api/auth/api-key` simply answers. It forwards the key and
+the origin to the worker, which stores them like any other configuration. Open
+the app, and the extension belongs to whoever the app says you are.
+
+Nothing else here can do that. The service worker's requests come from the
+extension's own origin; the content script on youtube.com is a different site
+again. Both get a request without the cookie — which is exactly why the key
+needed carrying across by hand before this.
+
+The newest answer wins, so a shared browser profile follows whoever opened the
+app last — the same answer the app itself would give that browser. Changing
+identity drops every cached list, in both layers (see below).
+
+It only reaches origins the extension has permission for: `localhost` and
+`127.0.0.1`. An app opened at `192.168.1.50:5173` is outside that, and the
+options page is what covers it.
+
+### Why a key and not the session cookie
+
+The app in a browser signs in with Google and gets a cookie. The extension
+can't use it: its worker posts on behalf of a `youtube.com` page, so the cookie
+would need `SameSite=None`, which requires `Secure`, which requires HTTPS —
+a certificate to talk to `http://localhost`. A bearer token has none of that.
+
+The worker owns both values, and `open-in-app.js` asks it for the address rather
+than keeping its own copy. It used to be a constant in both files: change one and
+the button opens the wrong port while saving still works, which reads as a
+baffling bug.
+
 ## Install
 
-It's unpacked and unbuilt — five files, no toolchain.
+It's unpacked and unbuilt — seven files, no toolchain.
 
 1. Open `chrome://extensions`
 2. Turn on **Developer mode**
 3. **Load unpacked** → select this `extension/` directory
-4. Reload the app
+4. Open its **Extension options** and paste your API key
+5. Reload the app
 
 To confirm it took, run this in the app's console — `true` means it's active:
 

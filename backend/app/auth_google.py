@@ -204,6 +204,18 @@ async def logout(request: Request):
     return {"signed_in": False}
 
 
+@router.get("/api-key")
+async def api_key(user: User = Depends(auth.account)):
+    """The bearer token for the browser extension.
+
+    Behind the same auth as everything else, and it returns the CALLER's key —
+    there's no route to anyone else's. Handing it over on request is the point:
+    the extension can't read a session cookie from a youtube.com page context,
+    so a key it carries itself is what replaces one.
+    """
+    return {"api_key": user.api_key, "app_origin": settings.app_origin}
+
+
 @router.get("/status")
 async def auth_status():
     """Check if user is authenticated."""

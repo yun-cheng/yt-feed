@@ -23,13 +23,21 @@
  */
 
 /*
- * Where the app is served. Vite's default; change this line if you run it
- * somewhere else (it takes the next page load, no rebuild). Deliberately a
- * constant rather than a stored setting: an options page would mean a storage
- * permission and two more files to answer a question that has one answer for
- * the life of an install.
+ * Where the app is served, set on the extension's options page.
+ *
+ * Held here as a plain variable and asked of the worker at startup, rather than
+ * read from storage directly: the worker already owns the configuration (it
+ * needs the API key that travels with it), and one owner means the address the
+ * button opens can't disagree with the address the save posts to. Until the
+ * answer arrives — a few milliseconds, and the worker may need waking — it's the
+ * default, which is what an unconfigured install uses anyway.
  */
-const APP_ORIGIN = 'http://localhost:5173'
+let appOrigin = 'http://localhost:5173'
+
+async function refreshOrigin() {
+  const reply = await ask({ type: 'app-origin' })
+  if (reply?.ok && reply.origin) appOrigin = reply.origin
+}
 
 /* Named so repeat clicks REUSE one app tab rather than piling up tabs. */
 const APP_TAB = 'ytfeed'
@@ -396,7 +404,7 @@ openButton.addEventListener('click', (e) => {
   // The buttons are siblings of the page rather than children of the card's
   // link, so nothing needs preventing — YouTube's navigation never sees this.
   e.stopPropagation()
-  if (currentId) window.open(`${APP_ORIGIN}/watch/${currentId}`, APP_TAB)
+  if (currentId) window.open(`${appOrigin}/watch/${currentId}`, APP_TAB)
   hide()
 })
 
@@ -576,7 +584,7 @@ openPill.addEventListener('click', () => {
   seen = null
   samples = 0
 
-  window.open(`${APP_ORIGIN}/watch/${barId}${t}`, APP_TAB)
+  window.open(`${appOrigin}/watch/${barId}${t}`, APP_TAB)
 })
 
 savePill.addEventListener('click', () => clickSave(barSave, barId, () => barId))
@@ -681,6 +689,7 @@ function flushHistory() {
   seen = null
 }
 
+refreshOrigin()
 setInterval(sample, SAMPLE_MS)
 
 // Closing the tab, or a real navigation out of it. `pagehide` rather than

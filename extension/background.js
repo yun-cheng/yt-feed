@@ -7,13 +7,77 @@
  * Fetches from here don't go through CORS at all: the extension's own
  * `host_permissions` are the check instead.
  *
- * `APP_ORIGIN` is duplicated from `open-in-app.js` rather than shared, because
- * a service worker and a content script have no common scope short of adding a
- * module loader to a five-file, no-build extension. Change both, or nothing:
- * the button opens the wrong port while the save still works, which reads as a
- * baffling bug.
+ * This worker owns the configuration too — the app's address and the API key,
+ * set on the options page. `open-in-app.js` asks for the address rather than
+ * holding its own copy: a duplicated constant meant the button could open the
+ * wrong port while saving still worked, which reads as a baffling bug.
  */
-const APP_ORIGIN = 'http://localhost:5173'
+const CONFIG_KEY = 'config'
+const DEFAULT_ORIGIN = 'http://localhost:5173'
+
+/*
+ * The API key says WHOSE app this is — whose history a video you watch on
+ * youtube.com is recorded in, whose Watch Later the save button reaches.
+ * Without one the app still answers if it holds exactly one account, which is
+ * the ordinary case and keeps a single-person install working unconfigured.
+ *
+ * You shouldn't have to set either of these. `marker.js` runs on the app's own
+ * pages, where a fetch is same-origin and carries the session cookie, and hands
+ * both over the first time you open the app — see `app-identity` below. The
+ * options page is the fallback for what that can't reach.
+ */
+let configMemo = null // { origin, apiKey }
+
+async function config() {
+  if (configMemo) return configMemo
+  const stored = (await chrome.storage.local.get(CONFIG_KEY))[CONFIG_KEY] || {}
+  configMemo = {
+    origin: stored.origin || DEFAULT_ORIGIN,
+    apiKey: stored.apiKey || '',
+  }
+  return configMemo
+}
+
+// The options page writes the whole object at once, so one change event is one
+// coherent config — and dropping the memo is enough to pick it up.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes[CONFIG_KEY]) return
+  configMemo = null
+  // Everything cached below belongs to whoever the key named a moment ago.
+  // Both layers have to go, not just the in-memory one: the stored copy is
+  // what a fetch falls back to when the app is unreachable, so leaving it
+  // would show the previous person's Watch Later ticks to the next.
+  memo = channelMemo = syncMemo = null
+  chrome.storage.local.remove([STORE_KEY, CHANNELS_KEY, SYNC_KEY])
+})
+
+/*
+ * Adopt the identity the app's own page just handed us.
+ *
+ * Trusted because of where it comes from: `marker.js` only runs on origins in
+ * this extension's `host_permissions`, and it only ever forwards what that
+ * origin's own API returned to a session it already had. A page that isn't the
+ * app has nothing to send, and a signed-out one has nothing to send either.
+ *
+ * The newest answer wins. If two people share a browser profile, the extension
+ * belongs to whoever opened the app last — which is the same answer the app
+ * itself would give that browser.
+ */
+async function adoptIdentity(origin, apiKey) {
+  const current = await config()
+  if (current.origin === origin && current.apiKey === apiKey) return false
+  configMemo = { origin, apiKey }
+  await chrome.storage.local.set({ [CONFIG_KEY]: configMemo })
+  return true
+}
+
+/** `fetch` against the app, carrying whoever this browser is configured as. */
+async function api(path, init = {}) {
+  const { origin, apiKey } = await config()
+  const headers = { ...(init.headers || {}) }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  return fetch(`${origin}${path}`, { ...init, headers })
+}
 
 /* Long enough that a browse session costs one request, short enough that
  * saving something in the app shows up on YouTube while you're still there. */
@@ -40,7 +104,7 @@ let memo = null // { ids: string[], at: number }
 async function savedIds(force = false) {
   if (!force && memo && Date.now() - memo.at < FRESH_MS) return memo.ids
   try {
-    const res = await fetch(`${APP_ORIGIN}/api/watch-later`)
+    const res = await api('/api/watch-later')
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const ids = (await res.json()).map((v) => v.youtube_id)
     memo = { ids, at: Date.now() }
@@ -65,9 +129,7 @@ async function remember(videoId) {
 }
 
 async function saveWatchLater(videoId) {
-  const res = await fetch(`${APP_ORIGIN}/api/watch-later/by-id/${videoId}`, {
-    method: 'POST',
-  })
+  const res = await api(`/api/watch-later/by-id/${videoId}`, { method: 'POST' })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const data = await res.json()
   if (data.saved) await remember(videoId)
@@ -86,7 +148,7 @@ let channelMemo = null // { ids: string[], at: number }
 async function channelIds(force = false) {
   if (!force && channelMemo && Date.now() - channelMemo.at < FRESH_MS) return channelMemo.ids
   try {
-    const res = await fetch(`${APP_ORIGIN}/api/channels`)
+    const res = await api('/api/channels')
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const ids = (await res.json()).map((c) => c.youtube_id)
     channelMemo = { ids, at: Date.now() }
@@ -100,7 +162,7 @@ async function channelIds(force = false) {
 }
 
 async function addChannel(url) {
-  const res = await fetch(`${APP_ORIGIN}/api/channels/add`, {
+  const res = await api('/api/channels/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     // The app resolves the URL itself — handle, id or vanity, it takes any of
@@ -136,7 +198,7 @@ let syncMemo = null // { on: boolean, at: number }
 async function historySync(force = false) {
   if (!force && syncMemo && Date.now() - syncMemo.at < FRESH_MS) return syncMemo.on
   try {
-    const res = await fetch(`${APP_ORIGIN}/api/settings`)
+    const res = await api('/api/settings')
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const on = (await res.json()).values?.youtube_history_sync !== false
     syncMemo = { on, at: Date.now() }
@@ -163,7 +225,7 @@ async function historySync(force = false) {
  * next one ten seconds later carries a position that supersedes it anyway.
  */
 async function reportProgress(videoId, position, duration) {
-  const res = await fetch(`${APP_ORIGIN}/api/history/by-id/${videoId}`, {
+  const res = await api(`/api/history/by-id/${videoId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ position_seconds: position, duration_seconds: duration }),
@@ -180,6 +242,14 @@ const HANDLERS = {
   'channel-ids': async (msg) => ({ ids: await channelIds(msg.force) }),
   'add-channel': (msg) => addChannel(msg.url),
   'history-sync': async (msg) => ({ enabled: await historySync(msg.force) }),
+  // The content script's only way to know where the app lives — see the note
+  // at the top about why it doesn't keep its own copy.
+  'app-origin': async () => ({ origin: (await config()).origin }),
+  // Sent by marker.js from the app's own page. `changed` is for the log more
+  // than the caller — the storage listener below does the cache clearing.
+  'app-identity': async (msg) => ({
+    changed: await adoptIdentity(msg.origin, msg.apiKey),
+  }),
   'report-progress': (msg) => reportProgress(msg.videoId, msg.position, msg.duration),
 }
 

@@ -1,22 +1,31 @@
 {
   "manifest_version": 3,
   "name": "YT Feed companion",
-  "version": "1.5.0",
-  "description": "Strips YouTube's overlays off embedded players, and adds \"open in YT Feed\" and \"save to Watch Later\" buttons to video cards and the watch page on YouTube, plus \"add this channel\" on channel pages. Records what you watch on YouTube into YT Feed's own history, if the app is set to want it.",
+  "version": "1.7.0",
+  "description": "Strips YouTube's overlays off embedded players, and adds \"open in YT Feed\" and \"save to Watch Later\" buttons to video cards and the watch page on YouTube, plus \"add this channel\" on channel pages. Records what you watch on YouTube into YT Feed's own history, if the app is set to want it. Picks up which account it belongs to from the app itself.",
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["storage"],
+  "options_page": "options.html",
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
-      "exclude_matches": ["https://www.youtube.com/embed/*"],
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "exclude_matches": [
+        "https://www.youtube.com/embed/*"
+      ],
       "all_frames": false,
-      "js": ["open-in-app.js"]
+      "js": [
+        "open-in-app.js"
+      ]
     },
     {
       "matches": [
@@ -25,7 +34,9 @@
       ],
       "all_frames": true,
       "run_at": "document_start",
-      "css": ["embed.css"]
+      "css": [
+        "embed.css"
+      ]
     },
     {
       "matches": [
@@ -34,7 +45,9 @@
       ],
       "all_frames": false,
       "run_at": "document_start",
-      "js": ["marker.js"]
+      "js": [
+        "marker.js"
+      ]
     }
   ]
 }

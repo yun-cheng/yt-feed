@@ -217,3 +217,34 @@ async def test_logging_out_leaves_the_api_key_working(client, db, google, allowe
         "/api/auth/me", headers={"Authorization": f"Bearer {user.api_key}"}
     )
     assert r.json()["signed_in"] is True
+
+
+# ── The extension's key ──────────────────────────────────────────────
+
+
+async def test_the_api_key_is_handed_over_on_request(client, db):
+    """It has to be copied into the extension by hand — the extension can't read
+    a session cookie from a youtube.com page context."""
+    user = await users.ensure_local_user(db)
+    await db.commit()
+
+    r = await client.get("/api/auth/api-key")
+    assert r.json()["api_key"] == user.api_key
+    assert r.json()["app_origin"] == settings.app_origin
+
+
+async def test_the_key_endpoint_returns_the_callers_own(client, db):
+    """There's no route to anybody else's."""
+    await users.ensure_local_user(db)
+    them = User(google_sub="sub-2", email="them@example.test",
+                api_key=users.new_api_key())
+    db.add(them)
+    await db.commit()
+
+    r = await client.get("/api/auth/api-key",
+                         headers={"Authorization": f"Bearer {them.api_key}"})
+    assert r.json()["api_key"] == them.api_key
+
+
+async def test_nobody_gets_a_key_without_an_account(client):
+    assert (await client.get("/api/auth/api-key")).status_code == 401

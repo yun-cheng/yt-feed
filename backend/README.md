@@ -1010,6 +1010,13 @@ Two credentials read the caller back, because there are two kinds:
 | `ytfeed_session` cookie | a user id, signed with `SECRET_KEY`, `SameSite=Lax` | the app in a browser |
 | `Authorization: Bearer <api_key>` | `users.api_key` | the browser extension |
 
+`GET /api/auth/api-key` returns the caller's own key and has no route to anyone
+else's. The extension normally fetches it for itself: its `marker.js` content
+script runs on the app's own pages, where the request is same-origin and carries
+the session, so opening the app is all it takes. **Settings → Extension** shows
+the same key for the cases that can't reach — an app served from an address the
+extension has no host permission for.
+
 `GET /api/auth/me` answers `{"signed_in": false}` rather than 401, because the
 app asks before it knows and "nobody" is an ordinary answer.
 
@@ -1286,6 +1293,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/auth/callback` | exchange the code, admit or refuse the account, set the session, land back at `APP_ORIGIN` |
 | GET | `/api/auth/me` | who's signed in — `{"signed_in": false}` when nobody is, never a 401 |
 | POST | `/api/auth/logout` | end the session (the extension's API key keeps working) |
+| GET | `/api/auth/api-key` | the caller's own bearer token, for the extension |
 | GET | `/api/feed` | ranked feed grouped by category (query: age, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |

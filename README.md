@@ -137,7 +137,10 @@ title, avatar, centre play button, share row, "More videos" — so the app draws
 its own control bar over bare video.
 
 Load `extension/` unpacked from `chrome://extensions` (Developer mode → Load
-unpacked) and reload the app.
+unpacked) and reload the app. It picks up which account it belongs to from the
+app itself the first time you open it — its content script runs there, where a
+request to the API carries your session. The extension's options page is the
+fallback, for an app served from something other than `localhost`.
 
 Everything works without it; the app keeps YouTube's own controls and lays the
 bookmark / A–B marks over them instead. A video opened with the button need not

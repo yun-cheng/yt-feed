@@ -428,7 +428,8 @@ components/
                                   the button that fetches the rest
   SettingsPage.tsx                renders itself from the spec /api/settings
                                   serves — adding a setting is a backend change.
-                                  Badges the ones scoped to the whole machine
+                                  Badges the ones scoped to the whole machine,
+                                  and shows the extension's API key to copy
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx               the offline library — cards open the watch
                                   overlay, which plays the file from disk

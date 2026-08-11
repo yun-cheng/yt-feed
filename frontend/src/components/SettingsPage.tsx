@@ -39,6 +39,67 @@ type SettingsResponse = {
   values: Record<string, unknown>
 }
 
+/**
+ * The extension's credential.
+ *
+ * The extension normally takes this for itself: its content script runs on THIS
+ * page, where a request to the API is same-origin and carries the session, so
+ * simply opening the app tells it whose account it belongs to. Shown here for
+ * the cases that can't reach — an app served from something other than
+ * localhost, or a second browser you want to point at this account by hand.
+ *
+ * Shown rather than hidden: anyone who can read this page is already signed in
+ * as its owner, so there is nothing here they don't already have.
+ */
+function ExtensionKey() {
+  const [key, setKey] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    apiFetch('/api/auth/api-key', { quiet: true })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live) setKey(d?.api_key ?? null) })
+      .catch(() => { if (live) setKey(null) })
+    return () => { live = false }
+  }, [])
+
+  if (!key) return null
+
+  return (
+    <section className="mb-8">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
+        Extension
+      </h3>
+      <div className="min-w-0">
+        <label className="text-sm font-medium text-white">Your API key</label>
+        <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
+          The extension picks this up on its own the moment you open the app, so
+          you usually never need it. Paste it into the extension&rsquo;s options
+          only when it can&rsquo;t &mdash; on an app address other than localhost,
+          say. It tells the extension whose history to record into and whose
+          Watch Later to save to, so treat it like a password.
+        </p>
+        <div className="mt-2 flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-[#ddd]">
+            {key}
+          </code>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(key)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+            }}
+            className="flex-shrink-0 cursor-pointer rounded-full bg-white px-4 py-2 text-xs font-medium text-black"
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function Toggle({ on, busy, onChange }: { on: boolean; busy: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
@@ -160,6 +221,7 @@ export default function SettingsPage() {
         </section>
       ))}
 
+      <ExtensionKey />
     </div>
   )
 }
