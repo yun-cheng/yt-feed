@@ -137,10 +137,22 @@ title, avatar, centre play button, share row, "More videos" — so the app draws
 its own control bar over bare video.
 
 Load `extension/` unpacked from `chrome://extensions` (Developer mode → Load
-unpacked) and reload the app. It picks up which account it belongs to from the
-app itself the first time you open it — its content script runs there, where a
-request to the API carries your session. The extension's options page is the
-fallback, for an app served from something other than `localhost`.
+unpacked), open its **Extension options** and paste the API key from the app's
+**Settings → Extension**, then reload the app. The key says whose history and
+Watch Later the buttons reach; on a machine with one account you can leave it
+empty.
+
+### Sharing it with the household
+
+The dev server already listens on every interface, so anyone on your network can
+open `http://<your-machine>:5173`. Add them under **Settings → People** and send
+them the link it gives you — opening it signs them in and keeps them signed in.
+Everyone keeps their own history, playlists, tags and saved videos; the channels,
+videos and downloads are shared, so a channel two people follow is fetched once.
+
+Google sign-in is for whoever runs the server: Google only accepts an `http`
+OAuth callback on `localhost`, so it can't be used from another machine on the
+LAN. That's what the links are for.
 
 Everything works without it; the app keeps YouTube's own controls and lays the
 bookmark / A–B marks over them instead. A video opened with the button need not

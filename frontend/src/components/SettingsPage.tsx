@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import People from './People'
 
 type SettingSpec = {
   key: string
@@ -221,6 +222,7 @@ export default function SettingsPage() {
         </section>
       ))}
 
+      <People />
       <ExtensionKey />
     </div>
   )

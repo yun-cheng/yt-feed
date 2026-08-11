@@ -62,6 +62,9 @@ _COLUMN_MIGRATIONS = [
     # can't be done this way and are rebuilt by scripts/migrate_personal_tables.py.
     ("bookmarks", "user_id", "INTEGER NOT NULL DEFAULT 1"),
     ("playlists", "user_id", "INTEGER NOT NULL DEFAULT 1"),
+    # Nullable: only accounts that sign in without Google carry one, and it's
+    # minted when the link is first asked for rather than at creation.
+    ("users", "login_token", "VARCHAR"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the

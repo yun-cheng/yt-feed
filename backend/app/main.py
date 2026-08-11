@@ -13,7 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import settings
 from app.database import async_session, init_db
 from app.models import User
-from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local, bookmarks
+from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local, bookmarks, people
 from app.routers import search as search_router
 from app.routers import settings as settings_router
 from app.routers import watch_later as watch_later_router
@@ -211,6 +211,7 @@ app.add_middleware(
     max_age=60 * 60 * 24 * 30,
 )
 
+app.include_router(people.router, prefix="/api")
 app.include_router(feed.router, prefix="/api")
 app.include_router(channels.router, prefix="/api")
 app.include_router(downloads.router, prefix="/api")

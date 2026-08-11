@@ -12,8 +12,12 @@ class User(Base):
     moves across (see app/users.py).
 
     One box, a few trusted people — which is why there is no role column and no
-    password. Google says who you are, and everyone who gets in is equally
-    trusted with the downloads and local folders on the shared disk.
+    password. Two ways in, and which you use is decided by where the app is
+    reached from rather than by preference: **Google** for whoever runs it, on
+    localhost, and a **login link** for everyone else, because Google will only
+    accept an http callback on localhost and a home server answers at
+    192.168.something. Everyone who gets in is equally trusted with the downloads
+    and local folders on the shared disk.
     """
 
     __tablename__ = "users"
@@ -33,6 +37,18 @@ class User(Base):
     # a cookie would need SameSite=None and therefore HTTPS — a lot of ceremony
     # for a localhost app. A bearer token has neither constraint.
     api_key = Column(String, unique=True, nullable=False)
+
+    # How someone signs in WITHOUT Google: a link containing this token, sent to
+    # them once. Google is not an option for the rest of the household — it only
+    # accepts an http callback on localhost, and a home server is reached at
+    # 192.168.something — so for a family on a LAN this is the way in, and a link
+    # is the least ceremony a sign-in can have.
+    #
+    # Durable rather than single-use, deliberately: the same link has to work on
+    # a phone and a laptop, and again after a cleared cookie jar. It is
+    # therefore a credential — regenerate it (POST /api/users/{id}/link) and the
+    # old one stops working, which is the revocation.
+    login_token = Column(String, unique=True, nullable=True, index=True)
 
     # Per-user OAuth, replacing the single config/youtube_oauth_token.json. The
     # refresh token is the durable half; the access token is cheap to re-mint and

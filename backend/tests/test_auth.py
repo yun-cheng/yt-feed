@@ -78,7 +78,7 @@ async def test_nobody_signed_in_is_an_answer_not_an_error(client):
     look like a failure."""
     r = await client.get("/api/auth/me")
     assert r.status_code == 200
-    assert r.json() == {"signed_in": False}
+    assert r.json() == {"signed_in": False, "resolved": False}
 
 
 async def test_the_extension_is_read_from_its_api_key(client, db):
@@ -92,8 +92,8 @@ async def test_the_extension_is_read_from_its_api_key(client, db):
         "/api/auth/me", headers={"Authorization": f"Bearer {user.api_key}"}
     )
     assert r.json() == {
-        "signed_in": True, "id": user.id, "email": "me@example.test",
-        "name": "", "avatar_url": "",
+        "signed_in": True, "resolved": True, "id": user.id,
+        "email": "me@example.test", "name": "", "avatar_url": "",
     }
 
 
@@ -101,14 +101,15 @@ async def test_a_wrong_api_key_is_nobody(client, db):
     await users.ensure_local_user(db)
     await db.commit()
     r = await client.get("/api/auth/me", headers={"Authorization": "Bearer nope"})
-    assert r.json() == {"signed_in": False}
+    # The sole-account fallback still resolves them; the KEY just named nobody.
+    assert r.json()["signed_in"] is False
 
 
 async def test_a_header_that_is_not_bearer_is_ignored(client, db):
     user = await users.ensure_local_user(db)
     await db.commit()
     r = await client.get("/api/auth/me", headers={"Authorization": user.api_key})
-    assert r.json() == {"signed_in": False}
+    assert r.json()["signed_in"] is False
 
 
 # ── The whole sign-in, end to end ────────────────────────────────────
@@ -195,14 +196,15 @@ async def test_a_refused_account_is_told_why_and_gets_no_row(client, db, google,
     assert r.status_code == 400
     assert "ALLOWED_EMAILS" in r.text
     assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 0
-    assert (await client.get("/api/auth/me")).json() == {"signed_in": False}
+    assert (await client.get("/api/auth/me")).json() == {"signed_in": False, "resolved": False}
 
 
 async def test_logging_out_ends_the_session(client, google, allowed):
     allowed("")
     await client.get("/api/auth/callback", params={"code": "x"})
     assert (await client.post("/api/auth/logout")).json() == {"signed_in": False}
-    assert (await client.get("/api/auth/me")).json() == {"signed_in": False}
+    # Still `resolved` — one account on the machine, so the app answers as them.
+    assert (await client.get("/api/auth/me")).json()["signed_in"] is False
 
 
 async def test_logging_out_leaves_the_api_key_working(client, db, google, allowed):

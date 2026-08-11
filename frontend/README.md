@@ -430,6 +430,13 @@ components/
                                   serves — adding a setting is a backend change.
                                   Badges the ones scoped to the whole machine,
                                   and shows the extension's API key to copy
+  People.tsx                      who shares this app; adds someone and hands
+                                  back the login link to send them. Composes the
+                                  link from window.location.origin — the API
+                                  can't, see its comment
+  SignInGate.tsx                  wraps the app: shows it, or the way in. Gates
+                                  on /api/auth/me's `resolved`, so a one-account
+                                  machine never sees it
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx               the offline library — cards open the watch
                                   overlay, which plays the file from disk

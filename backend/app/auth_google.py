@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -43,6 +44,10 @@ SCOPES = [
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+# Where to send the browser after a successful sign-in, stashed for the round
+# trip through Google.
+_RETURN_KEY = "post_login"
 
 CLIENT_SECRET_PATH = os.path.expanduser("~/.hermes/google_client_secret.json")
 TOKEN_PATH = str(Path(settings.config_dir) / "youtube_oauth_token.json")
@@ -83,10 +88,47 @@ def _save_token(creds: Credentials):
         }, f)
 
 
+def _redirect_uri(request: Request) -> str:
+    """Where Google should send the browser back to, derived from where the
+    request came from rather than hardcoded.
+
+    A household reaches this server at whatever address its router handed out,
+    and a callback pinned to `localhost` sends the person's browser to their OWN
+    machine, where nothing is listening.
+
+    Deriving it is necessary but not sufficient: **every** value this can produce
+    has to be registered on the OAuth client in the Google Cloud console, and
+    Google only accepts `http` for `localhost` / `127.0.0.1`. A private LAN
+    address over plain http is rejected there, so the deriving matters when the
+    app is reached over https by a real hostname — see the backend README.
+    """
+    base = str(request.base_url).rstrip("/")
+    return f"{base}/api/auth/callback"
+
+
+def _return_to(request: Request) -> str:
+    """Where to land after signing in — the app the login was started from.
+
+    Taken from the `Referer` the app's own link carries, so someone signing in
+    at 192.168.1.50 isn't returned to the owner's `localhost`. Anything that
+    isn't a plain origin falls back to the configured one rather than being
+    trusted: this value becomes a redirect, and an open one is worth avoiding
+    even on a home network.
+    """
+    referer = request.headers.get("referer", "")
+    try:
+        parsed = urlparse(referer)
+    except ValueError:
+        return settings.app_origin
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return settings.app_origin
+
+
 @router.get("/login")
-async def login():
+async def login(request: Request):
     """Redirect user to Google OAuth consent screen."""
-    redirect_uri = "http://localhost:8000/api/auth/callback"
+    redirect_uri = _redirect_uri(request)
     flow = _make_flow(redirect_uri)
     auth_url, state = flow.authorization_url(
         access_type="offline",
@@ -96,6 +138,9 @@ async def login():
     # remember the PKCE verifier for this login so /callback can exchange the code
     if getattr(flow, "code_verifier", None):
         _pending_verifiers[state] = flow.code_verifier
+    # Remembered rather than passed through Google, which would put it in a URL
+    # and in the console's registered-URI list.
+    request.session[_RETURN_KEY] = _return_to(request)
     return RedirectResponse(auth_url)
 
 
@@ -138,7 +183,7 @@ async def callback(code: str, request: Request, state: str | None = None):
     per-user tokens are wired through — writing both is what lets sign-in ship
     without touching the scan path.
     """
-    redirect_uri = "http://localhost:8000/api/auth/callback"
+    redirect_uri = _redirect_uri(request)
     flow = _make_flow(redirect_uri)
     if state and state in _pending_verifiers:
         flow.code_verifier = _pending_verifiers.pop(state)
@@ -180,21 +225,34 @@ async def callback(code: str, request: Request, state: str | None = None):
         await db.commit()
         auth.sign_in(request, user)
 
-    return RedirectResponse(settings.app_origin)
+    return RedirectResponse(request.session.pop(_RETURN_KEY, settings.app_origin))
 
 
 @router.get("/me")
-async def me(user: User | None = Depends(auth.optional_user)):
-    """Who's signed in. `{"signed_in": false}` rather than a 401, because the
-    app asks this before it knows, and "nobody" is an ordinary answer."""
-    if user is None:
-        return {"signed_in": False}
+async def me(
+    session_user: User | None = Depends(auth.optional_user),
+    effective: User | None = Depends(auth.user_or_sole),
+):
+    """Who the app will answer as. Never a 401 — the page asks before it knows,
+    and "nobody" is an ordinary answer.
+
+    Two flags, because they answer different questions. `signed_in` means a
+    session cookie or API key named this person. `resolved` means the app will
+    serve their data, which is also true when nobody is signed in and the
+    machine has exactly one account (`auth.user_or_sole`).
+
+    The frontend gates on `resolved`: it decides whether to show the app or the
+    way in. `signed_in` is what a "Sign out" button should follow.
+    """
+    if effective is None:
+        return {"signed_in": False, "resolved": False}
     return {
-        "signed_in": True,
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "avatar_url": user.avatar_url,
+        "signed_in": session_user is not None,
+        "resolved": True,
+        "id": effective.id,
+        "email": effective.email,
+        "name": effective.name,
+        "avatar_url": effective.avatar_url,
     }
 
 
@@ -206,12 +264,12 @@ async def logout(request: Request):
 
 @router.get("/api-key")
 async def api_key(user: User = Depends(auth.account)):
-    """The bearer token for the browser extension.
+    """The bearer token for the browser extension, to paste into its options.
 
     Behind the same auth as everything else, and it returns the CALLER's key —
     there's no route to anyone else's. Handing it over on request is the point:
     the extension can't read a session cookie from a youtube.com page context,
-    so a key it carries itself is what replaces one.
+    so a key that has to be carried by hand is what replaces one.
     """
     return {"api_key": user.api_key, "app_origin": settings.app_origin}
 

@@ -66,6 +66,7 @@ app/
   search_index.py  Meilisearch push + query (best-effort)
   auth_google.py   Google sign-in: the OAuth flow, /auth/me, /auth/logout
   auth.py          reading the caller back: session cookie or extension API key
+    routers/people.py  the household: adding people, and the links that let them in
   users.py         accounts: seeding, the channel backfill, adoption (see "Accounts")
 
   routers/         one file per resource, all mounted under /api
@@ -995,6 +996,12 @@ asks **who** that was. Three scopes were added — `openid`, `userinfo.email`,
 id_token ourselves: same authority, one less piece of signature-and-clock-skew
 handling to get wrong.
 
+**Google sign-in reaches the server and nothing else.** Google accepts an `http`
+OAuth callback only on `localhost`/`127.0.0.1`, and a home server answers at
+`192.168.something` — an address the Cloud console will not register. So Google
+is how *you* sign in, and the rest of the household needs another way; see
+"Login links" below.
+
 `ALLOWED_EMAILS` is empty by default, which means **anyone who can reach the app
 may have an account**. On a LAN-only deployment the network is the perimeter, and
 a list of emails would not be protecting anything the bind address doesn't
@@ -1017,15 +1024,45 @@ the session, so opening the app is all it takes. **Settings → Extension** show
 the same key for the cases that can't reach — an app served from an address the
 extension has no host permission for.
 
-`GET /api/auth/me` answers `{"signed_in": false}` rather than 401, because the
-app asks before it knows and "nobody" is an ordinary answer.
-
 `Lax` rather than `Strict` because a strict cookie is withheld on the redirect
 back from Google's consent screen, which reads as the login silently failing.
 The extension can't use the cookie at all: its worker posts from a `youtube.com`
 page context, so the cookie would need `SameSite=None` and therefore HTTPS.
 Signing out of the browser leaves the API key working — separate credentials for
 separate callers.
+
+### Login links (`routers/people.py`)
+
+How everyone else gets in. You add a person under **Settings → People** and send
+them a link; opening it signs them in on that device and keeps them signed in.
+No password to choose, nothing to configure — which matters, because the people
+using this didn't ask for an identity system, they asked to watch videos.
+
+The link **is** the credential, so it is durable rather than single-use (the same
+one has to work on a phone, a laptop, and again after a cleared cookie jar) and
+regenerable, which is the revocation. Removing the account is the other lever,
+and it takes that person's history, playlists, tags and saved videos with it —
+the shared catalog and the downloads on disk are untouched.
+
+Two details worth knowing:
+
+- **The API returns the token, not a finished URL.** Requests reach the backend
+  through the frontend's dev-server proxy, which doesn't forward the browser's
+  `Host` — so anything built here says `localhost:8000`, an address only the
+  server can open. The page composes the link from `window.location.origin`,
+  which is the address the household actually uses.
+- **Adding the first extra person signs the owner in properly**, mid-request.
+  Until then they were resolved by the sole-account fallback, and creating a
+  second account is the exact moment that fallback stops applying — without it,
+  adding a family member would log you out of your own app on the click.
+
+### Who the app answers as
+
+`GET /api/auth/me` answers with two flags rather than one, and never 401s:
+`signed_in` means a session cookie or API key named this person; `resolved` means
+the app will serve their data, which is also true when nobody is signed in and
+the machine has exactly one account (`auth.user_or_sole`). The frontend gates on
+`resolved` — that's what decides between showing the app and showing the way in.
 
 ### Running the migrations
 
@@ -1103,8 +1140,8 @@ how a bad deploy eats data.
 
 Safe to run twice — a table that already has `user_id` is skipped.
 
-The first migration prints your **API key**. That is what the browser extension
-will authenticate with — a session cookie can't do that job, because the extension's
+The first migration prints your **API key**. That is what the browser extension will
+authenticate with — a session cookie can't do that job, because the extension's
 worker posts from a `youtube.com` page context and a cookie would need
 `SameSite=None` and therefore HTTPS.
 
@@ -1293,7 +1330,12 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/auth/callback` | exchange the code, admit or refuse the account, set the session, land back at `APP_ORIGIN` |
 | GET | `/api/auth/me` | who's signed in — `{"signed_in": false}` when nobody is, never a 401 |
 | POST | `/api/auth/logout` | end the session (the extension's API key keeps working) |
-| GET | `/api/auth/api-key` | the caller's own bearer token, for the extension |
+| GET | `/api/auth/api-key` | the caller's own bearer token, to paste into the extension's options |
+| GET | `/api/users` | everyone with an account here |
+| POST | `/api/users` | add a person; returns their `login_token` (the page builds the link) |
+| POST | `/api/users/{id}/link` | mint a fresh login token, retiring the old one |
+| DELETE | `/api/users/{id}` | remove an account and everything personal in it. Refuses yourself, and the last account |
+| GET | `/api/users/join/{token}` | follow a login link — become that person on this device |
 | GET | `/api/feed` | ranked feed grouped by category (query: age, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
@@ -1369,6 +1411,7 @@ no per-test decorator). What's covered:
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), and which row a Google account lands on — adoption, its guard, and the old token file |
 | `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, and the whole sign-in end to end against a stubbed Google |
 | `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
+| `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data and refusing the last account |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
 
 `conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before
