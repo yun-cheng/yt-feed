@@ -234,8 +234,36 @@ async function reportProgress(videoId, position, duration) {
   return await res.json()
 }
 
+/*
+ * A playlist `playlist-import.js` read off youtube.com, handed to the app.
+ *
+ * The whole list travels in the body, which is what makes this work at all: the
+ * app needs no YouTube token to receive it, so it reaches Watch Later, private
+ * playlists and playlists you follow but didn't make — none of which the Data
+ * API will serve — and it works for a household member with no Google account
+ * connected at all.
+ *
+ * Whose playlist it becomes is decided by the API key this request carries, the
+ * same as everything else here.
+ */
+async function importPlaylist({ youtube_id, name, videos }) {
+  const res = await api('/api/playlists/import-external', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ youtube_id, name, videos }),
+  })
+  if (!res.ok) {
+    // The app's own message is more use than the status code — it's the one
+    // that says "sign in first" or "nothing to import".
+    const detail = await res.json().then((b) => b.detail).catch(() => null)
+    throw new Error(detail || `HTTP ${res.status}`)
+  }
+  return await res.json()
+}
+
 const HANDLERS = {
   'save-watch-later': (msg) => saveWatchLater(msg.videoId),
+  'import-playlist': (msg) => importPlaylist(msg),
   // `force` skips the TTL — the caller knows something the timer doesn't, e.g.
   // the tab was just switched back to from the app.
   'saved-ids': async (msg) => ({ ids: await savedIds(msg.force) }),

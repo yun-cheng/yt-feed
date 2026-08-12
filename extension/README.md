@@ -317,6 +317,85 @@ The channel's id comes from `link[rel="canonical"]`, which is always the
 one yet can still be added; only the "already in" tick needs it up front, and the
 reply carries the id the app resolved so the tick survives the next redraw.
 
+## Import to YT Feed
+
+A **playlist page** — `/playlist?list=…` — gets a pill beside Play all and
+Shuffle that copies the whole thing into the app.
+
+The app can already pull playlists over the YouTube Data API — by listing the
+ones your account created, and by taking a pasted link for any **public**
+playlist besides. So this exists for the remainder, which the API won't serve at
+any price: **Watch Later**, **Liked Videos** (both withdrawn in 2016), and
+anyone's **private** playlist. It also exists for the people who have no Google
+connection — on a household install that's everyone but one.
+
+This button reads the page **as you**: whatever you can see on youtube.com,
+signed in as whoever you are, at no quota cost.
+
+### Why it fetches the page instead of reading the DOM
+
+A playlist page renders about a hundred rows and recycles them as you scroll. So
+scraping what's on screen gets you a hundred videos out of five hundred — and no
+way to tell that it did.
+
+Instead the click fetches `/playlist?list=…` fresh for its `ytInitialData` (the
+JSON the page bootstrapped from: the first hundred items plus a continuation
+token), then walks the rest through YouTube's own `/youtubei/v1/browse`. Both
+fetches are same-origin and carry your cookies, so they see exactly what your
+browser sees. A 505-video playlist arrives in six requests.
+
+The pill says how many it read, and says so explicitly when the walk stopped
+early rather than presenting a partial import as a whole one.
+
+### The shapes, and why the readers are loose
+
+Every field was read off a live playlist page rather than guessed, and YouTube
+has already moved two of them:
+
+| what | was | is |
+| --- | --- | --- |
+| a playlist row | `playlistVideoRenderer` | `lockupViewModel` |
+| "there's more" | `continuationItemRenderer.continuationEndpoint` | `continuationItemViewModel.continuationCommand.innertubeCommand` |
+
+So the readers search for a shape rather than walking a fixed path, and accept
+both spellings. The continuation finder keys on the one thing both have in
+common: a `continuationCommand` holding a token, wherever it sits.
+
+Two details that look like details and aren't:
+
+- **The channel is the metadata part that links to a channel.** A lockup's
+  metadata rows hold the channel, the view count and the age as interchangeable
+  parts whose order is *not* stable — on a channel's uploads page part 0 is the
+  channel, on a continuation page it's "95K views". Taking part 0 gives you
+  playlists uploaded by "95K views".
+- **A visible action row can measure zero wide.** The current one is a flex
+  container that's 0×40, so the mount test accepts either dimension. Testing
+  width alone — which is right for the channel header — finds nothing here.
+
+If every known anchor is missing after a redesign, the pill floats bottom-right
+instead. A button in a slightly odd place beats a feature that silently isn't
+there.
+
+### What travels, and what the app repairs
+
+The page gives up the video id, title, channel, thumbnail and duration. It does
+**not** give up view counts or publish dates, and it truncates every title to 100
+characters with no full copy anywhere in the payload.
+
+So the app tops those up — from its own `videos` table first, then from its stats
+lookup — filling gaps without overwriting. The title is the exception: the app's
+answer always wins, because the app stores the title in *your* language
+(`hl=zh-TW`) while the page gives whatever language the browser was in. Those
+are different strings, not a long and a short version of one, so preferring the
+longer would put an English title on a card next to the Chinese one the feed
+shows for the same video.
+
+The list goes to `POST /api/playlists/import-external`, which needs no YouTube
+token: that's what makes this work for every account here. Whose playlist it
+becomes is decided by the API key the worker attaches, like everything else.
+Re-importing the same playlist re-syncs the copy you have rather than making a
+second, and nothing is ever removed from it.
+
 ## Clean embed
 
 The app already passes `controls=0` to every embed. That turns off the control
