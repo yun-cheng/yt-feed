@@ -908,6 +908,72 @@ decided once, in one place. Somebody else's playlist is **404, not 403**: a
 refusal would confirm the id exists, which is more than the asker should learn.
 The same applies to a bookmark id.
 
+### Importing playlists
+
+A playlist can be copied here from YouTube. `playlists.youtube_id` remembers
+which one it came from and `synced_at` when it last pulled; both are empty for a
+playlist made here, which is what the Re-sync button keys off.
+
+**The merge is add-only, and that's the whole design.** A video that leaves the
+YouTube playlist stays in your copy. This is an import, not a mirror — a sync
+that quietly deleted things you'd kept would be a worse tool than one that
+occasionally leaves something behind. Because nothing is ever removed, re-syncing
+is always safe, which is what lets it be a button rather than a dialog. Importing
+a playlist you've already imported re-syncs that copy instead of making a second.
+
+Playlist order survives the copy. There's no position column, and the detail page
+sorts newest-first, so the importer spaces `added_at` a second apart descending —
+which reproduces YouTube's order exactly. A later re-sync anchors at a later
+"now", so videos found afterwards sit above the original import.
+
+**Three ways in, because they reach different things.**
+
+*Listing* (`/youtube`) is bulk and one click, and belongs to the owner alone —
+this machine holds a single YouTube token, so listing "my playlists" for anyone
+else would hand them the owner's. It costs about one quota unit per fifty videos.
+Its limit is narrower than it first looks: `playlists.list?mine=true` returns
+playlists that account **created**, and YouTube exposes no endpoint whatsoever
+for the playlists you *saved* from other people. That library isn't in the Data
+API.
+
+*Naming* (`/youtube/lookup`, then `/import`) is what fills that hole. Both
+`playlists.list?id=` and `playlistItems.list` work on **any public playlist**,
+owner or not — so a playlist that can't be enumerated can still be pasted. The
+lookup is a deliberate two-step, like adding a channel: a link is easy to paste
+wrong, and a title plus an owner answers "is this the one I meant?" before
+anything is written. `playlist_ref()` takes a playlist URL, a watch URL carrying
+`list=`, or a bare id.
+
+*Carrying* (`/import-external`) is the extension's: the videos travel in the
+request body, already read off the page as whoever is signed in there. That makes
+it the only route to Watch Later, to Liked Videos (YouTube withdrew API access to
+both in 2016), and to anyone's **private** playlist — none of which the two paths
+above can touch at any price. It's also the only route at all for a household
+member with no Google connection. Whose playlist it becomes is decided by the API
+key on the request, so nobody can import into someone else's list.
+
+Both paths run the result through `_enrich`, which fills in what the source
+didn't carry — durations, view counts, publish dates, uploader avatars. It reads
+the local `videos` table **first**, then tops up the rest from the API at a unit
+per fifty.
+
+Local-first is not just an optimisation. `batch_fetch_video_stats` keeps an
+hour-long cache and returns *nothing* for an id it fetched recently — harmless
+for the feed, whose rows already carry their numbers, but an extension import
+arrives with none (a playlist page gives up no view count and no publish date),
+so a video the scan happened to touch would keep a blank view count for good.
+
+It only ever fills a gap, never overwrites, because a stats answer can come back
+partial and replacing a real duration with a zero would be worse than leaving it.
+
+**The title is the one field that overrides rather than fills**, and the reason
+is not the obvious one. A playlist page truncates every title to 100 characters,
+which is reason enough on its own — but the app asks YouTube for `hl=zh-TW` and
+stores the *localized* title, while the page gives whatever language the browser
+was in. The two aren't a long and a short version of one string; they're
+different strings. "Keep the longer" would put a 100-character English title on
+a card sitting beside the Chinese one the feed shows for the very same video.
+
 What the LLM decides about a channel stays shared: `Channel.llm_labels` is a
 reading of the channel's own description and topics, the same for everyone, and
 re-deriving it per person would spend tokens to reach the same answer. What that
@@ -1197,7 +1263,7 @@ worker posts from a `youtube.com` page context and a cookie would need
 | `channel_tags` | channel↔tag assignments per user (`auto_assigned`: 1 = LLM, 0 = manual) |
 | `channel_tag_rejections` | auto tags a user removed, so their re-tagging won't re-add them |
 | `watch_later` | saved-for-later videos, per user (server-side, syncs across devices) |
-| `playlists` / `playlist_items` | playlists, owned by a user; items inherit that owner through `playlist_id` |
+| `playlists` / `playlist_items` | playlists, owned by a user; items inherit that owner through `playlist_id`. `playlists.youtube_id` + `synced_at` mark one imported from YouTube — see "Importing playlists" |
 | `downloads` | videos downloaded to disk for offline viewing |
 | `hidden_channels` | channels one user hid from their home feed |
 | `imported_videos` | metadata for videos the feed doesn't hold: ones added by URL, plus (under `source="youtube"`) ones opened via the extension's button. A shared cache — `user_imports` says whose page each appears on |
@@ -1390,6 +1456,11 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
 | GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD. All three list most-recently-added first and report `created_at` — the date the Watch Later and Downloads pages order *and* window by, since a video's publish date says nothing about when it became yours |
+| GET | `/api/playlists/youtube` | the connected account's YouTube playlists, each with the local copy it already has (`linked_id`). Owner only — see "One YouTube connection" |
+| GET | `/api/playlists/youtube/lookup?ref=` | preview any **public** playlist by link or id, including one you don't own — what covers the playlists YouTube won't enumerate. Accepts a playlist URL, a watch URL carrying `list=`, or a bare id. Owner only |
+| POST | `/api/playlists/import` | copy one YouTube playlist here and remember where it came from. Importing one already imported re-syncs that copy rather than making a second. Owner only |
+| POST | `/api/playlists/{id}/resync` | pull anything new from the YouTube playlist this one came from. Add-only |
+| POST | `/api/playlists/import-external` | take a playlist the browser read for us — the whole list travels in the body, so no YouTube token is involved. What the extension posts, and the only route to Watch Later, private playlists, and playlists you follow but didn't make |
 | POST | `/api/watch-later/by-id/{id}` | save a video we're given nothing but the id of — the extension's button. Metadata is resolved here |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
@@ -1434,6 +1505,7 @@ no per-test decorator). What's covered:
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete |
+| `test_playlist_import.py` | the link that makes re-importing a re-sync, playlist order surviving the copy, add-only merge (a video pulled on YouTube stays in your copy), the owner-only guard, every shape `playlist_ref` accepts and rejects, looking up a playlist someone else owns, nothing written before YouTube answers (the write-lock deadlock), and the extension's path: no token, right owner, gaps filled without clobbering what the page already read |
 | `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp, the avatar filled in on save |
 | `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |

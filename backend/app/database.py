@@ -65,6 +65,11 @@ _COLUMN_MIGRATIONS = [
     # Nullable: only accounts that sign in without Google carry one, and it's
     # minted when the link is first asked for rather than at creation.
     ("users", "login_token", "VARCHAR"),
+    # Where an imported playlist came from, and when it last pulled. Empty and
+    # NULL respectively for playlists made here, which is every one that exists
+    # before this column does — so the default is also the correct backfill.
+    ("playlists", "youtube_id", "VARCHAR NOT NULL DEFAULT ''"),
+    ("playlists", "synced_at", "DATETIME"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the

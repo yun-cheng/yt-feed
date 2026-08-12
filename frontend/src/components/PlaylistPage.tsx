@@ -22,6 +22,11 @@ export default function PlaylistPage({
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  // Set when this playlist was imported from YouTube — what the re-sync button
+  // hangs off. A playlist made here has nothing to pull from.
+  const [linked, setLinked] = useState('')
+  const [syncing, setSyncing] = useState(false)
+  const [syncNote, setSyncNote] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -30,6 +35,7 @@ export default function PlaylistPage({
       const d = await res.json()
       setName(d.name)
       setVideos(d.videos || [])
+      setLinked(d.youtube_id || '')
     } catch { /* ignore */ } finally {
       setLoading(false)
     }
@@ -48,6 +54,24 @@ export default function PlaylistPage({
     try { await apiFetch(`/api/playlists/${playlistId}`, { method: 'DELETE' }) } catch { /* ignore */ }
     window.dispatchEvent(new Event('playlists-changed'))
     onDeleted()
+  }
+
+  /** Pull anything new from the YouTube playlist this was imported from. */
+  const resync = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setSyncNote('')
+    try {
+      const res = await apiFetch(`/api/playlists/${playlistId}/resync`, { method: 'POST' })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setSyncNote(body.detail || 'Re-sync failed.'); return }
+      setSyncNote(body.added ? `Added ${body.added}` : 'Already up to date')
+      if (body.added) { await load(); window.dispatchEvent(new Event('playlists-changed')) }
+    } catch {
+      setSyncNote('Could not reach the app.')
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const removeFromPlaylist = async (video: VideoItem) => {
@@ -70,8 +94,24 @@ export default function PlaylistPage({
       <div className="flex items-center justify-between gap-4 mb-6">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-white truncate">{name}</h2>
-          <p className="text-sm text-[#777] mt-1">{videos.length} videos</p>
+          <p className="text-sm text-[#777] mt-1">
+            {videos.length} videos
+            {syncNote && <span className="ml-2 text-[#3ea6ff]">{syncNote}</span>}
+          </p>
         </div>
+        {linked && (
+          <button
+            onClick={resync}
+            disabled={syncing}
+            title="Pull anything new from the YouTube playlist this came from"
+            className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-[#aaa] hover:text-white hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
+          >
+            <svg className={`w-4 h-4${syncing ? ' animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20 11a8 8 0 1 0-.6 4M20 4v6h-6" />
+            </svg>
+            {syncing ? 'Syncing…' : 'Re-sync'}
+          </button>
+        )}
         <button
           onClick={deletePlaylist}
           className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-[#aaa] hover:text-white hover:bg-white/10 rounded-full transition-colors"

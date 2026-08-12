@@ -1,8 +1,14 @@
+import { useState } from 'react'
+import ImportPlaylistDialog from './ImportPlaylistDialog'
+
 export type PlaylistSummary = {
   id: number
   name: string
   item_count: number
   thumbnail_url: string
+  // The YouTube playlist this was imported from — empty for one made here.
+  youtube_id?: string
+  synced_at?: string | null
 }
 
 type Props = {
@@ -11,7 +17,49 @@ type Props = {
   onDelete: (id: number) => void
 }
 
+/** The little YouTube glyph that marks an imported playlist. */
+function linkedBadge() {
+  return (
+    <span
+      title="Imported from YouTube"
+      className="inline-flex flex-shrink-0 items-center rounded bg-black/80 px-1 py-0.5 text-[#f00]"
+    >
+      <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8ZM10 15V9l5.2 3L10 15Z" />
+      </svg>
+    </span>
+  )
+}
+
+function importButton(onImport: () => void) {
+  return (
+    <button
+      onClick={onImport}
+      className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a]"
+    >
+      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M4 19h16" />
+      </svg>
+      Import from YouTube
+    </button>
+  )
+}
+
 export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
+  const [importing, setImporting] = useState(false)
+  const onImport = () => setImporting(true)
+
+  // Mounted from both branches below, so the empty state can import too — which
+  // is exactly when you'd most want to.
+  const dialog = importing ? (
+    <ImportPlaylistDialog
+      onClose={() => setImporting(false)}
+      // App holds the list and already listens for this; re-fetching there
+      // keeps one copy of "what playlists exist" rather than two that drift.
+      onImported={() => window.dispatchEvent(new Event('playlists-changed'))}
+    />
+  ) : null
+
   if (playlists.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
@@ -20,13 +68,19 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
         </svg>
         <p className="text-sm">No playlists yet.</p>
         <p className="text-xs text-[#555]">Open a video's ⋮ menu → 儲存至播放清單 to create one.</p>
+        <div className="mt-1">{importButton(onImport)}</div>
+        {dialog}
       </div>
     )
   }
 
   return (
     <div className="p-6">
-      <p className="text-sm text-[#777] mb-4">{playlists.length} playlists</p>
+      {dialog}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-sm text-[#777]">{playlists.length} playlists</p>
+        {importButton(onImport)}
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {playlists.map((p) => (
           <div key={p.id} className="group cursor-pointer" onClick={() => onOpen(p.id)}>
@@ -46,7 +100,10 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
               </div>
             </div>
             <div className="mt-2 flex items-start justify-between gap-2">
-              <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{p.name}</h3>
+              <h3 className="flex min-w-0 items-start gap-1.5 text-sm font-medium text-white line-clamp-2 leading-5">
+                {p.youtube_id ? linkedBadge() : null}
+                <span className="line-clamp-2">{p.name}</span>
+              </h3>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(p.id) }}
                 title="Delete playlist"

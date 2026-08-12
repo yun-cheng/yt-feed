@@ -33,6 +33,14 @@ real video (muted, with custom captions and scrubbing).
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works
   offline — with our own control bar and a scrub preview of the actual frames
+- **Playlists imported from YouTube** — bring a playlist over and it keeps a link
+  back, so a Re-sync button pulls anything new. Never anything out: your copy is
+  yours, so re-syncing is always safe. The Playlists page lists the ones your
+  connected account made, and takes a pasted link for any public playlist besides
+  — including other people's, which YouTube will happily *read* but won't
+  *enumerate*. The extension's button on any playlist page reaches what's left:
+  Watch Later, Liked Videos and private playlists, for everyone in the household,
+  connected account or not
 - **Watch history** — every video remembers where you stopped: revisiting resumes
   from that timestamp, cards show a red progress bar before you hover, and finished
   videos get a "Watched" badge. All of it on its own History page

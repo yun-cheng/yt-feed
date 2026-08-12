@@ -410,6 +410,216 @@ def fetch_channel_avatars(channel_ids: list[str]) -> dict[str, str]:
     return avatars
 
 
+def _thumb(thumbs: dict[str, Any]) -> str:
+    """The most useful thumbnail in a snippet's `thumbnails` block.
+
+    Biggest first here, unlike the channel avatars above: these are drawn as
+    playlist covers and video cards at a few hundred pixels wide, where the
+    120px `default` is visibly soft.
+    """
+    for size in ("maxres", "standard", "high", "medium", "default"):
+        url = (thumbs.get(size) or {}).get("url")
+        if url:
+            return url
+    return ""
+
+
+def fetch_my_playlists() -> list[dict[str, Any]]:
+    """The token owner's own playlists — id, title, size, cover.
+
+    One quota unit per 50. Cheap enough that the import dialog just asks every
+    time it opens rather than caching a list that goes stale the moment you make
+    a playlist on your phone.
+
+    What this CANNOT return is as important as what it can: `mine=true` lists
+    playlists you created, so Watch Later and Liked Videos are absent (YouTube
+    withdrew API access to both in 2016), and so is every playlist you follow but
+    didn't make. The extension's importer is the answer for those — it reads the
+    page as you, and the page shows you everything you can see.
+    """
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping playlists: {e}")
+        return []
+    global _quota_used
+
+    out: list[dict[str, Any]] = []
+    cursor: str | None = None
+    with httpx.Client(timeout=30.0) as client:
+        while True:
+            params: dict[str, Any] = {
+                "part": "snippet,contentDetails",
+                "mine": "true",
+                "maxResults": 50,
+            }
+            if cursor:
+                params["pageToken"] = cursor
+            resp = client.get(
+                "https://www.googleapis.com/youtube/v3/playlists",
+                headers={"Authorization": f"Bearer {creds.token}"},
+                params=params,
+            )
+            _quota_used += 1
+            if resp.status_code == 403 and _quota_refusal(resp):
+                raise QuotaExceeded("playlist list hit the daily allowance")
+            if resp.status_code != 200:
+                break
+            data = resp.json()
+            for item in data.get("items", []):
+                snippet = item.get("snippet") or {}
+                out.append({
+                    "youtube_id": item.get("id", ""),
+                    "title": snippet.get("title", ""),
+                    "description": snippet.get("description", ""),
+                    "thumbnail_url": _thumb(snippet.get("thumbnails") or {}),
+                    "item_count": int(
+                        (item.get("contentDetails") or {}).get("itemCount") or 0
+                    ),
+                })
+            cursor = data.get("nextPageToken")
+            if not cursor:
+                break
+    return out
+
+
+def fetch_playlist_details(playlist_id: str) -> dict[str, Any] | None:
+    """One playlist's metadata by id — for a playlist ANYONE owns.
+
+    The counterpart to `fetch_my_playlists`, and the answer to what that can't
+    do. `mine=true` enumerates only what your account created, and YouTube offers
+    no endpoint at all for "playlists I saved from other people" — that library
+    simply isn't in the Data API. But `id=` works on any public playlist, and so
+    does `playlistItems.list`, so a playlist you can't LIST you can still import
+    by naming it.
+
+    One quota unit. Returns None when there's no such public playlist, or when
+    there are no usable credentials.
+    """
+    if not playlist_id:
+        return None
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping playlist lookup: {e}")
+        return None
+    global _quota_used
+
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.get(
+            "https://www.googleapis.com/youtube/v3/playlists",
+            headers={"Authorization": f"Bearer {creds.token}"},
+            params={"part": "snippet,contentDetails", "id": playlist_id},
+        )
+        _quota_used += 1
+        if resp.status_code == 403 and _quota_refusal(resp):
+            raise QuotaExceeded("playlist lookup hit the daily allowance")
+        if resp.status_code != 200:
+            return None
+        items = resp.json().get("items") or []
+    if not items:
+        return None
+
+    item = items[0]
+    snippet = item.get("snippet") or {}
+    return {
+        "youtube_id": item.get("id", ""),
+        "title": snippet.get("title", ""),
+        "description": snippet.get("description", ""),
+        "thumbnail_url": _thumb(snippet.get("thumbnails") or {}),
+        "item_count": int((item.get("contentDetails") or {}).get("itemCount") or 0),
+        # Whose playlist it is — the thing that makes "someone else's" visible in
+        # the preview, so you can tell you pasted the link you meant.
+        "channel_id": snippet.get("channelId", ""),
+        "channel_name": snippet.get("channelTitle", ""),
+    }
+
+
+def fetch_playlist_items(playlist_id: str, limit: int = 5_000) -> list[dict[str, Any]]:
+    """Every video in a playlist, in playlist order. One unit per 50.
+
+    `snippet` carries title, channel and thumbnail; it does NOT carry duration,
+    views or likes, so the caller tops those up with `batch_fetch_video_stats`.
+    Splitting it that way keeps this function about one API resource, and the
+    stats call is the one that already has the cache and the batching.
+
+    Private and deleted entries are dropped. A playlist keeps its tombstones —
+    they show as "Private video" with no videoId worth having — and importing
+    those would fill the copy with rows that can never resolve to anything.
+    """
+    try:
+        creds = _get_creds()
+    except Exception as e:
+        print(f"[youtube_api] credentials unavailable, skipping playlist items: {e}")
+        return []
+    global _quota_used
+
+    out: list[dict[str, Any]] = []
+    cursor: str | None = None
+    refreshed = False
+    with httpx.Client(timeout=30.0) as client:
+        while len(out) < limit:
+            params: dict[str, Any] = {
+                "part": "snippet,contentDetails,status",
+                "playlistId": playlist_id,
+                "maxResults": 50,
+            }
+            if cursor:
+                params["pageToken"] = cursor
+            try:
+                resp = client.get(
+                    "https://www.googleapis.com/youtube/v3/playlistItems",
+                    headers={"Authorization": f"Bearer {creds.token}"},
+                    params=params,
+                )
+            except httpx.HTTPError as e:
+                # Same bargain as the uploads walk: a flaky page ends the read
+                # with what it has rather than sinking the import. The merge is
+                # add-only, so the next re-sync picks up the rest.
+                print(f"[youtube_api] playlist page failed ({e!r}); "
+                      f"returning {len(out)} so far")
+                break
+            _quota_used += 1
+
+            if resp.status_code == 403:
+                if _quota_refusal(resp):
+                    raise QuotaExceeded(
+                        f"playlist walk for {playlist_id} hit the daily allowance"
+                    )
+                if refreshed:
+                    break
+                refreshed = True
+                try:
+                    creds.refresh(GoogleRequest())
+                    continue
+                except Exception:
+                    break
+            if resp.status_code != 200:
+                break  # 404 = no such playlist, or not one this token may read
+
+            data = resp.json()
+            for item in data.get("items", []):
+                snippet = item.get("snippet") or {}
+                vid = (item.get("contentDetails") or {}).get("videoId") or ""
+                privacy = (item.get("status") or {}).get("privacyStatus", "")
+                if not vid or privacy in ("private", "privacyStatusUnspecified"):
+                    continue
+                out.append({
+                    "youtube_id": vid,
+                    "title": snippet.get("title", ""),
+                    "channel_id": snippet.get("videoOwnerChannelId", ""),
+                    "channel_name": snippet.get("videoOwnerChannelTitle", ""),
+                    "thumbnail_url": _thumb(snippet.get("thumbnails") or {}),
+                    "published_at": (
+                        item.get("contentDetails") or {}
+                    ).get("videoPublishedAt", ""),
+                })
+            cursor = data.get("nextPageToken")
+            if not cursor:
+                break
+    return out[:limit]
+
+
 def fetch_channel_details(channel_id: str = "", handle: str = "") -> dict[str, Any] | None:
     """One channel's full metadata — title, description, avatar, subs, topics.
 

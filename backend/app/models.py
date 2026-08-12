@@ -466,6 +466,14 @@ class Playlist(Base):
     # the playlist it's in, and a second copy of that could disagree with it.
     user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
     name = Column(String, nullable=False)
+    # The YouTube playlist this one was imported from, empty for a playlist made
+    # here. Kept so a re-sync knows what to ask for — and so importing the same
+    # playlist twice lands in the copy you already have rather than beside it.
+    #
+    # Not unique: two people may each import the same public playlist, and the
+    # same person may deliberately keep a linked copy and a divergent one.
+    youtube_id = Column(String, default="", nullable=False, index=True)
+    synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
