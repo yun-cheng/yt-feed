@@ -276,12 +276,27 @@ it's purely additive on top of the same controlled value if it's ever wanted.
 
 ### The library pages
 
-Watch Later, Imported, Downloads and History are lists **you built**, not a
-stream of what's new, and they share one control bar because they share one
-shape. All four open on **All time**, sorted by the order the list keeps itself
-in — labelled for what that order means on each: `Saved`, `Added`, `Added`,
-`Watched`. That token is `recent` everywhere, because it means the same thing
-everywhere; only the word differs.
+Watch Later, Imported, Downloads, History and **one playlist** are lists **you
+built**, not a stream of what's new, and they share one control bar because they
+share one shape. All five open on **All time**, sorted by the order the list
+keeps itself in — labelled for what that order means on each: `Saved`, `Added`,
+`Added`, `Watched`, `Order`. That token is `recent` everywhere, because it means
+the same thing everywhere; only the word differs.
+
+A playlist is the newest member and the one whose label is doing the most work.
+`Order` rather than `Added` because an imported playlist's order is *YouTube's*,
+reproduced deliberately by spacing `added_at` a second apart on import — so
+`recent`, which leaves the order alone, is the option that preserves it. It's
+also why the default matters more here than anywhere else: any other opening sort
+would silently destroy the one thing the import went to trouble to keep.
+
+Note the split: **one playlist** gets this bar, the **playlists grid** doesn't.
+The grid lists playlists, not videos, so there's nothing for a video sort or a
+video window to act on. That's why `playlist` no longer folds into the
+`playlists` top-bar variant the way `localfolder` folds into `local`.
+
+A playlist offers no **tag** filter, for the same reason Imported doesn't: tags
+are attached to channels you follow, and a playlist can hold anything.
 
 The reason for both defaults is the same. A list you assembled has no "too old
 to bother with" — you put something there to come back to it, so a three-day
@@ -295,6 +310,19 @@ Downloads, `watched_at` on History. `filterByTime(items, age, stampOf)` takes
 that accessor as an argument, which is the whole point: windowing History by
 publish date would drop a decade-old video you watched an hour ago, and it
 wouldn't agree with the sort sitting right next to it.
+
+**A playlist is the exception, and it earns it.** It windows by `published_at`,
+like the feed and a channel page. An imported playlist has every row stamped
+within the same second — the import wrote them all at once — so windowing by
+"when it joined the list" can only ever answer *all* or *none*. That's not a
+filter, it's a dead control. A playlist is shaped like a channel page rather
+than like a queue: a body of videos spanning years, where "the ones from this
+year" is the question worth asking, and where the answer agrees with the Newest
+/ Oldest sorts beside it.
+
+The API still serves a playlist item's `added_at` as `created_at` — the same
+name the other library pages use for the same moment — because it's what the
+list's own `Order` depends on, even though nothing windows by it.
 
 Two details in `lib/timeWindow.ts` that only matter here:
 

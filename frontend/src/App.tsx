@@ -239,6 +239,10 @@ const PAGE_DEFAULTS: Record<string, { age: string; sort: string; watch: string[]
   imported: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
   downloads: { age: '0-all', sort: 'recent', watch: [] },
   history: { age: '0-all', sort: 'recent', watch: [] },
+  // One playlist is the same kind of list, windowed by when each video joined
+  // it. 'recent' leaves the order alone, which for an imported playlist means
+  // YouTube's own order — the thing you'd least want a default to destroy.
+  playlist: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
 }
 const DEFAULTS = PAGE_DEFAULTS.feed
 const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
@@ -251,9 +255,9 @@ const defaultRange = (page: string) => parseAge(defaultsFor(page).age) ?? DEFAUL
 // These same sets decide what the sidebar renders: a filter that can't change
 // what you're looking at shouldn't be there to click, and it shouldn't be in the
 // URL either. One table, so the two can't disagree.
-const USES_WINDOW = new Set(['feed', 'channel', 'watchlater', 'imported', 'downloads', 'history'])
-const USES_SORT = new Set(['feed', 'channel', 'channels', 'watchlater', 'imported', 'downloads', 'history'])
-const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history', 'imported'])
+const USES_WINDOW = new Set(['feed', 'channel', 'watchlater', 'imported', 'downloads', 'history', 'playlist'])
+const USES_SORT = new Set(['feed', 'channel', 'channels', 'watchlater', 'imported', 'downloads', 'history', 'playlist'])
+const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history', 'imported', 'playlist'])
 const USES_SHORTS = new Set(['feed', 'channel', 'history'])
 // Tags are attached to channels, so they only filter lists of subscribed
 // channels' videos. A channel page swaps them for that channel's own topics;
@@ -272,9 +276,11 @@ export const pageFilters = (page: string) => ({
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v => b.includes(v))
 
-// The bar is named for the page, with the two overlay-ish pages folded into the
-// list they sit on top of — a playlist's bar is the playlists bar.
-const TOPBAR_ALIAS: Record<string, TopBarVariant> = { playlist: 'playlists', localfolder: 'local' }
+// The bar is named for the page. A local folder folds into the Local bar it
+// sits on top of; one playlist does NOT fold into the playlists grid, because
+// unlike that grid it's a list of videos and gets the library pages' own
+// time-and-sort bar.
+const TOPBAR_ALIAS: Record<string, TopBarVariant> = { localfolder: 'local' }
 const topBarVariant = (page: Page): TopBarVariant =>
   TOPBAR_ALIAS[page] ?? (page as TopBarVariant)
 
@@ -310,6 +316,7 @@ function parseQuery(page: Page): QueryState {
 export type UrlState = {
   page: string
   channelId?: string | null
+  playlistId?: number | null
   tags?: string[]
   age?: TimeRange
   sort?: string
@@ -343,7 +350,10 @@ export function buildPath(s: UrlState): string {
 
   const path = page === 'feed' ? '/'
     : page === 'channel' && s.channelId ? `/channel/${s.channelId}`
-    // A folder's own path is /local/:id, pushed directly (like /playlist/:id).
+    // Carries its id like a channel page does, so its window and sort can ride
+    // in the query beside it and survive a refresh.
+    : page === 'playlist' && s.playlistId != null ? `/playlist/${s.playlistId}`
+    // A folder's own path is /local/:id, pushed directly.
     : page === 'localfolder' ? '/local'
     : `/${page}`
   return qs ? `${path}?${qs}` : path
@@ -378,7 +388,7 @@ function stateFromUrl() {
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
     views,
-    watchStatuses: owns('feed', 'watchlater', 'imported') && q.watch !== null ? q.watch : loadWatchStatuses(),
+    watchStatuses: owns('feed', 'watchlater', 'imported', 'playlist') && q.watch !== null ? q.watch : loadWatchStatuses(),
     channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
     historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : [],
     selectedLabel: owns('channel') ? q.label : null,
@@ -1116,6 +1126,7 @@ export default function App() {
   const currentPath = useCallback(() => buildPath({
     page,
     channelId: selectedChannelId,
+    playlistId: selectedPlaylistId,
     tags: selectedTags,
     age: view.age,
     sort: view.sort,
@@ -1126,14 +1137,13 @@ export default function App() {
     label: selectedLabel,
     showHidden,
     q: searchInput,
-  }), [page, selectedChannelId, selectedTags, view, contentMode,
+  }), [page, selectedChannelId, selectedPlaylistId, selectedTags, view, contentMode,
     watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden, searchInput])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
   const syncUrl = useCallback(() => {
     if (selectedVideoId || selectedLocalVideoId) return  // an overlay owns the URL
-    if (page === 'playlist') return  // /playlist/{id} is navigated directly
-    if (page === 'localfolder') return  // ditto /local/{id}
+    if (page === 'localfolder') return  // /local/{id} is navigated directly
     const path = currentPath()
     if (location.pathname + location.search !== path) {
       history.replaceState(null, '', path)
@@ -1624,6 +1634,9 @@ export default function App() {
             onHideChannel={hideChannel}
             progressById={progressById}
             onDeleted={() => setPage('playlists')}
+            age={view.age}
+            sort={view.sort}
+            watchStatuses={watchStatuses}
           />
         ) : page === 'history' ? (
           <HistoryPage

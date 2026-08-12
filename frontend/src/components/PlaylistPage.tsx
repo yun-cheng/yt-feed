@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
+import { filterByTime, filterByWatchStatus, sortVideos } from '../App'
 import type { VideoItem, WatchProgress } from '../App'
+import type { TimeRange } from '../lib/timeWindow'
 
 type Props = {
   playlistId: number
@@ -13,10 +15,15 @@ type Props = {
   onHideChannel?: (channelId: string) => void
   progressById?: Map<string, WatchProgress>
   onDeleted: () => void
+  // The top bar's controls, same three as every other library page.
+  age?: TimeRange
+  sort?: string
+  watchStatuses?: string[]
 }
 
 export default function PlaylistPage({
   playlistId, onChannelClick, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onDeleted, progressById,
+  age, sort = 'recent', watchStatuses = [],
 }: Props) {
   const [name, setName] = useState('')
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -74,6 +81,25 @@ export default function PlaylistPage({
     }
   }
 
+  /* Windowed by PUBLISH date — the one library page that is, and the exception
+   * is worth stating because the rule is a good one everywhere else.
+   *
+   * Watch Later, Imported, Downloads and History window by when a row joined
+   * the list, because you add to those over months and "what did I save this
+   * week" is a real question. A playlist isn't that shape. An imported one has
+   * every row stamped within the same second — the import — so windowing by
+   * that axis can only ever answer "all" or "none", which is not a filter.
+   *
+   * A playlist is closer to a channel page: a body of videos spanning years,
+   * where "the ones from this year" is the question worth asking. That also
+   * puts it in step with the Newest / Oldest sorts sitting beside it, which
+   * order by the very same date. */
+  const shown = useMemo(() => {
+    let result = age ? filterByTime(videos, age, v => v.published_at) : videos
+    if (progressById) result = filterByWatchStatus(result, watchStatuses, progressById)
+    return sortVideos(result, sort)
+  }, [videos, age, sort, watchStatuses, progressById])
+
   const removeFromPlaylist = async (video: VideoItem) => {
     setVideos((prev) => prev.filter((v) => v.youtube_id !== video.youtube_id))  // optimistic
     try {
@@ -94,8 +120,13 @@ export default function PlaylistPage({
       <div className="flex items-center justify-between gap-4 mb-6">
         <div className="min-w-0">
           <h2 className="text-xl font-bold text-white truncate">{name}</h2>
+          {/* Only says anything when there IS something to say. The list below
+              carries its own count, so repeating it here unfiltered would be
+              the same number twice; both numbers appear only when a filter is
+              hiding some, so a short list is never mistaken for a short
+              playlist. */}
           <p className="text-sm text-[#777] mt-1">
-            {videos.length} videos
+            {shown.length < videos.length && `${shown.length} of ${videos.length} videos`}
             {syncNote && <span className="ml-2 text-[#3ea6ff]">{syncNote}</span>}
           </p>
         </div>
@@ -127,10 +158,14 @@ export default function PlaylistPage({
         <div className="flex items-center justify-center h-32 text-[#aaaaaa] text-sm">
           This playlist is empty.
         </div>
+      ) : shown.length === 0 ? (
+        <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
+          No videos in this playlist match the current filters.
+        </div>
       ) : (
         <VideoRow
           progressById={progressById}
-          group={{ name: '', icon: '', sort_order: 0, videos }}
+          group={{ name: '', icon: '', sort_order: 0, videos: shown }}
           onChannelClick={onChannelClick}
           watchLaterIds={watchLaterIds}
           onToggleWatchLater={onToggleWatchLater}

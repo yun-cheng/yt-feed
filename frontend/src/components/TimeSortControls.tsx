@@ -28,7 +28,8 @@ export const CHANNEL_SORT_OPTIONS = [
 export type SortOption = { value: string; label: string }
 
 // What each page can sort by. A page that's absent has no control bar at all —
-// search, playlists, a local folder and settings each show one fixed order.
+// search, the playlists grid, a local folder and settings each show one fixed
+// order.
 const PAGE_SORTS: Record<string, readonly SortOption[]> = {
   feed: SORT_OPTIONS,
   channel: SORT_OPTIONS,
@@ -37,6 +38,11 @@ const PAGE_SORTS: Record<string, readonly SortOption[]> = {
   imported: listSortOptions('Added'),
   downloads: listSortOptions('Added'),
   history: listSortOptions('Watched'),
+  // One playlist is a library page like the four above — a list you assembled
+  // on purpose — so it gets the same bar. 'Order' rather than 'Added' because
+  // an imported playlist's order is YouTube's, deliberately preserved, and
+  // that's what the default leaves alone.
+  playlist: listSortOptions('Order'),
 }
 
 /** The sort buttons a page offers, or undefined if it has no bar. */

@@ -502,6 +502,32 @@ async def test_an_imported_playlist_behaves_like_any_other(client, monkeypatch):
     assert (await client.get("/api/playlists")).json() == []
 
 
+async def test_items_report_when_they_joined_the_playlist(client, monkeypatch):
+    """What the page's time window filters on.
+
+    Named `created_at` to match Watch Later, Imported and Downloads: it's the
+    same moment — when the row joined the list — and one name lets one accessor
+    serve every library page.
+    """
+    stub_api(monkeypatch, items=fake_items("first", "second", "third"))
+    pid = (await client.post("/api/playlists/import", json={"youtube_id": "PL1"})).json()["id"]
+
+    videos = (await client.get(f"/api/playlists/{pid}")).json()["videos"]
+    stamps = [v["created_at"] for v in videos]
+    assert all(stamps), "every item needs a stamp or the window would drop it"
+    # Descending, matching the order the page shows them in — which is what
+    # makes YouTube's own order survive the copy.
+    assert stamps == sorted(stamps, reverse=True)
+
+
+async def test_a_hand_added_item_reports_one_too(client):
+    """Not just imported ones — the window applies to every playlist."""
+    pid = (await client.post("/api/playlists", json={"name": "Mine"})).json()["id"]
+    await client.post(f"/api/playlists/{pid}/items", json={"youtube_id": "a"})
+    (video,) = (await client.get(f"/api/playlists/{pid}")).json()["videos"]
+    assert video["created_at"]
+
+
 async def test_the_feeds_own_rows_fill_what_the_page_could_not(client, db, monkeypatch):
     """The extension's real failure mode, and why enrichment reads `videos` first.
 

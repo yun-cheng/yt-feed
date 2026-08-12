@@ -3,7 +3,7 @@ import type { TimeRange } from '../lib/timeWindow'
 
 export type TopBarVariant =
   | 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'
-  | 'playlists' | 'imported' | 'history' | 'local' | 'settings'
+  | 'playlists' | 'playlist' | 'imported' | 'history' | 'local' | 'settings'
 
 type Props = {
   variant?: TopBarVariant

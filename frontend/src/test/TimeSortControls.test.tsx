@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
-import TimeSortControls, { SORT_OPTIONS, CHANNEL_SORT_OPTIONS } from '../components/TimeSortControls'
+import TimeSortControls, { SORT_OPTIONS, CHANNEL_SORT_OPTIONS, sortOptionsFor } from '../components/TimeSortControls'
 
 describe('TimeSortControls — feed variant', () => {
   const defaultProps = {
@@ -64,5 +64,56 @@ describe('TimeSortControls — channels variant', () => {
     render(<TimeSortControls variant="channels" sort="subs" onSortChange={onSortChange} />)
     fireEvent.click(screen.getByRole('button', { name: 'A-Z' }))
     expect(onSortChange).toHaveBeenCalledWith('alpha')
+  })
+})
+
+describe('TimeSortControls — playlist variant', () => {
+  const props = {
+    variant: 'playlist' as const,
+    age: { lo: 0, hi: 6 },
+    onAgeChange: vi.fn(),
+    sort: 'recent',
+    onSortChange: vi.fn(),
+  }
+
+  it('offers the library sorts, led by the playlist’s own order', () => {
+    render(<TimeSortControls {...props} />)
+    // 'Order', not 'Added': an imported playlist keeps YouTube's order, and
+    // this is the option that leaves it alone.
+    expect(screen.getByRole('button', { name: 'Order' })).toBeInTheDocument()
+    for (const opt of SORT_OPTIONS) {
+      expect(screen.getByRole('button', { name: opt.label })).toBeInTheDocument()
+    }
+  })
+
+  it('renders the time window, unlike the playlists grid', () => {
+    render(<TimeSortControls {...props} />)
+    expect(screen.getByTestId('time-thumb-lo')).toBeInTheDocument()
+  })
+
+  it('reports the sort it was asked for', () => {
+    const onSortChange = vi.fn()
+    render(<TimeSortControls {...props} onSortChange={onSortChange} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Views' }))
+    expect(onSortChange).toHaveBeenCalledWith('views')
+  })
+})
+
+describe('which pages get a bar at all', () => {
+  // `TopBar` is what withholds the bar — it renders nothing when
+  // `sortOptionsFor` comes back undefined — so that's the thing to ask.
+  it('gives one playlist the library sorts', () => {
+    expect(sortOptionsFor('playlist')?.map(o => o.value))
+      .toEqual(['recent', ...SORT_OPTIONS.map(o => o.value)])
+  })
+
+  it('withholds them from the playlists grid, which lists playlists not videos', () => {
+    expect(sortOptionsFor('playlists')).toBeUndefined()
+  })
+
+  it('withholds them from search, a local folder and settings', () => {
+    for (const page of ['search', 'local', 'localfolder', 'settings']) {
+      expect(sortOptionsFor(page)).toBeUndefined()
+    }
   })
 })

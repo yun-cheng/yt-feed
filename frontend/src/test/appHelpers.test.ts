@@ -273,3 +273,82 @@ describe('parseStartAt', () => {
       expect(parseStartAt(search)).toBeNull()
     })
 })
+
+// ── one playlist's own filters ───────────────────────────────
+
+describe('buildPath — a playlist keeps its id and its filters', () => {
+  it('carries the id, like a channel page does', () => {
+    expect(buildPath({ page: 'playlist', playlistId: 5 })).toBe('/playlist/5')
+  })
+
+  it('puts the sort in the query beside it, so a refresh keeps it', () => {
+    expect(buildPath({ page: 'playlist', playlistId: 5, sort: 'views' }))
+      .toBe('/playlist/5?sort=views')
+  })
+
+  it("leaves the playlist's own order out — that's the default", () => {
+    expect(buildPath({ page: 'playlist', playlistId: 5, sort: 'recent' }))
+      .toBe('/playlist/5')
+  })
+
+  it('carries a window that differs from all-time', () => {
+    expect(buildPath({ page: 'playlist', playlistId: 5, age: { lo: 0, hi: 3 } }))
+      .toBe('/playlist/5?age=0-7')
+  })
+
+  it('falls back to /playlist when there is no id to name', () => {
+    expect(buildPath({ page: 'playlist' })).toBe('/playlist')
+  })
+})
+
+describe('pageFilters — what a playlist puts in the sidebar', () => {
+  it('offers watch status, so "what have I not seen here" is one click', () => {
+    expect(pageFilters('playlist').watchStatus).toBe(true)
+  })
+
+  it('offers no tags: a playlist can hold channels you do not follow', () => {
+    expect(pageFilters('playlist').tags).toBe(false)
+  })
+
+  it('the playlists grid offers neither — it lists playlists, not videos', () => {
+    const f = pageFilters('playlists')
+    expect(f.watchStatus).toBe(false)
+    expect(f.tags).toBe(false)
+  })
+})
+
+// ── the axis a playlist windows on ───────────────────────────
+
+describe('a playlist windows by publish date, not by when it was imported', () => {
+  const NOW = new Date('2024-06-01T12:00:00Z').getTime()
+  beforeEach(() => { vi.setSystemTime(NOW) })
+  afterEach(() => { vi.useRealTimers() })
+
+  // What an import actually writes: every row stamped within the same second,
+  // spaced only enough to preserve YouTube's order.
+  const imported = [
+    makeVideo({ youtube_id: 'new', published_at: '2024-05-30T00:00:00Z',
+                created_at: '2024-06-01T11:59:59' }),
+    makeVideo({ youtube_id: 'mid', published_at: '2024-05-01T00:00:00Z',
+                created_at: '2024-06-01T11:59:58' }),
+    makeVideo({ youtube_id: 'old', published_at: '2021-01-01T00:00:00Z',
+                created_at: '2024-06-01T11:59:57' }),
+  ]
+
+  it('separates them by age, which is the question worth asking', () => {
+    const week = filterByTime(imported, { lo: 0, hi: 3 }, v => v.published_at)
+    expect(week.map(v => v.youtube_id)).toEqual(['new'])
+  })
+
+  it('and the other end of the ladder answers too', () => {
+    const older = filterByTime(imported, { lo: 4, hi: 9 }, v => v.published_at)
+    expect(older.map(v => v.youtube_id)).toEqual(['mid', 'old'])
+  })
+
+  it('whereas the import stamp would answer all-or-nothing, which is no filter', () => {
+    // The bug this replaced: every row joined the list at once, so any window
+    // either keeps the whole playlist or empties it. Both shown here.
+    expect(filterByTime(imported, { lo: 0, hi: 3 }, v => v.created_at)).toHaveLength(3)
+    expect(filterByTime(imported, { lo: 4, hi: 9 }, v => v.created_at)).toHaveLength(0)
+  })
+})

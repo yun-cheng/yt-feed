@@ -65,6 +65,10 @@ async def _owned(db: AsyncSession, user: User, playlist_id: int) -> Playlist:
 
 def _video_dict(it: PlaylistItem) -> dict:
     return {
+        # When it joined THIS list. Named `created_at` rather than `added_at`
+        # because that's what the same moment is called on Watch Later, Imported
+        # and Downloads, and one name lets one accessor serve every library page.
+        "created_at": it.added_at.isoformat() if it.added_at else None,
         "youtube_id": it.youtube_id,
         "title": it.title,
         "channel_id": it.channel_id,
