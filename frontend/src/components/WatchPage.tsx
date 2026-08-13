@@ -10,6 +10,7 @@ import LocalControls, { localPlayer, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
+import { formatCount, linkify } from '../lib/richText'
 import type { StoryboardInfo } from '../lib/storyboard'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
@@ -51,12 +52,6 @@ type Props = {
   downloadsKnown: boolean
 }
 
-function formatCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return String(n)
-}
-
 function timeAgo(iso: string): string {
   const then = new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
   const hours = Math.floor((Date.now() - then) / 3_600_000)
@@ -82,53 +77,6 @@ function highlight(text: string, query: string): ReactNode {
   const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'))
   return parts.map((p, i) =>
     i % 2 ? <mark key={i} className="rounded bg-[#3ea6ff]/30 px-0.5 text-white">{p}</mark> : p
-  )
-}
-
-// H:MM:SS, MM:SS, or M:SS timestamps in a description → clickable seeks.
-const TIMESTAMP_RE = /(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)/g
-
-/** Split a plain (non-URL) chunk, turning timestamps into seek buttons. */
-function withTimestamps(text: string, keyBase: string, onSeek: (s: number) => void): ReactNode[] {
-  const nodes: ReactNode[] = []
-  let last = 0
-  TIMESTAMP_RE.lastIndex = 0
-  let m: RegExpExecArray | null
-  while ((m = TIMESTAMP_RE.exec(text)) !== null) {
-    const [full, hh, mm, ss] = m
-    const total = (hh ? Number(hh) * 3600 : 0) + Number(mm) * 60 + Number(ss)
-    if (m.index > last) nodes.push(text.slice(last, m.index))
-    nodes.push(
-      <button
-        key={`${keyBase}-${m.index}`}
-        onClick={() => onSeek(total)}
-        className="text-blue-400 hover:underline"
-      >
-        {full}
-      </button>
-    )
-    last = m.index + full.length
-  }
-  if (last < text.length) nodes.push(text.slice(last))
-  return nodes
-}
-
-/** Render a description with URLs as links and timestamps as seek buttons. */
-function linkify(text: string, onSeek: (s: number) => void) {
-  return text.split(/(https?:\/\/\S+)/g).map((part, i) =>
-    /^https?:\/\//.test(part) ? (
-      <a
-        key={i}
-        href={part}
-        target="_blank"
-        rel="noreferrer noopener"
-        className="text-blue-400 hover:underline [overflow-wrap:anywhere]"
-      >
-        {part}
-      </a>
-    ) : (
-      <span key={i}>{withTimestamps(part, String(i), onSeek)}</span>
-    )
   )
 }
 
