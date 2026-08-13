@@ -13,7 +13,7 @@ the data fresh; a small Meilisearch companion powers search.
 | Web framework | **FastAPI** (async) on **uvicorn** |
 | DB | **SQLite** via **SQLAlchemy 2.0 async** + **aiosqlite** (WAL mode) |
 | Config | **pydantic-settings** (`app/config.py`, `.env`) |
-| YouTube scraping | **yt-dlp** (flat mode for listings, full extract for storyboards/captions) |
+| YouTube scraping | **yt-dlp** (flat mode for listings, full extract for storyboards/captions, `getcomments` for comments) |
 | YouTube stats | **YouTube Data API v3** (optional OAuth token) with a yt-dlp fallback |
 | Search | **Meilisearch** (separate process on `:7700`) |
 
@@ -70,7 +70,7 @@ app/
   users.py         accounts: seeding, the channel backfill, adoption (see "Accounts")
 
   routers/         one file per resource, all mounted under /api
-    feed.py        the main feed, storyboards, captions + AI translation
+    feed.py        the main feed, storyboards, captions + AI translation, comments
     channels.py    channel pages + video-topic chips/filtering (see "Video topics")
     search.py      proxies to search_index
     tags.py        LLM channel tagging + taxonomy, tag editor (see "Channel tagging")
@@ -467,6 +467,59 @@ it's usually warm — ~9ms, instead of another ~1s extraction on a cold open.
 > Some videos genuinely have no description (3 of a 50-video sample), and the
 > negative cache keeps those from being re-fetched on every open. An empty box is
 > real data rather than a failed fetch — worth knowing before you debug one.
+
+### Comments (`/api/feed/comments/{id}`)
+
+**The Data API cannot serve these.** `commentThreads.list` costs a single quota
+unit and would be the obvious choice, but it requires the `youtube.force-ssl`
+scope and the app's token is `youtube.readonly` — asking for it returns 403
+`ACCESS_TOKEN_SCOPE_INSUFFICIENT`. Opening that path means widening `SCOPES` in
+`auth_google.py` and re-consenting the Google flow.
+
+So comments come from yt-dlp's `getcomments`, which walks the same innertube
+pages the YouTube watch page walks: **no key, no token, and nothing charged
+against the quota ledger** — the same footing as descriptions and captions.
+
+What it costs instead is time, and the shape of the feature follows from where
+that time goes:
+
+| walk | what it brings back | measured |
+| --- | --- | --- |
+| `?sort=top` | 40 top-level comments | ~2.2s |
+| `?sort=top&replies=1` | the same 40, plus up to 10 replies each | ~14.5s |
+
+Replies are several times the wait because YouTube hands them over **one thread
+at a time** — a request per thread, not per comment. That's why it's two walks:
+the watch page shows the comments as soon as the first lands and folds the
+replies in when the second does, so nobody waits on the slow one to read the
+fast one (see `Comments.tsx`). Both are still gated on opening the panel —
+there's no hover prefetch and no remembered open state. Three workers on
+`_comment_pool` bound how hard this can page from one address, which is what
+earns a bot check.
+
+`_thread_comments` nests the flat list yt-dlp returns, and corrects two of its
+field names on the way out:
+
+- **`comment_count` is not the video's comment count.** After a successful walk
+  yt-dlp overwrites it with the number extracted — our own cap. The payload
+  calls it `fetched`, and sets `capped` so the panel can say "40+" rather than
+  letting a truncated list read as a quiet comment section.
+- **A disabled section is distinguishable from an empty one**, but only by a
+  `None`: `CommentsDisabled` yields `comments: None, comment_count: None`, where
+  a video nobody has commented on yields `[]` and `0`. That's the `disabled`
+  flag, and it's why the panel can say "comments are turned off" honestly.
+
+`is_favorited` — yt-dlp's name for the *creator's* heart, which reads like
+something the viewer did — goes out as `hearted`.
+
+**Replies chain.** A reply's `parent` can be another reply, not just the thread
+root, and four levels deep is ordinary — so `_thread_comments` nests by parent
+id generally rather than assuming two levels. That's also why the per-thread
+reply cap is 10 rather than 3: the cap is a whole conversation's budget, and one
+long argument would otherwise consume it and cut every other reply in the
+thread. The frontend draws that tree as a tree (see `Comments.tsx`), which is
+what YouTube itself does — each level a step further in, with a rule down the
+left saying what answers what.
 
 ## Offline downloads (`routers/downloads.py`)
 
@@ -1375,6 +1428,11 @@ These are the design decisions most likely to bite if you touch them:
   `asyncio.Lock` serialises the read-modify-write of the stored sentence map, so
   two overlapping block requests can't clobber each other's merge.
 
+- **Comments get a third pool** (`_comment_pool`, 3 workers). A comment walk is
+  seconds where a storyboard is a fraction of one, so sharing `_preview_pool`
+  would leave hovers queued behind work nobody is looking at. Three is also a
+  deliberate ceiling on concurrent paging against YouTube from one address.
+
 - **Every `yt_dlp.YoutubeDL` must be context-managed** — `with ... as ydl:`, not
   `ydl = ...`. Closing it is what returns its connections. The four
   request-scoped call sites (`imported`, `downloads`, `feed` ×2) would survive
@@ -1442,6 +1500,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
+| GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic). The channel block carries `source` and `scanning` |
 | GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
 | POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |
@@ -1511,6 +1570,7 @@ no per-test decorator). What's covered:
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
+| `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |

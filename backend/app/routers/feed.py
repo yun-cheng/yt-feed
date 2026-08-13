@@ -36,6 +36,14 @@ _preview_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="preview")
 # concurrency limit — batches queue here rather than all hitting the API at once.
 _translate_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="translate")
 
+# And comments get their own for the same reason, one size smaller. A comment
+# walk is seconds long where a storyboard is a fraction of one, so a couple of
+# open watch pages on `_preview_pool` would leave hovers waiting on work nobody
+# is looking at. Three workers is also a deliberate ceiling on how hard this can
+# hit YouTube: comments are the one thing here that pages, and paging from one
+# address is what earns a bot check.
+_comment_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="comments")
+
 # In-memory storyboard cache: video_id -> (timestamp, data-or-None)
 _sb_cache: dict[str, tuple[float, Optional[dict]]] = {}
 _SB_TTL = 3600  # 1 hour
@@ -56,6 +64,15 @@ _ct_cache: dict[str, tuple[float, Optional[tuple]]] = {}
 _desc_cache: dict[str, tuple[float, Optional[str]]] = {}
 _DESC_TTL = 3600  # 1 hour
 
+# In-memory comment cache: "video_id::sort::depth" -> (timestamp, payload-or-None).
+# Keyed by sort AND depth, because "top" and "newest" are different walks, and
+# the walk that carries replies must never be served the one that doesn't.
+# The TTL is far shorter than the caption one: captions never change, a comment
+# section does. Nothing here is stored — comments belong to YouTube, and a stale
+# copy in our database would be worse than no copy at all.
+_cm_cache: dict[str, tuple[float, Optional[dict]]] = {}
+_CM_TTL = 1800  # 30 min
+
 # Empty/failed results are cached too (so a caption-less video isn't re-fetched on
 # every hover) but with a short TTL, so a transient network failure retries soon.
 _NEG_TTL = 300  # 5 min
@@ -66,6 +83,7 @@ _sb_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 _cc_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 _ct_inflight: dict[str, "asyncio.Future[Optional[tuple]]"] = {}
 _desc_inflight: dict[str, "asyncio.Future[Optional[str]]"] = {}
+_cm_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 
 # Caption languages we expose in the watch-page switcher, in menu order. A track
 # whose code starts with one of these prefixes (e.g. "zh-Hant" → "zh") counts.
@@ -173,6 +191,142 @@ async def _fetch_description(video_id: str) -> str | None:
     except Exception:
         return None
     return info.get("description") or None
+
+
+# How much of a comment section one fetch brings back, and why replies are a
+# second trip rather than part of the first.
+#
+# A thread's replies are their own request — YouTube hands them over one thread
+# at a time — so asking for them multiplies the wait by the number of THREADS,
+# not by the number of comments. Measured on a busy video: 40 threads alone take
+# 2.2s, the same 40 with their replies take ~15s.
+#
+# So the watch page runs both, in that order: the comments are on screen and
+# readable in about two seconds, and the replies fold themselves in when the
+# slower walk lands. Nobody waits on the second to read the first.
+#
+# The per-thread number is a whole conversation's budget, not a count of direct
+# answers: replies genuinely chain (A answers B answers C), and the deepest run
+# in a sample of 40 threads was four levels. Three would have spent the budget
+# on one such chain and cut every other reply in the thread, so it's ten —
+# measured at 14.5s against 11.5s for three, for triple the replies.
+COMMENT_PARENTS = 40
+COMMENT_REPLIES_PER_THREAD = 10
+
+# What YouTube's own "Top comments" / "Newest first" switch maps to.
+COMMENT_SORTS = {"top", "new"}
+
+
+def _extract_comments(video_id: str, sort: str, replies: bool) -> dict:
+    """Blocking yt-dlp comment extraction for one video. Runs in `_comment_pool`.
+
+    `getcomments` makes the extractor walk the same innertube pages the YouTube
+    watch page walks — no Data API, no key, and so nothing charged against the
+    quota ledger. Worth stating plainly because the alternative looks tempting:
+    `commentThreads.list` costs a single unit, but it needs the `force-ssl`
+    scope, and the app's token is `youtube.readonly`.
+    """
+    import yt_dlp
+
+    per_thread = COMMENT_REPLIES_PER_THREAD if replies else 0
+    total = COMMENT_PARENTS * (1 + per_thread)
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "getcomments": True,
+        "extractor_args": {"youtube": {
+            "comment_sort": [sort],
+            # total, top-level, replies, replies-per-thread
+            "max_comments": [str(total), str(COMMENT_PARENTS),
+                             str(total), str(per_thread)],
+        }},
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        return ydl.extract_info(
+            f"https://www.youtube.com/watch?v={video_id}", download=False
+        )
+
+
+def _thread_comments(info: dict) -> dict:
+    """Turn yt-dlp's flat comment list into threads, in the order it gave them.
+
+    yt-dlp returns every comment at one level with a `parent` of either "root"
+    or the id of the comment it answers, so nesting is a single pass — and the
+    order within each level is already the sort we asked for, which is why this
+    appends rather than sorts.
+
+    Two things about `comment_count` that the name actively misleads about, both
+    read off yt-dlp's `extract_comments` rather than guessed at:
+
+    - A section with comments turned off comes back as `comments: None` and
+      `comment_count: None`, where a video nobody has commented on yet comes
+      back as `[]` and `0`. So the two really are distinguishable, and they
+      deserve different words on screen.
+    - After a successful walk it is overwritten with the number of comments
+      extracted — which is our own cap, not the video's total. Nothing here may
+      call it a total, hence `fetched`.
+    """
+    raw = info.get("comments") or []
+    count = info.get("comment_count")
+
+    threads: list[dict] = []
+    by_id: dict[str, dict] = {}
+    for c in raw:
+        node = {
+            "id": c.get("id") or "",
+            "text": c.get("text") or "",
+            "author": c.get("author") or "",
+            "author_id": c.get("author_id") or "",
+            "author_thumbnail": c.get("author_thumbnail") or "",
+            "author_is_uploader": bool(c.get("author_is_uploader")),
+            "author_is_verified": bool(c.get("author_is_verified")),
+            "is_pinned": bool(c.get("is_pinned")),
+            # yt-dlp's name for the creator's heart.
+            "hearted": bool(c.get("is_favorited")),
+            "like_count": c.get("like_count") or 0,
+            "timestamp": c.get("timestamp"),
+            "time_text": c.get("_time_text") or "",
+            "replies": [],
+        }
+        parent = c.get("parent") or "root"
+        by_id[node["id"]] = node
+        if parent == "root":
+            threads.append(node)
+        elif parent in by_id:
+            by_id[parent]["replies"].append(node)
+        else:
+            # A reply whose parent fell outside the fetch. Dropping it would be
+            # quieter, but a reply reads fine on its own and losing it silently
+            # would make the counts on screen disagree with the list.
+            threads.append(node)
+
+    return {
+        "disabled": not raw and count is None,
+        "fetched": len(raw),
+        # We stopped at our own cap, so the panel can say "40+" rather than
+        # letting a truncated list read as a quiet comment section.
+        "capped": len(threads) >= COMMENT_PARENTS,
+        # Whether this payload is the deep walk — which is the only way to know.
+        # The shallow one isn't told how many replies a thread has; YouTube
+        # reveals that by handing them over and in no other way. It's what stops
+        # the frontend walking a second time for replies it already has.
+        "has_replies": any(t["replies"] for t in threads),
+        "threads": threads,
+    }
+
+
+async def _fetch_comments(video_id: str, sort: str, replies: bool) -> dict | None:
+    """Comment threads for one video, or None if the extraction failed."""
+    try:
+        info = await asyncio.get_event_loop().run_in_executor(
+            _comment_pool, _extract_comments, video_id, sort, replies,
+        )
+    except Exception as exc:
+        print(f"[feed] could not fetch comments for {video_id}: {exc}")
+        return None
+    return _thread_comments(info)
 
 
 def _extract_caption_tracks(video_id: str) -> tuple[dict, dict, str | None]:
@@ -926,6 +1080,31 @@ async def get_description(video_id: str):
         lambda: _fetch_description(video_id), _DESC_TTL,
     )
     return {"description": text or ""}
+
+
+@router.get("/comments/{video_id}")
+async def get_comments(video_id: str, sort: str = "top", replies: bool = False):
+    """Return a video's comments as {disabled, fetched, capped, has_replies, threads}.
+
+    Only ever called when someone opens the comments panel — the watch page
+    doesn't fetch these on load, and doesn't prefetch them on hover the way it
+    warms storyboards and descriptions. That's the whole reason a fetch this
+    slow is affordable: it happens when you ask for it, and only then.
+
+    `replies` is the same section walked deeper, at several times the cost. The
+    watch page asks for it right after the shallow one, so the comments can be
+    read while it runs.
+    """
+    if sort not in COMMENT_SORTS:
+        sort = "top"
+    data = await _cached_fetch(
+        f"{video_id}::{sort}::{int(replies)}", _cm_cache, _cm_inflight,
+        lambda: _fetch_comments(video_id, sort, replies), _CM_TTL,
+    )
+    return data or {
+        "disabled": False, "fetched": 0, "capped": False,
+        "has_replies": False, "threads": [],
+    }
 
 
 @router.get("/statistics")
