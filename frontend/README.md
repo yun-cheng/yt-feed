@@ -488,6 +488,8 @@ components/
                                   keyboard controls, our own captions (language
                                   switcher, dual subtitles, AI translation),
                                   metadata, description, topic chips
+  Comments.tsx                    the comment section under the description —
+                                  closed until asked for, and fetched only then
   Toaster.tsx                     the app's single error-toast surface
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
@@ -499,6 +501,8 @@ lib/
   local.ts                        local-folder types + fetch helpers
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
   time.ts                         formatTime — the player clock
+  richText.tsx                    YouTube free text (descriptions, comments):
+                                  URLs as links, timestamps as seek buttons
 ```
 
 ---
@@ -825,6 +829,49 @@ Other details:
   deliberately excluded (see above).
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
+### Comments (`Comments.tsx`)
+
+Under the description, in the **left** column — so an open transcript is still
+the only thing that changes this pane's shape.
+
+Everything about it follows one rule: **nothing is fetched until you open it.**
+No hover prefetch, no warm-up while the video plays, and no remembered "open"
+state carried to the next video — that last one is the subtle way this would
+break its own rule, since a remembered preference would fetch on every video you
+opened afterwards. A new video starts closed and drops what it held. Reopening
+the same one inside half an hour is instant anyway (the backend's cache).
+
+The reason is cost: comments come from yt-dlp walking YouTube's own pages rather
+than the Data API — free of quota, but ~2.2s. Replies cost ~15s, because YouTube
+serves them a thread at a time, so they're a **second walk behind the first**:
+the comments appear at ~2s and are readable straight away, and the reply counts
+fold themselves in when the deeper walk lands (a quiet "loading replies…" next
+to the sort pills says why they're late). Opening the panel is the one ask —
+a button for the second half would be asking the reader about our fetch
+strategy. Switching sort afterwards keeps the depth already paid for, in a
+single request.
+
+Three things can be in flight at once — both walks and a sort change — and they
+finish out of order, so a `turn` counter marks which request is current and
+stale answers are dropped. That's also what stops a walk started on one video
+from landing in the next one's panel.
+
+**Replies chain, and are drawn nested.** A reply can answer another reply — four
+levels deep in an ordinary thread — and each level is drawn a step further in
+with a rule down the left, the way YouTube draws it. The indent stops after
+`MAX_INDENT` levels and only the rule continues, so a long argument can't walk
+itself off the right-hand side into a column two words wide.
+
+One toggle governs a whole thread, and its count is **every** reply beneath the
+comment rather than only the direct ones — that's what "12 replies" means to
+someone deciding whether to open it. Nested replies carry no toggle of their
+own: the thread is already open, so its shape is simply shown.
+
+Timestamps in comments are seek buttons, via the same `linkify` the description
+uses (moved to `lib/richText.tsx` when this arrived, so both can share it).
+"Skip to 12:40" is written on the assumption that whoever reads it is sitting in
+front of the player — here they are.
+
 ### Downloaded videos play from disk
 
 A video with a finished download plays from `/api/downloads/:id/file` instead of
@@ -981,6 +1028,7 @@ two shims Radix's slider needs to mount at all (below).
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
+| `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a

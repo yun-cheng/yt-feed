@@ -11,6 +11,7 @@ import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
+import Comments from './Comments'
 import type { StoryboardInfo } from '../lib/storyboard'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
@@ -1870,6 +1871,11 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
             {linkify(description, seekTo)}
           </div>
         )}
+
+        {/* Under the description, where YouTube puts them — and in the LEFT
+            column, so an open transcript is still the only thing that changes
+            this pane's shape. Closed until asked for; see Comments.tsx. */}
+        <Comments videoId={videoId} onSeek={seekTo} onChannelClick={onChannelClick} />
         </div>
 
         {/* Right panel: the caption track as readable prose. Toggled from the "…"
