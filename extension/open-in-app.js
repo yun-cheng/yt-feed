@@ -597,8 +597,10 @@ savePill.addEventListener('click', () => clickSave(barSave, barId, () => barId))
  *
  * Only this direction. YouTube has no way in — the Data API has never had a
  * write endpoint for watch history, and the playlist that used to stand in for
- * one was withdrawn years ago. The only thing that would register is a browser
- * actually playing the video, which is a worse idea than the gap it fills.
+ * one was withdrawn years ago. The only thing that registers is a browser
+ * actually playing the video, and Chrome won't load media in a hidden tab, so
+ * it would have to seize the foreground every time. Measured, then declined:
+ * see docs/youtube-history-writeback.md.
  *
  * Nothing about the video is read off the page beyond its id: see
  * `reportProgress` in background.js for why.

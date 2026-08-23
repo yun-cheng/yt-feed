@@ -214,13 +214,19 @@ watching it in the app: the red progress bar on the card, the resume point, and
 a row on the History page. There's no button for it — it's what the watch page
 does while you're on it.
 
-**Only this direction.** YouTube has no way in. The Data API has never had a
-write endpoint for watch history, and the playlist that used to stand in for one
-(`HL`) was withdrawn years ago, so there is nothing to POST to. The only thing
-that would actually register is a browser playing the video for real — the
-extension opening background tabs to fake views — which is slow, breaks
-constantly, and poisons your recommendations with things you watched elsewhere.
-That's a worse outcome than the gap it fills, so this half doesn't exist.
+**Only this direction**, by decision rather than by accident. The Data API has
+never had a write endpoint for watch history, and the playlist that used to
+stand in for one (`HL`) was withdrawn years ago, so there is nothing to POST to.
+The only thing that registers is a browser playing the video for real, and
+Chrome will not load media in a hidden tab — so it cannot be done quietly in the
+background. It would have to take the foreground, on a tab you didn't ask for,
+every time you finished something.
+
+That was measured rather than guessed, along with three other routes that all
+turned out to be closed:
+[docs/youtube-history-writeback.md](../docs/youtube-history-writeback.md) has
+what each one did. The conclusion was that the cost is worse than the gap, so
+this half doesn't exist.
 
 ### Turning it off
 
