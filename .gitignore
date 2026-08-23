@@ -14,3 +14,4 @@ frontend/dist/
 backend/config/*.json
 backend/config/subscriptions.yaml
 .env
+.DS_Store
