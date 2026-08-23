@@ -113,7 +113,27 @@ const RESUME_TAIL_SEC = 20
 // Caption preferences persist in localStorage so they carry across videos and
 // sessions — the watch overlay remounts per video, re-reading these on mount.
 const CAPTION_PREFS_KEY = 'ytfeed:caption-prefs'
-type CaptionPrefs = { on: boolean; lang: string; lang2: string; mode: 'word' | 'sentence' }
+// How the caption block is drawn, as opposed to which track it draws. Size is a
+// multiplier on YouTube's own 2.5%-of-player-width, so 1 is "the same size
+// YouTube would have drawn it". YouTube's own ladder jumps 100 → 150 → 200; on a
+// player this wide those are different decisions rather than adjustments, so this
+// steps by 10% and lets you stop where it actually looks right.
+const CAPTION_SIZE_MIN = 0.5
+const CAPTION_SIZE_MAX = 3
+const CAPTION_SIZE_STEP = 0.1
+// Every size passes through here, so a tenth stays a tenth instead of drifting
+// into 1.2000000000000002 and printing as 120.00000000000001%.
+const roundSize = (n: number) =>
+  Math.round(Math.min(CAPTION_SIZE_MAX, Math.max(CAPTION_SIZE_MIN, n)) * 10) / 10
+const CAPTION_DISPLAY_DEFAULTS = { pos: 'bottom' as const, size: 1 }
+type CaptionPrefs = {
+  on: boolean
+  lang: string
+  lang2: string
+  mode: 'word' | 'sentence'
+  pos: 'top' | 'bottom'
+  size: number
+}
 function loadCaptionPrefs(): CaptionPrefs {
   try {
     const p = JSON.parse(localStorage.getItem(CAPTION_PREFS_KEY) || '{}')
@@ -127,9 +147,16 @@ function loadCaptionPrefs(): CaptionPrefs {
       // 'line' is the old name for this mode — keep reading it so a saved
       // preference doesn't silently reset.
       mode: p.mode === 'sentence' || p.mode === 'line' ? 'sentence' : 'word',
+      pos: p.pos === 'top' ? 'top' : 'bottom',
+      // Clamped rather than rejected: a size saved by an older build (the first
+      // version of this stepped 50/75/100/150/200/300) is still a size someone
+      // chose, and every one of those lands inside the range anyway.
+      size: typeof p.size === 'number' && Number.isFinite(p.size)
+        ? roundSize(p.size)
+        : CAPTION_DISPLAY_DEFAULTS.size,
     }
   } catch {
-    return { on: false, lang: '', lang2: '', mode: 'word' }
+    return { on: false, lang: '', lang2: '', mode: 'word', ...CAPTION_DISPLAY_DEFAULTS }
   }
 }
 
@@ -286,7 +313,7 @@ function sentenceLinesAt(sentences: { start: number; end: number; text: string }
 // building line grows without shoving earlier words; whole-line (manual) subs
 // center and use the full width. Rendered once for the main track and, with dual
 // subtitles on, again for the second — the two blocks stack.
-function CaptionBlock({ lines }: { lines: CaptionLine[] }) {
+function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
   // A track is all one kind, so if none are word-by-word they're manual subs.
   const manual = lines.every((l) => !l.wordByWord)
   return (
@@ -298,7 +325,10 @@ function CaptionBlock({ lines }: { lines: CaptionLine[] }) {
         // Measured from youtube.com's own player: 2.5%-of-width font, weight 400,
         // normal line-height, its exact font stack.
         fontFamily: '"YouTube Noto", Roboto, Arial, Helvetica, Verdana, "PT Sans Caption", sans-serif',
-        fontSize: '2.5cqw',
+        // `size` scales that: everything else here is in em or a share of the
+        // width, so the whole block — box, padding, the word-by-word line's
+        // fixed width — grows with the text rather than around it.
+        fontSize: `${2.5 * size}cqw`,
         fontWeight: 400,
         lineHeight: 'normal',
         // YouTube renders captions with grayscale smoothing, which on macOS looks
@@ -395,6 +425,11 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   // per-word timing (the default); 'sentence' stitches cues into whole sentences
   // and shows each at once, centered. Applies to both the main and second tracks.
   const [captionMode, setCaptionMode] = useState<'word' | 'sentence'>(savedPrefs.mode)
+  // Where the block sits and how big it is. Kept apart from the language picks:
+  // these say nothing about which track is showing, and the Reset below puts
+  // only these two back — losing your languages is not what "reset" should mean.
+  const [captionPos, setCaptionPos] = useState<'top' | 'bottom'>(savedPrefs.pos)
+  const [captionSize, setCaptionSize] = useState(savedPrefs.size)
   // Base codes observed to carry per-word timing (auto-caption tracks). A track only
   // reveals this once loaded, so we accumulate it and keep it for the video — that's
   // what lets the "word-by-word" variant show in BOTH columns, and even while the
@@ -808,9 +843,11 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
         lang: captionLang === AI_ZH ? '' : captionLang,
         lang2: captionLang2 === AI_ZH ? '' : captionLang2,
         mode: captionMode,
+        pos: captionPos,
+        size: captionSize,
       }))
     } catch { /* storage disabled — prefs just won't persist */ }
-  }, [showCaptions, captionLang, captionLang2, captionMode])
+  }, [showCaptions, captionLang, captionLang2, captionMode, captionPos, captionSize])
 
   // Which of English/Chinese/Japanese/Korean this video offers (native, uploaded,
   // or auto-translated) — populates the caption language switcher.
@@ -1127,6 +1164,13 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
     if (code !== cur) pick(code)
   }
 
+  // One tenth per press, clamped at both ends (roundSize does the clamping, and
+  // keeps the value printable — see the note on it).
+  const stepCaptionSize = (delta: number) =>
+    setCaptionSize((cur) => roundSize(cur + delta * CAPTION_SIZE_STEP))
+  const captionDisplayIsDefault =
+    captionPos === CAPTION_DISPLAY_DEFAULTS.pos && captionSize === CAPTION_DISPLAY_DEFAULTS.size
+
   // Whether the currently-loaded main / second tracks carry per-word timing. Only a
   // word-segment track (auto captions) supports the word-by-word reveal; a whole-cue
   // track (manual/translated subs) is already whole lines, so the mode is a no-op.
@@ -1347,6 +1391,29 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
     return () => window.removeEventListener('blur', onBlur)
   }, [])
 
+  // How far the caption block sits from the edge it's anchored to.
+  //
+  // At the bottom it has to clear a control bar. Ours comes to ~4.5rem — bottom
+  // padding, the button row and the progress bar's own hit area, the same stack
+  // the scrub preview measures itself against — so the old 3.5rem drew the text
+  // straight through the progress track. When our bar is down there's nothing
+  // left to clear and the captions drop, the way a player's do.
+  //
+  // YouTube's bar we can neither measure nor see the state of from out here, so
+  // that one keeps a fixed clearance: 11% of the player height tracks it on big
+  // players, but a short player scales the bar UP ("big mode") into that 11% —
+  // hence the 5.5rem floor (measured ~73px above the bottom on a 281px-tall
+  // player).
+  //
+  // At the top the only thing in the way is the volume HUD, which sits at 1rem
+  // and stands ~2rem tall whether or not any chrome is showing — over the embed
+  // YouTube's title bar wants more room than that anyway.
+  const captionInset = captionPos === 'top'
+    ? (ownBar ? '3.25rem' : 'max(9%, 4rem)')
+    : ownBar
+      ? (chromeUp ? '4.75rem' : '1.5rem')
+      : 'max(11%, 5.5rem)'
+
   // The caption + volume overlays. Rendered inside the player box, which is also
   // the fullscreen target, so they show in both windowed and fullscreen modes.
   const overlays = (
@@ -1361,29 +1428,16 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
       {showCaptions && (captionLines.length > 0 || captionLines2.length > 0) && (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex flex-col items-center gap-[2px] px-[5%]"
-          // Sit above the control bar. Ours comes to ~4.5rem — bottom padding,
-          // the button row and the progress bar's own hit area, the same stack
-          // the scrub preview measures itself against — so the old flat 3.5rem
-          // drew the text straight through the progress track. With the bar
-          // down there's nothing left to clear and the captions drop, the way a
-          // player's do.
-          //
-          // YouTube's bar we can neither measure nor see the state of from out
-          // here, so that one keeps a fixed clearance: 11% of the player height
-          // tracks it on big players, but a short player scales the bar UP
-          // ("big mode") into that 11% — hence the 5.5rem floor (measured
-          // ~73px above the bottom on a 281px-tall player).
-          style={{
-            bottom: ownBar
-              ? (chromeUp ? '4.75rem' : '1.5rem')
-              : 'max(11%, 5.5rem)',
-          }}
+          // Anchored to whichever edge the block was sent to. Bottom-anchored,
+          // new lines push the stack upward; top-anchored it grows downward,
+          // which is the same reading order either way.
+          style={captionPos === 'top' ? { top: captionInset } : { bottom: captionInset }}
         >
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
               the pick — not the content — decides which reads on top. */}
-          {captionLines.length > 0 && <CaptionBlock lines={captionLines} />}
-          {captionLines2.length > 0 && <CaptionBlock lines={captionLines2} />}
+          {captionLines.length > 0 && <CaptionBlock lines={captionLines} size={captionSize} />}
+          {captionLines2.length > 0 && <CaptionBlock lines={captionLines2} size={captionSize} />}
         </div>
       )}
 
@@ -1427,61 +1481,119 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
         // video offers, plus the AI translation. No "Off" row — an empty slot
         // is off (toggle by clicking the active row). The same track can't sit
         // in both columns; picking it in the other slot moves/swaps it.
-        <div className="absolute bottom-full left-0 mb-2 flex overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
-          {([
-            { title: 'Main', cur: curMain, pick: pickMain },
-            { title: 'Second', cur: curSecond, pick: pickSecond },
-          ] as const).map((col, ci) => (
-            <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
-              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
-              {captionLangs.map((l) => {
-                const active = col.cur === l.code
-                // A word-segment track splits into two rows: the plain label for
-                // whole sentences, and "(word-by-word)" for the reveal-as-spoken
-                // mode. Shown in both columns for any language known to carry
-                // per-word timing. Every other row is a single entry.
-                if (wordSegLangs.has(l.code)) {
+        <div className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
+          <div className="flex">
+            {([
+              { title: 'Main', cur: curMain, pick: pickMain },
+              { title: 'Second', cur: curSecond, pick: pickSecond },
+            ] as const).map((col, ci) => (
+              <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
+                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
+                {captionLangs.map((l) => {
+                  const active = col.cur === l.code
+                  // A word-segment track splits into two rows: the plain label for
+                  // whole sentences, and "(word-by-word)" for the reveal-as-spoken
+                  // mode. Shown in both columns for any language known to carry
+                  // per-word timing. Every other row is a single entry.
+                  if (wordSegLangs.has(l.code)) {
+                    return (
+                      <Fragment key={l.code}>
+                        {(['sentence', 'word'] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() => pickMode(col.pick, col.cur, l.code, mode)}
+                            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                          >
+                            <span className="w-4 shrink-0">{active && captionMode === mode && '✓'}</span>
+                            {mode === 'word' ? `${l.label} (word-by-word)` : l.label}
+                          </button>
+                        ))}
+                      </Fragment>
+                    )
+                  }
                   return (
-                    <Fragment key={l.code}>
-                      {(['sentence', 'word'] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => pickMode(col.pick, col.cur, l.code, mode)}
-                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
-                        >
-                          <span className="w-4 shrink-0">{active && captionMode === mode && '✓'}</span>
-                          {mode === 'word' ? `${l.label} (word-by-word)` : l.label}
-                        </button>
-                      ))}
-                    </Fragment>
+                    <button
+                      key={l.code}
+                      onClick={() => col.pick(l.code)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                    >
+                      <span className="w-4 shrink-0">{active && '✓'}</span>
+                      {l.label}
+                    </button>
                   )
-                }
-                return (
+                })}
+                {/* AI translation — only when the source track isn't Chinese. */}
+                {aiTranslateAvailable && (
                   <button
-                    key={l.code}
-                    onClick={() => col.pick(l.code)}
+                    onClick={() => col.pick(AI_ZH)}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
                   >
-                    <span className="w-4 shrink-0">{active && '✓'}</span>
-                    {l.label}
+                    <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
+                    Chinese
+                    <span className="ml-auto pl-2 text-xs text-[#888]">
+                      {col.cur === AI_ZH && translating ? '翻譯中…' : 'AI'}
+                    </span>
                   </button>
-                )
-              })}
-              {/* AI translation — only when the source track isn't Chinese. */}
-              {aiTranslateAvailable && (
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* How the block is drawn, under the two track columns because it
+              applies to both of them. Position and size are the two things
+              YouTube's own settings get wrong for a player this size: its
+              captions are locked to the bottom and to a size chosen for a
+              phone. Reset is greyed once there's nothing to undo. */}
+          <div className="border-t border-white/10 py-1">
+            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">Display</div>
+            <div className="flex items-center gap-1.5 px-3 py-1">
+              <span className="mr-auto pr-3 text-[#ccc]">Position</span>
+              {(['top', 'bottom'] as const).map((pos) => (
                 <button
-                  onClick={() => col.pick(AI_ZH)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
+                  key={pos}
+                  onClick={() => setCaptionPos(pos)}
+                  className={`rounded px-2 py-0.5 capitalize ${
+                    captionPos === pos ? 'bg-white text-black' : 'bg-white/10 hover:bg-white/20'
+                  }`}
+                  aria-pressed={captionPos === pos}
                 >
-                  <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
-                  Chinese
-                  <span className="ml-auto pl-2 text-xs text-[#888]">
-                    {col.cur === AI_ZH && translating ? '翻譯中…' : 'AI'}
-                  </span>
+                  {pos}
                 </button>
-              )}
+              ))}
             </div>
-          ))}
+            <div className="flex items-center gap-1.5 px-3 py-1">
+              <span className="mr-auto pr-3 text-[#ccc]">Size</span>
+              <button
+                onClick={() => stepCaptionSize(-1)}
+                disabled={captionSize <= CAPTION_SIZE_MIN}
+                className="h-6 w-6 rounded bg-white/10 leading-none hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
+                title="Smaller"
+                aria-label="Smaller captions"
+              >
+                −
+              </button>
+              <span className="w-11 text-center tabular-nums text-[#ccc]">{Math.round(captionSize * 100)}%</span>
+              <button
+                onClick={() => stepCaptionSize(1)}
+                disabled={captionSize >= CAPTION_SIZE_MAX}
+                className="h-6 w-6 rounded bg-white/10 leading-none hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
+                title="Bigger"
+                aria-label="Bigger captions"
+              >
+                +
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                setCaptionPos(CAPTION_DISPLAY_DEFAULTS.pos)
+                setCaptionSize(CAPTION_DISPLAY_DEFAULTS.size)
+              }}
+              disabled={captionDisplayIsDefault}
+              className="w-full px-3 py-1.5 text-left text-[#ccc] hover:bg-white/10 disabled:text-[#666] disabled:hover:bg-transparent"
+            >
+              Reset position and size
+            </button>
+          </div>
         </div>
       )}
       <button

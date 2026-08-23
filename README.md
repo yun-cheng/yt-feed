@@ -24,7 +24,8 @@ real video (muted, with custom captions and scrubbing).
   marks below) and our
   own captions, rendered from the transcript and styled like YouTube's —
   switchable between English / Chinese / Japanese / Korean when offered, with
-  dual subtitles and an AI translation into Traditional Chinese
+  dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
+  position and font size the embed's own captions would never give you
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click the tick to jump back); `[` and `]` set a loop's ends and `\` clears it,
   so a passage replays until you're done with it. Both are drawn on the progress

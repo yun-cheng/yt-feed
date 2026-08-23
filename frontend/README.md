@@ -697,7 +697,7 @@ Other details:
   grayscale smoothing, size scaled to the player via container queries. Auto
   tracks reveal word-by-word from the per-word timing and roll two lines
   (overlapping cues), pinned left so words don't shift; manual subs appear whole,
-  centered, full-width. Positioned above the control bar on any player size.
+  centered, full-width.
 - **Caption menu (two columns)**: a CC button sits in the player's bottom-left row,
   as a third button next to the embed's built-in share / watch-later, and opens a
   **two-column** picker — **Main** | **Second**. Each column lists every language
@@ -710,6 +710,26 @@ Other details:
   a machine *translation* of another track, which once surfaced as a Japanese
   transcript on a video with no Japanese captions. The pref is kept for the next
   video that does have it.
+- **Caption display (position, size, reset)**: a **Display** section under the two
+  columns, because it applies to both. **Position** puts the block at the top or the
+  bottom of the player — top is for a video whose own subtitles are burned in along
+  the bottom, or one whose lower third carries the diagram. **Size** is a multiplier
+  on YouTube's 2.5%-of-player-width, 50% – 300% in **10% steps** — YouTube's own
+  ladder jumps 100 → 150 → 200, which on a player this wide are different decisions
+  rather than adjustments. Everything else in the block is in `em` or a share of the
+  width, so the box, its padding and the word-by-word line's fixed width all grow
+  with the text. **Reset** returns those two
+  and only those two — the language picks are choices about *what* you're reading and
+  losing them is not what anyone means by resetting the position. Both persist with
+  the rest of the caption prefs.
+  - **Clearing the control bar** is the whole reason the bottom offset isn't a
+    constant. Ours comes to ~4.5rem (bottom padding + button row + the progress
+    bar's hit area) and the captions sit at 4.75rem while it's up, dropping to
+    1.5rem when it fades — the old flat 3.5rem drew the text straight through the
+    progress track. YouTube's bar can be neither measured nor watched from outside
+    the iframe, so that one keeps a fixed `max(11%, 5.5rem)`: 11% tracks the bar on
+    a big player, and the floor covers a short one, where the embed scales its bar
+    *up* into that 11%.
 - **Main + Second (dual subtitles)**: the two slots overlay two tracks stacked in the
   player — e.g. original + translation for language learning. The **Main** track is
   always the primary (top) line; the **Second** sits beneath it (the *slot*, not the
