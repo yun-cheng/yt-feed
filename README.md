@@ -102,6 +102,12 @@ Component-level detail lives in the per-package READMEs:
   extension: the *open in YT Feed* button on YouTube's video cards, what it
   hides on embedded players, and the one selector that rests on.
 
+Investigations that shaped a decision, kept so it isn't relitigated:
+
+- **[docs/youtube-history-writeback.md](docs/youtube-history-writeback.md)** —
+  why watch history travels YouTube → app and never back, with the four routes
+  that were measured and what each one hit.
+
 ## Setup
 
 Run three processes. The frontend dev server proxies `/api` → `localhost:8000`.
