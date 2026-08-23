@@ -522,7 +522,11 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   // Awake while the pointer is on the player and moving, and whenever playback
   // isn't running — a paused player keeps its controls, like every other one.
   const chromeAwake = (pointerOverPlayer && !chromeIdle) || !playing
-  const embedChrome = chromeAwake || showCaptionMenu
+  // An open caption menu pins the chrome up wherever the chrome lives. It would
+  // be absurd for a button to fade out from under the menu it opened — and with
+  // our own bar the menu goes with it, so the menu faded out from under the
+  // pointer that was working it.
+  const chromeUp = chromeAwake || showCaptionMenu
 
   // Whether the controls under the video are OURS — either because it's a file
   // we play ourselves, or because we turned YouTube's off. The caption button and
@@ -1241,7 +1245,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   // Player → store: if you change volume with the embed's own control, push it
   // back so previews follow. (No update while muted — that shouldn't zero it.)
   // The same tick answers "is it playing?", which is what tells our overlays
-  // over the embed when to fade (see embedChrome) — the embed fires no events
+  // over the embed when to fade (see chromeUp) — the embed fires no events
   // we can listen to, and one poll serves both.
   useEffect(() => {
     const id = setInterval(() => {
@@ -1347,7 +1351,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   // the fullscreen target, so they show in both windowed and fullscreen modes.
   const overlays = (
     <>
-      {/* Not part of embedChrome below: a keypress has to be acknowledged even
+      {/* Not part of chromeUp below: a keypress has to be acknowledged even
           when the chrome is down — that's usually exactly when you pressed it. */}
       <MarksFlash flash={marks.flash} />
 
@@ -1357,13 +1361,23 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
       {showCaptions && (captionLines.length > 0 || captionLines2.length > 0) && (
         <div
           className="pointer-events-none absolute inset-x-0 z-10 flex flex-col items-center gap-[2px] px-[5%]"
-          // Sit above the control bar. 11% of the player height tracks the bar
-          // on big players, but on a short player the embed scales the bar UP
-          // ("big mode"), so it dips into 11% — the 5.5rem floor clears the
-          // scrubber (measured ~73px above the bottom on a 281px-tall player).
-          // The browser's native bar (local playback) is shorter and a fixed
-          // height, so it needs less room.
-          style={{ bottom: ownBar ? '3.5rem' : 'max(11%, 5.5rem)' }}
+          // Sit above the control bar. Ours comes to ~4.5rem — bottom padding,
+          // the button row and the progress bar's own hit area, the same stack
+          // the scrub preview measures itself against — so the old flat 3.5rem
+          // drew the text straight through the progress track. With the bar
+          // down there's nothing left to clear and the captions drop, the way a
+          // player's do.
+          //
+          // YouTube's bar we can neither measure nor see the state of from out
+          // here, so that one keeps a fixed clearance: 11% of the player height
+          // tracks it on big players, but a short player scales the bar UP
+          // ("big mode") into that 11% — hence the 5.5rem floor (measured
+          // ~73px above the bottom on a 281px-tall player).
+          style={{
+            bottom: ownBar
+              ? (chromeUp ? '4.75rem' : '1.5rem')
+              : 'max(11%, 5.5rem)',
+          }}
         >
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
@@ -1605,7 +1619,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
             <LocalControls
               videoRef={videoRef}
               src={localSrc}
-              hovering={pointerOverPlayer && !chromeIdle}
+              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu}
               onFullscreen={toggleFullscreen}
               leftControls={captionControl}
               extraControls={<>{youtubeButton}{pinButton}</>}
@@ -1636,7 +1650,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
         {/* With our own bar the sheet can simply STAY: there are no YouTube
             controls left for it to swallow clicks meant for, so it sees every
             move and our fade times exactly like a player's. */}
-        {!playLocal && (EMBED_OWN_CONTROLS || !embedChrome) && (
+        {!playLocal && (EMBED_OWN_CONTROLS || !chromeUp) && (
           <div
             className="absolute inset-0 z-10"
             onMouseMove={wakeChrome}
@@ -1675,7 +1689,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
           <LocalControls
             player={playerRef}
             storyboard={storyboard}
-            hovering={chromeAwake}
+            hovering={chromeUp}
             onFullscreen={toggleFullscreen}
             leftControls={captionControl}
             extraControls={<>{youtubeButton}{pinButton}</>}
@@ -1685,7 +1699,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
         ) : (
           <div
             className={`transition-opacity duration-200 ${
-              embedChrome ? 'opacity-100' : 'pointer-events-none opacity-0'
+              chromeUp ? 'opacity-100' : 'pointer-events-none opacity-0'
             }`}
           >
             {captionControl}
