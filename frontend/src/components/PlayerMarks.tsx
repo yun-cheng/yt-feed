@@ -14,6 +14,9 @@
  *
  * Marks belong ON the progress bar — that's the axis they're positions on, and
  * anywhere else makes you translate a timestamp back into a place in the video.
+ * Bookmarks wear one colour everywhere they appear — the tick, the button that
+ * made it, the line confirming the press — so those read as one thing. The loop
+ * wears none: it restyles the bar rather than marking it (see below).
  * Over a file we play ourselves that's literally the bar (see LocalControls);
  * over the embed the bar lives inside the iframe, out of reach, so the rail is
  * laid over it at the same offset the embed draws its own scrubber at.
@@ -35,8 +38,35 @@ export type Bookmark = {
 
 export type Loop = { a: number | null; b: number | null }
 
+/**
+ * The one colour a bookmark wears, everywhere it appears — the tick on the bar,
+ * the button that made it, the dot on the line confirming the press.
+ *
+ * The player's own furniture is red (progress), white (track, buffered, the
+ * scrub indicator) and black, and a mark of yours in any of those reads as part
+ * of the bar rather than as something you put there — worst of all over the
+ * embed, where it lands on YouTube's own near-white track. It keeps the dark
+ * ring either way: these sit on video, which can be any colour at all.
+ */
+const BOOKMARK_COLOR = 'bg-sky-400'
+
+// The loop gets no colour of its own, because it isn't a mark — it's a MODE the
+// bar is in. So the bar says it: the stretch that repeats is the bar, and
+// everything outside it is dimmed back. Nothing new is drawn over the track, the
+// red fill and the thumb stay readable through the veil, and the loop can't
+// clash with the player's own palette because it doesn't add to it.
+const LOOP_DIM = 'bg-black/50'
+// A cut through the track at each pinned end. Dark, like the gaps YouTube puts
+// between chapters — a boundary in a bar reads as a break in it, not as a thing
+// sitting on top of it.
+const LOOP_EDGE = 'bg-black/70'
+
 /** Nothing pinned / one end pinned / repeating. What the loop button reads. */
 export type LoopStage = 'idle' | 'arming' | 'running'
+
+/** A line confirming what the last press did, and which feature it was about —
+ *  the dot on it is drawn in that feature's colour. */
+export type Flash = { kind: 'bookmark' | 'loop'; text: string }
 
 // How close `b` has to land to an existing bookmark to mean "remove that one"
 // rather than "add another". Wide enough that pressing it twice while playing
@@ -69,10 +99,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   const [loop, setLoop] = useState<Loop>({ a: null, b: null })
   // A brief line confirming what a keypress just did — pressing `b` is otherwise
   // silent, and a shortcut you can't tell fired is a shortcut you stop trusting.
-  const [flash, setFlash] = useState<string | null>(null)
+  const [flash, setFlash] = useState<Flash | null>(null)
   const flashTimer = useRef<number | undefined>(undefined)
-  const showFlash = useCallback((text: string) => {
-    setFlash(text)
+  const showFlash = useCallback((kind: Flash['kind'], text: string) => {
+    setFlash({ kind, text })
     if (flashTimer.current) window.clearTimeout(flashTimer.current)
     flashTimer.current = window.setTimeout(() => setFlash(null), FLASH_MS)
   }, [])
@@ -138,7 +168,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
 
   const clearLoop = useCallback(() => {
     setLoop({ a: null, b: null })
-    showFlash('Loop cleared')
+    showFlash('loop', 'Loop cleared')
   }, [showFlash])
 
   // The three things a keypress or a button press can do, in one place so the
@@ -153,13 +183,13 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       .find((bm) => Math.abs(bm.position_seconds - at) <= TOGGLE_TOLERANCE_SEC)
     if (hit) {
       removeBookmark(hit.id)
-      showFlash(`Bookmark removed · ${formatTime(hit.position_seconds)}`)
+      showFlash('bookmark', `Bookmark removed · ${formatTime(hit.position_seconds)}`)
     } else {
       addBookmark(at)
-      showFlash(`Bookmarked · ${formatTime(at)}`)
+      showFlash('bookmark', `Bookmarked · ${formatTime(at)}`)
     }
-    // Ahead of the poll: a button that stays on "clear" for half a second after
-    // it cleared something reads as a press that didn't take.
+    // Ahead of the poll: a button that stays on "remove" for half a second after
+    // it removed something reads as a press that didn't take.
     setMarkHere(!hit)
   }, [addBookmark, removeBookmark, showFlash])
 
@@ -168,7 +198,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
    *  (see loopActive), so neither key is ever a keypress that does nothing. */
   const setLoopEnd = useCallback((end: 'a' | 'b', at: number) => {
     setLoop((cur) => ({ ...cur, [end]: at }))
-    showFlash(`Loop ${end.toUpperCase()} · ${formatTime(at)}`)
+    showFlash('loop', `Loop ${end.toUpperCase()} · ${formatTime(at)}`)
   }, [showFlash])
 
   // Send the play head back to A each time it reaches B. Runs on its own timer
@@ -254,7 +284,15 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
  *  positions you put one on, and nowhere else.
  *
  *  Marks are drawn solid, with a dark ring: they land on video, which can be any
- *  colour at all, and a white tick on a white frame is no mark. */
+ *  colour at all, and a bright tick on a bright frame is no mark.
+ *
+ *  A bookmark is a POINT and a loop is a MODE, so only one of them is a mark. The
+ *  bookmark is a tick standing in the track it's a position on. The loop is the
+ *  bar itself: its ends cut the track, and once it's really running everything
+ *  outside it dims back, leaving the repeating stretch as the only part at full
+ *  strength. Nothing is added over the bar for it — no second colour to place
+ *  against the player's red and white, and the fill and thumb read straight
+ *  through the veil. */
 export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
   bookmarks: Bookmark[]
   loop: Loop
@@ -264,16 +302,20 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
   if (!duration) return null
   const pct = (t: number) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`
   const showLoop = loop.a !== null || loop.b !== null
-  // A 3px tick is too thin to aim at, so each is centred in a wider invisible
-  // hit area. `stopPropagation` on the press keeps our own control bar from also
-  // treating it as a scrub — it sits inside that bar's drag handler.
+  // A tick is narrower than anything is comfortable to aim at, so each sits in a
+  // wider invisible hit area. `stopPropagation` on the press keeps our own
+  // control bar from also treating it as a scrub — it sits inside that bar's
+  // drag handler.
   //
-  // The tick inside must carry `left-1/2` of its own. Without it the browser
-  // lays it out at its static position — the hit area's LEFT EDGE — and the
-  // -translate-x-1/2 then centres it on that edge, drawing every mark 6px (half
-  // the hit area) earlier than the moment it stands for. The loop's span is
-  // positioned directly and so was right, which is what made its end caps look
-  // shifted off it.
+  // That hit area is also the "you're near it" zone: `group/mark` lets the tick
+  // grow inside it, the way the track thickens under the pointer. What grows is
+  // the tick, not the target — over the embed these sit on YouTube's own
+  // scrubber, and every pixel of hit area is a pixel of its bar we've taken.
+  //
+  // Anything drawn INSIDE must carry `left-1/2` of its own. Without it the
+  // browser lays it out at its static position — the hit area's LEFT EDGE — and
+  // the -translate-x-1/2 then centres it on that edge, drawing the mark 6px (half
+  // the hit area) earlier than the moment it stands for.
   const hit = (key: string | number, at: number, label: string, mark: ReactNode) => (
     <button
       key={key}
@@ -281,7 +323,7 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
       onClick={(e) => { e.stopPropagation(); onSeek(at) }}
       title={`${label} — jump to ${formatTime(at)}`}
       aria-label={`${label} at ${formatTime(at)}`}
-      className="absolute top-1/2 h-4 w-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+      className="group/mark absolute top-1/2 h-4 w-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
       style={{ left: pct(at) }}
     >
       {mark}
@@ -289,29 +331,56 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
   )
   return (
     <>
-      {/* The looped span, drawn solid rather than as a wash — a translucent tint
-          over the played portion is nearly invisible, and that's the half you
-          look at most. It appears only once the loop is really running: a
-          half-set loop paints nothing, since a colour bar covering the rest of
-          the video would claim something is repeating when nothing is. The end
-          caps show either way, so you can see which end you've pinned. */}
+      {/* Outside the loop, dimmed — the loop is the part of the bar still at full
+          strength. Only once it's really running: a dim covering the rest of the
+          video would claim something repeats when nothing does.
+
+          It veils the fill along with the track, which is the point — the played
+          portion outside the loop is exactly the part you're no longer watching.
+          The thumb is drawn after this, so the play head stays bright wherever
+          it is, and so do any bookmarks: those aren't the loop's business. */}
       {loopActive(loop) && (
-        <div
-          className="pointer-events-none absolute inset-y-0 bg-yellow-300 ring-1 ring-black/40"
-          style={{ left: pct(loop.a!), right: `${100 - parseFloat(pct(loop.b!))}%` }}
-        />
+        <>
+          <div
+            data-testid="loop-dim"
+            className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-full ${LOOP_DIM}`}
+            style={{ width: pct(loop.a!) }}
+          />
+          <div
+            data-testid="loop-dim"
+            className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-full ${LOOP_DIM}`}
+            style={{ left: pct(loop.b!) }}
+          />
+        </>
       )}
+      {/* Each pinned end cuts the track. Shown from the first press, when there's
+          nothing to dim yet — a notch claims only "you pinned this moment",
+          which is all that's true until the pair makes sense. */}
+      {[loop.a, loop.b].map((end, i) => end === null ? null : (
+        <div
+          key={`edge${i}`}
+          data-testid="loop-edge"
+          className={`pointer-events-none absolute inset-y-0 w-[2px] -translate-x-1/2 ${LOOP_EDGE}`}
+          style={{ left: pct(end) }}
+        />
+      ))}
+      {/* The ends are clickable like any other mark, but the notch above IS the
+          mark — this is the hit area over it, and has nothing of its own to
+          draw. */}
       {showLoop && [loop.a, loop.b].map((end, i) => end === null ? null : hit(
         `loop${i}`,
         end,
         i === 0 ? 'Loop start (A)' : 'Loop end (B)',
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-yellow-300 ring-1 ring-black/50" />
+        null
       ))}
       {bookmarks.map((b) => hit(
         b.id,
         b.position_seconds,
         'Bookmark',
-        <div className="pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white ring-1 ring-black/50" />
+        // Grows on approach rather than on a direct hit: by the time the
+        // pointer is within the hit area you've already committed to this mark,
+        // and a tick that answers is one you can tell you'll actually land.
+        <div className={`pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[5px] -translate-x-1/2 -translate-y-1/2 rounded-sm ${BOOKMARK_COLOR} ring-1 ring-black/50 transition-all duration-100 group-hover/mark:h-[18px] group-hover/mark:w-[8px]`} />
       ))}
     </>
   )
@@ -353,11 +422,14 @@ export function EmbedMarkRail({ bookmarks, loop, duration, onSeek }: {
 /** What the last keypress did. A shortcut you can't tell fired is one you stop
  *  trusting — and now that the marks live on the bar, which the embed hides
  *  while playing, this is often the only acknowledgement you get. */
-export function MarksFlash({ flash }: { flash: string | null }) {
+export function MarksFlash({ flash }: { flash: Flash | null }) {
   if (!flash) return null
   return (
-    <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-full bg-black/75 px-3 py-1.5 text-sm font-medium text-white shadow-lg">
-      {flash}
+    <div className="pointer-events-none absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full bg-black/75 px-3 py-1.5 text-sm font-medium text-white shadow-lg">
+      {/* Which feature just spoke: a bookmark in its own colour, the loop in the
+          bar's own white, since that's all the loop ever wears. */}
+      <span className={`h-2 w-2 shrink-0 rounded-full ${flash.kind === 'loop' ? 'bg-white/70' : BOOKMARK_COLOR}`} />
+      {flash.text}
     </div>
   )
 }

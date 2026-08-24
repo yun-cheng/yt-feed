@@ -479,9 +479,10 @@ components/
                                   Drives a file on disk, and the embed too when
                                   the clean-embed extension is installed
   PlayerMarks.tsx                 bookmarks (`b`) and the A–B repeat loop
-                                  (`[`, `]`, `\`): state, shortcuts, and the
-                                  marks drawn on the progress bar (ours, or a
-                                  rail over the embed's)
+                                  (`[`, `]`, `\`): state, shortcuts, the actions
+                                  behind the bar's two buttons, and the marks
+                                  drawn on the progress bar (ours, or a rail
+                                  over the embed's)
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — the embed, or the
                                   downloaded file with our own control bar;
@@ -610,15 +611,17 @@ Other details:
     row when we own the bar, floating over YouTube's chrome when we don't.
   - **The loop is one button walking three stages** (`loopStage`: idle → arming →
     running): pin one end, pin the other, clear. A press has one obvious next
-    thing to do at each stage, and while it's armed the button carries a small
-    **A** or **B** naming the end the next press pins — the one thing the stage
-    alone can't tell you. The finer control stays on the keyboard, where `[` and
-    `]` move either end at any time; the button fills in whichever end is still
-    open, so a `]` pressed first leaves the button pinning the start.
+    thing to do at each stage, and the stage shows on the button — armed, a small
+    **A** or **B** naming the end the next press pins, which is the one thing the
+    stage alone can't tell you; running, the caption button's underline. Both in
+    white, since the loop wears no colour of its own on the bar either. The finer
+    control stays on the keyboard, where `[` and `]` move either end at any time;
+    the button fills in whichever end is still open, so a `]` pressed first
+    leaves the button pinning the start.
   - **Clearing a bookmark** is the same button, which says which of the two it's
     about to do: it fills in and reads *Clear this bookmark* while the play head
-    is standing on one (`markHere`, polled at 500ms against the 2s tolerance —
-    the position moves on its own, so it can't be derived; it's a boolean, so it
+    is standing on one (`markHere`, polled at 500ms against a 2s tolerance — the
+    position moves on its own, so it can't be derived; it's a boolean, so it
     costs a render only as you cross a mark, and the toggle sets it itself rather
     than waiting for the next tick). Clicking a tick seeks exactly to the moment
     it marks, so **click the tick, then press the button** clears one without
@@ -637,21 +640,42 @@ Other details:
     tick can't do it, since that only exists while captions are on. A loop ending
     at the very end of the video hits B as the video ENDS, which leaves a seek
     paused, so the tick nudges it back into play.
-  - **Both are drawn on the progress bar** (`MarkTrack`) — bookmarks as white
-    ticks, the loop as a yellow span with end caps, all solid and dark-ringed so
-    they read against whatever frame is behind them. Each 3px mark is centred in
-    a 12px hit area and **carries its own `left-1/2`**: absolutely positioned
-    with no `left`, it lands at that area's left edge instead, drawing every mark
-    6px before the moment it stands for — which showed up as the loop's end caps
-    sitting off the span they cap, the span being positioned directly. That's the axis they're
-    positions on; anywhere else and you have to translate a timestamp back into a
-    place in the video. The **span appears only once the loop is really
-    running**; a half-set loop shows just its end cap, since a colour bar over
-    the rest of the video would claim something repeats when nothing does.
+  - **Both live on the progress bar** (`MarkTrack`) — that's the axis they're
+    positions on, and anywhere else you have to translate a timestamp back into a
+    place in the video. But only one of the two is a **mark**, because a bookmark
+    is a **point** and a loop is a **mode**. The bookmark is a tick standing in the
+    track it's a position on, in **sky-400** — one hue worn everywhere it appears,
+    on the tick, on the button that made it and on the dot of the line confirming
+    the press.
+  - **The loop restyles the bar instead of marking it.** Its ends cut the track
+    (a dark 2px notch, like the gaps YouTube puts between chapters), and once
+    it's really running everything **outside** it dims back behind a black veil,
+    leaving the repeating stretch as the only part of the bar at full strength.
+    Nothing is drawn over the track for it, so there's no second colour to place
+    against the player's red and white, and the fill still reads *through* the
+    veil — dimming the played portion outside the loop is the point, that being
+    exactly the part you've stopped watching. The thumb and any bookmarks are
+    drawn after the veil and stay bright: the play head is never in question, and
+    a bookmark isn't the loop's business.
+  - **A half-set loop cuts but doesn't dim.** Dimming the rest of the video would
+    claim something is repeating when nothing is; a notch claims only that you
+    pinned this moment. It's also why the button carries the A/B letter — with no
+    region to look at yet, that's what tells you which end is which.
+  - Each mark is centred in a 12px hit area and **carries its own
+    `left-1/2`**: absolutely positioned with no `left`, it lands at that area's
+    left edge instead, drawing the mark 6px before the moment it stands for.
+  - **The tick grows inside that hit area** (5×14 → 8×18, `group/mark`), the way
+    the track thickens under the pointer. What grows is the tick, not the target
+    — over the embed these sit on YouTube's own scrubber, and every pixel of hit
+    area is a pixel of its bar we've taken. Growing on *approach* rather than on
+    a direct hit is the point: by the time the pointer is in the zone you've
+    committed to that mark, and the tick answering tells you you'll land it.
+    Being over the bar, the hover also raises the scrub preview of the exact
+    frame the bookmark holds.
   - **Every mark is clickable** and jumps to itself — on our own bar that beats
     the bar's own click, which would only land near the mark (the press stops
     propagating, so the bar doesn't also treat it as a scrub). Each tick sits in
-    a wider invisible hit area, since 3px is not a target.
+    a wider invisible hit area, since a few pixels is not a target.
   - **Over the embed** the bar is inside the iframe, so `EmbedMarkRail` lays the
     same marks over it, at a **constant** distance up from the player's bottom
     (76px — measured at 73px on a 560px-wide player, 74 at 800, ~78 at 1280). It

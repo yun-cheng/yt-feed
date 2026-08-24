@@ -1640,7 +1640,12 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
     <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[11rem] z-20 flex items-center'}>
       <button
         onClick={marks.toggleBookmarkHere}
-        className={ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT}
+        // In the bookmarks' own colour while you're standing on one, so the
+        // button, the tick on the bar and the line that confirmed the press are
+        // visibly one feature. `!` beats the `text-white` both placements bring
+        // — between two colours of the same specificity it's stylesheet order
+        // that decides, which is not something to leave to chance.
+        className={`${ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT} ${marks.markHere ? '!text-sky-400' : ''}`}
         // The one press both makes a bookmark and clears it, so it says which
         // one it's about to do. Standing on a mark is a thing you arrive at by
         // clicking its tick, which seeks exactly to it — so clearing one is

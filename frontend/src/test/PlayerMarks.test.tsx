@@ -74,7 +74,7 @@ function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: st
       <div data-testid="loop">{`${loop.a ?? '-'}/${loop.b ?? '-'}`}</div>
       <div data-testid="stage">{loopStage}</div>
       <div data-testid="here">{markHere ? 'yes' : 'no'}</div>
-      <div data-testid="flash">{flash ?? ''}</div>
+      <div data-testid="flash">{flash?.text ?? ''}</div>
       {/* The control bar's buttons, standing in for the real ones: what they
           get from the hook is exactly these three functions. */}
       <button onClick={toggleBookmarkHere}>bookmark</button>
@@ -332,7 +332,7 @@ describe('usePlayerMarks — the control bar’s buttons', () => {
     expect(posted).toEqual([{ video_id: 'vid1', position_seconds: 42 }])
   })
 
-  it('and clears it on a second press, exactly as b does', async () => {
+  it('and removes it on a second press, exactly as b does', async () => {
     const p = fakePlayer()
     p._set(42)
     await renderMarks(p)
@@ -585,16 +585,54 @@ describe('MarkTrack', () => {
     expect(screen.getByRole('button')).toHaveStyle({ left: '100%' })
   })
 
-  it('centres each mark in its hit area rather than on its left edge', () => {
+  it('centres a bookmark tick in its hit area rather than on its left edge', () => {
     // jsdom does no layout, so this pins the class that does the centring: the
-    // mark is absolutely positioned inside a 12px-wide hit area, and without a
-    // `left` of its own it lands at that area's left edge — every mark drawn
-    // 6px before the moment it stands for, and the loop's end caps visibly off
-    // the span they cap, which IS positioned directly.
-    render(<MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />)
-    for (const label of ['Bookmark at 0:30', 'Loop start (A) at 1:00', 'Loop end (B) at 1:30']) {
-      expect(screen.getByLabelText(label).firstElementChild).toHaveClass('left-1/2', '-translate-x-1/2')
+    // tick is absolutely positioned inside a 12px-wide hit area, and without a
+    // `left` of its own it lands at that area's left edge — the mark drawn 6px
+    // before the moment it stands for.
+    render(<MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={vi.fn()} />)
+    expect(screen.getByLabelText('Bookmark at 0:30').firstElementChild)
+      .toHaveClass('left-1/2', '-translate-x-1/2')
+  })
+
+  it('grows the tick while the pointer is in its hit area', () => {
+    // jsdom has no :hover, so this pins the pairing that does it: the hit area
+    // is the named group, the tick reacts to it. What grows is the tick, not
+    // the target — over the embed it's YouTube's own scrubber we'd be taking.
+    render(<MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={vi.fn()} />)
+    const mark = screen.getByLabelText('Bookmark at 0:30')
+    expect(mark).toHaveClass('group/mark')
+    expect(mark.firstElementChild).toHaveClass('group-hover/mark:h-[18px]', 'group-hover/mark:w-[8px]')
+  })
+
+  it('gives bookmarks a colour of their own, and the loop none', () => {
+    // A bookmark is a mark, so it wears one hue everywhere it appears; the loop
+    // is a mode of the bar, and adding a second colour to red/white/black is
+    // what makes a player look like it has been drawn on.
+    const { container } = render(
+      <MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />
+    )
+    expect(screen.getByLabelText('Bookmark at 0:30').firstElementChild).toHaveClass('bg-sky-400')
+    for (const el of container.querySelectorAll('[data-testid^="loop-"]')) {
+      expect(el.className).toMatch(/bg-black\//)
     }
+  })
+
+  it('dims the track either side of a running loop, and nothing else', () => {
+    // The loop is the stretch left at full strength. The veil covers the fill
+    // too — the played part outside the loop is the part you've stopped
+    // watching — and the thumb and any bookmarks are drawn after it.
+    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    const [before, after] = screen.getAllByTestId('loop-dim')
+    expect(before).toHaveClass('left-0')
+    expect(before).toHaveStyle({ width: '25%' })
+    expect(after).toHaveClass('right-0')
+    expect(after).toHaveStyle({ left: '75%' })
+  })
+
+  it('cuts the track at each pinned end from the very first press', () => {
+    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
+    expect(screen.getByTestId('loop-edge')).toHaveStyle({ left: '25%' })
   })
 
   it('a mark jumps to itself, which is the point of showing them', () => {
@@ -623,21 +661,11 @@ describe('MarkTrack', () => {
     expect(screen.getByLabelText('Bookmark at 0:30')).toBeInTheDocument()
   })
 
-  it('draws the looped span once the loop is really running', () => {
-    const { container } = render(
-      <MarkTrack bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />
-    )
-    const span = container.querySelector('.bg-yellow-300.absolute') as HTMLElement
-    expect(span).toHaveStyle({ left: '25%', right: '25%' })
-  })
-
-  it('a half-set loop shows its end cap but paints no span', () => {
-    // A colour bar over the rest of the video would claim something is
-    // repeating when nothing is.
-    const { container } = render(
-      <MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />
-    )
-    expect(container.querySelector('.inset-y-0.bg-yellow-300')).toBeNull()
+  it('a half-set loop cuts the track but dims nothing', () => {
+    // Dimming the rest of the video would claim something is repeating when
+    // nothing is; the notch claims only that you pinned this moment.
+    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
+    expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
     expect(screen.getByLabelText('Loop start (A) at 0:30')).toBeInTheDocument()
   })
 
@@ -705,7 +733,15 @@ describe('MarksFlash', () => {
   })
 
   it('shows the message', () => {
-    render(<MarksFlash flash="Bookmarked · 1:05" />)
+    render(<MarksFlash flash={{ kind: 'bookmark', text: 'Bookmarked · 1:05' }} />)
     expect(screen.getByText('Bookmarked · 1:05')).toBeInTheDocument()
+  })
+
+  it('marks which feature just spoke', () => {
+    const { container, rerender } = render(<MarksFlash flash={{ kind: 'bookmark', text: 'Bookmarked · 1:05' }} />)
+    expect(container.querySelector('span')).toHaveClass('bg-sky-400')
+    // The loop's is the bar's own white, since that's all the loop ever wears.
+    rerender(<MarksFlash flash={{ kind: 'loop', text: 'Loop cleared' }} />)
+    expect(container.querySelector('span')).toHaveClass('bg-white/70')
   })
 })
