@@ -1627,6 +1627,82 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
     </div>
   )
 
+  // Bookmark + A–B repeat, as buttons.
+  //
+  // The keyboard already does all of this (`b`, `[`, `]`, `\\`) and does it
+  // faster — but a feature that only exists on a shortcut is one you have to
+  // have been told about, and these two are the only marks on the bar you can't
+  // otherwise put there. Same two placements as the pin and the YouTube button:
+  // in our row when we own the bar, floating over YouTube's chrome when we
+  // don't, there sitting just right of the caption button.
+  const MARK_BUTTON_FLOAT = 'group relative flex h-11 w-11 items-center justify-center text-white'
+  const marksControls = (
+    <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[11rem] z-20 flex items-center'}>
+      <button
+        onClick={marks.toggleBookmarkHere}
+        className={ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT}
+        // The one press both makes a bookmark and clears it, so it says which
+        // one it's about to do. Standing on a mark is a thing you arrive at by
+        // clicking its tick, which seeks exactly to it — so clearing one is
+        // click the tick, press this, and the button has already changed to
+        // tell you that's what it will do.
+        title={marks.markHere ? 'Clear this bookmark (b)' : 'Bookmark this moment (b)'}
+        aria-label={marks.markHere ? 'Clear this bookmark' : 'Bookmark this moment'}
+        aria-pressed={marks.markHere}
+      >
+        {!ownBar && (
+          <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
+        )}
+        {/* Filled while you're standing on one, outlined while you aren't — the
+            same solid-vs-hollow the pin uses two buttons along. */}
+        <svg className="relative h-6 w-6" viewBox="0 0 24 24" aria-hidden>
+          {marks.markHere
+            ? <path fill="currentColor" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />
+            : <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />}
+        </svg>
+      </button>
+      <button
+        onClick={marks.cycleLoop}
+        // One button, three presses: pin one end, pin the other, clear. A press
+        // has one obvious next thing to do at each stage and the stage shows on
+        // the button, which is worth more here than the keyboard's freedom to
+        // move either end at any time.
+        // `relative` because the badge and underline below are positioned
+        // against it, and BAR_BUTTON doesn't bring its own — without it they
+        // resolve against the control bar instead and paint themselves across
+        // the bottom middle of the video. (The caption button already adds it
+        // for the same reason; MARK_BUTTON_FLOAT has it built in.)
+        className={`relative ${ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT}`}
+        title={
+          marks.loopStage === 'idle' ? 'Repeat A–B: set the start ([)'
+            : marks.loopStage === 'arming' ? `Repeat A–B: set the ${marks.loop.a === null ? 'start ([' : 'end (]'})`
+              : 'Stop repeating (\\)'
+        }
+        aria-pressed={marks.loopStage === 'running'}
+      >
+        {!ownBar && (
+          <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
+        )}
+        <svg className="relative h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z" />
+        </svg>
+        {/* Armed, it says which end the next press pins — the one thing the
+            stage alone can't tell you, and otherwise only a tooltip would.
+            Running, it takes the caption button's underline instead. Both in
+            white: the loop wears no colour of its own anywhere, on the bar or
+            here. */}
+        {marks.loopStage === 'arming' && (
+          <span className={`pointer-events-none absolute text-[10px] font-bold leading-none ${ownBar ? 'bottom-[3px] right-[7px]' : 'bottom-[5px] right-[5px]'}`}>
+            {marks.loop.a === null ? 'A' : 'B'}
+          </span>
+        )}
+        {marks.loopStage === 'running' && (
+          <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[5px]' : 'bottom-[7px]'}`} />
+        )}
+      </button>
+    </div>
+  )
+
   const pinButton = (
     <button
       onClick={() => setPinned((p) => !p)}
@@ -1733,7 +1809,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
               src={localSrc}
               hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu}
               onFullscreen={toggleFullscreen}
-              leftControls={captionControl}
+              leftControls={<>{captionControl}{marksControls}</>}
               extraControls={<>{youtubeButton}{pinButton}</>}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
@@ -1803,7 +1879,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
             storyboard={storyboard}
             hovering={chromeUp}
             onFullscreen={toggleFullscreen}
-            leftControls={captionControl}
+            leftControls={<>{captionControl}{marksControls}</>}
             extraControls={<>{youtubeButton}{pinButton}</>}
             bookmarks={marks.bookmarks}
             loop={marks.loop}
@@ -1815,6 +1891,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
             }`}
           >
             {captionControl}
+            {marksControls}
             {youtubeButton}
             {pinButton}
             {/* Over the embed the progress bar lives inside the iframe, so the

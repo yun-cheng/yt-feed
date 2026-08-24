@@ -4,6 +4,8 @@
  * Both are driven from the keyboard while watching — `b` marks the moment,
  * `[` and `]` set the loop's ends, `\` clears it — so everything here hangs off
  * one window-level key handler, the same way the player's other shortcuts do.
+ * The same actions come back out of the hook for the control bar's buttons: a
+ * feature only a shortcut can reach is one you have to already know about.
  *
  *  - usePlayerMarks(), which owns the state, the shortcuts, and the loop tick
  *  - MarkTrack, the marks themselves, drawn along a time axis
@@ -33,6 +35,9 @@ export type Bookmark = {
 
 export type Loop = { a: number | null; b: number | null }
 
+/** Nothing pinned / one end pinned / repeating. What the loop button reads. */
+export type LoopStage = 'idle' | 'arming' | 'running'
+
 // How close `b` has to land to an existing bookmark to mean "remove that one"
 // rather than "add another". Wide enough that pressing it twice while playing
 // undoes the first press, narrow enough that two marks a few seconds apart —
@@ -45,6 +50,11 @@ const MIN_LOOP_SEC = 0.5
 
 const LOOP_TICK_MS = 200
 const FLASH_MS = 1600
+
+// How often we ask where the play head is, to know whether it's standing on a
+// bookmark. Half a second against a 2s tolerance: the answer only changes as you
+// cross a mark, and it's a boolean, so the poll costs a render only then.
+const MARK_HERE_TICK_MS = 500
 
 export function loopActive(loop: Loop): boolean {
   return loop.a !== null && loop.b !== null && loop.b - loop.a >= MIN_LOOP_SEC
@@ -68,10 +78,27 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   }, [])
   useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current) }, [])
 
-  // The key handler is bound once and must see the current list; state alone
-  // would leave it holding whatever was there when it was bound.
+  // The key handler is bound once and must see the current values; state alone
+  // would leave it holding whatever was there when it was bound. The loop gets
+  // the same treatment so the actions below can branch on it without doing the
+  // branching inside a setState updater, which React is free to run twice.
   const bookmarksRef = useRef<Bookmark[]>([])
   bookmarksRef.current = bookmarks
+  const loopRef = useRef<Loop>(loop)
+  loopRef.current = loop
+
+  // Whether the play head is standing on a bookmark — which is what decides
+  // whether the bar's button adds one or clears the one that's there. The
+  // position moves on its own, so this has to be watched rather than derived.
+  const [markHere, setMarkHere] = useState(false)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const p = playerRef.current
+      const at = p?.getCurrentTime() ?? 0
+      setMarkHere(Boolean(p) && bookmarksRef.current.some((b) => Math.abs(b.position_seconds - at) <= TOGGLE_TOLERANCE_SEC))
+    }, MARK_HERE_TICK_MS)
+    return () => window.clearInterval(id)
+  }, [playerRef])
 
   useEffect(() => {
     setBookmarks([])
@@ -114,6 +141,36 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     showFlash('Loop cleared')
   }, [showFlash])
 
+  // The three things a keypress or a button press can do, in one place so the
+  // two ways of asking behave identically.
+
+  /** Bookmark this moment — or drop the one already here (see TOGGLE_TOLERANCE_SEC). */
+  const toggleBookmarkAt = useCallback((at: number) => {
+    // Nearest first, so the press undoes the mark you actually meant when two
+    // sit inside the tolerance.
+    const hit = [...bookmarksRef.current]
+      .sort((x, y) => Math.abs(x.position_seconds - at) - Math.abs(y.position_seconds - at))
+      .find((bm) => Math.abs(bm.position_seconds - at) <= TOGGLE_TOLERANCE_SEC)
+    if (hit) {
+      removeBookmark(hit.id)
+      showFlash(`Bookmark removed · ${formatTime(hit.position_seconds)}`)
+    } else {
+      addBookmark(at)
+      showFlash(`Bookmarked · ${formatTime(at)}`)
+    }
+    // Ahead of the poll: a button that stays on "clear" for half a second after
+    // it cleared something reads as a press that didn't take.
+    setMarkHere(!hit)
+  }, [addBookmark, removeBookmark, showFlash])
+
+  /** Pin one end of the loop here. Either end can be set first and either can be
+   *  moved afterwards; the loop simply stays inactive until the pair makes sense
+   *  (see loopActive), so neither key is ever a keypress that does nothing. */
+  const setLoopEnd = useCallback((end: 'a' | 'b', at: number) => {
+    setLoop((cur) => ({ ...cur, [end]: at }))
+    showFlash(`Loop ${end.toUpperCase()} · ${formatTime(at)}`)
+  }, [showFlash])
+
   // Send the play head back to A each time it reaches B. Runs on its own timer
   // rather than the caption tick, which only exists while captions are on.
   useEffect(() => {
@@ -141,30 +198,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       const k = e.key
       if (k === 'b') {
         e.preventDefault()
-        const at = p.getCurrentTime()
-        // Nearest first, so the press undoes the mark you actually meant when
-        // two sit inside the tolerance.
-        const hit = [...bookmarksRef.current]
-          .sort((x, y) => Math.abs(x.position_seconds - at) - Math.abs(y.position_seconds - at))
-          .find((bm) => Math.abs(bm.position_seconds - at) <= TOGGLE_TOLERANCE_SEC)
-        if (hit) {
-          removeBookmark(hit.id)
-          showFlash(`Bookmark removed · ${formatTime(hit.position_seconds)}`)
-        } else {
-          addBookmark(at)
-          showFlash(`Bookmarked · ${formatTime(at)}`)
-        }
+        toggleBookmarkAt(p.getCurrentTime())
       } else if (k === '[' || k === ']') {
         e.preventDefault()
-        const at = p.getCurrentTime()
-        setLoop((cur) => {
-          // Either end can be set first and either can be moved afterwards. The
-          // loop simply stays inactive until the pair makes sense (see
-          // loopActive), so neither key is ever a keypress that does nothing.
-          const next: Loop = k === '[' ? { ...cur, a: at } : { ...cur, b: at }
-          showFlash(`Loop ${k === '[' ? 'A' : 'B'} · ${formatTime(at)}`)
-          return next
-        })
+        setLoopEnd(k === '[' ? 'a' : 'b', p.getCurrentTime())
       } else if (k === '\\') {
         e.preventDefault()
         clearLoop()
@@ -172,11 +209,37 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [playerRef, addBookmark, removeBookmark, clearLoop, showFlash])
+  }, [playerRef, toggleBookmarkAt, setLoopEnd, clearLoop])
 
-  // Only what's displayed. Everything that CHANGES a mark is a keypress this
-  // hook already handles, so there's nothing for a caller to drive.
-  return { bookmarks, loop, flash }
+  // How far along the loop is, for anything drawing a button for it: nothing
+  // pinned, one end pinned, or running. Named here rather than re-derived by
+  // each caller, so the button and cycleLoop below can never disagree about
+  // which press does what.
+  const loopStage: LoopStage = loopActive(loop) ? 'running' : (loop.a !== null || loop.b !== null) ? 'arming' : 'idle'
+
+  /** The whole A–B loop from one button: set an end, set the other, clear.
+   *
+   *  Three keys collapse into one press because a button has one obvious next
+   *  thing to do at each stage, and the stage is on its face. The keyboard keeps
+   *  the finer control — `[` and `]` move either end whenever you like. */
+  const cycleLoop = useCallback(() => {
+    const p = playerRef.current
+    if (!p) return
+    const cur = loopRef.current
+    if (loopActive(cur)) clearLoop()
+    else setLoopEnd(cur.a === null ? 'a' : 'b', p.getCurrentTime())
+  }, [playerRef, clearLoop, setLoopEnd])
+
+  /** Bookmark (or clear) wherever the play head is, for the bar's button — the
+   *  keyboard's `b` with the position read for you. Clicking a mark on the track
+   *  seeks exactly to it, so that plus this button is how one gets cleared
+   *  without hunting for the moment by hand. */
+  const toggleBookmarkHere = useCallback(() => {
+    const p = playerRef.current
+    if (p) toggleBookmarkAt(p.getCurrentTime())
+  }, [playerRef, toggleBookmarkAt])
+
+  return { bookmarks, loop, loopStage, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop }
 }
 
 /** The marks themselves, positioned along a time axis. Absolutely positioned, so
@@ -247,7 +310,7 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
       {bookmarks.map((b) => hit(
         b.id,
         b.position_seconds,
-        'Bookmark (press b here to remove)',
+        'Bookmark',
         <div className="pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white ring-1 ring-black/50" />
       ))}
     </>

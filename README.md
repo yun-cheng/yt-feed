@@ -28,7 +28,10 @@ real video (muted, with custom captions and scrubbing).
   position and font size the embed's own captions would never give you
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click the tick to jump back); `[` and `]` set a loop's ends and `\` clears it,
-  so a passage replays until you're done with it. Both are drawn on the progress
+  so a passage replays until you're done with it. Both also have a **button in
+  the control bar**: the loop's takes one press per stage (set the start, set the
+  end, stop), and the bookmark's offers to clear the mark whenever you're
+  standing on one — click a tick to land on it. Both are drawn on the progress
   bar — ours over a file on disk, and laid over YouTube's own bar on the embed
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).

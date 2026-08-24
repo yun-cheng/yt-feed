@@ -67,12 +67,19 @@ describe('loopActive', () => {
 
 function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: string }) {
   const ref = useRef<PlayerApi | null>(player)
-  const { bookmarks, loop, flash } = usePlayerMarks(videoId, ref)
+  const { bookmarks, loop, loopStage, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop } = usePlayerMarks(videoId, ref)
   return (
     <div>
       <div data-testid="marks">{bookmarks.map((b) => b.position_seconds).join(',')}</div>
       <div data-testid="loop">{`${loop.a ?? '-'}/${loop.b ?? '-'}`}</div>
+      <div data-testid="stage">{loopStage}</div>
+      <div data-testid="here">{markHere ? 'yes' : 'no'}</div>
       <div data-testid="flash">{flash ?? ''}</div>
+      {/* The control bar's buttons, standing in for the real ones: what they
+          get from the hook is exactly these three functions. */}
+      <button onClick={toggleBookmarkHere}>bookmark</button>
+      <button onClick={cycleLoop}>cycle</button>
+      <button onClick={clearLoop}>clear</button>
     </div>
   )
 }
@@ -313,6 +320,122 @@ describe('usePlayerMarks — A–B repeat', () => {
   })
 })
 
+describe('usePlayerMarks — the control bar’s buttons', () => {
+  const press = (name: string) => fireEvent.click(screen.getByRole('button', { name }))
+
+  it('the bookmark button marks the moment the play head is on', async () => {
+    const p = fakePlayer()
+    p._set(42)
+    await renderMarks(p)
+    await act(async () => { press('bookmark') })
+    expect(screen.getByTestId('marks')).toHaveTextContent('42')
+    expect(posted).toEqual([{ video_id: 'vid1', position_seconds: 42 }])
+  })
+
+  it('and clears it on a second press, exactly as b does', async () => {
+    const p = fakePlayer()
+    p._set(42)
+    await renderMarks(p)
+    await act(async () => { press('bookmark') })
+    await act(async () => { press('bookmark') })
+    expect(screen.getByTestId('marks')).toBeEmptyDOMElement()
+    expect(deleted).toHaveLength(1)
+  })
+
+  it('the loop button walks A, then B, then clears', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    expect(screen.getByTestId('stage')).toHaveTextContent('idle')
+
+    p._set(10)
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('10/-')
+    expect(screen.getByTestId('stage')).toHaveTextContent('arming')
+
+    p._set(20)
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('10/20')
+    expect(screen.getByTestId('stage')).toHaveTextContent('running')
+
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
+    expect(screen.getByTestId('stage')).toHaveTextContent('idle')
+  })
+
+  it('fills in whichever end the keyboard left open', async () => {
+    // `]` first, so the button's next press is the START, not another end.
+    const p = fakePlayer()
+    p._set(30)
+    await renderMarks(p)
+    key(']')
+    p._set(5)
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('5/30')
+  })
+
+  it('a loop too short to run stays armed, so the next press re-pins B', async () => {
+    const p = fakePlayer()
+    p._set(10)
+    await renderMarks(p)
+    await act(async () => { press('cycle') })
+    p._set(10.2)  // under MIN_LOOP_SEC
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('stage')).toHaveTextContent('arming')
+    p._set(15)
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('10/15')
+    expect(screen.getByTestId('stage')).toHaveTextContent('running')
+  })
+
+  it('confirms a button press on screen, the same as a keypress', async () => {
+    const p = fakePlayer()
+    p._set(65)
+    await renderMarks(p)
+    await act(async () => { press('cycle') })
+    expect(screen.getByTestId('flash')).toHaveTextContent('Loop A · 1:05')
+    await act(async () => { press('clear') })
+    expect(screen.getByTestId('flash')).toHaveTextContent('Loop cleared')
+  })
+})
+
+describe('usePlayerMarks — standing on a bookmark', () => {
+  beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
+  afterEach(() => { vi.useRealTimers() })
+
+  const tick = async () => { await act(async () => { vi.advanceTimersByTime(600) }) }
+
+  it('says so once the play head reaches one', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true, json: async () => [{ id: 1, position_seconds: 30, note: '' }],
+    } as unknown as Response)
+    const p = fakePlayer()
+    p._set(10)
+    await renderMarks(p)
+    await tick()
+    expect(screen.getByTestId('here')).toHaveTextContent('no')
+
+    p._set(31)  // inside the tolerance, which is what the button toggles against
+    await tick()
+    expect(screen.getByTestId('here')).toHaveTextContent('yes')
+
+    p._set(40)
+    await tick()
+    expect(screen.getByTestId('here')).toHaveTextContent('no')
+  })
+
+  it('answers the moment a mark is made or cleared, not on the next tick', async () => {
+    // A button that stays on "clear" for half a second after clearing reads as
+    // a press that didn't take.
+    const p = fakePlayer()
+    p._set(42)
+    await renderMarks(p)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'bookmark' })) })
+    expect(screen.getByTestId('here')).toHaveTextContent('yes')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'bookmark' })) })
+    expect(screen.getByTestId('here')).toHaveTextContent('no')
+  })
+})
+
 describe('usePlayerMarks — the loop tick', () => {
   beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
   afterEach(() => { vi.useRealTimers() })
@@ -469,7 +592,7 @@ describe('MarkTrack', () => {
     // 6px before the moment it stands for, and the loop's end caps visibly off
     // the span they cap, which IS positioned directly.
     render(<MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />)
-    for (const label of ['Bookmark (press b here to remove) at 0:30', 'Loop start (A) at 1:00', 'Loop end (B) at 1:30']) {
+    for (const label of ['Bookmark at 0:30', 'Loop start (A) at 1:00', 'Loop end (B) at 1:30']) {
       expect(screen.getByLabelText(label).firstElementChild).toHaveClass('left-1/2', '-translate-x-1/2')
     }
   })
@@ -497,7 +620,7 @@ describe('MarkTrack', () => {
     render(<MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />)
     expect(screen.getByLabelText('Loop start (A) at 1:00')).toBeInTheDocument()
     expect(screen.getByLabelText('Loop end (B) at 1:30')).toBeInTheDocument()
-    expect(screen.getByLabelText('Bookmark (press b here to remove) at 0:30')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bookmark at 0:30')).toBeInTheDocument()
   })
 
   it('draws the looped span once the loop is really running', () => {

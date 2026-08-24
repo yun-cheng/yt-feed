@@ -602,6 +602,27 @@ Other details:
 - **Bookmarks and A–B repeat** (`PlayerMarks.tsx`): `b` marks the moment, `[` and
   `]` set the loop's ends, `\` clears it. Both drive the player through
   `PlayerApi`, so they behave the same over the embed and over a file on disk.
+  - **Both also have a control-bar button**, because a feature that lives only on
+    a shortcut is one you have to have been told about — and these are the only
+    marks on the bar you can't otherwise put there. The hook hands the buttons
+    the same three actions the key handler calls, so the two ways of asking can't
+    drift apart. They sit next to the caption button in both placements: in our
+    row when we own the bar, floating over YouTube's chrome when we don't.
+  - **The loop is one button walking three stages** (`loopStage`: idle → arming →
+    running): pin one end, pin the other, clear. A press has one obvious next
+    thing to do at each stage, and while it's armed the button carries a small
+    **A** or **B** naming the end the next press pins — the one thing the stage
+    alone can't tell you. The finer control stays on the keyboard, where `[` and
+    `]` move either end at any time; the button fills in whichever end is still
+    open, so a `]` pressed first leaves the button pinning the start.
+  - **Clearing a bookmark** is the same button, which says which of the two it's
+    about to do: it fills in and reads *Clear this bookmark* while the play head
+    is standing on one (`markHere`, polled at 500ms against the 2s tolerance —
+    the position moves on its own, so it can't be derived; it's a boolean, so it
+    costs a render only as you cross a mark, and the toggle sets it itself rather
+    than waiting for the next tick). Clicking a tick seeks exactly to the moment
+    it marks, so **click the tick, then press the button** clears one without
+    hunting for the moment by hand.
   - **Bookmarks persist** (`/api/bookmarks`, keyed by the video id — YouTube's or
     a local one). Pressing `b` within 2s of an existing mark **removes** it, so a
     second press undoes the first; the list is already in hand, so that decision

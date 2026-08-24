@@ -411,7 +411,7 @@ describe('LocalControls — marks on the track', () => {
       loop: { a: null, b: null },
     })
     act(() => { vi.advanceTimersByTime(300) })
-    expect(screen.getByLabelText('Bookmark (press b here to remove) at 2:30')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bookmark at 2:30')).toBeInTheDocument()
   })
 
   it('a mark seeks to the moment it marks, not to where the click landed', () => {
@@ -420,7 +420,7 @@ describe('LocalControls — marks on the track', () => {
       loop: { a: null, b: null },
     })
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByLabelText('Bookmark (press b here to remove) at 2:30'))
+    fireEvent.click(screen.getByLabelText('Bookmark at 2:30'))
     expect(player.seekTo).toHaveBeenCalledWith(150, true)
   })
 
@@ -430,7 +430,7 @@ describe('LocalControls — marks on the track', () => {
       loop: { a: null, b: null },
     })
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.pointerDown(screen.getByLabelText('Bookmark (press b here to remove) at 2:30'), { pointerId: 1 })
+    fireEvent.pointerDown(screen.getByLabelText('Bookmark at 2:30'), { pointerId: 1 })
     expect(player.seekTo).not.toHaveBeenCalled()
   })
 
