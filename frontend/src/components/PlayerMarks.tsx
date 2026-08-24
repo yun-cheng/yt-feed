@@ -204,6 +204,13 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
   // A 3px tick is too thin to aim at, so each is centred in a wider invisible
   // hit area. `stopPropagation` on the press keeps our own control bar from also
   // treating it as a scrub — it sits inside that bar's drag handler.
+  //
+  // The tick inside must carry `left-1/2` of its own. Without it the browser
+  // lays it out at its static position — the hit area's LEFT EDGE — and the
+  // -translate-x-1/2 then centres it on that edge, drawing every mark 6px (half
+  // the hit area) earlier than the moment it stands for. The loop's span is
+  // positioned directly and so was right, which is what made its end caps look
+  // shifted off it.
   const hit = (key: string | number, at: number, label: string, mark: ReactNode) => (
     <button
       key={key}
@@ -235,13 +242,13 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
         `loop${i}`,
         end,
         i === 0 ? 'Loop start (A)' : 'Loop end (B)',
-        <div className="pointer-events-none absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-yellow-300 ring-1 ring-black/50" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-yellow-300 ring-1 ring-black/50" />
       ))}
       {bookmarks.map((b) => hit(
         b.id,
         b.position_seconds,
         'Bookmark (press b here to remove)',
-        <div className="pointer-events-none absolute top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white ring-1 ring-black/50" />
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-sm bg-white ring-1 ring-black/50" />
       ))}
     </>
   )

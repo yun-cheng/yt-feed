@@ -462,6 +462,18 @@ describe('MarkTrack', () => {
     expect(screen.getByRole('button')).toHaveStyle({ left: '100%' })
   })
 
+  it('centres each mark in its hit area rather than on its left edge', () => {
+    // jsdom does no layout, so this pins the class that does the centring: the
+    // mark is absolutely positioned inside a 12px-wide hit area, and without a
+    // `left` of its own it lands at that area's left edge — every mark drawn
+    // 6px before the moment it stands for, and the loop's end caps visibly off
+    // the span they cap, which IS positioned directly.
+    render(<MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    for (const label of ['Bookmark (press b here to remove) at 0:30', 'Loop start (A) at 1:00', 'Loop end (B) at 1:30']) {
+      expect(screen.getByLabelText(label).firstElementChild).toHaveClass('left-1/2', '-translate-x-1/2')
+    }
+  })
+
   it('a mark jumps to itself, which is the point of showing them', () => {
     const onSeek = vi.fn()
     render(<MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={onSeek} />)

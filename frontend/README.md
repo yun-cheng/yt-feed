@@ -618,7 +618,11 @@ Other details:
     paused, so the tick nudges it back into play.
   - **Both are drawn on the progress bar** (`MarkTrack`) — bookmarks as white
     ticks, the loop as a yellow span with end caps, all solid and dark-ringed so
-    they read against whatever frame is behind them. That's the axis they're
+    they read against whatever frame is behind them. Each 3px mark is centred in
+    a 12px hit area and **carries its own `left-1/2`**: absolutely positioned
+    with no `left`, it lands at that area's left edge instead, drawing every mark
+    6px before the moment it stands for — which showed up as the loop's end caps
+    sitting off the span they cap, the span being positioned directly. That's the axis they're
     positions on; anywhere else and you have to translate a timestamp back into a
     place in the video. The **span appears only once the loop is really
     running**; a half-set loop shows just its end cap, since a colour bar over
