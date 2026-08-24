@@ -1065,10 +1065,11 @@ position means the same thing in the copy on YouTube. Clicking **pauses** on the
 way out: the overlay keeps playing behind the new tab otherwise, and two copies
 of the same audio is a worse greeting than pressing play again.
 
-Against the embed without the extension, three of these float over the player
-instead — its control bar is inside the iframe, out of reach — so the caption
-button, open-on-YouTube and the pin each render in two placements from one
-definition (`captionControl` / `youtubeButton` / `pinButton`).
+Against the embed without the extension, these float over the player instead —
+its control bar is inside the iframe, out of reach — so the caption button, the
+two marks buttons, open-on-YouTube and the pin each render in two placements
+from one definition (`captionControl` / `marksControls` / `youtubeButton` /
+`pinButton`).
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is
 > created. Both are YouTube players for the same video, and two live players for
@@ -1087,8 +1088,8 @@ two shims Radix's slider needs to mount at all (below).
 
 | File | Covers |
 |------|--------|
-| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\`, the add-toggle tolerance, the loop tick, the marks on the bar |
-| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, and the scrub popup (its frame, and where it stops at the ends) |
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
+| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |

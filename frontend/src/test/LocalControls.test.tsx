@@ -434,6 +434,39 @@ describe('LocalControls — marks on the track', () => {
     expect(player.seekTo).not.toHaveBeenCalled()
   })
 
+  it('draws a running loop by dimming the bar either side of it', () => {
+    const { container } = renderOverEmbed({
+      bookmarks: [],
+      loop: { a: 150, b: 450 },   // a quarter and three quarters of the 600s player
+    })
+    act(() => { vi.advanceTimersByTime(300) })
+    const [before, after] = screen.getAllByTestId('loop-dim')
+    expect(before).toHaveStyle({ width: '25%' })
+    expect(after).toHaveStyle({ left: '75%' })
+    expect(container.querySelectorAll('[data-testid="loop-edge"]')).toHaveLength(2)
+  })
+
+  it('the loop’s veil dims the fill, and never the play head or a bookmark', () => {
+    // Everything in the track paints in document order, which is the whole
+    // reason the loop can be a veil at all: it goes over the fill (the part of
+    // the played bar you've stopped watching) and under the thumb and the marks
+    // (which answer questions the loop has nothing to do with). Reorder this
+    // JSX and the loop starts hiding the play head.
+    const { container } = renderOverEmbed({
+      bookmarks: [{ id: 1, position_seconds: 300, note: '' }],
+      loop: { a: 150, b: 450 },
+    })
+    act(() => { vi.advanceTimersByTime(300) })
+    const track = container.querySelector('.bg-white\\/30') as HTMLElement
+    const at = (el: Element | null) => [...track.children].indexOf(el as Element)
+    const fills = track.querySelectorAll('.bg-red-500')
+    const dims = screen.getAllByTestId('loop-dim')
+
+    expect(at(fills[0])).toBeLessThan(at(dims[0]))                       // fill under the veil
+    expect(at(dims[1])).toBeLessThan(at(fills[fills.length - 1]))        // thumb over it
+    expect(at(dims[1])).toBeLessThan(at(screen.getByLabelText('Bookmark at 5:00')))
+  })
+
   it('draws no marks when it is given none', () => {
     renderOverEmbed()
     act(() => { vi.advanceTimersByTime(300) })

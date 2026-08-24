@@ -133,6 +133,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   useEffect(() => {
     setBookmarks([])
     setLoop({ a: null, b: null })  // a loop is about this sitting, not the video
+    // Cleared with the marks rather than left to the next poll: half a second of
+    // a button offering to clear a bookmark the new video hasn't got is half a
+    // second of it lying.
+    setMarkHere(false)
     let cancelled = false
     apiFetch(`/api/bookmarks/${videoId}`, { quiet: true })
       .then((r) => r.json())

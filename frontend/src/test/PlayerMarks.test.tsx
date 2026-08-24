@@ -423,6 +423,22 @@ describe('usePlayerMarks — standing on a bookmark', () => {
     expect(screen.getByTestId('here')).toHaveTextContent('no')
   })
 
+  it('lets go when the video changes', async () => {
+    // The new video's marks haven't arrived yet, and a button offering to clear
+    // a bookmark that isn't there is a button telling you something untrue.
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true, json: async () => [{ id: 1, position_seconds: 30, note: '' }],
+    } as unknown as Response)
+    const p = fakePlayer()
+    p._set(30)
+    const { rerender } = await renderMarks(p)
+    await tick()
+    expect(screen.getByTestId('here')).toHaveTextContent('yes')
+
+    rerender(<Harness player={p} videoId="vid2" />)
+    expect(screen.getByTestId('here')).toHaveTextContent('no')
+  })
+
   it('answers the moment a mark is made or cleared, not on the next tick', async () => {
     // A button that stays on "clear" for half a second after clearing reads as
     // a press that didn't take.
@@ -661,6 +677,19 @@ describe('MarkTrack', () => {
     expect(screen.getByLabelText('Bookmark at 0:30')).toBeInTheDocument()
   })
 
+  it('a loop that cannot run cuts the track but dims nothing', () => {
+    // Both ends pinned isn't enough — dimming for a loop that isn't repeating
+    // would claim it is. The cuts still show, since you did pin those moments.
+    for (const loop of [{ a: 30, b: 30.2 }, { a: 90, b: 30 }]) {
+      const { unmount } = render(
+        <MarkTrack bookmarks={[]} loop={loop} duration={120} onSeek={vi.fn()} />
+      )
+      expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
+      expect(screen.getAllByTestId('loop-edge')).toHaveLength(2)
+      unmount()
+    }
+  })
+
   it('a half-set loop cuts the track but dims nothing', () => {
     // Dimming the rest of the video would claim something is repeating when
     // nothing is; the notch claims only that you pinned this moment.
@@ -712,6 +741,15 @@ describe('EmbedMarkRail', () => {
   it('shows a half-set loop, with no bookmarks at all', () => {
     render(<EmbedMarkRail bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
     expect(screen.getByLabelText('Loop start (A) at 0:30')).toBeInTheDocument()
+  })
+
+  it('dims YouTube’s own bar either side of a running loop', () => {
+    // The rail is all we have over there — the track being dimmed is the
+    // embed's, laid under ours at the same offset.
+    render(<EmbedMarkRail bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    const [before, after] = screen.getAllByTestId('loop-dim')
+    expect(before).toHaveStyle({ width: '25%' })
+    expect(after).toHaveStyle({ left: '75%' })
   })
 
   it('the marks themselves stay clickable through the rail', () => {
