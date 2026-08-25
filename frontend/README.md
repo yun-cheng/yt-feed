@@ -504,6 +504,9 @@ lib/
   time.ts                         formatTime — the player clock
   richText.tsx                    YouTube free text (descriptions, comments):
                                   URLs as links, timestamps as seek buttons
+  markdown.tsx                    the slice of Markdown a model writes, rendered
+                                  — leaves go through richText, so a timestamp
+                                  inside a bullet still seeks
 ```
 
 ---
@@ -1096,6 +1099,7 @@ two shims Radix's slider needs to mount at all (below).
 |------|--------|
 | `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
+| `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
