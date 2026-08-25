@@ -770,6 +770,13 @@ Three behaviours here are not obvious and were each paid for in debugging:
   20.5s max while latency held 4.4s / 9.5s. Which provider each lands on drifts
   day to day.
 
+- **`chat_stream` is a sibling, not a mode.** Async and yielding, where `chat`
+  blocks and returns whole. The two are used at opposite ends: a machine caller
+  (tagging, translation) can't start until the reply is parsed, so blocking in a
+  thread pool is exactly right; a person watching an answer appear cares when the
+  first word lands. It defaults `reasoning` **off** for the same reason — thinking
+  is invisible to someone staring at an empty panel.
+
 Callers that skip these get correct-but-slow-and-erratic behaviour, which is
 easy to misread as a model or network problem.
 
