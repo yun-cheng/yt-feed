@@ -85,6 +85,8 @@ function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: st
 }
 
 const key = (k: string) => fireEvent.keyDown(window, { key: k })
+const chord = (k: string, mod: 'metaKey' | 'ctrlKey' | 'altKey' = 'metaKey') =>
+  fireEvent.keyDown(window, { key: k, [mod]: true })
 
 /** Render, and wait for the initial bookmark load to land.
  *
@@ -558,6 +560,26 @@ describe('usePlayerMarks — when the shortcuts must not fire', () => {
     act(() => { key('a'); key('B'); key('k'); key(' ') })
     expect(screen.getByTestId('marks')).toBeEmptyDOMElement()
     expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
+  })
+
+  it('leaves ⌘/Ctrl/Alt chords to the browser', async () => {
+    // ⌘B is the bookmarks bar, and on a Mac ⌘[ and ⌘] are back and forward.
+    // Matching on `key` alone swallowed all three — and, in the sibling handler
+    // on the watch page, ⌘C, which is how somebody copies text out of the page.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { chord('b'); chord('['); chord(']'); chord('\\') })
+    act(() => { chord('b', 'ctrlKey'); chord('b', 'altKey') })
+    expect(screen.getByTestId('marks')).toBeEmptyDOMElement()
+    expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
+    expect(posted).toEqual([])
+  })
+
+  it('still fires on the bare key', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { key('[') })
+    expect(screen.getByTestId('loop')).not.toHaveTextContent('-/-')
   })
 
   it('unbinds on unmount', async () => {

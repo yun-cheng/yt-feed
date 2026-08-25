@@ -600,6 +600,12 @@ Other details:
   box, not the iframe, and pull focus back whenever a click lands in the video —
   a cross-origin iframe otherwise swallows its own keys. A brief volume HUD shows
   while adjusting.
+
+  Every shortcut is a **bare** key: both handlers (here and `PlayerMarks`) return
+  early on `metaKey`/`ctrlKey`/`altKey`. They match on `e.key`, so without that
+  guard `⌘C` reads as `c` — and `preventDefault` on it means **you cannot copy
+  text out of the app**. `⌘F`, `⌘K`, `⌘M` went the same way, and on a Mac `⌘[`
+  and `⌘]` are back and forward. Pinned in `PlayerMarks.test.tsx`.
 - **Bookmarks and A–B repeat** (`PlayerMarks.tsx`): `b` marks the moment, `[` and
   `]` set the loop's ends, `\` clears it. Both drive the player through
   `PlayerApi`, so they behave the same over the embed and over a file on disk.

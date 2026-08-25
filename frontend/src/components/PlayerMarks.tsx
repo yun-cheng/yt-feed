@@ -227,6 +227,11 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       const t = e.target
       if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement
         || (t instanceof HTMLElement && t.isContentEditable)) return
+      // A shortcut is a BARE key. Chords belong to the browser and the OS:
+      // ⌘C/⌘F/⌘L, and on a Mac ⌘[ / ⌘] are back and forward — all of which we
+      // would otherwise swallow, since we match on `key` alone. Copying text out
+      // of the page was the one people hit.
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       const p = playerRef.current
       if (!p) return
       const k = e.key
