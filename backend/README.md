@@ -78,6 +78,7 @@ app/
     imported.py    videos added by pasting a YouTube link (metadata via yt-dlp)
     local.py       local folders: scan a directory, serve its files, remember positions
     settings.py    app settings, served with the spec the UI renders from
+    ask.py         questions about a video, answered from its transcript (streamed)
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 config/            categories.yaml, subscriptions.yaml, oauth token
@@ -619,6 +620,60 @@ it from reading as the video id that the GET takes in the same slot.
 
 The A–B repeat loop has nothing here. It's about this sitting rather than the
 video, so it lives in frontend state and dies with the overlay.
+
+---
+
+## Ask (`routers/ask.py`)
+
+A conversation about a video, answered from **its own transcript** — the same
+cues the caption and translation features already parse, handed to the model with
+their timestamps still attached. That last part is what makes the feature work at
+all: it is why an answer can cite `[14:32]`, and why it can say "that isn't in
+this video" instead of answering about the subject in general.
+
+Four decisions carry it:
+
+- **The whole transcript goes in the prompt.** An hour of speech is ~12k tokens,
+  which the flash-tier models this app already pays for take without complaint,
+  and a model that has seen the whole video beats any chunking scheme at the one
+  thing that matters here — knowing what was *not* said. Retrieval is the fallback
+  for the rare three-hour video, not the design.
+- **When it doesn't fit, the window follows the play head.** Same call the
+  translation endpoint makes: on a video long enough to overflow the budget, the
+  question is nearly always about where you are. `transcript_window` grows
+  outward from the sentence being played, alternating forward and back, and
+  reports the span it actually read so the panel can say so rather than quietly
+  answering short. The budget is in **characters**, not tokens — the tokenizer
+  differs per model, and a character count is one the code can check.
+- **Length is the question's to set, and the prompt says so at length.** The
+  first version said "be brief" full stop, and a request to summarise a
+  36-minute tier list came back as four sentences: three of the thirteen models
+  named, the rest silently dropped. The transcript was not the limit — all
+  thirteen were in it, some seventeen times over, and the same model on the same
+  bytes produced full coverage the moment the rule changed. That failure is the
+  dangerous kind, because **what is missing from a summary is invisible to
+  whoever reads it**, so the prompt names it explicitly. Answers are asked for in
+  Markdown for the same reason: a tier list is a list.
+- **The system turn is rebuilt every request, never stored.** A transcript can
+  improve underneath a conversation (a better track, a fixed parse); a stored
+  copy would freeze it at whatever it looked like on the day it started.
+- **The first token is pulled before the response starts.** Once a
+  `StreamingResponse` has begun, the status is committed and a failure can only
+  end the stream — so a missing key or a dead provider is caught while it can
+  still be a 503. The user's turn is saved at that same moment and not before: a
+  question sitting in the thread with no answer under it is worse than one that
+  never landed.
+
+The wire format is server-sent events: `{"delta": "..."}` per token, then one
+`{"done": true, ...}` carrying the span read and whether it was trimmed. Whatever
+arrived is saved even when the stream dies — including when the reader closes the
+tab, which is why that write happens in the generator's `finally` and the closing
+frame is yielded *after* it. Yielding inside that block is a `RuntimeError` during
+teardown, and would lose the very partial it exists to keep.
+
+A video with no captions is a **422** rather than an empty answer. The watch page
+hides the entry point in that case, so anything reaching here asked directly and
+deserves the real reason.
 
 ---
 
@@ -1577,6 +1632,7 @@ no per-test decorator). What's covered:
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
+| `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |

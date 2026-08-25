@@ -531,6 +531,35 @@ class Bookmark(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ChatMessage(Base):
+    """One turn of the Ask conversation about a video.
+
+    `video_id` is untyped and unconstrained for the same reason Bookmark's is:
+    the watch page plays a YouTube video, a downloaded copy, or a file from a
+    local folder, and one opaque string covers all three.
+
+    Rows rather than a single blob per conversation, because the panel appends
+    as it streams and the reply has to survive the tab closing mid-answer — a
+    blob would have to be rewritten whole on every token to promise that.
+
+    Kept per user: the same video holds a different conversation for each person
+    in the house, and a question is a more personal thing than a bookmark.
+    """
+
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
+    video_id = Column(String, nullable=False, index=True)
+    # "user" or "assistant". The system turn is rebuilt from the transcript on
+    # every request rather than stored: the transcript can improve (a better
+    # track, a fixed parse), and a stored copy would pin the conversation to
+    # whatever it looked like on the day it started.
+    role = Column(String, nullable=False)
+    content = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Video(Base):
     __tablename__ = "videos"
 
