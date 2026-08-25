@@ -489,6 +489,9 @@ components/
                                   keyboard controls, our own captions (language
                                   switcher, dual subtitles, AI translation),
                                   metadata, description, topic chips
+  AskPanel.tsx                    Ask: a conversation about the video, answered
+                                  from its transcript. Shares the right-hand
+                                  panel with the transcript, one tab each
   Comments.tsx                    the comment section under the description —
                                   closed until asked for, and fetched only then
   Toaster.tsx                     the app's single error-toast surface
@@ -886,8 +889,8 @@ Other details:
   **Search** filters the lines rather than merely marking them — the point is to
   find a moment and click into it — with the match highlighted in each surviving
   row. `Esc` clears the query (and on an empty field blurs, handing the keyboard
-  back to the player); an `×` in the panel header closes it. Following stands down
-  while searching.
+  back to the player); the `×` in the tab strip above closes the panel. Following
+  stands down while searching.
 
   **Layout**: below `lg` the panel stacks under everything at a fixed height. At
   `lg` and up with the overlay pinned, the details pane stops scrolling as a whole
@@ -906,6 +909,55 @@ Other details:
   the overlay seeds its state from them on mount. The AI-translate selection is
   deliberately excluded (see above).
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
+
+### Ask (`AskPanel.tsx`)
+
+A conversation about the video, answered from its own transcript (the backend
+half is `routers/ask.py`). Reached from the `…` menu as **Ask AI**, under the
+sparkle every product uses for "a model did this" — a speech bubble would read
+as chat with a person, and the point is that it isn't one. It shares the
+right-hand panel with the transcript —
+**one slot, two tabs** — because they are two ways of reading the same thing and
+the page should not have two shapes for that. Opening either is a press in the
+`…` menu; the tab strip switches between them and closes the slot.
+
+Four things it does that are worth knowing before changing it:
+
+- **It streams.** The reply arrives as server-sent events, one JSON frame per
+  `data:` line, read off `res.body.getReader()` — `apiFetch` returns a real
+  `Response`, so nothing there needed changing. A network chunk is not a whole
+  frame, so the tail of the buffer is held back until its blank line arrives.
+  This is the whole reason the endpoint isn't an ordinary JSON POST: the useful
+  measurement is when the FIRST word lands, not the last.
+- **Answers are Markdown** (`lib/markdown.tsx`) — headings, bullets, bold, one
+  level of nesting. A summary of a 40-minute video is a list of sections, and
+  rendering it as prose was the difference between "readable at a glance" and a
+  paragraph nobody finishes. Hand-rolled rather than a dependency for one
+  reason: the leaves go through `linkify`, so a timestamp inside a bullet is
+  still a seek button. A library would need a custom text renderer wired in to
+  manage that, at which point only the parse is being borrowed.
+- **Citations are not parsed separately.** Answers write timestamps as plain
+  `[12:34]` and land in the same `linkify` the description and comments use. One
+  behaviour for every timestamp on the page, and no second parser to keep in
+  step.
+- **A question that never reached the model goes back in the box.** The backend
+  saves nothing before the first token, so leaving the question in the thread
+  would show a turn that a reload wouldn't. A partial answer is the opposite
+  case: both sides keep what arrived.
+- **The play head rides along.** Each question carries `at`, which only matters
+  on a video too long to fit in one prompt — there the transcript is read around
+  where you are standing, and the panel says which span that was. It tells the
+  *model* nothing — only which bytes it is handed.
+- **The two openers are named for how much comes back** — *Short summary* and
+  *Long summary* — because that is the only way they differ and the only thing
+  worth choosing between. It is also what decides the wait (a few seconds against
+  half a minute, since the whole cost of an answer is how much of it there is to
+  write), but the wait is a consequence, not the choice. They used to be
+  "Summarise this video" and "What are the key points?", which is the same
+  request twice and gave the same answer twice.
+
+The `…` entry is gated on the video having captions, the same gate the transcript
+uses and for the same reason: the answers are read off that track.
 
 ### Comments (`Comments.tsx`)
 
@@ -1099,6 +1151,7 @@ two shims Radix's slider needs to mount at all (below).
 |------|--------|
 | `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
+| `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |

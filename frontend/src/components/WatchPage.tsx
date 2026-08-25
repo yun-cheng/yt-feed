@@ -12,6 +12,7 @@ import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments from './Comments'
+import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
@@ -439,7 +440,12 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   const captionMenuRef = useRef<HTMLDivElement>(null)
   // The transcript panel beside the video's details — closed until asked for,
   // since it's a long read most visits don't want.
-  const [showTranscript, setShowTranscript] = useState(false)
+  // The right-hand panel holds one of two things at a time. A single state
+  // rather than a boolean each, because they share the slot: opening one closes
+  // the other, and `null` is the page back at its one-column shape.
+  const [sidePanel, setSidePanel] = useState<'transcript' | 'ask' | null>(null)
+  const showTranscript = sidePanel === 'transcript'
+  const showAsk = sidePanel === 'ask'
   // The "…" overflow menu next to Save, holding download + the transcript toggle.
   const [showMoreMenu, setShowMoreMenu] = useState(false)
   const moreRef = useRef<HTMLDivElement>(null)
@@ -995,7 +1001,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   // An open transcript on a wide screen turns the details pane into a fixed-height
   // two-column layout. Only while pinned: unpinned, the page itself scrolls and
   // there's no pane height to fill.
-  const twoCol = showTranscript && !!captions?.length
+  const twoCol = sidePanel !== null && !!captions?.length
   const fillsPane = pinned && twoCol
 
   // Word-segment tracks (auto captions) reveal word-by-word and split sentences
@@ -2047,13 +2053,31 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
                   </button>
                   {!!captions?.length && (
                     <button
-                      onClick={() => { setShowTranscript((v) => !v); setShowMoreMenu(false) }}
+                      onClick={() => { setSidePanel((v) => (v === 'transcript' ? null : 'transcript')); setShowMoreMenu(false) }}
                       className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10"
                     >
                       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
                       </svg>
                       {showTranscript ? 'Hide transcript' : 'Show transcript'}
+                    </button>
+                  )}
+                  {/* Same gate as the transcript, and for the same reason: the
+                      answers are read off the caption track, so a video without
+                      one has nothing to ask about. */}
+                  {!!captions?.length && (
+                    <button
+                      onClick={() => { setSidePanel((v) => (v === 'ask' ? null : 'ask')); setShowMoreMenu(false) }}
+                      className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10"
+                    >
+                      {/* The sparkle every product uses for "a model did this".
+                          A speech bubble would read as chat with a person, and
+                          the point of the entry is that it isn't one. */}
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                        <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
+                        <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
+                      </svg>
+                      {showAsk ? 'Hide Ask AI' : 'Ask AI'}
                     </button>
                   )}
                 </div>
@@ -2095,7 +2119,36 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
             menu in the action row. Below lg it just stacks under everything. */}
         {twoCol && (
           <div className={`mt-4 lg:mt-0 lg:grow-[999] lg:shrink-0 lg:basis-[26rem] lg:max-w-[56rem] ${fillsPane ? 'lg:flex lg:min-h-0 lg:flex-col' : ''}`}>
-            {/* Pick the language, search the lines, close the panel. */}
+            {/* Which of the two the slot is showing, and the way out of both.
+                A strip rather than two menu entries fighting over one pane: the
+                pane is already open, so switching should be one press and should
+                not look like closing and reopening the page. */}
+            <div className="mb-2 flex items-center gap-1">
+              {([['transcript', 'Transcript'], ['ask', 'Ask AI']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => setSidePanel(key)}
+                  aria-pressed={sidePanel === key}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    sidePanel === key ? 'bg-white text-black' : 'bg-[#272727] text-[#ddd] hover:bg-white/15 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <button
+                onClick={() => setSidePanel(null)}
+                aria-label="Close panel"
+                className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+
+            {showTranscript && (<>
+            {/* Pick the language and search the lines. */}
             <div className="mb-2 flex items-center gap-2">
               {(captionLangs.length > 1 || aiTranslateAvailable) && (
                 <div className="relative shrink-0" ref={transcriptLangRef}>
@@ -2174,15 +2227,6 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
                   </button>
                 )}
               </div>
-              <button
-                onClick={() => setShowTranscript(false)}
-                aria-label="Close transcript"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
             </div>
 
             <div className={`relative ${fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
@@ -2235,6 +2279,16 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
                 </button>
               )}
             </div>
+            </>)}
+
+            {showAsk && (
+              <AskPanel
+                videoId={videoId}
+                currentTime={curTime}
+                onSeek={seekTo}
+                fillsPane={fillsPane}
+              />
+            )}
           </div>
         )}
         </div>

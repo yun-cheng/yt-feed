@@ -35,6 +35,11 @@ real video (muted, with custom captions and scrubbing).
   the end, stop), and the bookmark's fills in and offers to clear the mark
   whenever you're standing on one. It's our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
+- **Ask AI** — a conversation about the video you're watching, answered from its
+  own transcript: it cites the moment it read, and those timestamps are buttons that
+  seek there. Because it only knows this video, it can say "that isn't in here"
+  rather than answering about the subject in general. Shares the right-hand panel
+  with the transcript, one tab each, and streams the reply as it's written
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works
