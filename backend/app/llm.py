@@ -146,6 +146,13 @@ async def chat_stream(
     panel while the model thinks, and thinking is invisible to them. Ask for it
     explicitly on a question that earns the wait.
 
+    `provider_sort` means what it does on `chat()` — see there. It is worth more
+    here than the docstring above suggests, and for a different reason: the spread
+    barely moves the median of a long answer (measured 21-27s either way, since
+    the cost is how much there is to write), but it owns the TAIL. One run in
+    eight landed on a provider that took 215s for an answer its neighbours wrote
+    in 17.
+
     Raises LLMError for a missing key or a non-200 — both before the first yield,
     so a caller can still turn them into an HTTP status. A stream that opens and
     then dies mid-answer raises too, but by then the caller has already sent
