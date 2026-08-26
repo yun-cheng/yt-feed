@@ -74,6 +74,9 @@ _COLUMN_MIGRATIONS = [
     # default: it's copied off the video at write time, and a row written before
     # this column existed has no copy to recover — the bell falls back to text.
     ("notifications", "thumbnail_url", "VARCHAR NOT NULL DEFAULT ''"),
+    # Which of the two summaries a job asked for. "long" is the correct backfill
+    # as well as the default: it was the only one that existed.
+    ("summary_jobs", "length", "VARCHAR NOT NULL DEFAULT 'long'"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the

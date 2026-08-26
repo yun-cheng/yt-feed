@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Text, ForeignKey, Float, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Text, ForeignKey, Float, Boolean, UniqueConstraint
 from app.database import Base
 
 
@@ -558,6 +558,38 @@ class ChatMessage(Base):
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SummaryJob(Base):
+    """A long summary of a video, asked for from a card and written in the background.
+
+    One row per (user, video) rather than one per run: re-summarising replaces
+    the previous attempt, because nobody wants a history of summaries — they
+    want the current one, and the answer itself lives in `chat_messages` where
+    the Ask panel already reads it.
+
+    The row exists so the card can say what is happening. The summary is written
+    without anyone watching, which means the only thing that can report progress
+    is state the server wrote down.
+    """
+
+    __tablename__ = "summary_jobs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
+    video_id = Column(String, nullable=False, index=True)
+    # "running" | "done" | "error". A row is created at "running" before the
+    # first token is asked for, so a card labels itself the moment you click.
+    status = Column(String, nullable=False, default="running")
+    # "short" | "long" — which of the Ask panel's two summaries was asked for.
+    # Kept so the menu can put its spinner on the entry that is actually running,
+    # rather than on both.
+    length = Column(String, nullable=False, default="long")
+    error = Column(String, nullable=False, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    finished_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (UniqueConstraint("user_id", "video_id", name="uq_summary_job_user_video"),)
 
 
 class Notification(Base):

@@ -79,6 +79,7 @@ app/
     local.py       local folders: scan a directory, serve its files, remember positions
     settings.py    app settings, served with the spec the UI renders from
     ask.py         questions about a video, answered from its transcript (streamed)
+    summaries.py   the same answer, written in the background from a card
     notifications.py  the bell: what finished while you were on another page
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
@@ -675,6 +676,55 @@ teardown, and would lose the very partial it exists to keep.
 A video with no captions is a **422** rather than an empty answer. The watch page
 hides the entry point in that case, so anything reaching here asked directly and
 deserves the real reason.
+
+---
+
+## Long summaries in the background (`routers/summaries.py`)
+
+The Ask panel already answers "summarise this video" in two lengths — they are
+its two openers. What it cannot do is answer while you are somewhere else, and
+that is the whole feature: a forty-minute video takes twenty to thirty seconds
+to walk through, which is a long time to sit on a watch page you only opened to
+start the job. So the same prompt runs detached, asked for from a card's `…`
+menu.
+
+- **The answer lands in the Ask thread**, not in a table of its own. It *is* an
+  Ask answer — storing it anywhere else would give you a panel that couldn't see
+  the summary and a summary that couldn't be followed up. Both turns are written,
+  so the thread reads as the conversation it is. `SUMMARY_QUESTIONS` is kept
+  character-identical to the panel's two openers: the same request reaching the
+  same model by two routes has to produce the same answer, and a drift there
+  would be a bug nobody could see.
+- **Both lengths, because they are two requests and not one throttled.** A card
+  is exactly where the short one is wanted — *is this worth forty minutes?* — and
+  it is also the one where running in the background matters least, which is
+  precisely why leaving it out would have been the wrong simplification. The job
+  row keeps which was asked for, so the menu can put its spinner on the entry
+  that is running rather than on both. A `length` that is neither is a **400**,
+  not a fallback: silently reading a typo as "long" bills a 2,500-token answer
+  for a three-sentence ask.
+- **The job row is the only thing that can report progress.** Nobody is holding a
+  stream, so "Summarising" has to be state the server wrote down *before* the
+  work started, or a refreshed card has nothing to label itself with. One row per
+  (user, video): re-summarising replaces the attempt, because what you want is
+  the current summary, not a history of them.
+- **A failure fails the job, not the request.** The click happened on a page you
+  have probably already left — a 4xx would put the reason in a toast nobody is
+  looking at. A video with no transcript, a dead provider and an empty reply all
+  end the same way: `status: "error"`, the reason on the row, and a notification
+  saying so. (An empty reply is a failure and not a summary on purpose: a blank
+  assistant turn reads as *it had nothing to say about this video*, which is a
+  different claim from *it didn't answer*.)
+- **It gets its own thread pool.** Not `asyncio.to_thread`, and not the default
+  executor — the channel scanner runs yt-dlp there, many at a time and for
+  minutes each. Measured: a summary that takes 13 seconds alone sat unfinished
+  for 95 behind a running scan, with no error and no progress. `routers/local.py`
+  and `routers/imported.py` keep their own pools for the same reason.
+- **A job still running after `STALE_AFTER` is treated as dead.** Nothing here
+  survives a restart, and uvicorn's `--reload` does one most days; without this
+  an orphaned row labels its card *Summarising* forever. Decided at read time in
+  `_serialize` rather than by a sweeper, since the row is only ever seen through
+  there — which also means a stale job never blocks a fresh attempt.
 
 ---
 
@@ -1663,6 +1713,7 @@ no per-test decorator). What's covered:
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
+| `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer |
