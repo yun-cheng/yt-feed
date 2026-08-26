@@ -495,9 +495,12 @@ components/
   Comments.tsx                    the comment section under the description —
                                   closed until asked for, and fetched only then
   Toaster.tsx                     the app's single error-toast surface
+  NotificationBell.tsx            the bell in every TopBar: what finished while
+                                  you were on another page
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
   toastStore.ts                   tiny global toast store (API errors)
+  notificationStore.ts            the bell's rows + unread count, slowly polled
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
   ext.ts                          is the clean-embed extension installed?
@@ -1153,6 +1156,7 @@ two shims Radix's slider needs to mount at all (below).
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
+| `NotificationBell.test.tsx` | the badge and its cap, opening the bell clearing it, the cover and its icon fallback, a summary row opening the video on its Ask panel while a failure row has nowhere to send you, and dismissing one row without touching the rest |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |

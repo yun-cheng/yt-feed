@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { apiFetch } from './lib/api'
 import Toaster from './components/Toaster'
+import { startNotificationPolling } from './hooks/notificationStore'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
@@ -499,6 +500,10 @@ export default function App() {
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null)
   // Where in that video to start, when the URL said so (see `parseStartAt`).
   const [startAt, setStartAt] = useState<number | null>(init.startAt)
+  // Which side panel the overlay opens on, when we were sent somewhere specific
+  // — a summary notification opens the Ask panel holding it. Null everywhere
+  // else, which is the watch page's own default.
+  const [watchPanel, setWatchPanel] = useState<'transcript' | 'ask' | null>(null)
   // Whether the overlay is open OVER A PAGE WE NAVIGATED FROM — which is what
   // lets popstate tell "closing the overlay" (leave the underlying page exactly
   // as it was) from a real page nav.
@@ -1013,6 +1018,29 @@ export default function App() {
     return () => window.removeEventListener('app:watch', onWatch)
   }, [])
 
+  // Opened by id rather than by card — today, a notification about a summary
+  // that finished. We have no VideoItem to hand over, which is fine: that's the
+  // cold-load path, and WatchPage fetches by id.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const { videoId, panel } = (e as CustomEvent<{ videoId: string; panel?: 'transcript' | 'ask' }>).detail
+      history.pushState(null, '', `/watch/${videoId}`)
+      setSelectedVideo(null)
+      setSelectedVideoId(videoId)
+      setStartAt(null)
+      setWatchPanel(panel ?? null)
+      overlayOpenRef.current = true
+    }
+    window.addEventListener('app:open-video', onOpen)
+    return () => window.removeEventListener('app:open-video', onOpen)
+  }, [])
+
+  // The bell is server state that changes without us asking, so it starts its
+  // own polling once, here.
+  useEffect(() => {
+    startNotificationPolling()
+  }, [])
+
   // ── Auto-refresh via Page Visibility API ────────────────
   const lastFetchRef = useRef(Date.now())
   const visibilityTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -1435,6 +1463,7 @@ export default function App() {
     // Opened from inside the app, so there's no handoff position to honour —
     // this one resumes from history like every other click on a card.
     setStartAt(null)
+    setWatchPanel(null)
     overlayOpenRef.current = true
   }
 
@@ -1851,6 +1880,7 @@ export default function App() {
             videoId={selectedVideoId}
             video={selectedVideo}
             startAt={startAt}
+            initialPanel={watchPanel}
             onChannelClick={selectChannelFromWatch}
             onDownload={startDownload}
             isDownloaded={downloadIds.has(selectedVideoId)}

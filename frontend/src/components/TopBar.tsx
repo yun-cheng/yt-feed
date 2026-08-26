@@ -1,4 +1,5 @@
 import TimeSortControls, { sortOptionsFor } from './TimeSortControls'
+import NotificationBell from './NotificationBell'
 import type { TimeRange } from '../lib/timeWindow'
 
 export type TopBarVariant =
@@ -85,9 +86,10 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
           </div>
         </div>
 
-        {/* Right: page action. Only the Imported page has one, so the search box
-            stays centred everywhere else. */}
-        <div className="flex items-center px-4 flex-shrink-0">
+        {/* Right: the bell — on every page, because background work can finish
+            while you are on any of them — plus the page's own action, which
+            today only the Imported page has. */}
+        <div className="flex items-center gap-1 px-4 flex-shrink-0">
           {onImport && (
             <button
               onClick={onImport}
@@ -99,6 +101,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               <span className="hidden sm:inline">Import</span>
             </button>
           )}
+          <NotificationBell />
         </div>
       </div>
 

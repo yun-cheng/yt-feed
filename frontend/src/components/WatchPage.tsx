@@ -43,6 +43,9 @@ type Props = {
   // Seconds to start at, when the URL's `?t=` said so — a handoff from
   // somewhere that already knew the position, which beats stored history.
   startAt?: number | null
+  // Which side panel to open on. Set when we were sent here to look at
+  // something in particular — a summary notification opens Ask on its answer.
+  initialPanel?: 'transcript' | 'ask' | null
   onChannelClick: (channelId: string) => void
   onDownload: (video: VideoItem) => void
   isDownloaded: boolean
@@ -359,7 +362,7 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
   )
 }
 
-export default function WatchPage({ videoId, video, startAt, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
+export default function WatchPage({ videoId, video, startAt, initialPanel, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
@@ -443,7 +446,7 @@ export default function WatchPage({ videoId, video, startAt, onChannelClick, onD
   // The right-hand panel holds one of two things at a time. A single state
   // rather than a boolean each, because they share the slot: opening one closes
   // the other, and `null` is the page back at its one-column shape.
-  const [sidePanel, setSidePanel] = useState<'transcript' | 'ask' | null>(null)
+  const [sidePanel, setSidePanel] = useState<'transcript' | 'ask' | null>(initialPanel ?? null)
   const showTranscript = sidePanel === 'transcript'
   const showAsk = sidePanel === 'ask'
   // The "…" overflow menu next to Save, holding download + the transcript toggle.
