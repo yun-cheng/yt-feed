@@ -5,6 +5,8 @@ import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { storyboardFrame } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
+import { useSummaryStatus, startSummary } from '../hooks/summaryStore'
+import type { SummaryLength } from '../hooks/summaryStore'
 
 // Minimal YT IFrame API types
 declare global {
@@ -237,6 +239,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   // What the sound controls show/toggle. Defaults muted (every preview starts muted).
   const displayMuted = actualMuted ?? true
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
+  const summary = useSummaryStatus(video.youtube_id)
   const [menuOpen, setMenuOpen] = useState(false)   // title "more actions" menu
   const [showSavePanel, setShowSavePanel] = useState(false)  // "save to playlist" sub-panel
   const menuRef = useRef<HTMLDivElement>(null)
@@ -558,6 +561,19 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const handleRemoveDownload = (e: React.MouseEvent) => {
     e.stopPropagation()
     onRemoveDownload?.(video)
+    setMenuOpen(false)
+  }
+
+  // Ask for a summary, written in the background. The card labels itself straight
+  // away and the bell says when it lands — the point of doing it from here rather
+  // than in the watch page's Ask panel is not having to wait on it.
+  //
+  // Both lengths, same as the panel: they aren't a cheap one and a good one,
+  // they're different amounts of reading, and which you want is a question the
+  // card can't answer for you.
+  const handleSummarize = (length: SummaryLength) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    startSummary(video.youtube_id, length)
     setMenuOpen(false)
   }
 
@@ -1045,15 +1061,49 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           </div>
         )}
 
-        {/* Watched badge — the bar alone can't say "finished": a rewatch pulls it
-            back to wherever you are now, and a video abandoned at 95% looks the
-            same as one seen through. Idle-only, like the bar. */}
-        {!isHovered && watchProgress?.watched && (
-          <div className="absolute left-1 top-1 z-[6] flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            Watched
+        {/* Corner badges — what this card is, as opposed to what it shows. Idle
+            only, like the resume bar: hovering starts a preview and the whole
+            thumbnail becomes the player.
+
+            Watched, because the bar alone can't say "finished": a rewatch pulls
+            it back to wherever you are now, and a video abandoned at 95% looks
+            the same as one seen through. Summarising/Summarised, because the
+            summary is written somewhere you aren't and the card is where you
+            come back to look for it. */}
+        {!isHovered && (watchProgress?.watched || summary) && (
+          <div className="absolute left-1 top-1 z-[6] flex flex-col items-start gap-1">
+            {watchProgress?.watched && (
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Watched
+              </span>
+            )}
+            {summary?.status === 'running' && (
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-[#8ab4f8]">
+                <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" d="M12 3a9 9 0 019 9" />
+                </svg>
+                Summarising
+              </span>
+            )}
+            {summary?.status === 'done' && (
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-[#8ab4f8]">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
+                </svg>
+                Summarised
+              </span>
+            )}
+            {summary?.status === 'error' && (
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-[#f2a0a0]">
+                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                Summary failed
+              </span>
+            )}
           </div>
         )}
 
@@ -1160,6 +1210,35 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 </svg>
                 Save to playlist
               </button>
+              {/* Named for how much comes back, the only way the two differ —
+                  the same naming the Ask panel's openers use. */}
+              {(['short', 'long'] as SummaryLength[]).map((len) => {
+                const running = summary?.status === 'running'
+                const isThisOne = running && summary?.length === len
+                return (
+                  <button
+                    key={len}
+                    className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
+                    onClick={handleSummarize(len)}
+                    disabled={running}
+                  >
+                    <svg className={`w-5 h-5 flex-shrink-0 ${isThisOne ? 'animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      {isThisOne ? (
+                        <path strokeLinecap="round" d="M12 3a9 9 0 019 9" />
+                      ) : (
+                        // Three lines for the short one, five for the long — the
+                        // menu says which is which before you read the label.
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d={len === 'short' ? 'M4 7h16M4 12h16M4 17h9' : 'M4 5h16M4 9h16M4 13h16M4 17h16M4 21h9'}
+                        />
+                      )}
+                    </svg>
+                    {isThisOne ? 'Summarising…' : len === 'short' ? 'Short summary' : 'Long summary'}
+                  </button>
+                )
+              })}
               {onRemoveFromPlaylist && (
                 <button
                   className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"

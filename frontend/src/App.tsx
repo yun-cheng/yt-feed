@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { apiFetch } from './lib/api'
 import Toaster from './components/Toaster'
 import { startNotificationPolling } from './hooks/notificationStore'
+import { loadSummaries } from './hooks/summaryStore'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
@@ -1035,10 +1036,11 @@ export default function App() {
     return () => window.removeEventListener('app:open-video', onOpen)
   }, [])
 
-  // The bell is server state that changes without us asking, so it starts its
-  // own polling once, here.
+  // The bell and the cards' summary labels are both server state that changes
+  // without us asking, so both start their own polling once, here.
   useEffect(() => {
     startNotificationPolling()
+    loadSummaries()
   }, [])
 
   // ── Auto-refresh via Page Visibility API ────────────────

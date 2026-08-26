@@ -40,6 +40,10 @@ real video (muted, with custom captions and scrubbing).
   seek there. Because it only knows this video, it can say "that isn't in here"
   rather than answering about the subject in general. Shares the right-hand panel
   with the transcript, one tab each, and streams the reply as it's written
+- **Summaries written in the background** — ask any card's `…` menu for a **short**
+  or a **long** one and walk away. The card labels itself **Summarising**, then **Summarised**, and
+  the **bell** at the top right says when it landed; clicking that opens the video
+  with the summary already in its Ask panel, where you can keep asking
 - **Shorts** — a separate feed for vertical short-form videos
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works

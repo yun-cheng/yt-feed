@@ -501,6 +501,9 @@ hooks/
   audioStore.ts                   shared, persisted preview VOLUME
   toastStore.ts                   tiny global toast store (API errors)
   notificationStore.ts            the bell's rows + unread count, slowly polled
+  summaryStore.ts                 which videos have a long summary, and which
+                                  are having one written — polled only while
+                                  something is running
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
   ext.ts                          is the clean-embed extension installed?
@@ -962,6 +965,48 @@ Four things it does that are worth knowing before changing it:
 The `…` entry is gated on the video having captions, the same gate the transcript
 uses and for the same reason: the answers are read off that track.
 
+### A summary you walk away from (`summaryStore.ts`, `NotificationBell.tsx`)
+
+Both summaries the panel offers — **Short** and **Long**, named for how much
+comes back, the same naming and the same two questions — asked for from any
+card's `…` menu and written while you carry on. The card labels itself in the corner where the
+*Watched* badge lives — **Summarising**, then **Summarised**, or **Summary
+failed** — and the bell says when it landed.
+
+- **The status is a global store, not a prop.** The label belongs to the *card*,
+  and cards are rendered by eight different pages; threading `summaryStatus`
+  through every one of them to reach one badge is a worse trade than a module the
+  card reads directly. Same `useSyncExternalStore` shape as `toastStore`.
+- **Polling exists only while something is running.** A finished library is a
+  static map, and asking the server about it on a timer would be traffic that
+  cannot change its answer. The bell polls slowly on its own (a minute) purely as
+  the fallback for a job started in another tab — the real signal is
+  `summaryStore` calling `refreshNotifications()` the moment a job it was
+  watching flips to done.
+- **Both entries stay offered, including after a summary exists.** The other
+  length is still worth asking for, and a menu that collapsed to "Summarise
+  again" would hide it. While one is running both are disabled, and the spinner
+  sits on the length actually running — which is what the job row's `length` is
+  for.
+- **The click writes the label, not the round trip.** `startSummary` marks the
+  video running before the request goes out and lets the server's answer
+  overwrite it, so the badge appears on the press. A refusal takes the label back
+  off.
+- **Rows about a video show its cover.** A thumbnail identifies which video a
+  row is about faster than the title beside it does, which is the whole job of a
+  list you scan. It comes down on the row itself rather than being looked up, so
+  it survives the video leaving the library; a row without one — another `kind`,
+  or one written before covers existed — falls back to the kind's icon, and a
+  cover that fails to load hides itself rather than leaving a broken frame.
+- **A notification is not a toast.** `Toaster` is for the request you just made;
+  these are rows on the server that outlive the tab, and by construction the
+  person who asked is somewhere else by the time one arrives. Opening the bell
+  reads all of them — the badge means *new since you looked*, and there is
+  nothing to do with a row but read it. Clicking a summary row dispatches
+  `app:open-video` with `panel: 'ask'`, which is the one path into the watch
+  overlay that has only an id (`WatchPage` fetches the rest, exactly as on a cold
+  load) and the one that opens a side panel that isn't closed.
+
 ### Comments (`Comments.tsx`)
 
 Under the description, in the **left** column — so an open transcript is still
@@ -1157,6 +1202,7 @@ two shims Radix's slider needs to mount at all (below).
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
 | `NotificationBell.test.tsx` | the badge and its cap, opening the bell clearing it, the cover and its icon fallback, a summary row opening the video on its Ask panel while a failure row has nowhere to send you, and dismissing one row without touching the rest |
+| `summaryStore.test.tsx` | the length reaching the server, the label appearing on the click rather than the round trip, coming back off when the request is refused, and holding its last known value when the server can't be reached |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |

@@ -44,6 +44,10 @@ type Props = {
  * question's to set (see the prompt in `routers/ask.py`) and a request that
  * doesn't say how much it wants gets whatever the model felt like.
  */
+// The two shapes of "summarise this". `Long summary` is also what the cards'
+// background summariser asks (backend/app/routers/summaries.py) — the wording
+// is kept identical there so the same request produces the same answer whether
+// you started it from here or from a card.
 const OPENERS: { label: string; ask: string }[] = [
   { label: 'Short summary', ask: 'Summarise this video in about three sentences.' },
   {

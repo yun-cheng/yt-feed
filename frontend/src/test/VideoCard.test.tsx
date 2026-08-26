@@ -1,7 +1,8 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { render, screen, fireEvent, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import VideoCard from '../components/VideoCard'
 import type { VideoItem } from '../App'
+import { loadSummaries, _resetSummaries } from '../hooks/summaryStore'
 
 const mockVideo: VideoItem = {
   youtube_id: 'abc123',
@@ -216,5 +217,94 @@ describe('VideoCard — sort highlighting', () => {
   it('does not highlight any stat when no sort prop', () => {
     render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />)
     expect(screen.getByText('1.5M views')).not.toHaveClass('text-white')
+  })
+})
+
+// ── the long summary a card can ask for ──────────────────────────────
+//
+// The label is the whole point of the feature: the summary is written somewhere
+// you are not, so the card has to say what it is doing on its own.
+
+function serveJobs(jobs: { video_id: string; status: string; length?: string }[]) {
+  globalThis.fetch = vi.fn(async () => ({
+    ok: true, status: 200, json: async () => ({ jobs }),
+    clone: () => ({ text: async () => '' }),
+  })) as unknown as typeof fetch
+}
+
+const card = () => (
+  <VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} />
+)
+
+describe('VideoCard summaries', () => {
+  afterEach(() => { _resetSummaries(); vi.restoreAllMocks() })
+
+  it('offers both lengths in the more-actions menu', () => {
+    render(card())
+    fireEvent.click(screen.getByLabelText('More actions'))
+    expect(screen.getByText('Short summary')).toBeInTheDocument()
+    expect(screen.getByText('Long summary')).toBeInTheDocument()
+  })
+
+  it('asking for one labels the card straight away', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({ status: 'running', length: 'long' }),
+      clone: () => ({ text: async () => '' }),
+    })) as unknown as typeof fetch
+    render(card())
+    fireEvent.click(screen.getByLabelText('More actions'))
+    await act(async () => { fireEvent.click(screen.getByText('Long summary')) })
+    expect(screen.getByText('Summarising')).toBeInTheDocument()
+  })
+
+  it('asks for the length that was clicked', async () => {
+    const fn = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
+      ok: true, status: 200, json: async () => ({ status: 'running', length: 'short' }),
+      clone: () => ({ text: async () => '' }),
+    }))
+    globalThis.fetch = fn as unknown as typeof fetch
+    render(card())
+    fireEvent.click(screen.getByLabelText('More actions'))
+    await act(async () => { fireEvent.click(screen.getByText('Short summary')) })
+    expect(JSON.parse(String((fn.mock.calls[0][1] as RequestInit).body))).toEqual({ length: 'short' })
+  })
+
+  it('says so once the summary is written', async () => {
+    serveJobs([{ video_id: 'abc123', status: 'done', length: 'long' }])
+    render(card())
+    await act(async () => { await loadSummaries() })
+    expect(screen.getByText('Summarised')).toBeInTheDocument()
+  })
+
+  it('a failure is a visible label, not a silently missing one', async () => {
+    serveJobs([{ video_id: 'abc123', status: 'error', length: 'long' }])
+    render(card())
+    await act(async () => { await loadSummaries() })
+    expect(screen.getByText('Summary failed')).toBeInTheDocument()
+  })
+
+  it('both entries stay offered once there is a summary — the other length is still worth asking for', async () => {
+    serveJobs([{ video_id: 'abc123', status: 'done', length: 'short' }])
+    render(card())
+    await act(async () => { await loadSummaries() })
+    fireEvent.click(screen.getByLabelText('More actions'))
+    expect(screen.getByText('Short summary')).toBeEnabled()
+    expect(screen.getByText('Long summary')).toBeEnabled()
+  })
+
+  it('puts the spinner on the length actually running, and holds both', async () => {
+    serveJobs([{ video_id: 'abc123', status: 'running', length: 'short' }])
+    render(card())
+    await act(async () => { await loadSummaries() })
+    fireEvent.click(screen.getByLabelText('More actions'))
+    expect(screen.getByText('Summarising…')).toBeDisabled()
+    expect(screen.getByText('Long summary')).toBeDisabled()
+    expect(screen.queryByText('Short summary')).not.toBeInTheDocument()
+  })
+
+  it('labels nothing for a video nobody has summarised', () => {
+    render(card())
+    expect(screen.queryByText('Summarised')).not.toBeInTheDocument()
+    expect(screen.queryByText('Summarising')).not.toBeInTheDocument()
   })
 })
