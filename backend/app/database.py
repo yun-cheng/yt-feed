@@ -70,6 +70,10 @@ _COLUMN_MIGRATIONS = [
     # before this column does — so the default is also the correct backfill.
     ("playlists", "youtube_id", "VARCHAR NOT NULL DEFAULT ''"),
     ("playlists", "synced_at", "DATETIME"),
+    # The cover the bell shows. Empty is the correct backfill as well as the
+    # default: it's copied off the video at write time, and a row written before
+    # this column existed has no copy to recover — the bell falls back to text.
+    ("notifications", "thumbnail_url", "VARCHAR NOT NULL DEFAULT ''"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the

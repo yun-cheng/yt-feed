@@ -79,6 +79,7 @@ app/
     local.py       local folders: scan a directory, serve its files, remember positions
     settings.py    app settings, served with the spec the UI renders from
     ask.py         questions about a video, answered from its transcript (streamed)
+    notifications.py  the bell: what finished while you were on another page
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 config/            categories.yaml, subscriptions.yaml, oauth token
@@ -674,6 +675,36 @@ teardown, and would lose the very partial it exists to keep.
 A video with no captions is a **422** rather than an empty answer. The watch page
 hides the entry point in that case, so anything reaching here asked directly and
 deserves the real reason.
+
+---
+
+## The bell (`routers/notifications.py`)
+
+Background work has a reporting problem: it ends somewhere nobody is looking. The
+app already had one surface for saying something and it is the wrong one — a
+toast belongs to the request that raised it, vanishes in fifteen seconds, and
+only exists in the tab that made the call. A summary started before lunch has to
+still be there after it, in whichever tab you open.
+
+So: rows, per user, with a `read` flag rather than a per-user cursor — the badge
+shows a count, and a count has to survive the tab closing. The count is computed
+over all of them, not just the page returned, because a badge that said 50 when
+there were 90 would be a lie in the one number people actually read.
+
+Rows about a video carry a **cover**, copied off the video at write time rather
+than looked up on read: the notification has to still render after the video is
+unsubscribed, hidden or dropped from the library, and the thumbnail is the
+fastest way to recognise which video a row is about — faster than the title
+beside it. A row written before the column existed, or about nothing in
+particular, has none, and the bell falls back to the kind's icon.
+
+The table is deliberately generic (`kind`, `title`, `body`, optional `video_id`)
+even though summaries are the only thing producing rows today. Downloads, imports
+and a resync all end the same way and should end up here too.
+
+Opening the bell marks everything read: reading the list *is* reading them, and
+there is nothing else to do with a row. A row with a `video_id` opens that video;
+a summary row opens it with the Ask panel already showing the answer.
 
 ---
 
@@ -1632,6 +1663,7 @@ no per-test decorator). What's covered:
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
+| `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |

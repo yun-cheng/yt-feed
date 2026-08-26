@@ -560,6 +560,37 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Notification(Base):
+    """Something that finished while you were looking elsewhere.
+
+    Today only summaries produce these, but the table is deliberately generic
+    (`kind`, `title`, `body`, optional `video_id`) because everything else this
+    app does in the background — downloads, imports, a resync — has the same
+    shape and the same problem: it ends on a page you are not on.
+
+    Read state is a flag rather than a per-user cursor: the bell shows a count,
+    and a count needs to survive the tab being closed.
+    """
+
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
+    kind = Column(String, nullable=False, default="summary")
+    title = Column(String, nullable=False, default="")
+    body = Column(String, nullable=False, default="")
+    # Empty for a notification about nothing in particular; when set, clicking
+    # the row opens that video.
+    video_id = Column(String, nullable=False, default="", index=True)
+    # Copied in at write time rather than looked up on read: the row has to
+    # still render after the video is unsubscribed, hidden or dropped from the
+    # library, and a thumbnail is the fastest way to recognise which video this
+    # is about — faster than the title it sits beside.
+    thumbnail_url = Column(String, nullable=False, default="")
+    read = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Video(Base):
     __tablename__ = "videos"
 
