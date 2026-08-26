@@ -168,6 +168,42 @@ def build_system(
     )
 
 
+class NoTranscript(Exception):
+    """This video has no captions, so there is nothing to answer from."""
+
+
+async def build_context(
+    db: AsyncSession, video_id: str, at: float = 0.0
+) -> tuple[str, float, float, bool]:
+    """The system turn for one video, and the transcript span it ended up covering.
+
+    Shared with the background summariser, which needs exactly this prompt and
+    none of the conversation around it. Raises `NoTranscript` rather than an
+    HTTP error, because one of its two callers is not answering a request.
+    """
+    captions = await _captions_cached(video_id, "")
+    sents = _to_sentences((captions or {}).get("cues") or [])
+    if not sents:
+        raise NoTranscript(video_id)
+
+    video = await db.get(Video, video_id)
+    channel = await db.get(Channel, video.channel_id) if video else None
+    try:
+        topics = json.loads(video.title_labels) if video and video.title_labels else []
+    except ValueError:
+        topics = []
+
+    text, lo, hi, truncated = transcript_window(sents, at)
+    system = build_system(
+        title=video.title if video else "",
+        channel=channel.title if channel else "",
+        topics=topics if isinstance(topics, list) else [],
+        duration=(video.duration_seconds or 0) if video else 0,
+        transcript=text, covered=(lo, hi), truncated=truncated,
+    )
+    return system, lo, hi, truncated
+
+
 def _serialize(m: ChatMessage) -> dict:
     return {
         "id": m.id,
@@ -232,29 +268,13 @@ async def ask(
     if not question:
         raise HTTPException(400, "Ask something first")
 
-    captions = await _captions_cached(video_id, "")
-    sents = _to_sentences((captions or {}).get("cues") or [])
-    if not sents:
+    try:
+        system, lo, hi, truncated = await build_context(db, video_id, p.at)
+    except NoTranscript:
         # The watch page hides the panel when a video has no captions, the same
         # gate the transcript uses — so this is a direct call, and it deserves
         # the real reason rather than an empty answer.
         raise HTTPException(422, "This video has no transcript to read")
-
-    video = await db.get(Video, video_id)
-    channel = await db.get(Channel, video.channel_id) if video else None
-    try:
-        topics = json.loads(video.title_labels) if video and video.title_labels else []
-    except ValueError:
-        topics = []
-
-    text, lo, hi, truncated = transcript_window(sents, p.at)
-    system = build_system(
-        title=video.title if video else "",
-        channel=channel.title if channel else "",
-        topics=topics if isinstance(topics, list) else [],
-        duration=(video.duration_seconds or 0) if video else 0,
-        transcript=text, covered=(lo, hi), truncated=truncated,
-    )
 
     history = await _thread(db, user.id, video_id)
     turns = [{"role": m.role, "content": m.content} for m in history[-HISTORY_TURNS * 2:]]
