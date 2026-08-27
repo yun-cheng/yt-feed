@@ -47,8 +47,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // Both layers have to go, not just the in-memory one: the stored copy is
   // what a fetch falls back to when the app is unreachable, so leaving it
   // would show the previous person's Watch Later ticks to the next.
-  memo = channelMemo = syncMemo = null
-  chrome.storage.local.remove([STORE_KEY, CHANNELS_KEY, SYNC_KEY])
+  memo = channelMemo = playlistMemo = syncMemo = null
+  chrome.storage.local.remove([STORE_KEY, CHANNELS_KEY, PLAYLISTS_KEY, SYNC_KEY])
 })
 
 /*
@@ -134,6 +134,91 @@ async function saveWatchLater(videoId) {
   const data = await res.json()
   if (data.saved) await remember(videoId)
   return data
+}
+
+/*
+ * The playlists this account has, so the save-to menu is drawn the instant it
+ * opens rather than after a round trip. Same two-layer cache as the Watch Later
+ * list above, for the same two reasons: an MV3 worker is evicted after ~30s
+ * idle, and a menu that can't draw until the app answers is a menu that flashes.
+ *
+ * Names and counts only. The cover thumbnails the app's own save-to menu shows
+ * would be a dozen images per open, and this menu sits on someone else's page —
+ * it has to be small enough to appear without a layout of its own.
+ */
+const PLAYLISTS_KEY = 'playlists'
+let playlistMemo = null // { list: [{id, name, item_count}], at: number }
+
+async function playlists(force = false) {
+  if (!force && playlistMemo && Date.now() - playlistMemo.at < FRESH_MS) {
+    return playlistMemo.list
+  }
+  try {
+    const res = await api('/api/playlists')
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const list = (await res.json()).map((p) => ({
+      id: p.id, name: p.name, item_count: p.item_count,
+    }))
+    playlistMemo = { list, at: Date.now() }
+    await chrome.storage.local.set({ [PLAYLISTS_KEY]: list })
+    return list
+  } catch {
+    const stored = (await chrome.storage.local.get(PLAYLISTS_KEY))[PLAYLISTS_KEY] || []
+    playlistMemo = { list: stored, at: Date.now() }
+    return stored
+  }
+}
+
+/*
+ * Which of them already hold this video.
+ *
+ * Uncached, unlike everything else here, and both halves of that are deliberate.
+ * It's per-video, so there is no one list to keep — and it's asked on a CLICK
+ * rather than on a hover, which affords a round trip. Membership is also the
+ * one answer that must not be stale: it is what the ticks say, and you may have
+ * changed it in the app since.
+ */
+async function playlistsContaining(videoId) {
+  const res = await api(`/api/playlists/containing/${videoId}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return await res.json()
+}
+
+/** Keep the cached count honest between opens, the way `remember` does. */
+function nudgeCount(playlistId, delta) {
+  if (!playlistMemo) return
+  playlistMemo.list = playlistMemo.list.map((p) => (
+    p.id === playlistId ? { ...p, item_count: Math.max(0, p.item_count + delta) } : p
+  ))
+  chrome.storage.local.set({ [PLAYLISTS_KEY]: playlistMemo.list })
+}
+
+/*
+ * Add by id alone — the same bargain `saveWatchLater` strikes, and for the same
+ * reason: the app resolves the title, channel and thumbnail on its side rather
+ * than have a content script scrape them out of markup that changes.
+ *
+ * `saved: false` is a video the app couldn't resolve (private, deleted,
+ * region-blocked). That's a failure to whoever clicked, whatever the status
+ * code was, which is why the caller checks it rather than just `ok`.
+ */
+async function addToPlaylist(playlistId, videoId) {
+  const res = await api(`/api/playlists/${playlistId}/items/by-id/${videoId}`, {
+    method: 'POST',
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  if (data.saved && !data.already) nudgeCount(playlistId, 1)
+  return data
+}
+
+async function removeFromPlaylist(playlistId, videoId) {
+  const res = await api(`/api/playlists/${playlistId}/items/${videoId}`, {
+    method: 'DELETE',
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  nudgeCount(playlistId, -1)
+  return { removed: true }
 }
 
 /*
@@ -267,6 +352,10 @@ const HANDLERS = {
   // `force` skips the TTL — the caller knows something the timer doesn't, e.g.
   // the tab was just switched back to from the app.
   'saved-ids': async (msg) => ({ ids: await savedIds(msg.force) }),
+  'playlists': async (msg) => ({ playlists: await playlists(msg.force) }),
+  'playlists-containing': async (msg) => ({ ids: await playlistsContaining(msg.videoId) }),
+  'playlist-add': (msg) => addToPlaylist(msg.playlistId, msg.videoId),
+  'playlist-remove': (msg) => removeFromPlaylist(msg.playlistId, msg.videoId),
   'channel-ids': async (msg) => ({ ids: await channelIds(msg.force) }),
   'add-channel': (msg) => addChannel(msg.url),
   'history-sync': async (msg) => ({ enabled: await historySync(msg.force) }),

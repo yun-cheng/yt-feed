@@ -1,12 +1,12 @@
 /*
- * Two buttons on the corner of a YouTube video card: open in YT Feed, and save
- * to the app's Watch Later.
+ * Three buttons on the corner of a YouTube video card: open in YT Feed, save to
+ * the app's Watch Later, and save to one of its playlists.
  *
  * Hover any thumbnail on youtube.com and they appear, stacked, in its top-left
  * corner. The first opens that video in the app instead of on YouTube; the
- * second saves it without leaving the page you're on.
+ * other two put it somewhere in the app without leaving the page you're on.
  *
- * There is exactly ONE pair, parked off-screen and moved onto whatever the
+ * There is exactly ONE set, parked off-screen and moved onto whatever the
  * pointer is over. The obvious alternative — inject buttons into every card —
  * needs a MutationObserver, has to name the card elements it's injecting into,
  * and then fights YouTube's virtualised lists, which RECYCLE those nodes as you
@@ -155,6 +155,66 @@ style.textContent = `
      everything else. Only the failure gets a colour, because it's the one state
      you have to notice rather than merely read, and it clears on the next card. */
   button.failed { background: rgba(153, 27, 27, 0.9); }
+  /* The playlist menu. Absolutely positioned against the host — which is the
+     40px-wide column of buttons — so it can be flipped to the other side of the
+     stack near the right edge of the window by swapping left for right. */
+  .menu {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 48px;
+    width: 240px;
+    /* Border-box, so the number here is the height the placement maths below
+       assumes — with the default box model the padding would make it 12px
+       taller than MENU_MAX_HEIGHT and the bottom clamp would be wrong. */
+    box-sizing: border-box;
+    max-height: 264px;
+    overflow-y: auto;
+    padding: 6px 0;
+    border-radius: 12px;
+    background: #212121;
+    color: #f1f1f1;
+    box-shadow: 0 4px 32px rgba(0, 0, 0, 0.5);
+    font-family: "Roboto", "Arial", sans-serif;
+    font-size: 14px;
+    text-align: left;
+    cursor: default;
+  }
+  .menu.open { display: block }
+  .menu.flip { left: auto; right: 48px }
+  .head {
+    padding: 6px 16px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #aaa;
+  }
+  /* Rows are buttons, so they inherit the circle above — every one of those
+     properties has to be said again. Cheaper than a second selector list. */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: auto;
+    padding: 6px 16px;
+    border-radius: 0;
+    background: none;
+    text-align: left;
+  }
+  .row:hover { background: rgba(255, 255, 255, 0.1) }
+  .row:disabled { opacity: 0.5 }
+  .row svg { width: 20px; height: 20px }
+  .row .text { flex: 1; min-width: 0 }
+  .row .name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    font-size: 14px;
+  }
+  .row .count { font-size: 11px; color: #888 }
+  /* Loading, empty, and the one that matters — a save that didn't land. */
+  .note { padding: 8px 16px; font-size: 13px; color: #888 }
+  .note.bad { color: #f28b82 }
 `
 
 /** An icon-only button, like the ones it's modelled on: the tooltip names it. */
@@ -212,15 +272,77 @@ function tickIcon() {
   return el
 }
 
+// A list with a plus, which is what YouTube draws its own "Save to playlist"
+// as — same reasoning as the clock: the gesture is one people already know.
+function listIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  const line = {
+    stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round',
+  }
+  el.append(
+    svg('path', { d: 'M4 6h13M4 11h13M4 16h7', ...line }),
+    svg('path', { d: 'M16 13v6M13 16h6', ...line }),
+  )
+  return el
+}
+
+// In at least one playlist. The plus becomes a tick, and nothing else changes —
+// the same rule the clock and its tick follow.
+function listTickIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  const line = {
+    stroke: 'currentColor', 'stroke-width': 2,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  }
+  el.append(
+    svg('path', { d: 'M4 6h13M4 11h13M4 16h7', ...line }),
+    svg('path', { d: 'M12.5 16.5l2.5 2.5 5-5', ...line }),
+  )
+  return el
+}
+
+// The row marker in the menu, matching the app's own save-to list.
+function bookmarkIcon(filled) {
+  const el = svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' })
+  el.append(svg('path', {
+    d: 'M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z',
+    fill: filled ? 'currentColor' : 'none',
+    stroke: 'currentColor', 'stroke-width': 2,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  }))
+  return el
+}
+
 const openButton = makeButton('Open in YT Feed', openIcon())
 const saveButton = makeButton('Save to YT Feed Watch Later', clockIcon())
 
+const playlistButton = makeButton('Save to a YT Feed playlist', listIcon())
+
 const stack = document.createElement('div')
 stack.className = 'stack'
-stack.append(openButton, saveButton)
-root.append(style, stack)
+stack.append(openButton, saveButton, playlistButton)
 
-/** The link the pair is currently parked on, so scrolling can follow it. */
+/*
+ * The playlist menu.
+ *
+ * Three parts, all reused rather than rebuilt: a heading, the rows, and one
+ * note line that serves loading, empty and failed. Rebuilding the menu element
+ * per open would drop the scroll position and, more to the point, would mean
+ * re-running the placement maths on a node that isn't laid out yet.
+ */
+const menu = document.createElement('div')
+menu.className = 'menu'
+const menuHead = document.createElement('div')
+menuHead.className = 'head'
+menuHead.textContent = 'Save to playlist'
+const menuRows = document.createElement('div')
+const menuNote = document.createElement('div')
+menuNote.className = 'note'
+menu.append(menuHead, menuRows, menuNote)
+
+root.append(style, stack, menu)
+
+/** The link the buttons are currently parked on, so scrolling can follow it. */
 let anchored = null
 let currentId = null
 
@@ -235,6 +357,20 @@ let currentId = null
 const saved = new Set()
 let askedAt = 0
 const ASK_EVERY_MS = 60_000
+
+/*
+ * Which playlists hold which video — everything the menu has been told so far.
+ *
+ * Unlike the Watch Later Set this can't be filled ahead of time: membership is
+ * asked per video, so there is no one list to cache. What it buys is the SECOND
+ * look at a card — once you've opened the menu for a video, its button can say
+ * "this is in a playlist" straight away, and a save you just made survives
+ * scrolling past the card and back.
+ */
+const inPlaylists = new Map() // videoId -> Set<playlistId>
+
+/** The video the open menu belongs to, or null when it's closed. */
+let menuFor = null
 
 /**
  * Ask the service worker something, and treat "couldn't ask" as an answer.
@@ -278,9 +414,35 @@ function place() {
   if (box.bottom < 0 || box.top > innerHeight) return hide()
   host.style.transform = `translate(${box.left + INSET}px, ${box.top + INSET}px)`
   host.style.display = 'block'
+  if (menuFor) positionMenu(box)
+}
+
+/* What the menu has to clear to sit beside the stack: the 40px button plus the
+ * 8px gap between them, which is YouTube's own inset reused a third time. */
+const MENU_GAP = 48
+const MENU_WIDTH = 240
+const MENU_MAX_HEIGHT = 264
+
+/**
+ * Put the menu beside the buttons, on whichever side of them it fits.
+ *
+ * The host is the 40px column, so left/right and a negative top are the whole
+ * geometry — no measuring of the menu itself, which would force a layout on
+ * every scroll frame and would be measuring a node that hasn't been filled in
+ * yet on the first call.
+ */
+function positionMenu(box) {
+  const left = box.left + INSET
+  const top = box.top + INSET
+  menu.classList.toggle('flip', left + MENU_GAP + MENU_WIDTH > innerWidth)
+  // Pull it up by however much it would otherwise hang off the bottom — zero
+  // for most of the page — but never past the top of the window.
+  const over = top + MENU_MAX_HEIGHT + INSET - innerHeight
+  menu.style.top = `${Math.max(INSET - top, Math.min(0, -over))}px`
 }
 
 function hide() {
+  closeMenu()
   host.style.display = 'none'
   anchored = null
   currentId = null
@@ -355,10 +517,178 @@ async function clickSave(ctl, id, stillOn) {
   else ctl.draw('failed', `Couldn't save — is the app running?`)
 }
 
+/* ── The playlist menu ──────────────────────────────────────
+ *
+ * The third button opens a list of the app's playlists, and clicking one adds
+ * or removes this video. That's two things the pair above never needed: a
+ * SECOND question to the app (which playlists hold this video), and a surface
+ * that has to survive the pointer moving off the thumbnail.
+ *
+ * Freezing is how the second is answered — see `menuFor` in the mouseover
+ * handler. Everything else here is the same shape as the save button: ask the
+ * worker, then answer on the thing that was clicked.
+ */
+
+/** The one note line, which serves loading, empty and failed alike. */
+function note(text, bad = false) {
+  menuNote.textContent = text
+  menuNote.classList.toggle('bad', bad)
+  menuNote.style.display = text ? 'block' : 'none'
+}
+
+/** Draw the stack's playlist button for a video, from what we've been told. */
+function resetPlaylist(id) {
+  const inSome = (inPlaylists.get(id)?.size ?? 0) > 0
+  playlistButton.replaceChildren(inSome ? listTickIcon() : listIcon())
+  playlistButton.title = inSome ? 'In a YT Feed playlist' : 'Save to a YT Feed playlist'
+  playlistButton.setAttribute('aria-label', playlistButton.title)
+}
+
+/** One playlist, owning its own state so a click needn't re-render the list. */
+function makeRow(playlist, id, member) {
+  const row = document.createElement('button')
+  row.type = 'button'
+  row.className = 'row'
+
+  const text = document.createElement('div')
+  text.className = 'text'
+  const name = document.createElement('div')
+  name.className = 'name'
+  name.textContent = playlist.name
+  const count = document.createElement('div')
+  count.className = 'count'
+  text.append(name, count)
+
+  let inIt = member
+  let items = playlist.item_count ?? 0
+  let icon = bookmarkIcon(inIt)
+  row.append(text, icon)
+
+  function draw() {
+    count.textContent = `${items} ${items === 1 ? 'video' : 'videos'}`
+    row.title = inIt ? `Remove from ${playlist.name}` : `Save to ${playlist.name}`
+    const next = bookmarkIcon(inIt)
+    icon.replaceWith(next)
+    icon = next
+  }
+  draw()
+
+  row.addEventListener('click', async (e) => {
+    e.stopPropagation()
+    if (row.disabled) return
+    row.disabled = true
+    const reply = await ask({
+      type: inIt ? 'playlist-remove' : 'playlist-add',
+      playlistId: playlist.id,
+      videoId: id,
+    })
+    row.disabled = false
+
+    // `saved: false` is the app declining a video it couldn't resolve — private,
+    // deleted, region-blocked — which is a failure to whoever clicked whatever
+    // the HTTP status was. Same reading as the Watch Later button's.
+    const ok = reply?.ok && (inIt ? reply.removed : reply.saved)
+    if (!ok) {
+      return note(inIt
+        ? `Couldn't remove — is the app running?`
+        : `Couldn't save — is the app running?`, true)
+    }
+
+    note('')
+    inIt = !inIt
+    items = Math.max(0, items + (inIt ? 1 : -1))
+    draw()
+
+    const held = inPlaylists.get(id) ?? new Set()
+    if (inIt) held.add(playlist.id)
+    else held.delete(playlist.id)
+    inPlaylists.set(id, held)
+    resetPlaylist(id)
+  })
+
+  return row
+}
+
+function closeMenu() {
+  menuFor = null
+  menu.classList.remove('open')
+}
+
+/**
+ * Open the menu for a video: draw it now, fill it when the app answers.
+ *
+ * Both questions go at once — the playlist list is usually cached and answers
+ * immediately, membership never is — and the id is re-checked afterwards,
+ * because the menu may have been closed and reopened on another card while they
+ * were in flight.
+ */
+async function openMenu(id) {
+  menuFor = id
+  menu.classList.add('open')
+  menuRows.replaceChildren()
+  note('Loading…')
+  if (anchored?.isConnected) positionMenu(anchored.getBoundingClientRect())
+
+  const [listed, holding] = await Promise.all([
+    ask({ type: 'playlists' }),
+    ask({ type: 'playlists-containing', videoId: id }),
+  ])
+  if (menuFor !== id) return
+
+  // Without membership the ticks would be a guess, and a menu that says "not in
+  // this one" about a playlist the video is already in is worse than one that
+  // says it couldn't ask. The names alone come from a cache that outlives the
+  // app being closed, so they prove nothing about whether it's running.
+  if (!holding?.ok) return note(`Couldn't reach the app — is it running?`, true)
+
+  const member = new Set(holding.ids)
+  inPlaylists.set(id, member)
+  resetPlaylist(id)
+
+  const list = listed?.ok ? listed.playlists : []
+  if (!list.length) return note('No playlists yet — make one in the app.')
+
+  note('')
+  for (const playlist of list) menuRows.append(makeRow(playlist, id, member.has(playlist.id)))
+  if (anchored?.isConnected) positionMenu(anchored.getBoundingClientRect())
+}
+
+playlistButton.addEventListener('click', (e) => {
+  e.stopPropagation()
+  if (!currentId) return
+  if (menuFor === currentId) return closeMenu()
+  openMenu(currentId)
+})
+
+/*
+ * A click anywhere else puts the buttons away entirely rather than just closing
+ * the menu: the pointer was frozen while it was open, so wherever it is now is
+ * somewhere the buttons were never moved to. The next mouseover brings them back
+ * on the right card.
+ *
+ * Events from inside a shadow root are retargeted to the host, so this can't
+ * fire for the menu's own clicks — which is also what `e.target === host` means
+ * in the mouseover handler below.
+ */
+document.addEventListener('click', (e) => {
+  if (menuFor && e.target !== host) hide()
+}, true)
+
+// Escape closes the menu but leaves the buttons where they are, which is where
+// the pointer still is.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && menuFor) closeMenu()
+})
+
 document.addEventListener('mouseover', (e) => {
   // Over the button itself — leave it exactly where it is, or hovering it would
   // move it out from under the pointer.
   if (e.target === host) return
+
+  // Frozen while the menu is open. It sits OVER the cards beside this one, so
+  // without this, reaching for a playlist would hand the buttons — and the menu
+  // with them — to whatever card the pointer crossed on the way.
+  if (menuFor) return
 
   const link = e.target.closest?.('a[href]')
   const id = link && videoId(link.href)
@@ -370,7 +700,10 @@ document.addEventListener('mouseover', (e) => {
   // Only on a change of video: re-entering the same card (crossing from the
   // thumbnail to its title, say) must not wipe a "couldn't save" you need to
   // read, nor re-run this for every pixel of a card you're already on.
-  if (id !== currentId) hoverSave.reset(id)
+  if (id !== currentId) {
+    hoverSave.reset(id)
+    resetPlaylist(id)
+  }
   anchored = thumb
   currentId = id
   place()

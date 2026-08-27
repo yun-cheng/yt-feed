@@ -65,9 +65,9 @@ real video (muted, with custom captions and scrubbing).
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)
 - **Open from YouTube** — with the extension installed, hovering any thumbnail on
-  youtube.com puts two buttons on its corner: open that video here instead, or
-  save it straight to Watch Later without leaving the page — already-saved
-  videos show a tick before you click. Whatever you send
+  youtube.com puts three buttons on its corner: open that video here instead,
+  save it straight to Watch Later, or drop it into one of your playlists —
+  without leaving the page. Already-saved videos show a tick before you click. Whatever you send
   over gets its title, channel and stats resolved on arrival, and stays off the
   Imported page — that page is what you chose to keep
 - **Watch history from YouTube** — the extension also reports what you watch *on*
@@ -156,9 +156,9 @@ All three are also defined in [`.claude/launch.json`](.claude/launch.json).
 ### Browser extension (optional)
 
 A companion extension does two things, each on a different site. On **youtube.com**
-it puts *open in YT Feed* and *save to Watch Later* buttons on the corner of
-every video thumbnail, so a video you find there opens — or is kept — here
-instead, styled to pass for YouTube's own circular hover controls; it adds a
+it puts *open in YT Feed*, *save to Watch Later* and *save to a playlist* buttons
+on the corner of every video thumbnail, so a video you find there opens — or is
+kept — here instead, styled to pass for YouTube's own circular hover controls; it adds a
 channel to the feed from that channel's page, and reports what you watch there
 into the app's watch history. On
 **embedded players** it strips YouTube's overlays —

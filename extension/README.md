@@ -5,10 +5,10 @@ different site:
 
 - on **the app**, it removes YouTube's overlays from embedded players so the app
   can draw its own control bar over bare video;
-- on **youtube.com**, it puts *open in YT Feed* and *save to Watch Later*
-  buttons on the corner of every video thumbnail, an *add this channel* pill on
-  every channel page, and it writes what you watch there into the app's own
-  watch history.
+- on **youtube.com**, it puts *open in YT Feed*, *save to Watch Later* and
+  *save to a playlist* buttons on the corner of every video thumbnail, an *add
+  this channel* pill on every channel page, and it writes what you watch there
+  into the app's own watch history.
 
 The app works without it. Everything below is additive, and the no-extension
 behaviour is the default that ships.
@@ -17,14 +17,14 @@ behaviour is the default that ships.
 |---|---|---|
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
 | `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>`, and hands the worker the app's address and this browser's API key |
-| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the watch-page pair, the channel-page pill, and the watch-history sampler |
-| `background.js` | service worker | Talks to the app's API, owns the configuration, and caches the Watch Later list and the channel list |
+| `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the save-to-playlist menu, the watch-page pair, the channel-page pill, and the watch-history sampler |
+| `background.js` | service worker | Talks to the app's API, owns the configuration, and caches the Watch Later list, the channel list and the playlists |
 | `options.html` / `options.js` | extension options | The app's address and your API key |
 
 ## Open in YT Feed, and Save to Watch Later
 
 Hover any video thumbnail on YouTube — home, search, a channel, the sidebar of a
-watch page — and two small buttons appear, stacked, in its top-left corner.
+watch page — and three small buttons appear, stacked, in its top-left corner.
 
 The first opens that video in the app rather than on YouTube. Repeat clicks
 reuse a single app tab instead of piling up new ones.
@@ -37,6 +37,48 @@ The one coloured state is a failed save, which goes red because it's the only
 thing here you have to *notice* rather than merely read; it clears the moment you
 hover a different video. The tick doesn't, because it isn't a flash of feedback
 but the answer to "have I got this one already".
+
+The third opens a menu of the app's playlists — see below.
+
+### Save to a playlist
+
+The third button lists your playlists and puts this video in one, without
+leaving the page. A tick beside a name means it's already there,
+and clicking it again takes it back out; the button on the thumbnail wears the
+tick too, once it's been told.
+
+Two things here are unlike the pair above, and both follow from it being a
+*menu* rather than a button.
+
+**It asks two questions, and only one of them is cached.** The names and counts
+come from the same one-minute cache the Watch Later list uses, so the menu draws
+the instant it opens rather than after a round trip. Which playlists hold *this
+video* is asked fresh, every time (`GET /api/playlists/containing/{id}`), for
+two reasons: it's per-video, so there's no single list to keep — and it's the
+one answer the ticks actually assert. A stale "not in this one" about a playlist
+you added it to in the app would be worse than a spinner. That question is also
+asked on a **click** rather than a hover, which is what affords the round trip
+at all.
+
+If that question fails, the menu says so instead of showing itself. The names
+survive the app being closed — they're in `chrome.storage.local` — so drawing
+them with every tick blank would be a claim the extension is in no position to
+make.
+
+**The buttons freeze while it's open.** They otherwise follow the pointer from
+card to card, and the menu sits *over* the cards next to the one it belongs to —
+so reaching for a playlist would hand the buttons, and the menu with them, to
+whatever card the pointer crossed on the way. While a menu is open the mouseover
+handler returns immediately. Clicking anywhere outside puts the whole set away
+(the pointer has been somewhere the buttons never followed it to, so where they
+are is stale); Escape closes just the menu.
+
+Saving goes through the worker like everything else, and posts nothing but the
+id — `POST /api/playlists/{id}/items/by-id/{videoId}`, which resolves the title,
+channel, thumbnail and stats on the app's side. Same bargain as the Watch Later
+button, and the same failure: a video the app can't resolve — private, deleted,
+region-blocked — answers `saved: false` and the menu says the save didn't land
+rather than pretending it did.
 
 ### The tick you get before you click
 
