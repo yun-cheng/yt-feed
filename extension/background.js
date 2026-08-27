@@ -212,6 +212,31 @@ async function addToPlaylist(playlistId, videoId) {
   return data
 }
 
+/*
+ * A new playlist, made from the menu.
+ *
+ * It lands in the cached list immediately rather than waiting for the next
+ * refresh: the caller's very next move is to put a video in it, and a menu that
+ * forgets the playlist you just made a second later reads as a failed save.
+ */
+async function createPlaylist(name) {
+  const res = await api('/api/playlists', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  if (playlistMemo) {
+    // Newest first, which is the order `GET /api/playlists` serves.
+    playlistMemo.list = [
+      { id: data.id, name: data.name, item_count: 0 }, ...playlistMemo.list,
+    ]
+    chrome.storage.local.set({ [PLAYLISTS_KEY]: playlistMemo.list })
+  }
+  return data
+}
+
 async function removeFromPlaylist(playlistId, videoId) {
   const res = await api(`/api/playlists/${playlistId}/items/${videoId}`, {
     method: 'DELETE',
@@ -354,6 +379,7 @@ const HANDLERS = {
   'saved-ids': async (msg) => ({ ids: await savedIds(msg.force) }),
   'playlists': async (msg) => ({ playlists: await playlists(msg.force) }),
   'playlists-containing': async (msg) => ({ ids: await playlistsContaining(msg.videoId) }),
+  'playlist-create': (msg) => createPlaylist(msg.name),
   'playlist-add': (msg) => addToPlaylist(msg.playlistId, msg.videoId),
   'playlist-remove': (msg) => removeFromPlaylist(msg.playlistId, msg.videoId),
   'channel-ids': async (msg) => ({ ids: await channelIds(msg.force) }),

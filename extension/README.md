@@ -42,13 +42,13 @@ The third opens a menu of the app's playlists — see below.
 
 ### Save to a playlist
 
-The third button lists your playlists and puts this video in one, without
-leaving the page. A tick beside a name means it's already there,
+The third button lists your playlists and puts this video in one — or in a new
+one — without leaving the page. A tick beside a name means it's already there,
 and clicking it again takes it back out; the button on the thumbnail wears the
 tick too, once it's been told.
 
-Two things here are unlike the pair above, and both follow from it being a
-*menu* rather than a button.
+Three things here work unlike the pair above, and all three follow from it
+being a *menu* rather than a button.
 
 **It asks two questions, and only one of them is cached.** The names and counts
 come from the same one-minute cache the Watch Later list uses, so the menu draws
@@ -64,6 +64,25 @@ If that question fails, the menu says so instead of showing itself. The names
 survive the app being closed — they're in `chrome.storage.local` — so drawing
 them with every tick blank would be a claim the extension is in no position to
 make.
+
+**New playlist is here too**, at the bottom of the menu, pinned under the
+scrolling list so a long one doesn't hide it. It makes the playlist and then
+puts the video in it — two requests, because that's what the API offers and what
+the app's own save-to menu does. If the first works and the second doesn't, the
+playlist is *kept*: it's yours now, it's named, and deleting it would throw away
+the half that worked. The menu shows it, empty, and says the save didn't land.
+
+Opening the name field makes the panel taller, which is why the rows are what
+scroll and the panel's height is *measured* rather than fixed: a capped panel
+draws the form outside its own rounded background, and an assumed height grows
+the Create button off the bottom of the window.
+
+The name field swallows every keystroke it sees (`stopPropagation` on keydown,
+keyup and keypress). It's an input sitting on youtube.com, and youtube.com binds
+bare letters to the player — k, m, f, / and the space bar are all shortcuts
+there, so typing a playlist name would otherwise pause a video and open the
+search box halfway through the word. Enter creates; Escape backs out of the
+name field rather than closing the menu, which falls out of the same rule.
 
 **The buttons freeze while it's open.** They otherwise follow the pointer from
 card to card, and the menu sits *over* the cards next to the one it belongs to —

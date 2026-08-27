@@ -164,12 +164,7 @@ style.textContent = `
     top: 0;
     left: 48px;
     width: 240px;
-    /* Border-box, so the number here is the height the placement maths below
-       assumes — with the default box model the padding would make it 12px
-       taller than MENU_MAX_HEIGHT and the bottom clamp would be wrong. */
     box-sizing: border-box;
-    max-height: 264px;
-    overflow-y: auto;
     padding: 6px 0;
     border-radius: 12px;
     background: #212121;
@@ -201,6 +196,11 @@ style.textContent = `
     background: none;
     text-align: left;
   }
+  /* The rows are the only bounded part: they scroll, so New playlist stays put
+     under a long list rather than being something you scroll down to reach, and
+     the panel is left free to grow when the foot becomes a form — one capped at
+     264px would draw that form outside its own rounded background. */
+  .rows { max-height: 172px; overflow-y: auto }
   .row:hover { background: rgba(255, 255, 255, 0.1) }
   .row:disabled { opacity: 0.5 }
   .row svg { width: 20px; height: 20px }
@@ -215,6 +215,42 @@ style.textContent = `
   /* Loading, empty, and the one that matters — a save that didn't land. */
   .note { padding: 8px 16px; font-size: 13px; color: #888 }
   .note.bad { color: #f28b82 }
+  .foot {
+    display: none;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .foot.on { display: block }
+  .naming { display: flex; flex-direction: column; gap: 8px; padding: 8px 16px }
+  .naming input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    background: #121212;
+    color: #f1f1f1;
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+  }
+  .naming input:focus { border-color: #3ea6ff }
+  .naming .buttons { display: flex; justify-content: flex-end; gap: 8px }
+  /* Text buttons, so they need the circle above undone the way .row does. */
+  .naming button {
+    width: auto;
+    height: auto;
+    padding: 4px 12px;
+    border-radius: 16px;
+    background: none;
+    color: #aaa;
+    font-size: 14px;
+  }
+  .naming button:hover { background: rgba(255, 255, 255, 0.1); color: #fff }
+  .naming button.go { background: #fff; color: #0f0f0f; font-weight: 500 }
+  .naming button.go:hover { background: #d9d9d9 }
+  .naming button.go:disabled { opacity: 0.4; background: #fff; color: #0f0f0f }
 `
 
 /** An icon-only button, like the ones it's modelled on: the tooltip names it. */
@@ -268,6 +304,19 @@ function tickIcon() {
   el.append(svg('path', {
     d: 'M5 12.5l4.5 4.5L19 7.5', stroke: 'currentColor', 'stroke-width': 2.5,
     'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+  }))
+  return el
+}
+
+// A plus, worn by two things a long way apart: New playlist in the menu below,
+// and the channel-page pill at the bottom of this file. It lived down there
+// until the menu wanted one too, and a second copy under another name would
+// have been two drawings of the same idea.
+function plusIcon() {
+  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
+  el.append(svg('path', {
+    d: 'M12 6v12M6 12h12', stroke: 'currentColor', 'stroke-width': 2,
+    'stroke-linecap': 'round',
   }))
   return el
 }
@@ -336,9 +385,15 @@ const menuHead = document.createElement('div')
 menuHead.className = 'head'
 menuHead.textContent = 'Save to playlist'
 const menuRows = document.createElement('div')
+menuRows.className = 'rows'
 const menuNote = document.createElement('div')
 menuNote.className = 'note'
-menu.append(menuHead, menuRows, menuNote)
+// New playlist: hidden until the app has answered, because it's the one control
+// here that can't be drawn from a cache — it needs a reachable app to mean
+// anything, and the failed states already say why the menu is empty.
+const menuFoot = document.createElement('div')
+menuFoot.className = 'foot'
+menu.append(menuHead, menuRows, menuNote, menuFoot)
 
 root.append(style, stack, menu)
 
@@ -421,15 +476,18 @@ function place() {
  * 8px gap between them, which is YouTube's own inset reused a third time. */
 const MENU_GAP = 48
 const MENU_WIDTH = 240
-const MENU_MAX_HEIGHT = 264
+/* What a full menu measures, used until there is a real one to measure. */
+const MENU_HEIGHT_GUESS = 264
 
 /**
  * Put the menu beside the buttons, on whichever side of them it fits.
  *
  * The host is the 40px column, so left/right and a negative top are the whole
- * geometry — no measuring of the menu itself, which would force a layout on
- * every scroll frame and would be measuring a node that hasn't been filled in
- * yet on the first call.
+ * geometry. The height is measured rather than assumed, because it isn't
+ * constant: the foot becomes a name field, and a menu that grew downwards off
+ * the bottom of the window would put the Create button somewhere you can't
+ * reach. `offsetHeight` on a 240px panel is a cheap read, and it falls back to
+ * the guess on the first call, before there's anything laid out to measure.
  */
 function positionMenu(box) {
   const left = box.left + INSET
@@ -437,8 +495,14 @@ function positionMenu(box) {
   menu.classList.toggle('flip', left + MENU_GAP + MENU_WIDTH > innerWidth)
   // Pull it up by however much it would otherwise hang off the bottom — zero
   // for most of the page — but never past the top of the window.
-  const over = top + MENU_MAX_HEIGHT + INSET - innerHeight
+  const height = menu.offsetHeight || MENU_HEIGHT_GUESS
+  const over = top + height + INSET - innerHeight
   menu.style.top = `${Math.max(INSET - top, Math.min(0, -over))}px`
+}
+
+/** Re-run the placement after the menu changes size. */
+function reposition() {
+  if (anchored?.isConnected) positionMenu(anchored.getBoundingClientRect())
 }
 
 function hide() {
@@ -609,6 +673,124 @@ function makeRow(playlist, id, member) {
   return row
 }
 
+/*
+ * New playlist: the button, and the little form it becomes.
+ *
+ * Rebuilt on each state change rather than kept as two hidden halves — the
+ * input has to be focused when it appears and empty when it comes back, and
+ * building it fresh is both of those for free.
+ */
+function drawFoot(id) {
+  menuFoot.replaceChildren(newPlaylistButton(id))
+  reposition()
+}
+
+function newPlaylistButton(id) {
+  const el = document.createElement('button')
+  el.type = 'button'
+  el.className = 'row'
+  el.title = 'New playlist'
+  const text = document.createElement('div')
+  text.className = 'text'
+  const name = document.createElement('div')
+  name.className = 'name'
+  name.textContent = 'New playlist'
+  text.append(name)
+  el.append(plusIcon(), text)
+  el.addEventListener('click', (e) => {
+    e.stopPropagation()
+    drawNaming(id)
+  })
+  return el
+}
+
+function drawNaming(id) {
+  const box = document.createElement('div')
+  box.className = 'naming'
+
+  const input = document.createElement('input')
+  input.type = 'text'
+  input.placeholder = 'Playlist name'
+  input.setAttribute('aria-label', 'Playlist name')
+
+  const buttons = document.createElement('div')
+  buttons.className = 'buttons'
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.textContent = 'Cancel'
+  const create = document.createElement('button')
+  create.type = 'button'
+  create.className = 'go'
+  create.textContent = 'Create'
+  create.disabled = true
+  buttons.append(cancel, create)
+  box.append(input, buttons)
+
+  input.addEventListener('input', () => { create.disabled = !input.value.trim() })
+
+  /*
+   * Every key stops here. This is an input sitting on youtube.com, and
+   * youtube.com binds bare letters to the player — k, m, f, / and the space bar
+   * are all shortcuts there. Typing a playlist name would otherwise pause a
+   * video and open the search box halfway through the word.
+   */
+  for (const kind of ['keydown', 'keyup', 'keypress']) {
+    box.addEventListener(kind, (e) => e.stopPropagation())
+  }
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') createAndAdd(id, input.value, create)
+    // Escape backs out of naming rather than closing the menu — the document
+    // handler that would have closed it never sees this, see above.
+    if (e.key === 'Escape') drawFoot(id)
+  })
+  cancel.addEventListener('click', (e) => { e.stopPropagation(); drawFoot(id) })
+  create.addEventListener('click', (e) => {
+    e.stopPropagation()
+    createAndAdd(id, input.value, create)
+  })
+
+  menuFoot.replaceChildren(box)
+  // Taller than the button it replaced, so a menu near the bottom of the window
+  // has to move up to keep Create on screen.
+  reposition()
+  input.focus()
+}
+
+/*
+ * Make the playlist, then put the video in it — two requests, because that's
+ * what the app's own save-to menu does and what the API offers. A playlist that
+ * gets made and then fails to take the video is left behind on purpose: it's
+ * yours now, it's named, and deleting it would throw away the half that worked.
+ */
+async function createAndAdd(id, rawName, button) {
+  const name = rawName.trim()
+  if (!name || button.disabled) return
+  button.disabled = true
+
+  const made = await ask({ type: 'playlist-create', name })
+  if (!made?.ok || !made.id) {
+    drawFoot(id)
+    return note(`Couldn't make it — is the app running?`, true)
+  }
+
+  const added = await ask({ type: 'playlist-add', playlistId: made.id, videoId: id })
+  drawFoot(id)
+  if (!(added?.ok && added.saved)) {
+    // The playlist exists, so show it — empty, and truthfully so.
+    menuRows.prepend(makeRow({ id: made.id, name: made.name, item_count: 0 }, id, false))
+    return note(`Made it, but couldn't save — is the app running?`, true)
+  }
+
+  note('')
+  // Newest first, matching the order the app lists them in. One video, because
+  // the save above is what just went into it.
+  menuRows.prepend(makeRow({ id: made.id, name: made.name, item_count: 1 }, id, true))
+  const held = inPlaylists.get(id) ?? new Set()
+  held.add(made.id)
+  inPlaylists.set(id, held)
+  resetPlaylist(id)
+}
+
 function closeMenu() {
   menuFor = null
   menu.classList.remove('open')
@@ -626,8 +808,9 @@ async function openMenu(id) {
   menuFor = id
   menu.classList.add('open')
   menuRows.replaceChildren()
+  menuFoot.classList.remove('on')
   note('Loading…')
-  if (anchored?.isConnected) positionMenu(anchored.getBoundingClientRect())
+  reposition()
 
   const [listed, holding] = await Promise.all([
     ask({ type: 'playlists' }),
@@ -645,12 +828,15 @@ async function openMenu(id) {
   inPlaylists.set(id, member)
   resetPlaylist(id)
 
+  drawFoot(id)
+  menuFoot.classList.add('on')
+
   const list = listed?.ok ? listed.playlists : []
-  if (!list.length) return note('No playlists yet — make one in the app.')
+  if (!list.length) return note('No playlists yet.')
 
   note('')
   for (const playlist of list) menuRows.append(makeRow(playlist, id, member.has(playlist.id)))
-  if (anchored?.isConnected) positionMenu(anchored.getBoundingClientRect())
+  reposition()
 }
 
 playlistButton.addEventListener('click', (e) => {
@@ -1071,15 +1257,6 @@ const channelRoot = channelHost.attachShadow({ mode: 'open' })
 // place — a row of YouTube's own action buttons — and a second set of numbers
 // would only be a second thing to keep in step.
 channelRoot.append(barStyle.cloneNode(true))
-
-function plusIcon() {
-  const el = svg('svg', { viewBox: '0 0 24 24', fill: 'none', 'aria-hidden': 'true' })
-  el.append(svg('path', {
-    d: 'M12 6v12M6 12h12', stroke: 'currentColor', 'stroke-width': 2,
-    'stroke-linecap': 'round',
-  }))
-  return el
-}
 
 const addPill = makeButton('Add this channel to YT Feed', plusIcon())
 const addBar = document.createElement('div')

@@ -66,8 +66,8 @@ real video (muted, with custom captions and scrubbing).
   exactly like the home feed (watch, download, playlist, watch later)
 - **Open from YouTube** — with the extension installed, hovering any thumbnail on
   youtube.com puts three buttons on its corner: open that video here instead,
-  save it straight to Watch Later, or drop it into one of your playlists —
-  without leaving the page. Already-saved videos show a tick before you click. Whatever you send
+  save it straight to Watch Later, or drop it into one of your playlists (or a
+  new one, named on the spot) — without leaving the page. Already-saved videos show a tick before you click. Whatever you send
   over gets its title, channel and stats resolved on arrival, and stays off the
   Imported page — that page is what you chose to keep
 - **Watch history from YouTube** — the extension also reports what you watch *on*
