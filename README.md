@@ -28,7 +28,9 @@ real video (muted, with custom captions and scrubbing).
   position and font size the embed's own captions would never give you
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click the tick to jump back); `[` and `]` set a loop's ends and `\` clears it,
-  so a passage replays until you're done with it. Both show on the progress bar —
+  so a passage replays until you're done with it. **One end is enough**: `[` alone
+  repeats from there to the end of the video, `]` alone from the start up to
+  there. Both show on the progress bar —
   a bookmark as a tick in the track, the loop as the bar itself: its ends notch
   the track and everything outside the loop dims back. Both also have a **button
   in the control bar**: the loop's takes one press per stage (set the start, set

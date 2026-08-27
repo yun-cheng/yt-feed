@@ -627,6 +627,23 @@ Other details:
     the same three actions the key handler calls, so the two ways of asking can't
     drift apart. They sit next to the caption button in both placements: in our
     row when we own the bar, floating over YouTube's chrome when we don't.
+  - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
+    of the video and an unpinned B means the end of it, which is what each key
+    reads as on its own: `[` is "repeat from here", `]` is "repeat up to here".
+    Requiring both made the first press a keystroke that visibly did nothing.
+    The ends are resolved against the length the player reports **at each tick**,
+    not once when the loop was pinned — the embed doesn't know the duration for a
+    moment after it's handed a video, and until it does, a loop with no B simply
+    doesn't run (`duration` of 0 is "ask me again", not a video of no length).
+    Two consequences worth knowing: the tick also takes the player **ending** as
+    reaching B, since a player can stop a hair short of the duration it reported
+    and then nothing ever passes it; and the bar dims for a one-ended loop like
+    any other, with one of the two veils coming out zero-width.
+  - **`looping` and `loopStage` are different questions**, and the button asks
+    both. `looping` is whether the video is actually repeating — true with one
+    end pinned. `loopStage` is what the *next* press does. A one-ended loop is
+    ordinarily both at once: running, and still offering to pin the other end, so
+    the button carries the underline and the A/B badge together.
   - **The loop is one button walking three stages** (`loopStage`: idle → arming →
     running): pin one end, pin the other, clear. A press has one obvious next
     thing to do at each stage, and the stage shows on the button — armed, a small

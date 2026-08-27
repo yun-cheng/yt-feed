@@ -1697,7 +1697,9 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
             : marks.loopStage === 'arming' ? `Repeat A–B: set the ${marks.loop.a === null ? 'start ([' : 'end (]'})`
               : 'Stop repeating (\\)'
         }
-        aria-pressed={marks.loopStage === 'running'}
+        // Whether it's repeating, not how far along the pinning is: one end
+        // pinned already repeats, from the start of the video or to the end.
+        aria-pressed={marks.looping}
       >
         {!ownBar && (
           <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
@@ -1707,15 +1709,16 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
         </svg>
         {/* Armed, it says which end the next press pins — the one thing the
             stage alone can't tell you, and otherwise only a tooltip would.
-            Running, it takes the caption button's underline instead. Both in
-            white: the loop wears no colour of its own anywhere, on the bar or
-            here. */}
+            Repeating, it takes the caption button's underline. Both at once is
+            the ordinary state of a one-ended loop: it runs, and the next press
+            still pins the other end. Both in white: the loop wears no colour of
+            its own anywhere, on the bar or here. */}
         {marks.loopStage === 'arming' && (
           <span className={`pointer-events-none absolute text-[10px] font-bold leading-none ${ownBar ? 'bottom-[3px] right-[7px]' : 'bottom-[5px] right-[5px]'}`}>
             {marks.loop.a === null ? 'A' : 'B'}
           </span>
         )}
-        {marks.loopStage === 'running' && (
+        {marks.looping && (
           <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[5px]' : 'bottom-[7px]'}`} />
         )}
       </button>

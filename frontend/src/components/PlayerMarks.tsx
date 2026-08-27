@@ -16,7 +16,8 @@
  * anywhere else makes you translate a timestamp back into a place in the video.
  * Bookmarks wear one colour everywhere they appear — the tick, the button that
  * made it, the line confirming the press — so those read as one thing. The loop
- * wears none: it restyles the bar rather than marking it (see below).
+ * wears none: it restyles the bar rather than marking it (see below), which is
+ * what lets it run to an end nobody pinned without drawing anything new.
  * Over a file we play ourselves that's literally the bar (see LocalControls);
  * over the embed the bar lives inside the iframe, out of reach, so the rail is
  * laid over it at the same offset the embed draws its own scrubber at.
@@ -86,8 +87,25 @@ const FLASH_MS = 1600
 // cross a mark, and it's a boolean, so the poll costs a render only then.
 const MARK_HERE_TICK_MS = 500
 
-export function loopActive(loop: Loop): boolean {
-  return loop.a !== null && loop.b !== null && loop.b - loop.a >= MIN_LOOP_SEC
+/** Where the loop actually runs from and to, or null if it can't run.
+ *
+ *  One end is enough. An unpinned A means the start of the video and an unpinned
+ *  B means the end of it, which is what the two keys read as on their own: `[`
+ *  alone is "repeat from here", `]` alone is "repeat up to here". Pressing one
+ *  and then having to press the other before anything happened made the first
+ *  press a keystroke that visibly did nothing.
+ *
+ *  `duration` is what an unpinned B resolves to, so a player that doesn't know
+ *  the length yet reports 0 and the loop simply doesn't run until it does. */
+export function loopBounds(loop: Loop, duration: number): { a: number; b: number } | null {
+  if (loop.a === null && loop.b === null) return null
+  const a = loop.a ?? 0
+  const b = loop.b ?? duration
+  return b - a >= MIN_LOOP_SEC ? { a, b } : null
+}
+
+export function loopActive(loop: Loop, duration: number): boolean {
+  return loopBounds(loop, duration) !== null
 }
 
 /** Bookmarks + A–B repeat for one video, wired to the keyboard.
@@ -121,11 +139,17 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   // whether the bar's button adds one or clears the one that's there. The
   // position moves on its own, so this has to be watched rather than derived.
   const [markHere, setMarkHere] = useState(false)
+  // And how long the video is, which is where a loop with no B pinned ends. The
+  // player learns it a beat after it's handed a video, and it rides along on
+  // this tick rather than bringing a timer of its own — both are questions only
+  // the player can answer, and both are cheap to ask.
+  const [duration, setDuration] = useState(0)
   useEffect(() => {
     const id = window.setInterval(() => {
       const p = playerRef.current
       const at = p?.getCurrentTime() ?? 0
       setMarkHere(Boolean(p) && bookmarksRef.current.some((b) => Math.abs(b.position_seconds - at) <= TOGGLE_TOLERANCE_SEC))
+      setDuration(p?.getDuration() ?? 0)
     }, MARK_HERE_TICK_MS)
     return () => window.clearInterval(id)
   }, [playerRef])
@@ -135,8 +159,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     setLoop({ a: null, b: null })  // a loop is about this sitting, not the video
     // Cleared with the marks rather than left to the next poll: half a second of
     // a button offering to clear a bookmark the new video hasn't got is half a
-    // second of it lying.
+    // second of it lying. The duration goes the same way — the old video's
+    // length is the wrong end for a loop on the new one.
     setMarkHere(false)
+    setDuration(0)
     let cancelled = false
     apiFetch(`/api/bookmarks/${videoId}`, { quiet: true })
       .then((r) => r.json())
@@ -198,25 +224,37 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   }, [addBookmark, removeBookmark, showFlash])
 
   /** Pin one end of the loop here. Either end can be set first and either can be
-   *  moved afterwards; the loop simply stays inactive until the pair makes sense
-   *  (see loopActive), so neither key is ever a keypress that does nothing. */
+   *  moved afterwards, and one end on its own already repeats — from the start
+   *  of the video, or to the end of it (see loopBounds). */
   const setLoopEnd = useCallback((end: 'a' | 'b', at: number) => {
     setLoop((cur) => ({ ...cur, [end]: at }))
+    // Read ahead of the poll, for the same reason markHere is: `[` on its own
+    // starts a loop running to the end of the video, and a button that waits
+    // half a second to say so reads as a press that didn't take.
+    const p = playerRef.current
+    if (p) setDuration(p.getDuration())
     showFlash('loop', `Loop ${end.toUpperCase()} · ${formatTime(at)}`)
-  }, [showFlash])
+  }, [playerRef, showFlash])
 
   // Send the play head back to A each time it reaches B. Runs on its own timer
   // rather than the caption tick, which only exists while captions are on.
   useEffect(() => {
-    const { a, b } = loop
-    if (!loopActive(loop) || a === null || b === null) return
+    if (loop.a === null && loop.b === null) return
     const id = window.setInterval(() => {
       const p = playerRef.current
       if (!p) return
-      if (p.getCurrentTime() < b) return
-      p.seekTo(a, true)
-      // A loop ending at the very end of the video hits B as the video ENDS, and
-      // seeking a finished player leaves it paused at A. Nudge it back to play.
+      // Resolved here, against the length the player reports NOW: an unpinned B
+      // is the end of the video, and the player often doesn't know where that is
+      // until a moment after the loop was pinned.
+      const ends = loopBounds(loop, p.getDuration())
+      if (!ends) return
+      // A loop running to the end of the video is reached by the video ENDING as
+      // much as by passing a timestamp — the player can stop a hair short of the
+      // duration it reported, and then nothing ever passes B.
+      const ended = p.getPlayerState() === 0
+      if (p.getCurrentTime() < ends.b && !ended) return
+      p.seekTo(ends.a, true)
+      // Seeking a finished player leaves it paused at A. Nudge it back to play.
       if (p.getPlayerState() !== 1) p.playVideo()
     }, LOOP_TICK_MS)
     return () => window.clearInterval(id)
@@ -250,11 +288,18 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     return () => window.removeEventListener('keydown', onKey)
   }, [playerRef, toggleBookmarkAt, setLoopEnd, clearLoop])
 
-  // How far along the loop is, for anything drawing a button for it: nothing
-  // pinned, one end pinned, or running. Named here rather than re-derived by
-  // each caller, so the button and cycleLoop below can never disagree about
-  // which press does what.
-  const loopStage: LoopStage = loopActive(loop) ? 'running' : (loop.a !== null || loop.b !== null) ? 'arming' : 'idle'
+  // Two questions, and the loop button asks both.
+  //
+  // `looping` is whether the video is actually repeating. One end pinned is
+  // enough for that, so it isn't the same as how far along the pinning is.
+  //
+  // `loopStage` is what the NEXT press does: pin one end, pin the other, clear.
+  // Named here rather than re-derived by each caller, so the button and
+  // cycleLoop below can never disagree about which press does what.
+  const looping = loopActive(loop, duration)
+  const loopStage: LoopStage = loop.a !== null && loop.b !== null && looping
+    ? 'running'
+    : (loop.a !== null || loop.b !== null) ? 'arming' : 'idle'
 
   /** The whole A–B loop from one button: set an end, set the other, clear.
    *
@@ -265,7 +310,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     const p = playerRef.current
     if (!p) return
     const cur = loopRef.current
-    if (loopActive(cur)) clearLoop()
+    // Both ends pinned and repeating is the end of the cycle. Both pinned but
+    // NOT repeating — B before A, or a hair after it — is a wrong end rather
+    // than a finished loop, and the press moves B instead of clearing.
+    if (cur.a !== null && cur.b !== null && loopActive(cur, p.getDuration())) clearLoop()
     else setLoopEnd(cur.a === null ? 'a' : 'b', p.getCurrentTime())
   }, [playerRef, clearLoop, setLoopEnd])
 
@@ -278,7 +326,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     if (p) toggleBookmarkAt(p.getCurrentTime())
   }, [playerRef, toggleBookmarkAt])
 
-  return { bookmarks, loop, loopStage, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop }
+  return { bookmarks, loop, loopStage, looping, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop }
 }
 
 /** The marks themselves, positioned along a time axis. Absolutely positioned, so
@@ -311,6 +359,10 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
   if (!duration) return null
   const pct = (t: number) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`
   const showLoop = loop.a !== null || loop.b !== null
+  // Where the repeat actually runs from and to — which, with one end pinned, is
+  // wider than what was pinned: the dim runs to the start or the end of the bar
+  // and one of the two veils comes out zero-width.
+  const bounds = loopBounds(loop, duration)
   // A tick is narrower than anything is comfortable to aim at, so each sits in a
   // wider invisible hit area. `stopPropagation` on the press keeps our own
   // control bar from also treating it as a scrub — it sits inside that bar's
@@ -342,23 +394,24 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
     <>
       {/* Outside the loop, dimmed — the loop is the part of the bar still at full
           strength. Only once it's really running: a dim covering the rest of the
-          video would claim something repeats when nothing does.
+          video would claim something repeats when nothing does. With one end
+          pinned it IS running, so half the bar dims and the other veil is empty.
 
           It veils the fill along with the track, which is the point — the played
           portion outside the loop is exactly the part you're no longer watching.
           The thumb is drawn after this, so the play head stays bright wherever
           it is, and so do any bookmarks: those aren't the loop's business. */}
-      {loopActive(loop) && (
+      {bounds && (
         <>
           <div
             data-testid="loop-dim"
             className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-full ${LOOP_DIM}`}
-            style={{ width: pct(loop.a!) }}
+            style={{ width: pct(bounds.a) }}
           />
           <div
             data-testid="loop-dim"
             className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-full ${LOOP_DIM}`}
-            style={{ left: pct(loop.b!) }}
+            style={{ left: pct(bounds.b) }}
           />
         </>
       )}

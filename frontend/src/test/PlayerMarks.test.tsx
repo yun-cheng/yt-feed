@@ -9,6 +9,7 @@ import {
   MarkTrack,
   MarksFlash,
   loopActive,
+  loopBounds,
   usePlayerMarks,
 } from '../components/PlayerMarks'
 import type { Bookmark, Loop } from '../components/PlayerMarks'
@@ -34,32 +35,50 @@ function fakePlayer(over: Partial<PlayerApi> = {}) {
   return p
 }
 
-// ── loopActive ───────────────────────────────────────────────────────
+// ── loopBounds ───────────────────────────────────────────────────────
 
-describe('loopActive', () => {
-  it('needs both ends', () => {
-    expect(loopActive({ a: null, b: null })).toBe(false)
-    expect(loopActive({ a: 10, b: null })).toBe(false)
-    expect(loopActive({ a: null, b: 20 })).toBe(false)
+const LEN = 120
+
+describe('loopBounds', () => {
+  it('needs at least one end', () => {
+    expect(loopBounds({ a: null, b: null }, LEN)).toBeNull()
+    expect(loopActive({ a: null, b: null }, LEN)).toBe(false)
   })
 
-  it('is active once the ends make sense', () => {
-    expect(loopActive({ a: 10, b: 20 })).toBe(true)
+  it('runs between the ends once both are pinned', () => {
+    expect(loopBounds({ a: 10, b: 20 }, LEN)).toEqual({ a: 10, b: 20 })
+  })
+
+  it('an unpinned A is the start of the video', () => {
+    // `]` on its own reads as "repeat up to here", and does.
+    expect(loopBounds({ a: null, b: 20 }, LEN)).toEqual({ a: 0, b: 20 })
+  })
+
+  it('an unpinned B is the end of it', () => {
+    // And `[` on its own as "repeat from here".
+    expect(loopBounds({ a: 10, b: null }, LEN)).toEqual({ a: 10, b: LEN })
+  })
+
+  it('waits for a player that does not know the length yet', () => {
+    // A duration of 0 is "ask me again", not a video of no length.
+    expect(loopBounds({ a: 10, b: null }, 0)).toBeNull()
   })
 
   it('rejects a loop too short to be one', () => {
     // Without the floor, a stray `]` right after `[` pins the video to a frame.
-    expect(loopActive({ a: 10, b: 10.2 })).toBe(false)
-    expect(loopActive({ a: 10, b: 10.5 })).toBe(true)
+    expect(loopBounds({ a: 10, b: 10.2 }, LEN)).toBeNull()
+    expect(loopBounds({ a: 10, b: 10.5 }, LEN)).toEqual({ a: 10, b: 10.5 })
+    // Which covers `[` pressed in the last half-second, too.
+    expect(loopBounds({ a: LEN - 0.2, b: null }, LEN)).toBeNull()
   })
 
   it('rejects a backwards loop', () => {
-    expect(loopActive({ a: 20, b: 10 })).toBe(false)
+    expect(loopBounds({ a: 20, b: 10 }, LEN)).toBeNull()
   })
 
   it('accepts a loop that starts at zero', () => {
     // `a: 0` is falsy — a truthiness check here would silently disable it.
-    expect(loopActive({ a: 0, b: 10 })).toBe(true)
+    expect(loopBounds({ a: 0, b: 10 }, LEN)).toEqual({ a: 0, b: 10 })
   })
 })
 
@@ -67,12 +86,13 @@ describe('loopActive', () => {
 
 function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: string }) {
   const ref = useRef<PlayerApi | null>(player)
-  const { bookmarks, loop, loopStage, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop } = usePlayerMarks(videoId, ref)
+  const { bookmarks, loop, loopStage, looping, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop } = usePlayerMarks(videoId, ref)
   return (
     <div>
       <div data-testid="marks">{bookmarks.map((b) => b.position_seconds).join(',')}</div>
       <div data-testid="loop">{`${loop.a ?? '-'}/${loop.b ?? '-'}`}</div>
       <div data-testid="stage">{loopStage}</div>
+      <div data-testid="looping">{looping ? 'yes' : 'no'}</div>
       <div data-testid="here">{markHere ? 'yes' : 'no'}</div>
       <div data-testid="flash">{flash?.text ?? ''}</div>
       {/* The control bar's buttons, standing in for the real ones: what they
@@ -312,6 +332,49 @@ describe('usePlayerMarks — A–B repeat', () => {
     expect(screen.getByTestId('flash')).toHaveTextContent('Loop B · 1:05')
   })
 
+  it('repeats from A to the end of the video', async () => {
+    // `[` on its own reads as "repeat from here", and a press that does nothing
+    // until you make a second one is a press you stop making.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    expect(screen.getByTestId('looping')).toHaveTextContent('yes')
+  })
+
+  it('repeats from the start of it to B', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(20) }); act(() => key(']'))
+    expect(screen.getByTestId('looping')).toHaveTextContent('yes')
+  })
+
+  it('says so the moment the end is pinned, not at the next poll', async () => {
+    // The duration is polled, but it's read straight off the player here: half a
+    // second of a button not admitting it started reads as a dropped press.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    expect(screen.getByTestId('looping')).toHaveTextContent('yes')
+  })
+
+  it('and still asks the button for the other end', async () => {
+    // Repeating and half-pinned at once is the ordinary state of a one-ended
+    // loop: the badge says which end the next press takes.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    expect(screen.getByTestId('stage')).toHaveTextContent('arming')
+    expect(screen.getByTestId('looping')).toHaveTextContent('yes')
+  })
+
+  it('is not repeating once the loop is cleared', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => key('\\'))
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+  })
+
   it('a loop is about this sitting, so it does not follow the video', async () => {
     const p = fakePlayer()
     const { rerender } = await renderMarks(p, 'vid1')
@@ -501,8 +564,41 @@ describe('usePlayerMarks — the loop tick', () => {
     expect(p.playVideo).not.toHaveBeenCalled()
   })
 
-  it('does not run for a half-set loop', async () => {
+  it('runs to the end of the video when only A is pinned', async () => {
+    const p = fakePlayer()  // 600s long
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(500) })
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(p.seekTo).not.toHaveBeenCalled()  // 500 is not the end yet
+    act(() => { p._set(600) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(p.seekTo).toHaveBeenCalledWith(10, true)
+  })
+
+  it('runs from the start of it when only B is pinned', async () => {
     const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(20) }); act(() => key(']'))
+    act(() => { p._set(20.1) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(p.seekTo).toHaveBeenCalledWith(0, true)
+  })
+
+  it('takes a video ending as reaching the end it was told to loop to', async () => {
+    // The player can stop a hair short of the duration it reported, and then
+    // nothing ever passes B.
+    const p = fakePlayer({ getPlayerState: () => 0 })
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(599.8) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(p.seekTo).toHaveBeenCalledWith(10, true)
+    expect(p.playVideo).toHaveBeenCalled()
+  })
+
+  it('does not run before the player knows how long the video is', async () => {
+    const p = fakePlayer({ getDuration: () => 0 })
     await renderMarks(p)
     act(() => { p._set(10) }); act(() => key('['))
     act(() => { p._set(500) })
@@ -712,12 +808,29 @@ describe('MarkTrack', () => {
     }
   })
 
-  it('a half-set loop cuts the track but dims nothing', () => {
-    // Dimming the rest of the video would claim something is repeating when
-    // nothing is; the notch claims only that you pinned this moment.
+  it('dims up to A when that is the only end pinned', () => {
+    // A on its own repeats to the end of the video, so the bar says so: the
+    // stretch from A onwards is what stays at full strength.
     render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
-    expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
+    const [before, after] = screen.getAllByTestId('loop-dim')
+    expect(before).toHaveStyle({ width: '25%' })
+    expect(after).toHaveStyle({ left: '100%' })  // nothing left to dim
     expect(screen.getByLabelText('Loop start (A) at 0:30')).toBeInTheDocument()
+  })
+
+  it('and from B on when that is', () => {
+    render(<MarkTrack bookmarks={[]} loop={{ a: null, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    const [before, after] = screen.getAllByTestId('loop-dim')
+    expect(before).toHaveStyle({ width: '0%' })
+    expect(after).toHaveStyle({ left: '75%' })
+  })
+
+  it('dims nothing for a pinned end with nothing to repeat', () => {
+    // A in the last half-second leaves no stretch to run; the notch claims only
+    // that you pinned this moment.
+    render(<MarkTrack bookmarks={[]} loop={{ a: 119.8, b: null }} duration={120} onSeek={vi.fn()} />)
+    expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
+    expect(screen.getByTestId('loop-edge')).toBeInTheDocument()
   })
 
   it('a loop end jumps to itself too', () => {
