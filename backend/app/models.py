@@ -531,6 +531,39 @@ class Bookmark(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class VideoLoop(Base):
+    """One passage of a video, kept to be repeated — a saved A–B loop.
+
+    Server-side for the same reason bookmarks are: a loop is a piece of work on
+    a passage — the bar of music, the sentence in the other language — and it
+    belongs to the video, not to the sitting or the browser that pinned it.
+
+    Many rows per video, like Bookmark and unlike WatchHistory: a video you are
+    working through has several passages in it, and the point is keeping them.
+    What a bookmark doesn't need and this does is `active`, because a loop is a
+    MODE rather than a point — several can be saved but only one can be running,
+    so the row also remembers which passage you were on.
+
+    Either end may be null. One end pinned already repeats — from the start of
+    the video, or to the end of it — so a half-set loop is a state worth keeping
+    rather than a half-finished one to discard.
+    """
+    __tablename__ = "video_loops"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
+    video_id = Column(String, nullable=False, index=True)
+    a_seconds = Column(Float, nullable=True)
+    b_seconds = Column(Float, nullable=True)
+    # At most one row per (user, video) carries this. Enforced by the router
+    # rather than by the schema: SQLite has no partial unique index worth the
+    # trouble here, and the invariant only has to hold at the one place that
+    # writes it.
+    active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class ChatMessage(Base):
     """One turn of the Ask conversation about a video.
 

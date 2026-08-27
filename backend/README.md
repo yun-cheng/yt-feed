@@ -620,8 +620,35 @@ instead of asking — and it's the only way to remove one, since the marks live 
 the progress bar rather than in a list with delete buttons. Delete is `/api/bookmarks/id/{n}` — the `/id/` segment keeps
 it from reading as the video id that the GET takes in the same slot.
 
-The A–B repeat loop has nothing here. It's about this sitting rather than the
-video, so it lives in frontend state and dies with the overlay.
+**Saved loops live here too** — `/api/bookmarks/{video_id}/loops`, rows in
+`video_loops`. They share the file because they share the key: one video id,
+marks on its timeline, drawn by the same page. A loop is work on a passage — the
+bar of music, the sentence in the other language — and that work is about the
+video, not about the sitting that pinned it, so coming back to the video comes
+back to it.
+
+Four things about the shape:
+
+- **Many per video**, like bookmarks and unlike watch history: a video you're
+  working through has several passages in it, and the point is keeping them.
+- **`active` is what a bookmark doesn't need.** A bookmark is a POINT, so marks
+  simply coexist; a loop is a MODE, so only one passage repeats at a time — and
+  which one is worth remembering, since that's the passage you were on. Setting
+  it on one row clears it on that video's others, enforced in `_deactivate_siblings`
+  rather than by a partial unique index SQLite would make a chore.
+- **Either end may be null**, and that's a state worth storing rather than a
+  half-finished one to reject: one end pinned already repeats — from the start of
+  the video, or to the end of it. Where "the end of it" is, is the *client's*
+  business: it has the player, and the player has the duration.
+- **Stopping and deleting are different verbs.** `PATCH {active: false}` stops
+  the repeat and keeps the passage — that's what `\` does — and `DELETE` is the
+  menu's ×. Deleting promotes nothing in its place: which passage runs next is
+  the page's call, and usually the answer is none.
+
+`PATCH` rather than `PUT` because moving an end and switching passages are
+independent edits: `[` on the running loop shouldn't have to restate that it's
+running, and picking one out of the menu shouldn't have to restate where its ends
+are. Only the fields sent are touched, so an explicit null still unpins an end.
 
 ---
 
@@ -1069,8 +1096,8 @@ land.
 The split is between a **fact about YouTube** and an **opinion of yours**.
 `channels`, `videos`, `imported_videos`, the caption caches and the quota ledger
 are catalog and stay global; `watch_history`, `watch_later`, `bookmarks`,
-`hidden_channels`, playlists, channel tags and app settings are personal and grow
-a `user_id` as they move across. `downloads`, `local_folders` and `local_videos`
+`video_loops`, `hidden_channels`, playlists, channel tags and app settings are
+personal and grow a `user_id` as they move across. `downloads`, `local_folders` and `local_videos`
 are this machine's disk and stay shared on purpose — the group is trusted, the
 files are in one place, and per-user isolation there would be ceremony with no
 reader.
@@ -1098,8 +1125,8 @@ subscription to one person and a hand-add to another.
 
 ### Every personal row has an owner
 
-`watch_history`, `watch_later`, `bookmarks`, `hidden_channels`, playlists and
-channel tags are keyed by `user_id` — so two people watching the same video hold
+`watch_history`, `watch_later`, `bookmarks`, `video_loops`, `hidden_channels`,
+playlists and channel tags are keyed by `user_id` — so two people watching the same video hold
 two rows, resume at two positions, and finish it independently. Tags are the
 case worth stating out loud: a tag is an *opinion* about a channel, so two
 people can file the same one differently and each sidebar is built from its
@@ -1426,7 +1453,8 @@ transaction, so a failure rolls back rather than leaving half a schema.
 | `channel_tag_rejections` | `(channel_id, tag_name)` | `(user_id, channel_id, tag_name)` |
 
 `bookmarks` and `playlists` have autoincrement ids, so they only need a column
-and are handled by the additive list in `database.py`. Every existing row is
+and are handled by the additive list in `database.py`. (`video_loops` was born
+with its `user_id` and needs nothing here — `create_all` makes it whole.) Every existing row is
 assigned to **user 1**.
 
 Two things ride along with it. Any `scope="user"` preference is moved out of
@@ -1473,6 +1501,7 @@ worker posts from a `youtube.com` page context and a cookie would need
 | `imported_videos` | metadata for videos the feed doesn't hold: ones added by URL, plus (under `source="youtube"`) ones opened via the extension's button. A shared cache — `user_imports` says whose page each appears on |
 | `watch_history` | how far **each user** got in each video, and whether they finished it |
 | `bookmarks` | moments one user marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
+| `video_loops` | the passages of a video one user marked to repeat — many per video, at most one `active`, either end nullable (one end pinned still repeats) |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
@@ -1678,6 +1707,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/history/by-id/{id}` | report a position for a video we're given nothing but the id of — what the extension posts while you watch on youtube.com. Metadata is resolved here |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
+| GET/POST | `/api/bookmarks/{video_id}/loops` | that video's saved passages, as `{id, a, b, active}`; POST marks a new one, which becomes the running one. `PATCH`/`DELETE .../loops/id/{n}` move an end or switch to it / drop it |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
 | GET | `/api/local/folders/{id}/videos` | that folder's videos (`?rescan=false` = cached listing, used by the scanning poll) |
 | DELETE | `/api/local/folders/{id}` | forget a folder — our rows and thumbnails only, never the files |
@@ -1713,7 +1743,7 @@ no per-test decorator). What's covered:
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |
 | `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, and reporting from an id alone: resolved once rather than every ten seconds, and one row shared with the app |
-| `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
+| `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup — and saved loops: several per video, only one active at a time, a half-set one kept as it is, stopping keeping the passage where deleting drops it |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete, adding by id alone (the extension's menu) |
 | `test_playlist_import.py` | the link that makes re-importing a re-sync, playlist order surviving the copy, add-only merge (a video pulled on YouTube stays in your copy), the owner-only guard, every shape `playlist_ref` accepts and rejects, looking up a playlist someone else owns, nothing written before YouTube answers (the write-lock deadlock), and the extension's path: no token, right owner, gaps filled without clobbering what the page already read |
