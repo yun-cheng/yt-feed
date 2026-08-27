@@ -8,7 +8,7 @@ import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
 import LocalControls, { localPlayer, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
-import { usePlayerMarks, EmbedMarkRail, MarksFlash } from './PlayerMarks'
+import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments from './Comments'
@@ -441,6 +441,9 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
   const [wordSegLangs, setWordSegLangs] = useState<Set<string>>(() => new Set())
   const [showCaptionMenu, setShowCaptionMenu] = useState(false)
   const captionMenuRef = useRef<HTMLDivElement>(null)
+  // The list of passages, opened from the loop button. Holds the chrome up the
+  // same way the caption menu does — see chromeUp.
+  const [showLoopMenu, setShowLoopMenu] = useState(false)
   // The transcript panel beside the video's details — closed until asked for,
   // since it's a long read most visits don't want.
   // The right-hand panel holds one of two things at a time. A single state
@@ -570,7 +573,7 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
   // be absurd for a button to fade out from under the menu it opened — and with
   // our own bar the menu goes with it, so the menu faded out from under the
   // pointer that was working it.
-  const chromeUp = chromeAwake || showCaptionMenu
+  const chromeUp = chromeAwake || showCaptionMenu || showLoopMenu
 
   // Whether the controls under the video are OURS — either because it's a file
   // we play ourselves, or because we turned YouTube's off. The caption button and
@@ -1680,12 +1683,14 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
             : <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />}
         </svg>
       </button>
+      <div className="relative">
       <button
-        onClick={marks.cycleLoop}
-        // One button, three presses: pin one end, pin the other, clear. A press
-        // has one obvious next thing to do at each stage and the stage shows on
-        // the button, which is worth more here than the keyboard's freedom to
-        // move either end at any time.
+        onClick={() => setShowLoopMenu((open) => !open)}
+        // Opens the list of passages. It used to cycle — pin one end, pin the
+        // other, clear — but once a video can hold several passages the question
+        // stopped being "what's the next step" and became "which one", and that
+        // has as many answers as you've marked. The cycle lives on in the
+        // keyboard, which is where it was always faster.
         // `relative` because the badge and underline below are positioned
         // against it, and BAR_BUTTON doesn't bring its own — without it they
         // resolve against the control bar instead and paint themselves across
@@ -1693,10 +1698,12 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
         // for the same reason; MARK_BUTTON_FLOAT has it built in.)
         className={`relative ${ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT}`}
         title={
-          marks.loopStage === 'idle' ? 'Repeat A–B: set the start ([)'
-            : marks.loopStage === 'arming' ? `Repeat A–B: set the ${marks.loop.a === null ? 'start ([' : 'end (]'})`
-              : 'Stop repeating (\\)'
+          marks.loopStage === 'idle' ? 'Repeat A–B ([)'
+            : marks.loopStage === 'arming' ? `Repeat A–B: the ${marks.loop.a === null ? 'start ([' : 'end (]'}) is still open`
+              : 'Repeat A–B (\\ stops it)'
         }
+        aria-haspopup="menu"
+        aria-expanded={showLoopMenu}
         // Whether it's repeating, not how far along the pinning is: one end
         // pinned already repeats, from the start of the video or to the end.
         aria-pressed={marks.looping}
@@ -1722,6 +1729,20 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
           <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[5px]' : 'bottom-[7px]'}`} />
         )}
       </button>
+      {showLoopMenu && (
+        <LoopMenu
+          loops={marks.loops}
+          duration={meta?.duration_seconds ?? 0}
+          stage={marks.loopStage}
+          onPin={marks.pinLoopEnd}
+          onUse={marks.useLoop}
+          onDrop={marks.dropLoop}
+          onStop={marks.clearLoop}
+          onNew={marks.newLoop}
+          onClose={() => setShowLoopMenu(false)}
+        />
+      )}
+      </div>
     </div>
   )
 
@@ -1829,12 +1850,13 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
             <LocalControls
               videoRef={videoRef}
               src={localSrc}
-              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu}
+              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu}
               onFullscreen={toggleFullscreen}
               leftControls={<>{captionControl}{marksControls}</>}
               extraControls={<>{youtubeButton}{pinButton}</>}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
+              others={marks.others}
             />
           </>
         ) : (
@@ -1905,6 +1927,7 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
             extraControls={<>{youtubeButton}{pinButton}</>}
             bookmarks={marks.bookmarks}
             loop={marks.loop}
+            others={marks.others}
           />
         ) : (
           <div
@@ -1921,6 +1944,7 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
             <EmbedMarkRail
               bookmarks={marks.bookmarks}
               loop={marks.loop}
+              others={marks.others}
               duration={meta?.duration_seconds ?? 0}
               onSeek={seekTo}
             />

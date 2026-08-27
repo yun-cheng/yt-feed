@@ -1,13 +1,17 @@
 /**
- * Marks on the play head: bookmarks and the A–B repeat loop.
+ * Marks on the play head: bookmarks, and the passages set to repeat.
  *
  * Both are driven from the keyboard while watching — `b` marks the moment,
- * `[` and `]` set the loop's ends, `\` clears it — so everything here hangs off
- * one window-level key handler, the same way the player's other shortcuts do.
- * The same actions come back out of the hook for the control bar's buttons: a
- * feature only a shortcut can reach is one you have to already know about.
+ * `[` and `]` set the ends of the passage that's repeating, `\` stops it — so
+ * everything here hangs off one window-level key handler, the same way the
+ * player's other shortcuts do. Both are kept server-side per video, so the
+ * passage you were working on is still the passage when you come back to it
+ * (see /api/bookmarks). The same actions come back out of the hook for the
+ * control bar's buttons: a feature only a shortcut can reach is one you have to
+ * already know about.
  *
  *  - usePlayerMarks(), which owns the state, the shortcuts, and the loop tick
+ *  - LoopMenu, the video's saved passages and everything you can do to one
  *  - MarkTrack, the marks themselves, drawn along a time axis
  *  - EmbedMarkRail, which puts a MarkTrack on the YouTube embed's progress bar
  *  - MarksFlash, the one-line confirmation of what a keypress just did
@@ -17,7 +21,7 @@
  * Bookmarks wear one colour everywhere they appear — the tick, the button that
  * made it, the line confirming the press — so those read as one thing. The loop
  * wears none: it restyles the bar rather than marking it (see below), which is
- * what lets it run to an end nobody pinned without drawing anything new.
+ * also why only the running passage dims and the rest are cuts alone.
  * Over a file we play ourselves that's literally the bar (see LocalControls);
  * over the embed the bar lives inside the iframe, out of reach, so the rail is
  * laid over it at the same offset the embed draws its own scrubber at.
@@ -37,7 +41,24 @@ export type Bookmark = {
   note: string
 }
 
+/** Where a repeat runs from and to. Either end may be unpinned. */
 export type Loop = { a: number | null; b: number | null }
+
+/** One saved passage of a video: a loop with a name to be called by.
+ *
+ *  `active` is the whole difference between this and a bookmark. A bookmark is a
+ *  POINT, so marks simply coexist; a loop is a MODE, so a video can hold several
+ *  passages but only one of them repeats — and which one is worth remembering,
+ *  since that's the passage you were working on. */
+export type SavedLoop = { id: number; a: number | null; b: number | null; active: boolean }
+
+const NO_LOOP: Loop = { a: null, b: null }
+
+/** How a passage reads in the menu. Unpinned ends say what they resolve to,
+ *  because that's what the repeat actually does. */
+export function loopLabel(loop: Loop): string {
+  return `${loop.a === null ? 'start' : formatTime(loop.a)} – ${loop.b === null ? 'end' : formatTime(loop.b)}`
+}
 
 /**
  * The one colour a bookmark wears, everywhere it appears — the tick on the bar,
@@ -61,8 +82,14 @@ const LOOP_DIM = 'bg-black/50'
 // between chapters — a boundary in a bar reads as a break in it, not as a thing
 // sitting on top of it.
 const LOOP_EDGE = 'bg-black/70'
+// A passage that's saved but not running gets the same cut, half as dark. It's
+// still a boundary in the bar rather than a thing on top of it — just a quieter
+// one, because it isn't what's happening right now. Only the running passage
+// dims, so several saved ones can't turn the bar into a ladder of veils.
+const LOOP_EDGE_IDLE = 'bg-black/35'
 
-/** Nothing pinned / one end pinned / repeating. What the loop button reads. */
+/** How far along the pinning is on the passage that's running: nothing pinned,
+ *  one end pinned, both. What the loop button's badge reads. */
 export type LoopStage = 'idle' | 'arming' | 'running'
 
 /** A line confirming what the last press did, and which feature it was about —
@@ -92,8 +119,8 @@ const MARK_HERE_TICK_MS = 500
  *  One end is enough. An unpinned A means the start of the video and an unpinned
  *  B means the end of it, which is what the two keys read as on their own: `[`
  *  alone is "repeat from here", `]` alone is "repeat up to here". Pressing one
- *  and then having to press the other before anything happened made the first
- *  press a keystroke that visibly did nothing.
+ *  and then having to press the other before anything happens made the first
+ *  press a keystroke that did nothing.
  *
  *  `duration` is what an unpinned B resolves to, so a player that doesn't know
  *  the length yet reports 0 and the loop simply doesn't run until it does. */
@@ -114,7 +141,9 @@ export function loopActive(loop: Loop, duration: number): boolean {
  * a local video's id. Both are just strings to /api/bookmarks. */
 export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi | null>) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
-  const [loop, setLoop] = useState<Loop>({ a: null, b: null })
+  // Every passage marked in this video, oldest first. At most one is active —
+  // the router holds that invariant, and so does every write below.
+  const [loops, setLoops] = useState<SavedLoop[]>([])
   // A brief line confirming what a keypress just did — pressing `b` is otherwise
   // silent, and a shortcut you can't tell fired is a shortcut you stop trusting.
   const [flash, setFlash] = useState<Flash | null>(null)
@@ -132,8 +161,15 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   // branching inside a setState updater, which React is free to run twice.
   const bookmarksRef = useRef<Bookmark[]>([])
   bookmarksRef.current = bookmarks
-  const loopRef = useRef<Loop>(loop)
-  loopRef.current = loop
+  const loopsRef = useRef<SavedLoop[]>([])
+  loopsRef.current = loops
+
+  // The passage that's running, and its ends on their own — which is all the
+  // bar and the tick need, and all they ever needed.
+  const activeLoop = loops.find((l) => l.active) ?? null
+  const loop: Loop = activeLoop ? { a: activeLoop.a, b: activeLoop.b } : NO_LOOP
+  // And the rest, for the bar to cut quietly. Passages you marked but aren't on.
+  const others: Loop[] = loops.filter((l) => !l.active).map((l) => ({ a: l.a, b: l.b }))
 
   // Whether the play head is standing on a bookmark — which is what decides
   // whether the bar's button adds one or clears the one that's there. The
@@ -156,7 +192,8 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
 
   useEffect(() => {
     setBookmarks([])
-    setLoop({ a: null, b: null })  // a loop is about this sitting, not the video
+    setLoops([])
+    loopsRef.current = []
     // Cleared with the marks rather than left to the next poll: half a second of
     // a button offering to clear a bookmark the new video hasn't got is half a
     // second of it lying. The duration goes the same way — the old video's
@@ -168,6 +205,20 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       .then((r) => r.json())
       .then((d) => { if (!cancelled) setBookmarks(Array.isArray(d) ? d : []) })
       .catch(() => { /* no bookmarks shown; adding one still works */ })
+    // The passages marked in this video, including which one was running. A loop
+    // is work on a passage — the bar of music, the sentence in the other
+    // language — and that work is about the video, so coming back to the video
+    // comes back to it.
+    apiFetch(`/api/bookmarks/${videoId}/loops`, { quiet: true })
+      .then((r) => r.json())
+      .then((d: unknown) => {
+        // Never over passages marked since: the fetch is a round trip, and `[`
+        // is pressed the moment the passage arrives.
+        if (cancelled || !Array.isArray(d) || loopsRef.current.length) return
+        loopsRef.current = d
+        setLoops(d)
+      })
+      .catch(() => { /* the video plays through; pinning an end still works */ })
     return () => { cancelled = true }
   }, [videoId])
 
@@ -196,10 +247,96 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     apiFetch(`/api/bookmarks/id/${id}`, { method: 'DELETE' }).catch(() => { /* gone from view either way */ })
   }, [])
 
+  // ── Writing the list ───────────────────────────────────────────────
+  //
+  // Three actions cover every change: open a passage, edit one, drop one. They
+  // all land locally first — a loop that appears a beat after the keypress reads
+  // as a dropped press — and they all write the ref as well as the state, now
+  // rather than at the next render, because two presses can land inside one.
+  //
+  // A passage that hasn't reached the server yet carries a NEGATIVE id, the way
+  // a fresh bookmark does. Nothing is sent under one; the POST that made it
+  // reconciles whatever happened while it was in flight.
+
+  const writeLoops = useCallback((next: SavedLoop[]) => {
+    loopsRef.current = next
+    setLoops(next)
+    // Ahead of the poll below, for the same reason markHere is: `[` on its own
+    // starts a loop running to the end of the video, and a button that waits
+    // half a second to say so reads as a press that didn't take.
+    const p = playerRef.current
+    if (p) setDuration(p.getDuration())
+  }, [playerRef])
+
+  const sendLoop = useCallback((id: number, change: Partial<SavedLoop>) => {
+    apiFetch(`/api/bookmarks/${videoId}/loops/id/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(change),
+      quiet: true,
+    }).catch(() => { /* the loop still runs this sitting */ })
+  }, [videoId])
+
+  /** Mark a new passage with one end pinned. It becomes the running one — you
+   *  only mark a passage when it's the one you're about to work on. */
+  const openLoop = useCallback((end: 'a' | 'b', at: number) => {
+    const temp: SavedLoop = { id: -Date.now(), a: end === 'a' ? at : null, b: end === 'b' ? at : null, active: true }
+    writeLoops([...loopsRef.current.map((l) => ({ ...l, active: false })), temp])
+    apiFetch(`/api/bookmarks/${videoId}/loops`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a: temp.a, b: temp.b }),
+      quiet: true,
+    })
+      .then((r) => r.json())
+      .then((saved: SavedLoop) => {
+        if (!saved?.id) return
+        const now = loopsRef.current.find((l) => l.id === temp.id)
+        if (!now) {
+          // Dropped from the menu while the POST was in flight. It exists on the
+          // server for a moment and then doesn't.
+          apiFetch(`/api/bookmarks/${videoId}/loops/id/${saved.id}`, { method: 'DELETE', quiet: true })
+            .catch(() => { /* nothing shows it either way */ })
+          return
+        }
+        writeLoops(loopsRef.current.map((l) => (l.id === temp.id ? { ...l, id: saved.id } : l)))
+        // Ends moved, or the passage switched away from, while it had no id to
+        // send them under. They go out now.
+        if (now.a !== temp.a || now.b !== temp.b || now.active !== temp.active) {
+          sendLoop(saved.id, { a: now.a, b: now.b, active: now.active })
+        }
+      })
+      .catch(() => writeLoops(loopsRef.current.filter((l) => l.id !== temp.id)))
+  }, [videoId, writeLoops, sendLoop])
+
+  /** Move an end, or switch to this passage. Switching clears the rest, because
+   *  only one passage of a video repeats at a time. */
+  const editLoop = useCallback((id: number, change: Partial<Pick<SavedLoop, 'a' | 'b' | 'active'>>) => {
+    writeLoops(loopsRef.current.map((l) => (
+      l.id === id ? { ...l, ...change } : change.active ? { ...l, active: false } : l
+    )))
+    if (id > 0) sendLoop(id, change)
+  }, [writeLoops, sendLoop])
+
+  /** Drop a passage for good — the menu's ×. */
+  const dropLoop = useCallback((id: number) => {
+    writeLoops(loopsRef.current.filter((l) => l.id !== id))
+    if (id < 0) return  // never reached the server; the POST will clean it up
+    apiFetch(`/api/bookmarks/${videoId}/loops/id/${id}`, { method: 'DELETE', quiet: true })
+      .catch(() => { /* gone from view either way */ })
+    showFlash('loop', 'Passage deleted')
+  }, [videoId, writeLoops, showFlash])
+
+  /** Stop repeating, keeping the passage. `\\` and the menu's own row.
+   *
+   *  Stopping is not deleting: the passage you marked is work, and the key that
+   *  turns the repeat off shouldn't throw it away. The × in the menu does that. */
   const clearLoop = useCallback(() => {
-    setLoop({ a: null, b: null })
-    showFlash('loop', 'Loop cleared')
-  }, [showFlash])
+    const running = loopsRef.current.find((l) => l.active)
+    if (!running) return
+    editLoop(running.id, { active: false })
+    showFlash('loop', 'Repeat off')
+  }, [editLoop, showFlash])
 
   // The three things a keypress or a button press can do, in one place so the
   // two ways of asking behave identically.
@@ -227,14 +364,13 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
    *  moved afterwards, and one end on its own already repeats — from the start
    *  of the video, or to the end of it (see loopBounds). */
   const setLoopEnd = useCallback((end: 'a' | 'b', at: number) => {
-    setLoop((cur) => ({ ...cur, [end]: at }))
-    // Read ahead of the poll, for the same reason markHere is: `[` on its own
-    // starts a loop running to the end of the video, and a button that waits
-    // half a second to say so reads as a press that didn't take.
-    const p = playerRef.current
-    if (p) setDuration(p.getDuration())
+    const running = loopsRef.current.find((l) => l.active)
+    // With nothing running, pinning an end opens a passage rather than editing
+    // one — so `[` on a video you've never looped behaves as it always did.
+    if (running) editLoop(running.id, { [end]: at })
+    else openLoop(end, at)
     showFlash('loop', `Loop ${end.toUpperCase()} · ${formatTime(at)}`)
-  }, [playerRef, showFlash])
+  }, [editLoop, openLoop, showFlash])
 
   // Send the play head back to A each time it reaches B. Runs on its own timer
   // rather than the caption tick, which only exists while captions are on.
@@ -293,29 +429,44 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   // `looping` is whether the video is actually repeating. One end pinned is
   // enough for that, so it isn't the same as how far along the pinning is.
   //
-  // `loopStage` is what the NEXT press does: pin one end, pin the other, clear.
-  // Named here rather than re-derived by each caller, so the button and
-  // cycleLoop below can never disagree about which press does what.
+  // `loopStage` is how far along the pinning is, which is what the button's
+  // badge names and what the menu's own rows read from.
   const looping = loopActive(loop, duration)
   const loopStage: LoopStage = loop.a !== null && loop.b !== null && looping
     ? 'running'
     : (loop.a !== null || loop.b !== null) ? 'arming' : 'idle'
 
-  /** The whole A–B loop from one button: set an end, set the other, clear.
+  /** Pin an end of the running passage at the play head — the menu's own `[`
+   *  and `]`, with the position read for you. */
+  const pinLoopEnd = useCallback((end: 'a' | 'b') => {
+    const p = playerRef.current
+    if (p) setLoopEnd(end, p.getCurrentTime())
+  }, [playerRef, setLoopEnd])
+
+  /** Mark a new passage starting here, and work on it.
    *
-   *  Three keys collapse into one press because a button has one obvious next
-   *  thing to do at each stage, and the stage is on its face. The keyboard keeps
-   *  the finer control — `[` and `]` move either end whenever you like. */
-  const cycleLoop = useCallback(() => {
+   *  One press rather than "make an empty one, then pin its start", because
+   *  there is no reason to mark a passage except to start on it, and where you
+   *  are is where it starts. */
+  const newLoop = useCallback(() => {
     const p = playerRef.current
     if (!p) return
-    const cur = loopRef.current
-    // Both ends pinned and repeating is the end of the cycle. Both pinned but
-    // NOT repeating — B before A, or a hair after it — is a wrong end rather
-    // than a finished loop, and the press moves B instead of clearing.
-    if (cur.a !== null && cur.b !== null && loopActive(cur, p.getDuration())) clearLoop()
-    else setLoopEnd(cur.a === null ? 'a' : 'b', p.getCurrentTime())
-  }, [playerRef, clearLoop, setLoopEnd])
+    openLoop('a', p.getCurrentTime())
+    showFlash('loop', `New passage · from ${formatTime(p.getCurrentTime())}`)
+  }, [playerRef, openLoop, showFlash])
+
+  /** Switch to a saved passage: it starts repeating, and the play head goes to
+   *  the top of it. Seeking is the point — you picked it to hear it, and a
+   *  switch that left you outside the passage would make you wait for the loop
+   *  to come round before anything happened. */
+  const useLoop = useCallback((id: number) => {
+    const target = loopsRef.current.find((l) => l.id === id)
+    if (!target) return
+    editLoop(id, { active: true })
+    const p = playerRef.current
+    if (p) p.seekTo(target.a ?? 0, true)
+    showFlash('loop', `Repeating · ${loopLabel(target)}`)
+  }, [editLoop, playerRef, showFlash])
 
   /** Bookmark (or clear) wherever the play head is, for the bar's button — the
    *  keyboard's `b` with the position read for you. Clicking a mark on the track
@@ -326,7 +477,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     if (p) toggleBookmarkAt(p.getCurrentTime())
   }, [playerRef, toggleBookmarkAt])
 
-  return { bookmarks, loop, loopStage, looping, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop }
+  return {
+    bookmarks, loop, loops, others, loopStage, looping, markHere, flash,
+    toggleBookmarkHere, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop,
+  }
 }
 
 /** The marks themselves, positioned along a time axis. Absolutely positioned, so
@@ -350,9 +504,14 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
  *  strength. Nothing is added over the bar for it — no second colour to place
  *  against the player's red and white, and the fill and thumb read straight
  *  through the veil. */
-export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
+export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
   bookmarks: Bookmark[]
   loop: Loop
+  /** The video's other saved passages — everything except the running one.
+   *  Drawn as cuts and nothing else: they aren't clickable, because switching
+   *  passages is the menu's job and every hit area here is a pixel of YouTube's
+   *  own scrubber taken. */
+  others?: Loop[]
   duration: number
   onSeek: (seconds: number) => void
 }) {
@@ -415,6 +574,16 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
           />
         </>
       )}
+      {/* The other passages, as cuts alone. Drawn first, so the running one's
+          darker cuts sit over them where two passages share a boundary. */}
+      {others.flatMap((other, i) => [other.a, other.b].map((end, j) => end === null ? null : (
+        <div
+          key={`other${i}-${j}`}
+          data-testid="loop-edge-idle"
+          className={`pointer-events-none absolute inset-y-0 w-[2px] -translate-x-1/2 ${LOOP_EDGE_IDLE}`}
+          style={{ left: pct(end) }}
+        />
+      )))}
       {/* Each pinned end cuts the track. Shown from the first press, when there's
           nothing to dim yet — a notch claims only "you pinned this moment",
           which is all that's true until the pair makes sense. */}
@@ -448,6 +617,139 @@ export function MarkTrack({ bookmarks, loop, duration, onSeek }: {
   )
 }
 
+/** The video's saved passages, and everything you can do to one.
+ *
+ *  A menu rather than a cycling button, because with several passages the
+ *  question the button answers stopped being "what's the next step" and became
+ *  "which one" — and that has as many answers as you have passages. The keyboard
+ *  keeps the fast path: `[` and `]` pin the ends of whichever passage is
+ *  running, `\\` stops it.
+ *
+ *  Every row here is one of those keys with the position read for you, so the
+ *  menu can't do anything the shortcuts can't, and the shortcuts can't do the
+ *  two things only a list can: switch, and delete.
+ *
+ *  It's laid over the video, so it closes on Escape and on any click outside —
+ *  the same as the player's own menus. The caller places it.
+ */
+export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop, onNew, onClose }: {
+  loops: SavedLoop[]
+  duration: number
+  stage: LoopStage
+  onPin: (end: 'a' | 'b') => void
+  onUse: (id: number) => void
+  onDrop: (id: number) => void
+  onStop: () => void
+  onNew: () => void
+  onClose: () => void
+}) {
+  const box = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    // Capture, because the page's own handlers sit on window too and a click
+    // meant to dismiss shouldn't also reach whatever is under it.
+    const onDown = (e: MouseEvent) => {
+      if (!box.current?.contains(e.target as Node)) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onDown, true)
+    }
+  }, [onClose])
+
+  // Choosing a passage to work on closes the menu; managing the list doesn't.
+  // Once you've picked one you want to hear it, and the panel sits over the
+  // video — but pinning an end, deleting, and stopping are all things you may do
+  // twice in a row, and reopening between them would be the annoying half.
+  const chose = (act: () => void) => () => { act(); onClose() }
+  const row = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-white transition-colors hover:bg-white/10'
+  return (
+    <div
+      ref={box}
+      data-testid="loop-menu"
+      role="menu"
+      className="absolute bottom-full right-0 z-40 mb-2 min-w-[15rem] overflow-hidden rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10"
+    >
+      <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+        Repeat
+      </div>
+      {/* The passages. Bounded here rather than on the panel, so the actions
+          below stay put however many you've marked. */}
+      <div className="max-h-56 overflow-y-auto">
+        {loops.map((l) => (
+          <div key={l.id} className={`group/row flex items-center ${l.active ? 'bg-white/10' : ''}`}>
+            <button
+              role="menuitem"
+              onClick={l.active ? onStop : chose(() => onUse(l.id))}
+              title={l.active ? 'Stop repeating (\\)' : 'Repeat this passage'}
+              className={row}
+            >
+              {/* Whether this is the one running. In white, like everything the
+                  loop wears: it takes no colour of its own here either. */}
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${l.active ? 'bg-white' : 'bg-white/25'}`} />
+              <span className="tabular-nums">{loopLabel(l)}</span>
+              {!loopActive(l, duration) && (
+                // Marked but not repeating — an end pinned the wrong side of the
+                // other, or a passage too short to be one. Said plainly, since
+                // the bar can't show a loop that isn't running.
+                <span className="ml-auto pl-2 text-xs text-white/40">not looping</span>
+              )}
+            </button>
+            <button
+              onClick={() => onDrop(l.id)}
+              title="Delete this passage"
+              aria-label={`Delete passage ${loopLabel(l)}`}
+              className="mr-1 shrink-0 rounded p-1 text-white/40 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus:opacity-100 group-hover/row:opacity-100"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        {!loops.length && (
+          <div className="px-3 py-2 text-sm text-white/45">Nothing marked yet.</div>
+        )}
+      </div>
+      <div className="mt-1 border-t border-white/10 pt-1">
+        {/* The two keys, as buttons. They act on the running passage, or open
+            one — so they're never a press that does nothing. */}
+        <div className="flex gap-1 px-1.5 py-0.5">
+          {(['a', 'b'] as const).map((end) => (
+            <button
+              key={end}
+              role="menuitem"
+              onClick={() => onPin(end)}
+              title={`Pin the ${end === 'a' ? 'start ([' : 'end (]'}) at the play head`}
+              className="flex-1 rounded-lg px-2 py-1.5 text-sm text-white transition-colors hover:bg-white/10"
+            >
+              Pin {end === 'a' ? 'start' : 'end'}
+              <span className="ml-1.5 text-white/40">{end === 'a' ? '[' : ']'}</span>
+            </button>
+          ))}
+        </div>
+        <button role="menuitem" onClick={chose(onNew)} className={row}>
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+          </svg>
+          New passage from here
+        </button>
+        {stage !== 'idle' && (
+          <button role="menuitem" onClick={onStop} className={row}>
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+            </svg>
+            Stop repeating
+            <span className="ml-auto pl-2 text-white/40">\</span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Where the embed draws its own progress bar, measured: a CONSTANT distance up
 // from the bottom of the player, not a share of its height — 73px at 560px wide,
 // 74px at 800, ~78px at 1280. An earlier `max(10%, 4.6rem)` tracked the height
@@ -462,20 +764,21 @@ const EMBED_BAR_INSET = '1.5%'
  *  Unlike our own bar, this one doesn't fade with the controls: the embed hides
  *  its bar a couple of seconds into playback, and a loop you can't see is one
  *  you forget is running. */
-export function EmbedMarkRail({ bookmarks, loop, duration, onSeek }: {
+export function EmbedMarkRail({ bookmarks, loop, others = [], duration, onSeek }: {
   bookmarks: Bookmark[]
   loop: Loop
+  others?: Loop[]
   duration: number
   onSeek: (seconds: number) => void
 }) {
-  if (!duration || (!bookmarks.length && loop.a === null && loop.b === null)) return null
+  if (!duration || (!bookmarks.length && !others.length && loop.a === null && loop.b === null)) return null
   return (
     <div
       className="pointer-events-none absolute z-20"
       style={{ bottom: EMBED_BAR_BOTTOM, left: EMBED_BAR_INSET, right: EMBED_BAR_INSET }}
     >
       <div className="pointer-events-none relative h-1">
-        <MarkTrack bookmarks={bookmarks} loop={loop} duration={duration} onSeek={onSeek} />
+        <MarkTrack bookmarks={bookmarks} loop={loop} others={others} duration={duration} onSeek={onSeek} />
       </div>
     </div>
   )

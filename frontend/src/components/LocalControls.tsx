@@ -130,7 +130,7 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  watch page keeps YouTube's controls and never renders this bar over an embed
  *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
  *  modes — there is no leftover chrome for it to paint over. */
-export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop }: {
+export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop, others }: {
   // One of these two. `videoRef` + `src` give the scrub preview its frames
   // directly; over the embed, `storyboard` supplies them instead.
   videoRef?: RefObject<HTMLVideoElement | null>
@@ -151,6 +151,8 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // click it, which for a tick is the moment it marks.
   bookmarks?: Bookmark[]
   loop?: Loop
+  /** The video's other saved passages, drawn as quiet cuts (see MarkTrack). */
+  others?: Loop[]
 }) {
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -331,6 +333,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           <MarkTrack
             bookmarks={bookmarks ?? []}
             loop={loop ?? { a: null, b: null }}
+            others={others ?? []}
             duration={duration}
             onSeek={(seconds) => {
               const p = api()

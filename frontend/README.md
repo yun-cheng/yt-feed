@@ -478,7 +478,7 @@ components/
   LocalControls.tsx               our control bar + the <video>→PlayerApi adapter.
                                   Drives a file on disk, and the embed too when
                                   the clean-embed extension is installed
-  PlayerMarks.tsx                 bookmarks (`b`) and the A–B repeat loop
+  PlayerMarks.tsx                 bookmarks (`b`) and a video's saved A–B loops
                                   (`[`, `]`, `\`): state, shortcuts, the actions
                                   behind the bar's two buttons, and the marks
                                   drawn on the progress bar (ours, or a rail
@@ -619,12 +619,13 @@ Other details:
   text out of the app**. `⌘F`, `⌘K`, `⌘M` went the same way, and on a Mac `⌘[`
   and `⌘]` are back and forward. Pinned in `PlayerMarks.test.tsx`.
 - **Bookmarks and A–B repeat** (`PlayerMarks.tsx`): `b` marks the moment, `[` and
-  `]` set the loop's ends, `\` clears it. Both drive the player through
-  `PlayerApi`, so they behave the same over the embed and over a file on disk.
+  `]` set the ends of the passage that's repeating, `\` stops it. Both drive the
+  player through `PlayerApi`, so they behave the same over the embed and over a
+  file on disk, and both are stored per video, so they're still there next time.
   - **Both also have a control-bar button**, because a feature that lives only on
     a shortcut is one you have to have been told about — and these are the only
     marks on the bar you can't otherwise put there. The hook hands the buttons
-    the same three actions the key handler calls, so the two ways of asking can't
+    the same actions the key handler calls, so the two ways of asking can't
     drift apart. They sit next to the caption button in both placements: in our
     row when we own the bar, floating over YouTube's chrome when we don't.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
@@ -644,15 +645,43 @@ Other details:
     end pinned. `loopStage` is what the *next* press does. A one-ended loop is
     ordinarily both at once: running, and still offering to pin the other end, so
     the button carries the underline and the A/B badge together.
-  - **The loop is one button walking three stages** (`loopStage`: idle → arming →
-    running): pin one end, pin the other, clear. A press has one obvious next
-    thing to do at each stage, and the stage shows on the button — armed, a small
-    **A** or **B** naming the end the next press pins, which is the one thing the
-    stage alone can't tell you; running, the caption button's underline. Both in
-    white, since the loop wears no colour of its own on the bar either. The finer
-    control stays on the keyboard, where `[` and `]` move either end at any time;
-    the button fills in whichever end is still open, so a `]` pressed first
-    leaves the button pinning the start.
+  - **A video keeps as many passages as you mark** (`SavedLoop`, `/loops`), and
+    the button opens the list of them (`LoopMenu`). It used to cycle — pin one
+    end, pin the other, clear — but once a video can hold several, the question
+    the button answers stopped being "what's the next step" and became "which
+    one", and that has as many answers as you've marked. The cycle lives on in
+    the keyboard, which is where it was always faster.
+    - **`active` is what a bookmark doesn't need.** A bookmark is a point, so
+      marks coexist; a loop is a mode, so only one passage repeats at a time.
+      `[`, `]` and `\` all act on that one: pinning an end with nothing running
+      *opens* a passage, so a video you've never looped behaves as it always did,
+      and every press after that moves that passage's ends rather than piling up
+      new ones.
+    - **Stopping is not deleting.** `\` and the menu's *Stop repeating* set
+      `active: false` and keep the passage — it's work, and the key that turns
+      the repeat off shouldn't throw it away. The × in the menu deletes, and
+      promotes nothing in its place.
+    - **The menu closes when you choose a passage to work on** (switching to one,
+      or starting a new one) and stays open otherwise: once you've picked one you
+      want to hear it and the panel sits over the video, but pinning, deleting
+      and stopping are all things you may do twice in a row.
+    - **Switching seeks to the top of the passage.** You picked it to hear it,
+      and a switch that left you outside would make you wait for the loop to come
+      round before anything happened.
+    - **A passage that hasn't reached the server carries a negative id**, the way
+      a fresh bookmark does. Nothing is sent under one; the POST that made it
+      reconciles whatever happened while it was in flight — an end moved goes out
+      under the real id, and one deleted in the meantime is deleted from the
+      server too.
+  - **The button still says how far along the pinning is** (`loopStage`: idle →
+    arming → running). Armed, a small **A** or **B** names the end still open,
+    which is the one thing the list can't tell you at a glance; repeating, the
+    caption button's underline. Both in white, since the loop wears no colour of
+    its own on the bar either.
+  - **On the bar, only the running passage dims.** The others draw their cuts
+    half as dark (`LOOP_EDGE_IDLE`) and take no clicks — switching is the menu's
+    job, and every hit area over the embed is a pixel of YouTube's own scrubber
+    taken. Several dimmed spans would turn the bar into a ladder of veils.
   - **Clearing a bookmark** is the same button, which says which of the two it's
     about to do: it fills in and reads *Clear this bookmark* while the play head
     is standing on one (`markHere`, polled at 500ms against a 2s tolerance — the
@@ -661,6 +690,14 @@ Other details:
     than waiting for the next tick). Clicking a tick seeks exactly to the moment
     it marks, so **click the tick, then press the button** clears one without
     hunting for the moment by hand.
+  - **Passages persist** (`/api/bookmarks/{videoId}/loops`), including which one
+    was running. A loop is work on a passage — the bar of music, the sentence in
+    the other language — and that work is about the video, not about the sitting
+    that pinned it. Every change goes through `writeLoops`, so what's on screen
+    and what's stored can't drift; it writes `loopsRef` itself rather than waiting
+    for the next render, because two presses can land inside one. The load is a
+    round trip and `[` gets pressed the moment the passage arrives, so it
+    **doesn't land on passages marked since** — the press wins.
   - **Bookmarks persist** (`/api/bookmarks`, keyed by the video id — YouTube's or
     a local one). Pressing `b` within 2s of an existing mark **removes** it, so a
     second press undoes the first; the list is already in hand, so that decision

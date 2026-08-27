@@ -27,15 +27,17 @@ real video (muted, with custom captions and scrubbing).
   dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
   position and font size the embed's own captions would never give you
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
-  click the tick to jump back); `[` and `]` set a loop's ends and `\` clears it,
+  click the tick to jump back); `[` and `]` set a loop's ends and `\` stops it,
   so a passage replays until you're done with it. **One end is enough**: `[` alone
   repeats from there to the end of the video, `]` alone from the start up to
-  there. Both show on the progress bar —
+  there. **A video keeps as many passages as you mark**, saved with it — the loop
+  button opens the list, where you switch between them, delete one, or start a
+  new one from where you are. Both show on the progress bar —
   a bookmark as a tick in the track, the loop as the bar itself: its ends notch
   the track and everything outside the loop dims back. Both also have a **button
-  in the control bar**: the loop's takes one press per stage (set the start, set
-  the end, stop), and the bookmark's fills in and offers to clear the mark
-  whenever you're standing on one. It's our own bar over a file on disk, and a
+  in the control bar**: the loop's opens that list of passages, and the
+  bookmark's fills in and offers to clear the mark whenever you're standing on
+  one. It's our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
 - **Ask AI** — a conversation about the video you're watching, answered from its
   own transcript: it cites the moment it read, and those timestamps are buttons that

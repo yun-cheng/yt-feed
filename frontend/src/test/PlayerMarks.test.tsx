@@ -6,13 +6,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useRef } from 'react'
 import {
   EmbedMarkRail,
+  LoopMenu,
   MarkTrack,
   MarksFlash,
   loopActive,
   loopBounds,
   usePlayerMarks,
 } from '../components/PlayerMarks'
-import type { Bookmark, Loop } from '../components/PlayerMarks'
+import type { Bookmark, Loop, SavedLoop } from '../components/PlayerMarks'
 import type { PlayerApi } from '../components/LocalControls'
 
 // ── A stand-in player ────────────────────────────────────────────────
@@ -86,20 +87,31 @@ describe('loopBounds', () => {
 
 function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: string }) {
   const ref = useRef<PlayerApi | null>(player)
-  const { bookmarks, loop, loopStage, looping, markHere, flash, toggleBookmarkHere, cycleLoop, clearLoop } = usePlayerMarks(videoId, ref)
+  const m = usePlayerMarks(videoId, ref)
   return (
     <div>
-      <div data-testid="marks">{bookmarks.map((b) => b.position_seconds).join(',')}</div>
-      <div data-testid="loop">{`${loop.a ?? '-'}/${loop.b ?? '-'}`}</div>
-      <div data-testid="stage">{loopStage}</div>
-      <div data-testid="looping">{looping ? 'yes' : 'no'}</div>
-      <div data-testid="here">{markHere ? 'yes' : 'no'}</div>
-      <div data-testid="flash">{flash?.text ?? ''}</div>
-      {/* The control bar's buttons, standing in for the real ones: what they
-          get from the hook is exactly these three functions. */}
-      <button onClick={toggleBookmarkHere}>bookmark</button>
-      <button onClick={cycleLoop}>cycle</button>
-      <button onClick={clearLoop}>clear</button>
+      <div data-testid="marks">{m.bookmarks.map((b) => b.position_seconds).join(',')}</div>
+      <div data-testid="loop">{`${m.loop.a ?? '-'}/${m.loop.b ?? '-'}`}</div>
+      {/* Every passage, running one marked — the list the menu draws. */}
+      <div data-testid="loops">{m.loops.map((l) => `${l.active ? '*' : ''}${l.a ?? '-'}/${l.b ?? '-'}`).join(' ')}</div>
+      <div data-testid="others">{m.others.map((l) => `${l.a ?? '-'}/${l.b ?? '-'}`).join(' ')}</div>
+      <div data-testid="stage">{m.loopStage}</div>
+      <div data-testid="looping">{m.looping ? 'yes' : 'no'}</div>
+      <div data-testid="here">{m.markHere ? 'yes' : 'no'}</div>
+      <div data-testid="flash">{m.flash?.text ?? ''}</div>
+      {/* The control bar's button and the menu it opens, standing in for the
+          real ones: what they get from the hook is exactly these actions. */}
+      <button onClick={m.toggleBookmarkHere}>bookmark</button>
+      <button onClick={() => m.pinLoopEnd('a')}>pin a</button>
+      <button onClick={() => m.pinLoopEnd('b')}>pin b</button>
+      <button onClick={m.newLoop}>new</button>
+      <button onClick={m.clearLoop}>stop</button>
+      {m.loops.map((l) => (
+        <span key={l.id}>
+          <button onClick={() => m.useLoop(l.id)}>{`use ${l.a ?? '-'}`}</button>
+          <button onClick={() => m.dropLoop(l.id)}>{`drop ${l.a ?? '-'}`}</button>
+        </span>
+      ))}
     </div>
   )
 }
@@ -121,15 +133,49 @@ async function renderMarks(player: PlayerApi, videoId = 'vid1') {
 
 let posted: Array<Record<string, unknown>>
 let deleted: string[]
+/** The server's saved passages, by video — many per video, at most one active. */
+let loops: Record<string, SavedLoop[]>
 
 beforeEach(() => {
   posted = []
   deleted = []
+  loops = {}
   let nextId = 1
+  let nextLoopId = 100
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const method = (init?.method ?? 'GET').toUpperCase()
+    const body = init?.body ? JSON.parse(init.body as string) : null
+
+    const one = input.match(/\/api\/bookmarks\/([^/]+)\/loops\/id\/(-?\d+)$/)
+    if (one) {
+      const [, video, id] = one
+      const list = loops[video] ?? []
+      const row = list.find((l) => l.id === Number(id))
+      if (!row) return { ok: false, status: 404, json: async () => ({}) } as unknown as Response
+      if (method === 'DELETE') {
+        loops[video] = list.filter((l) => l !== row)
+        deleted.push(input)
+        return { ok: true, json: async () => ({ status: 'ok' }) } as unknown as Response
+      }
+      Object.assign(row, body)
+      if (body?.active) for (const l of list) if (l !== row) l.active = false
+      return { ok: true, json: async () => ({ ...row }) } as unknown as Response
+    }
+
+    const many = input.match(/\/api\/bookmarks\/([^/]+)\/loops$/)
+    if (many) {
+      const video = many[1]
+      const list = loops[video] ?? (loops[video] = [])
+      if (method === 'POST') {
+        for (const l of list) l.active = false
+        const row: SavedLoop = { id: nextLoopId++, a: body.a ?? null, b: body.b ?? null, active: true }
+        list.push(row)
+        return { ok: true, json: async () => ({ ...row }) } as unknown as Response
+      }
+      return { ok: true, json: async () => list.map((l) => ({ ...l })) } as unknown as Response
+    }
+
     if (method === 'POST') {
-      const body = JSON.parse(init!.body as string)
       posted.push(body)
       return { ok: true, json: async () => ({ id: nextId++, ...body, note: '' }) } as unknown as Response
     }
@@ -313,14 +359,44 @@ describe('usePlayerMarks — A–B repeat', () => {
     expect(screen.getByTestId('loop')).toHaveTextContent('10/30')
   })
 
-  it('\\ clears the loop', async () => {
+  it('the first press opens a passage rather than editing one', async () => {
+    // So `[` on a video you have never looped behaves as it always did.
+    const p = fakePlayer()
+    await renderMarks(p)
+    expect(screen.getByTestId('loops')).toBeEmptyDOMElement()
+    act(() => { p._set(10) }); act(() => key('['))
+    expect(screen.getByTestId('loops')).toHaveTextContent('*10/-')
+  })
+
+  it('and the presses after it move that one, rather than piling up', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(20) }); act(() => key(']'))
+    act(() => { p._set(12) }); act(() => key('['))
+    expect(screen.getByTestId('loops')).toHaveTextContent('*12/20')
+  })
+
+  it('\\ stops the repeat and keeps the passage', async () => {
+    // Stopping is not deleting: the passage you marked is work, and the key
+    // that turns the repeat off shouldn't throw it away.
     const p = fakePlayer()
     await renderMarks(p)
     act(() => { p._set(10) }); act(() => key('['))
     act(() => { p._set(20) }); act(() => key(']'))
     act(() => key('\\'))
     expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
-    expect(screen.getByTestId('flash')).toHaveTextContent('Loop cleared')
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/20')
+    expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
+  })
+
+  it('and then [ opens a new one, since nothing is running', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => key('\\'))
+    act(() => { p._set(300) }); act(() => key('['))
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/- *300/-')
   })
 
   it('confirms which end was set', async () => {
@@ -332,6 +408,104 @@ describe('usePlayerMarks — A–B repeat', () => {
     expect(screen.getByTestId('flash')).toHaveTextContent('Loop B · 1:05')
   })
 
+  it('each video has its own passages', async () => {
+    const p = fakePlayer()
+    const { rerender } = await renderMarks(p, 'vid1')
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(20) }); act(() => key(']'))
+    rerender(<Harness player={p} videoId="vid2" />)
+    await waitFor(() => expect(screen.getByTestId('loop')).toHaveTextContent('-/-'))
+  })
+})
+
+describe('usePlayerMarks — several passages', () => {
+  const press = (name: string) => fireEvent.click(screen.getByRole('button', { name }))
+
+  it('a new passage starts here and takes over', async () => {
+    // One press, not "make an empty one then pin its start": there is no reason
+    // to mark a passage except to start on it.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(20) }); act(() => key(']'))
+    p._set(300)
+    await act(async () => { press('new') })
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/20 *300/-')
+    expect(screen.getByTestId('flash')).toHaveTextContent('New passage · from 5:00')
+  })
+
+  it('only one repeats at a time', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    p._set(300)
+    await act(async () => { press('new') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('300/-')
+    expect(screen.getByTestId('others')).toHaveTextContent('10/-')
+  })
+
+  it('switching to one seeks to the top of it', async () => {
+    // You picked it to hear it; landing outside would make you wait for the
+    // loop to come round before anything happened.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    p._set(300)
+    await act(async () => { press('new') })
+
+    await act(async () => { press('use 10') })
+    expect(p.seekTo).toHaveBeenCalledWith(10, true)
+    expect(screen.getByTestId('loops')).toHaveTextContent('*10/- 300/-')
+    expect(screen.getByTestId('flash')).toHaveTextContent('Repeating · 0:10 – end')
+  })
+
+  it('switching to one with no start pinned goes to the top of the video', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(20) }); act(() => key(']'))
+    p._set(300)
+    await act(async () => { press('new') })
+    await act(async () => { press('use -') })
+    expect(p.seekTo).toHaveBeenCalledWith(0, true)
+  })
+
+  it('dropping one leaves the rest alone', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    p._set(300)
+    await act(async () => { press('new') })
+
+    await act(async () => { press('drop 10') })
+    expect(screen.getByTestId('loops')).toHaveTextContent('*300/-')
+    expect(screen.getByTestId('flash')).toHaveTextContent('Passage deleted')
+  })
+
+  it('dropping the running one stops the repeat and promotes nothing', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    p._set(300)
+    await act(async () => { press('new') })
+
+    await act(async () => { press('drop 300') })
+    expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/-')
+  })
+
+  it('the menu buttons pin the ends of whatever is running', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    p._set(10)
+    await act(async () => { press('pin a') })
+    p._set(20)
+    await act(async () => { press('pin b') })
+    expect(screen.getByTestId('loops')).toHaveTextContent('*10/20')
+  })
+})
+
+describe('usePlayerMarks — one end is enough', () => {
   it('repeats from A to the end of the video', async () => {
     // `[` on its own reads as "repeat from here", and a press that does nothing
     // until you make a second one is a press you stop making.
@@ -357,9 +531,9 @@ describe('usePlayerMarks — A–B repeat', () => {
     expect(screen.getByTestId('looping')).toHaveTextContent('yes')
   })
 
-  it('and still asks the button for the other end', async () => {
+  it('still asks the button for the other end', async () => {
     // Repeating and half-pinned at once is the ordinary state of a one-ended
-    // loop: the badge says which end the next press takes.
+    // loop: the badge says which end is still open.
     const p = fakePlayer()
     await renderMarks(p)
     act(() => { p._set(10) }); act(() => key('['))
@@ -367,21 +541,104 @@ describe('usePlayerMarks — A–B repeat', () => {
     expect(screen.getByTestId('looping')).toHaveTextContent('yes')
   })
 
-  it('is not repeating once the loop is cleared', async () => {
+  it('is not repeating once it is stopped', async () => {
     const p = fakePlayer()
     await renderMarks(p)
     act(() => { p._set(10) }); act(() => key('['))
     act(() => key('\\'))
     expect(screen.getByTestId('looping')).toHaveTextContent('no')
   })
+})
 
-  it('a loop is about this sitting, so it does not follow the video', async () => {
+describe('usePlayerMarks — passages that survive the video', () => {
+  it('are there again when you come back', async () => {
+    // A loop is work on a passage, and the work is about the video, not about
+    // the sitting that pinned it.
     const p = fakePlayer()
     const { rerender } = await renderMarks(p, 'vid1')
     act(() => { p._set(10) }); act(() => key('['))
     act(() => { p._set(20) }); act(() => key(']'))
+    await act(async () => {})
+
     rerender(<Harness player={p} videoId="vid2" />)
     await waitFor(() => expect(screen.getByTestId('loop')).toHaveTextContent('-/-'))
+    rerender(<Harness player={p} videoId="vid1" />)
+    await waitFor(() => expect(screen.getByTestId('loop')).toHaveTextContent('10/20'))
+  })
+
+  it('come back with the one you were on still running', async () => {
+    const p = fakePlayer()
+    const { rerender } = await renderMarks(p, 'vid1')
+    act(() => { p._set(10) }); act(() => key('['))
+    p._set(300)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'new' })) })
+    await act(async () => {})
+
+    rerender(<Harness player={p} videoId="vid2" />)
+    await act(async () => {})
+    rerender(<Harness player={p} videoId="vid1" />)
+    await waitFor(() => expect(screen.getByTestId('loops')).toHaveTextContent('10/- *300/-'))
+  })
+
+  it('a stopped repeat comes back stopped, with the passage still there', async () => {
+    const p = fakePlayer()
+    const { rerender } = await renderMarks(p, 'vid1')
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => key('\\'))
+    await act(async () => {})
+
+    rerender(<Harness player={p} videoId="vid2" />)
+    await act(async () => {})
+    rerender(<Harness player={p} videoId="vid1" />)
+    await waitFor(() => expect(screen.getByTestId('loops')).toHaveTextContent('10/-'))
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+  })
+
+  it('a deleted passage stays deleted', async () => {
+    const p = fakePlayer()
+    const { rerender } = await renderMarks(p, 'vid1')
+    act(() => { p._set(10) }); act(() => key('['))
+    await act(async () => {})
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'drop 10' })) })
+
+    rerender(<Harness player={p} videoId="vid2" />)
+    await act(async () => {})
+    rerender(<Harness player={p} videoId="vid1" />)
+    await act(async () => {})
+    expect(screen.getByTestId('loops')).toBeEmptyDOMElement()
+  })
+
+  it('does not land on passages marked while it was in flight', async () => {
+    // The fetch is a round trip and `[` is pressed the moment the passage
+    // arrives; the press wins.
+    const p = fakePlayer()
+    loops.vid1 = [{ id: 9, a: 300, b: 330, active: true }]
+    render(<Harness player={p} videoId="vid1" />)
+    act(() => { p._set(10) }); act(() => key('['))
+    await act(async () => {})
+    expect(screen.getByTestId('loop')).toHaveTextContent('10/-')
+  })
+
+  it('an end moved before the passage was saved still reaches the server', async () => {
+    // `[` then `]` inside one round trip: the second press has no id to send
+    // under, so the POST that lands carries it.
+    const p = fakePlayer()
+    render(<Harness player={p} videoId="vid1" />)
+    await act(async () => {})
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(20) }); act(() => key(']'))
+    await act(async () => {})
+    await waitFor(() => expect(loops.vid1.map((l) => [l.a, l.b])).toEqual([[10, 20]]))
+  })
+
+  it('a passage dropped before it was saved does not survive on the server', async () => {
+    const p = fakePlayer()
+    render(<Harness player={p} videoId="vid1" />)
+    await act(async () => {})
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { fireEvent.click(screen.getByRole('button', { name: 'drop 10' })) })
+    await act(async () => {})
+    await waitFor(() => expect(loops.vid1).toEqual([]))
   })
 })
 
@@ -407,47 +664,27 @@ describe('usePlayerMarks — the control bar’s buttons', () => {
     expect(deleted).toHaveLength(1)
   })
 
-  it('the loop button walks A, then B, then clears', async () => {
-    const p = fakePlayer()
-    await renderMarks(p)
-    expect(screen.getByTestId('stage')).toHaveTextContent('idle')
-
-    p._set(10)
-    await act(async () => { press('cycle') })
-    expect(screen.getByTestId('loop')).toHaveTextContent('10/-')
-    expect(screen.getByTestId('stage')).toHaveTextContent('arming')
-
-    p._set(20)
-    await act(async () => { press('cycle') })
-    expect(screen.getByTestId('loop')).toHaveTextContent('10/20')
-    expect(screen.getByTestId('stage')).toHaveTextContent('running')
-
-    await act(async () => { press('cycle') })
-    expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
-    expect(screen.getByTestId('stage')).toHaveTextContent('idle')
-  })
-
-  it('fills in whichever end the keyboard left open', async () => {
-    // `]` first, so the button's next press is the START, not another end.
+  it('the menu pins whichever end the keyboard left open', async () => {
+    // `]` first, so the passage the buttons act on already has its end.
     const p = fakePlayer()
     p._set(30)
     await renderMarks(p)
     key(']')
     p._set(5)
-    await act(async () => { press('cycle') })
+    await act(async () => { press('pin a') })
     expect(screen.getByTestId('loop')).toHaveTextContent('5/30')
   })
 
-  it('a loop too short to run stays armed, so the next press re-pins B', async () => {
+  it('a loop too short to run stays armed, so the badge keeps asking', async () => {
     const p = fakePlayer()
     p._set(10)
     await renderMarks(p)
-    await act(async () => { press('cycle') })
+    await act(async () => { press('pin a') })
     p._set(10.2)  // under MIN_LOOP_SEC
-    await act(async () => { press('cycle') })
+    await act(async () => { press('pin b') })
     expect(screen.getByTestId('stage')).toHaveTextContent('arming')
     p._set(15)
-    await act(async () => { press('cycle') })
+    await act(async () => { press('pin b') })
     expect(screen.getByTestId('loop')).toHaveTextContent('10/15')
     expect(screen.getByTestId('stage')).toHaveTextContent('running')
   })
@@ -456,10 +693,17 @@ describe('usePlayerMarks — the control bar’s buttons', () => {
     const p = fakePlayer()
     p._set(65)
     await renderMarks(p)
-    await act(async () => { press('cycle') })
+    await act(async () => { press('pin a') })
     expect(screen.getByTestId('flash')).toHaveTextContent('Loop A · 1:05')
-    await act(async () => { press('clear') })
-    expect(screen.getByTestId('flash')).toHaveTextContent('Loop cleared')
+    await act(async () => { press('stop') })
+    expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
+  })
+
+  it('stopping with nothing running does nothing at all', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    await act(async () => { press('stop') })
+    expect(screen.getByTestId('flash')).toBeEmptyDOMElement()
   })
 })
 
@@ -769,6 +1013,30 @@ describe('MarkTrack', () => {
     expect(screen.getByTestId('loop-edge')).toHaveStyle({ left: '25%' })
   })
 
+  it('cuts the track for the other passages, more quietly', () => {
+    // Saved but not running: still a boundary in the bar, just not what's
+    // happening right now. Only the running one dims, so several passages can't
+    // turn the bar into a ladder of veils.
+    render(
+      <MarkTrack bookmarks={[]} loop={{ a: 30, b: 60 }} others={[{ a: 90, b: 108 }]}
+        duration={120} onSeek={vi.fn()} />
+    )
+    expect(screen.getAllByTestId('loop-edge')).toHaveLength(2)
+    const idle = screen.getAllByTestId('loop-edge-idle')
+    expect(idle.map((e) => e.getAttribute('style'))).toEqual(['left: 75%;', 'left: 90%;'])
+    expect(screen.getAllByTestId('loop-dim')).toHaveLength(2)  // the running one only
+  })
+
+  it('the other passages take no clicks', () => {
+    // Switching passages is the menu's job, and every hit area here is a pixel
+    // of YouTube's own scrubber taken.
+    render(
+      <MarkTrack bookmarks={[]} loop={{ a: null, b: null }} others={[{ a: 90, b: 100 }]}
+        duration={120} onSeek={vi.fn()} />
+    )
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
   it('a mark jumps to itself, which is the point of showing them', () => {
     const onSeek = vi.fn()
     render(<MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={onSeek} />)
@@ -916,5 +1184,111 @@ describe('MarksFlash', () => {
     // The loop's is the bar's own white, since that's all the loop ever wears.
     rerender(<MarksFlash flash={{ kind: 'loop', text: 'Loop cleared' }} />)
     expect(container.querySelector('span')).toHaveClass('bg-white/70')
+  })
+})
+
+
+// ── LoopMenu ─────────────────────────────────────────────────────────
+
+describe('LoopMenu', () => {
+  const passages: SavedLoop[] = [
+    { id: 1, a: 30, b: 60, active: false },
+    { id: 2, a: 90, b: null, active: true },
+  ]
+  const open = (over: Partial<Parameters<typeof LoopMenu>[0]> = {}) => {
+    const props = {
+      loops: passages, duration: 120, stage: 'arming' as const,
+      onPin: vi.fn(), onUse: vi.fn(), onDrop: vi.fn(),
+      onStop: vi.fn(), onNew: vi.fn(), onClose: vi.fn(),
+      ...over,
+    }
+    render(<LoopMenu {...props} />)
+    return props
+  }
+
+  it('lists every passage, saying what each one repeats', () => {
+    open()
+    expect(screen.getByText('0:30 – 1:00')).toBeInTheDocument()
+    // An unpinned end says what it resolves to, because that's what it does.
+    expect(screen.getByText('1:30 – end')).toBeInTheDocument()
+  })
+
+  it('picking one switches to it, and gets out of the way', () => {
+    // Once you've picked a passage you want to hear it, and the panel sits over
+    // the video.
+    const props = open()
+    fireEvent.click(screen.getByText('0:30 – 1:00'))
+    expect(props.onUse).toHaveBeenCalledWith(1)
+    expect(props.onClose).toHaveBeenCalled()
+  })
+
+  it('but managing the list leaves it open', () => {
+    // Pinning, deleting and stopping are all things you may do twice in a row.
+    const props = open()
+    fireEvent.click(screen.getByLabelText('Delete passage 0:30 – 1:00'))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Pin start/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Stop repeating/ }))
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('picking the one already running stops it instead', () => {
+    // The row is a toggle, so the passage you're on has somewhere to go.
+    const props = open()
+    fireEvent.click(screen.getByText('1:30 – end'))
+    expect(props.onStop).toHaveBeenCalled()
+    expect(props.onUse).not.toHaveBeenCalled()
+  })
+
+  it('× deletes, and is not the same button as the row', () => {
+    const props = open()
+    fireEvent.click(screen.getByLabelText('Delete passage 0:30 – 1:00'))
+    expect(props.onDrop).toHaveBeenCalledWith(1)
+    expect(props.onUse).not.toHaveBeenCalled()
+  })
+
+  it('says which passages are marked but not repeating', () => {
+    // The bar can't show a loop that isn't running, so the menu says it.
+    open({ loops: [{ id: 3, a: 90, b: 30, active: false }] })
+    expect(screen.getByText('not looping')).toBeInTheDocument()
+  })
+
+  it('pins either end at the play head', () => {
+    const props = open()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Pin start/ }))
+    expect(props.onPin).toHaveBeenCalledWith('a')
+    fireEvent.click(screen.getByRole('menuitem', { name: /Pin end/ }))
+    expect(props.onPin).toHaveBeenCalledWith('b')
+  })
+
+  it('marks a new passage from where you are', () => {
+    const props = open()
+    fireEvent.click(screen.getByRole('menuitem', { name: /New passage/ }))
+    expect(props.onNew).toHaveBeenCalled()
+  })
+
+  it('offers to stop only while something is pinned', () => {
+    const props = open()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Stop repeating/ }))
+    expect(props.onStop).toHaveBeenCalled()
+  })
+
+  it('and not when nothing is', () => {
+    open({ stage: 'idle', loops: [] })
+    expect(screen.queryByRole('menuitem', { name: /Stop repeating/ })).toBeNull()
+    expect(screen.getByText('Nothing marked yet.')).toBeInTheDocument()
+  })
+
+  it('closes on Escape', () => {
+    const props = open()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(props.onClose).toHaveBeenCalled()
+  })
+
+  it('closes on a click outside, and stays open on one inside', () => {
+    const props = open()
+    fireEvent.mouseDown(screen.getByText('0:30 – 1:00'))
+    expect(props.onClose).not.toHaveBeenCalled()
+    fireEvent.mouseDown(document.body)
+    expect(props.onClose).toHaveBeenCalled()
   })
 })
