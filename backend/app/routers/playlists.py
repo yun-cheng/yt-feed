@@ -689,6 +689,59 @@ async def add_item(
     return {"status": "ok"}
 
 
+@router.post("/{playlist_id}/items/by-id/{video_id}")
+async def add_item_by_id(
+    playlist_id: int,
+    video_id: str,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a video we're given nothing but the id of.
+
+    The extension's save-to-playlist menu is on a YouTube page rather than in the
+    app, so it knows the id and nothing else. Exactly the bargain
+    `POST /api/watch-later/by-id/{id}` strikes, and for the same reason: the
+    alternative is scraping a title and a channel name out of YouTube's markup,
+    which changes. `feed.get_video` resolves it here instead, so a subscribed
+    channel's video costs a row read and an unknown one is fetched once and then
+    cached like any other.
+
+    Answers `saved: false` for a video that resolves to nothing — private,
+    deleted, region-blocked — rather than putting a titleless row in a playlist,
+    which renders as a blank card.
+    """
+    await _owned(db, user, playlist_id)
+    existing = (await db.execute(
+        select(PlaylistItem).where(
+            PlaylistItem.playlist_id == playlist_id,
+            PlaylistItem.youtube_id == video_id,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        return {"status": "ok", "saved": True, "already": True, "title": existing.title}
+
+    from app.routers.feed import get_video
+
+    meta = await get_video(video_id, db)
+    if not meta.get("title"):
+        return {"status": "ok", "saved": False}
+
+    # Only the fields a playlist item holds; `get_video` also returns labels and
+    # the channel picture, which belong to the watch page rather than a card.
+    payload = VideoPayload(youtube_id=video_id, **{
+        field: meta[field]
+        for field in VideoPayload.model_fields
+        if field != "youtube_id" and meta.get(field) is not None
+    })
+    item = PlaylistItem(
+        playlist_id=playlist_id, added_at=datetime.utcnow(), **payload.model_dump()
+    )
+    db.add(item)
+    await imported.fill_channel_avatars([item], db)
+    await db.commit()
+    return {"status": "ok", "saved": True, "already": False, "title": payload.title}
+
+
 @router.delete("/{playlist_id}/items/{youtube_id}")
 async def remove_item(
     playlist_id: int,

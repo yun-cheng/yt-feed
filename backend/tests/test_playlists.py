@@ -122,3 +122,123 @@ async def test_missing_playlist_is_404(client):
     assert (await client.get("/api/playlists/999")).status_code == 404
     assert (await client.patch("/api/playlists/999", json={"name": "x"})).status_code == 404
     assert (await client.post("/api/playlists/999/items", json={"youtube_id": "v"})).status_code == 404
+
+
+# ── Adding with nothing but an id ────────────────────────────
+#
+# What the extension's save-to-playlist menu posts: it's on a YouTube page and
+# knows the id only, so the metadata is resolved on this side.
+
+
+def _info(**over):
+    return {
+        "title": "A Video", "channel": "A Channel", "channel_id": "chan1",
+        "view_count": 1000, "like_count": 10, "duration": 300,
+        "upload_date": "20260102", **over,
+    }
+
+
+async def _noop(records, db):
+    """Avatars are the imported router's business and have their own tests."""
+
+
+async def test_adding_by_id_fills_the_snapshot_in(client, monkeypatch):
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info())
+    monkeypatch.setattr(imported_mod, "fill_channel_avatars", _noop)
+
+    pid = await make(client)
+    r = await client.post(f"/api/playlists/{pid}/items/by-id/openedAAAAA")
+    assert r.json() == {"status": "ok", "saved": True, "already": False, "title": "A Video"}
+
+    (row,) = (await client.get(f"/api/playlists/{pid}")).json()["videos"]
+    assert row["youtube_id"] == "openedAAAAA"
+    assert (row["title"], row["channel_name"]) == ("A Video", "A Channel")
+    assert (row["view_count"], row["duration_seconds"]) == (1000, 300)
+
+
+async def test_a_video_we_already_hold_costs_no_extraction(client, db, monkeypatch):
+    """A video the feed already carries is a row here — adding it to a playlist
+    must not go to YouTube for what's sitting in the database."""
+    from datetime import datetime
+
+    from app.models import Channel, Video
+    from app.routers import imported as imported_mod
+
+    def unexpected(vid):
+        raise AssertionError("went to YouTube for a video we already have")
+
+    monkeypatch.setattr(imported_mod, "_extract", unexpected)
+
+    db.add(Channel(youtube_id="chan1", title="A Channel"))
+    db.add(Video(
+        youtube_id="knownAAAAAA", channel_id="chan1", title="Known",
+        published_at=datetime(2026, 1, 2), view_count=500, duration_seconds=120,
+    ))
+    await db.commit()
+
+    pid = await make(client)
+    r = await client.post(f"/api/playlists/{pid}/items/by-id/knownAAAAAA")
+    assert r.json()["saved"] is True
+    (row,) = (await client.get(f"/api/playlists/{pid}")).json()["videos"]
+    assert (row["title"], row["channel_name"]) == ("Known", "A Channel")
+
+
+async def test_adding_the_same_id_twice_says_so(client, monkeypatch):
+    """The menu ticks the row off this reply, and 'already there' should read as
+    success rather than as a failure to add."""
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info())
+    monkeypatch.setattr(imported_mod, "fill_channel_avatars", _noop)
+
+    pid = await make(client)
+    await client.post(f"/api/playlists/{pid}/items/by-id/openedAAAAA")
+    r = await client.post(f"/api/playlists/{pid}/items/by-id/openedAAAAA")
+    assert r.json()["saved"] is True
+    assert r.json()["already"] is True
+    assert len((await client.get(f"/api/playlists/{pid}")).json()["videos"]) == 1
+
+
+async def test_a_video_that_cant_be_resolved_is_not_added(client, monkeypatch):
+    """Private, deleted or region-blocked. A titleless row renders as a blank
+    card, so refuse it and let the menu say the save failed."""
+    from app.routers import imported as imported_mod
+
+    def boom(vid):
+        raise RuntimeError("Video unavailable")
+
+    monkeypatch.setattr(imported_mod, "_extract", boom)
+
+    pid = await make(client)
+    r = await client.post(f"/api/playlists/{pid}/items/by-id/goneAAAAAAA")
+    assert r.json() == {"status": "ok", "saved": False}
+    assert (await client.get(f"/api/playlists/{pid}")).json()["videos"] == []
+
+
+async def test_adding_by_id_to_someone_elses_playlist_is_404(
+    client, db, seeded_user, monkeypatch
+):
+    """The id is the only thing the extension holds, so this route is the one a
+    stolen key would reach for. Ownership is decided before anything is read."""
+    from app import users
+    from app.models import Playlist, User
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: _info())
+
+    other = User(google_sub="sub-2", email="them@example.test", api_key=users.new_api_key())
+    db.add(other)
+    await db.flush()
+    theirs = Playlist(user_id=other.id, name="Theirs")
+    db.add(theirs)
+    await db.commit()
+
+    # Explicit key: with two accounts in the table there is no "sole user" for
+    # an anonymous request to resolve to, and a 401 would prove nothing here.
+    mine = {"Authorization": f"Bearer {seeded_user.api_key}"}
+    r = await client.post(
+        f"/api/playlists/{theirs.id}/items/by-id/openedAAAAA", headers=mine
+    )
+    assert r.status_code == 404

@@ -800,6 +800,14 @@ row read and an unknown one is fetched and cached exactly as above. A video that
 resolves to nothing — private, deleted, region-blocked — is **not** saved: it
 answers `saved: false` rather than putting a blank card on the page.
 
+`POST /api/playlists/{id}/items/by-id/{video_id}` — the extension's *save to a
+playlist* menu — is the same route into the same door, one list along. It checks
+ownership first (`_owned`, so somebody else's playlist is a 404 before anything
+is read), then resolves and copies the snapshot exactly as above. The two exist
+separately rather than as one generic endpoint because what they write differs:
+one is a `watch_later` row keyed by `(user, video)`, the other a `playlist_items`
+row that inherits its owner from the playlist it lands in.
+
 ### The uploader's picture
 
 A video extraction carries no avatar. yt-dlp's `thumbnails` on a video are that
@@ -1664,6 +1672,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/playlists/{id}/resync` | pull anything new from the YouTube playlist this one came from. Add-only |
 | POST | `/api/playlists/import-external` | take a playlist the browser read for us — the whole list travels in the body, so no YouTube token is involved. What the extension posts, and the only route to Watch Later, private playlists, and playlists you follow but didn't make |
 | POST | `/api/watch-later/by-id/{id}` | save a video we're given nothing but the id of — the extension's button. Metadata is resolved here |
+| POST | `/api/playlists/{id}/items/by-id/{video_id}` | add a video to a playlist given nothing but the id — the extension's save-to-playlist menu. Metadata is resolved here; someone else's playlist is a 404 |
 | GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
 | POST | `/api/history/by-id/{id}` | report a position for a video we're given nothing but the id of — what the extension posts while you watch on youtube.com. Metadata is resolved here |
@@ -1706,7 +1715,7 @@ no per-test decorator). What's covered:
 | `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, and reporting from an id alone: resolved once rather than every ten seconds, and one row shared with the app |
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
-| `test_playlists.py` | counts, covers, item ordering, cascade on delete |
+| `test_playlists.py` | counts, covers, item ordering, cascade on delete, adding by id alone (the extension's menu) |
 | `test_playlist_import.py` | the link that makes re-importing a re-sync, playlist order surviving the copy, add-only merge (a video pulled on YouTube stays in your copy), the owner-only guard, every shape `playlist_ref` accepts and rejects, looking up a playlist someone else owns, nothing written before YouTube answers (the write-lock deadlock), and the extension's path: no token, right owner, gaps filled without clobbering what the page already read |
 | `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp, the avatar filled in on save |
 | `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
