@@ -9,7 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -927,7 +927,11 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
             from app.routers.imported import _serialize as _serialize_imported
             return _serialize_imported(imp)
         return await _resolve_from_youtube(video_id, db)
-    chan = await db.get(Channel, v.channel_id)
+    return _serialize_video(v, await db.get(Channel, v.channel_id))
+
+
+def _serialize_video(v: Video, chan: Channel | None) -> dict:
+    """One catalog video in the shape every card and the watch page expect."""
     try:
         title_labels = json.loads(v.title_labels) if v.title_labels else None
     except (ValueError, TypeError):
@@ -947,6 +951,43 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
         "score": round(score_video(v.view_count, v.published_at), 2),
         "title_labels": title_labels,
     }
+
+
+@router.get("/next/{video_id}")
+async def next_video(video_id: str, db: AsyncSession = Depends(get_db)):
+    """The channel's next video FORWARD IN TIME — what to watch after this one.
+
+    Forward, not "most popular next": working through a channel in the order it
+    was published is the thing a suggestion can actually help with, and it's the
+    one order YouTube's own up-next never offers. On the channel's newest video
+    there is nothing ahead, and the honest answer is null.
+
+    Shorts and long-form stay in their own sequences, as they do everywhere else
+    here — finishing an essay shouldn't hand you a 30-second clip.
+
+    Ties on published_at are broken by id so the walk can't stall: with a bare
+    `>`, two videos sharing a timestamp would each skip the other and the pair
+    would be unreachable from the one before them.
+    """
+    v = await db.get(Video, video_id)
+    if not v:
+        return None
+    nxt = (await db.execute(
+        select(Video)
+        .where(
+            Video.channel_id == v.channel_id,
+            Video.is_short == v.is_short,
+            or_(
+                Video.published_at > v.published_at,
+                and_(Video.published_at == v.published_at, Video.youtube_id > v.youtube_id),
+            ),
+        )
+        .order_by(Video.published_at.asc(), Video.youtube_id.asc())
+        .limit(1)
+    )).scalar_one_or_none()
+    if not nxt:
+        return None
+    return _serialize_video(nxt, await db.get(Channel, nxt.channel_id))
 
 
 @router.get("/caption-langs/{video_id}")

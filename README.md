@@ -39,6 +39,9 @@ real video (muted, with custom captions and scrubbing).
   bookmark's fills in and offers to clear the mark whenever you're standing on
   one. It's our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
+- **Up next, in the channel's own order** — when a video ends, the card offered
+  is the same channel's **next one forward in time**, which is the order YouTube's
+  own up-next never gives you and the one that lets you work through a backlog
 - **Ask AI** — a conversation about the video you're watching, answered from its
   own transcript: it cites the moment it read, and those timestamps are buttons that
   seek there. Because it only knows this video, it can say "that isn't in here"

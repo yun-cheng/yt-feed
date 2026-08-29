@@ -603,6 +603,8 @@ Other details:
   unmuted autoplay doesn't error — it wedges on a buffering spinner — so a
   watchdog notices playback never started within ~4s and rebuilds the player
   muted, which always plays.
+- **Up next**: when the video ends, a card over the player offers the same
+  channel's next video **forward in time** — see below.
 - **Metadata**: renders instantly from the clicked card's `VideoItem`, then
   enriches from `/api/feed/video/:id` (the only source on a cold load).
 - **Description**: its own fetch from `/api/feed/description/:id` (the backend
@@ -978,6 +980,26 @@ Other details:
   the overlay seeds its state from them on mount. The AI-translate selection is
   deliberately excluded (see above).
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
+
+### Up next (`/api/feed/next/:id`)
+
+When a video ends, a card over the player offers the same channel's next video
+**forward in time**. Forward, not "most popular next": that's the order YouTube's
+own up-next never offers, and it's the one that lets you work through a channel.
+On the channel's newest video there's nothing ahead and no card. Clicking it
+dispatches the same `app:watch` event a card's plain-click sends, so the overlay
+swaps video exactly as if you'd clicked it in the feed. It never autoplays.
+
+- **Fetched on arrival, not at the end**, so the card is already in hand the
+  moment the video finishes instead of appearing a beat afterwards.
+- **The end is polled**, not taken from an event: `getPlayerState() === 0` every
+  500ms. The embed and a downloaded file answer through the same `PlayerApi`, so
+  one code path covers both and nothing here needs to know which it's holding.
+- **A running A–B loop suppresses it.** The loop reaches the end deliberately,
+  every lap; being handed the next video each time would be the opposite of what
+  the loop is for.
+- **Playing again takes the card away** and re-arms the dismissal, so a replay or
+  a seek back into the video gets it again at the next ending.
 
 ### Ask (`AskPanel.tsx`)
 

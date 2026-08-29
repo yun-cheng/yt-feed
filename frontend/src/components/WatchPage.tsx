@@ -113,6 +113,10 @@ const RESUME_MIN_SEC = 10
 // Nor is resuming this close to the end: the video restarts instead, so a
 // finished video doesn't reopen onto its own credits.
 const RESUME_TAIL_SEC = 20
+// How often we ask the player whether it has ended. Half a second is under the
+// threshold where the up-next card would feel like it arrived late, and the call
+// is a property read on an object we already hold.
+const END_POLL_MS = 500
 
 // Caption preferences persist in localStorage so they carry across videos and
 // sessions — the watch overlay remounts per video, re-reading these on mount.
@@ -717,6 +721,44 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
       report(true)
     }
   }, [videoId, meta])
+
+  // ── Up next ───────────────────────────────────────────
+  // The channel's next video FORWARD IN TIME, offered when this one ends. Asked
+  // for on arrival rather than at the end, so the card is already in hand the
+  // moment the video finishes instead of appearing a beat afterwards.
+  const [nextUp, setNextUp] = useState<VideoItem | null>(null)
+  const [ended, setEnded] = useState(false)
+  const [nextDismissed, setNextDismissed] = useState(false)
+  useEffect(() => {
+    setNextUp(null)
+    let cancelled = false
+    apiFetch(`/api/feed/next/${videoId}`, { quiet: true })
+      .then((r) => r.json())
+      // null is the ordinary answer on a channel's newest video — nothing to
+      // suggest is a result, not a failure.
+      .then((d) => { if (!cancelled && d && d.youtube_id) setNextUp(d) })
+      .catch(() => { /* a suggestion is a nicety; losing it costs nothing */ })
+    return () => { cancelled = true }
+  }, [videoId])
+
+  // 0 = ENDED, 1 = PLAYING. Polled rather than taken from an event, because the
+  // embed and a local <video> answer through the same PlayerApi and nothing here
+  // needs to know which one it's holding.
+  //
+  // A running A–B loop is excluded: it reaches the end deliberately, every lap,
+  // and being handed the next video each time would be the opposite of what the
+  // loop is for.
+  const looping = marks.looping
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const state = playerRef.current?.getPlayerState()
+      if (state === 0) { if (!looping) setEnded(true) }
+      // Playing again — a replay, or a seek back into the video — takes the card
+      // away and re-arms the dismissal for the next ending.
+      else if (state === 1) { setEnded(false); setNextDismissed(false) }
+    }, END_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [looping, playerRef])
 
   useEffect(() => {
     setDescription('')
@@ -1954,6 +1996,51 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
             />
           </div>
         ))}
+
+        {/* Up next. Only once the video has actually ENDED, so it can never cover
+            something still playing — which also means it lands on top of the
+            related-video grid the embed puts up at the end, in place of a wall of
+            other people's channels. Dismissing leaves the finished frame alone. */}
+        {ended && nextUp && !nextDismissed && (
+          <div
+            data-testid="up-next"
+            className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 px-4"
+          >
+            <div className="w-full max-w-[22rem] text-center">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[#aaa]">
+                Next from {nextUp.channel_name || meta?.channel_name || 'this channel'}
+              </p>
+              <button
+                type="button"
+                // Same event a card's plain-click sends, so the overlay swaps
+                // video exactly as if you'd clicked this one in the feed.
+                onClick={() => window.dispatchEvent(new CustomEvent<VideoItem>('app:watch', { detail: nextUp }))}
+                className="block w-full overflow-hidden rounded-xl bg-[#282828] text-left ring-1 ring-white/10 transition-colors hover:bg-[#3f3f3f]"
+              >
+                <span className="relative block aspect-video w-full bg-black">
+                  {nextUp.thumbnail_url && (
+                    <img src={nextUp.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                  )}
+                  {nextUp.duration_seconds > 0 && (
+                    <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1 py-0.5 text-[11px] font-medium text-white">
+                      {formatTime(nextUp.duration_seconds)}
+                    </span>
+                  )}
+                </span>
+                <span className="block px-3 py-2 text-sm font-medium leading-snug text-white line-clamp-2">
+                  {nextUp.title}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNextDismissed(true)}
+                className="mt-3 text-xs text-[#aaa] transition-colors hover:text-white"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {embedError && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/95 px-6 text-center">
