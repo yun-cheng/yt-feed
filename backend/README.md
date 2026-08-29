@@ -1679,7 +1679,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
-| GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate |
+| GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic). The channel block carries `source` and `scanning` |
@@ -1745,7 +1745,7 @@ no per-test decorator). What's covered:
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |
 | `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, and reporting from an id alone: resolved once rather than every ten seconds, and one row shared with the app |
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup — and saved loops: several per video, only one active at a time, a half-set one kept as it is, stopping keeping the passage where deleting drops it |
-| `test_next_video.py` | the up-next walk: the immediate successor rather than the newest, nothing ahead of the channel's latest, shorts and long-form as separate sequences, videos sharing a timestamp staying reachable |
+| `test_next_video.py` | the up-next walk: the immediate successor rather than the newest, nothing ahead of the channel's latest, shorts and long-form as separate sequences, videos sharing a timestamp staying reachable — and the channel page's filters narrowing which videos are eligible without touching the order |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete, adding by id alone (the extension's menu) |
 | `test_playlist_import.py` | the link that makes re-importing a re-sync, playlist order surviving the copy, add-only merge (a video pulled on YouTube stays in your copy), the owner-only guard, every shape `playlist_ref` accepts and rejects, looking up a playlist someone else owns, nothing written before YouTube answers (the write-lock deadlock), and the extension's path: no token, right owner, gaps filled without clobbering what the page already read |

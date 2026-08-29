@@ -1000,6 +1000,13 @@ swaps video exactly as if you'd clicked it in the feed. It never autoplays.
   the loop is for.
 - **Playing again takes the card away** and re-arms the dismissal, so a replay or
   a seek back into the video gets it again at the next ending.
+- **It follows the channel page's filters.** That page stays mounted behind the
+  overlay, so its filters are still the ones in force — pick a topic, a window,
+  or "unwatched", and the chain stays inside the list you were actually browsing.
+  `App` builds them into a query string (`watchNextFilter`) and passes it as
+  `nextFilter`; every other surface sends nothing and gets the plain
+  next-in-time. The filters narrow **which** videos are eligible, never the
+  order — which is why `sort` is deliberately not among them.
 
 ### Ask (`AskPanel.tsx`)
 

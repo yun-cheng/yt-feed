@@ -40,6 +40,10 @@ type Props = {
   // Metadata when we arrived from a card (renders instantly, no fetch flash).
   // Absent on a cold load / back-forward, where we fetch by id instead.
   video?: VideoItem | null
+  // The filters in force on the page behind this overlay, as a query string,
+  // so the up-next suggestion comes from the list you were actually browsing.
+  // Empty when nothing is filtering it (the feed, a cold load).
+  nextFilter?: string
   // Seconds to start at, when the URL's `?t=` said so — a handoff from
   // somewhere that already knew the position, which beats stored history.
   startAt?: number | null
@@ -366,7 +370,7 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
   )
 }
 
-export default function WatchPage({ videoId, video, startAt, initialPanel, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
+export default function WatchPage({ videoId, video, nextFilter = '', startAt, initialPanel, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
@@ -732,14 +736,14 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
   useEffect(() => {
     setNextUp(null)
     let cancelled = false
-    apiFetch(`/api/feed/next/${videoId}`, { quiet: true })
+    apiFetch(`/api/feed/next/${videoId}${nextFilter ? `?${nextFilter}` : ''}`, { quiet: true })
       .then((r) => r.json())
       // null is the ordinary answer on a channel's newest video — nothing to
       // suggest is a result, not a failure.
       .then((d) => { if (!cancelled && d && d.youtube_id) setNextUp(d) })
       .catch(() => { /* a suggestion is a nicety; losing it costs nothing */ })
     return () => { cancelled = true }
-  }, [videoId])
+  }, [videoId, nextFilter])
 
   // 0 = ENDED, 1 = PLAYING. Polled rather than taken from an event, because the
   // embed and a local <video> answer through the same PlayerApi and nothing here

@@ -7,6 +7,7 @@ import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, or_, select
@@ -18,8 +19,9 @@ from app.config import settings
 from app.database import async_session
 from app.models import (
     CaptionLangs, CaptionTranslation, Channel, ImportedVideo, User, Video,
+    WatchHistory,
 )
-from app.ranking import format_range, rank_videos, resolve_range, score_video
+from app.ranking import format_range, range_cutoffs, rank_videos, resolve_range, score_video
 from app.categorizer import get_categories, get_channel_groups
 
 router = APIRouter(prefix="/feed")
@@ -953,8 +955,22 @@ def _serialize_video(v: Video, chan: Channel | None) -> dict:
     }
 
 
+# How far ahead the up-next walk will look for a video that passes the filters.
+# Only the filtered path can skip anything, and it skips a run of consecutive
+# videos — a topic you haven't picked, a stretch you've already watched. A few
+# hundred in a row is a filter that has no answer, not one we gave up on.
+NEXT_SCAN_CAP = 300
+
+
 @router.get("/next/{video_id}")
-async def next_video(video_id: str, db: AsyncSession = Depends(get_db)):
+async def next_video(
+    video_id: str,
+    age: str = Query(default="", description="publish-age range in days, e.g. 0-30"),
+    label: str = Query(default="", description="keep only videos carrying this title-label"),
+    watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched"),
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
     """The channel's next video FORWARD IN TIME — what to watch after this one.
 
     Forward, not "most popular next": working through a channel in the order it
@@ -968,26 +984,74 @@ async def next_video(video_id: str, db: AsyncSession = Depends(get_db)):
     Ties on published_at are broken by id so the walk can't stall: with a bare
     `>`, two videos sharing a timestamp would each skip the other and the pair
     would be unreachable from the one before them.
+
+    The filters are the channel page's own, passed through by the watch overlay
+    because that page is still mounted behind it. They narrow WHICH videos are
+    eligible, never the order — you asked for a topic, or a window, or the ones
+    you haven't seen, and the next video should come from that list rather than
+    from a list you aren't looking at.
     """
     v = await db.get(Video, video_id)
     if not v:
         return None
-    nxt = (await db.execute(
-        select(Video)
-        .where(
-            Video.channel_id == v.channel_id,
-            Video.is_short == v.is_short,
-            or_(
-                Video.published_at > v.published_at,
-                and_(Video.published_at == v.published_at, Video.youtube_id > v.youtube_id),
-            ),
-        )
+
+    conds = [
+        Video.channel_id == v.channel_id,
+        Video.is_short == v.is_short,
+        or_(
+            Video.published_at > v.published_at,
+            and_(Video.published_at == v.published_at, Video.youtube_id > v.youtube_id),
+        ),
+    ]
+    # Both edges, even though in practice only the upper one bites: the video
+    # being watched came out of this same window, so everything after it already
+    # clears the lower edge. Applying it anyway costs one condition and means the
+    # answer stays right if that ever stops being true.
+    if age:
+        try:
+            older, newer = range_cutoffs(resolve_range(age), datetime.utcnow())
+            conds.append(Video.published_at < newer)
+            if older is not None:
+                conds.append(Video.published_at >= older)
+        except ValueError:
+            pass  # an unparseable window is no window, not an error to watch a video
+
+    # Beyond this the filters are per-row predicates the query can't express
+    # (labels are a JSON list, watch status lives in another table), so walk the
+    # candidates in order and stop at the first that passes.
+    wanted = {w.strip() for w in watch.split(",") if w.strip()}
+    from app.routers.tags import WATCH_STATUSES
+    if wanted.issuperset(WATCH_STATUSES):
+        wanted = set()  # every status kept is the same as no filter
+    hist = {}
+    if wanted:
+        hist = {
+            r[0]: ("watched" if r[1] else "in_progress")
+            for r in await db.execute(
+                select(WatchHistory.youtube_id, WatchHistory.watched)
+                .where(WatchHistory.user_id == user.id)
+            )
+        }
+
+    limit = NEXT_SCAN_CAP if (label or wanted) else 1
+    rows = (await db.execute(
+        select(Video).where(*conds)
         .order_by(Video.published_at.asc(), Video.youtube_id.asc())
-        .limit(1)
-    )).scalar_one_or_none()
-    if not nxt:
-        return None
-    return _serialize_video(nxt, await db.get(Channel, nxt.channel_id))
+        .limit(limit)
+    )).scalars().all()
+
+    for row in rows:
+        if label:
+            try:
+                labels = json.loads(row.title_labels) if row.title_labels else []
+            except (ValueError, TypeError):
+                labels = []
+            if label not in (labels or []):
+                continue
+        if wanted and hist.get(row.youtube_id, "unwatched") not in wanted:
+            continue
+        return _serialize_video(row, await db.get(Channel, row.channel_id))
+    return None
 
 
 @router.get("/caption-langs/{video_id}")

@@ -41,7 +41,9 @@ real video (muted, with custom captions and scrubbing).
   rail laid over YouTube's own bar on the embed
 - **Up next, in the channel's own order** — when a video ends, the card offered
   is the same channel's **next one forward in time**, which is the order YouTube's
-  own up-next never gives you and the one that lets you work through a backlog
+  own up-next never gives you and the one that lets you work through a backlog.
+  It follows whatever narrowed the page you came from: pick a topic, a time
+  window, or "unwatched" on a channel, and the chain stays inside that list
 - **Ask AI** — a conversation about the video you're watching, answered from its
   own transcript: it cites the moment it read, and those timestamps are buttons that
   seek there. Because it only knows this video, it can say "that isn't in here"

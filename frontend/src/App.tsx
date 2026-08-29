@@ -1454,6 +1454,19 @@ export default function App() {
     mainRef.current?.scrollTo({ top: 0 })
   }
 
+  // The channel page STAYS MOUNTED behind the watch overlay, so its filters are
+  // still the ones in force — and if you narrowed that list to a topic, a
+  // window, or the ones you haven't seen, the video offered at the end should
+  // come from that list rather than from the whole channel. Every other surface
+  // sends nothing and gets the plain next-in-time.
+  const watchNextFilter = useMemo(() => {
+    if (page !== 'channel' || !selectedChannelId) return ''
+    const p = new URLSearchParams({ age: formatAge(views.channel.age) })
+    if (selectedLabel) p.set('label', selectedLabel)
+    if (channelWatchStatuses.length) p.set('watch', channelWatchStatuses.join(','))
+    return p.toString()
+  }, [page, selectedChannelId, views.channel.age, selectedLabel, channelWatchStatuses])
+
   // Open a video as a full-screen overlay (from a card's plain-click, via the
   // 'app:watch' event). We DON'T touch the underlying page or its scroll — it
   // stays mounted behind the overlay, so closing returns you exactly where you
@@ -1881,6 +1894,7 @@ export default function App() {
             key={selectedVideoId}
             videoId={selectedVideoId}
             video={selectedVideo}
+            nextFilter={watchNextFilter}
             startAt={startAt}
             initialPanel={watchPanel}
             onChannelClick={selectChannelFromWatch}
