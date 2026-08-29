@@ -619,7 +619,14 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
   // startup; `resumeAt` stays null until we know, so the seek effect below can
   // tell "not loaded yet" from "start at 0".
   const [resumeAt, setResumeAt] = useState<number | null>(null)
-  const resumedRef = useRef(false)
+  // Bumped every time a player becomes ready. The seek below keys off it rather
+  // than firing once for the life of the page, because the embed can be REBUILT
+  // under us: a blocked unmuted autoplay is replaced by a muted player, and that
+  // one starts at 0 with the old seek already spent. One-shot resume meant the
+  // rebuilt player kept the position only when no rebuild happened — which is
+  // why a refresh (no gesture, so muted from the first build) always worked.
+  const [playerGen, setPlayerGen] = useState(0)
+  const resumedForRef = useRef(-1)
   // Read once, on mount. App strips `?t=` from the URL as soon as it's handed
   // over, and this component is keyed by video id so a different video gets a
   // fresh instance — between them, "start here" can't be applied twice.
@@ -652,22 +659,17 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
     return () => { cancelled = true }
   }, [videoId])
 
-  // Seek once, as soon as BOTH the position and a live player exist — either can
-  // land first, and the player has no ready event we can hang this off from out
-  // here (its onReady fires inside the creation effect, before this state may
-  // have arrived).
+  // Seek once per player, as soon as BOTH the position and a ready player exist
+  // — either can land first. `playerGen` is the ready signal from out here, so
+  // a player replaced later gets its own seek and a position that arrived late
+  // still finds the player waiting.
   useEffect(() => {
-    if (resumeAt === null || resumedRef.current) return
-    if (resumeAt === 0) { resumedRef.current = true; return }
-    const id = window.setInterval(() => {
-      const p = playerRef.current
-      if (!p) return
-      window.clearInterval(id)
-      resumedRef.current = true
-      p.seekTo(resumeAt, true)
-    }, 100)
-    return () => window.clearInterval(id)
-  }, [resumeAt])
+    if (resumeAt === null || playerGen === 0) return
+    if (resumedForRef.current === playerGen) return
+    resumedForRef.current = playerGen
+    if (resumeAt === 0) return
+    playerRef.current?.seekTo(resumeAt, true)
+  }, [resumeAt, playerGen])
 
   // Report progress on a timer while the video plays, and once more on the way
   // out (closing the overlay, switching video, navigating away). The backend
@@ -1242,6 +1244,7 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
         events: {
           onReady: (e) => {
             playerRef.current = e.target
+            setPlayerGen((n) => n + 1)
             e.target.setVolume(volumeRef.current)
             // Focus the player box (not the iframe) so OUR shortcut handler
             // owns the keyboard from the start — including ArrowUp/Down for
@@ -1279,13 +1282,14 @@ export default function WatchPage({ videoId, video, startAt, initialPanel, onCha
   }, [videoId, forcedMuted, playLocal, sourceChosen])
 
   // Publish the local <video> as the player once its metadata is in. Waiting for
-  // that matters: the resume seek polls for a player and a currentTime set before
-  // the duration is known is silently dropped. Autoplay follows the same rule as
+  // that matters: publishing it is what releases the resume seek, and a
+  // currentTime set before the duration is known is silently dropped. Autoplay follows the same rule as
   // the embed — try with sound, fall back to muted when the browser refuses.
   const onLocalReady = () => {
     const el = videoRef.current
     if (!el) return
     playerRef.current = localPlayer(el)
+    setPlayerGen((n) => n + 1)
     el.volume = Math.max(0, Math.min(1, volumeRef.current / 100))
     playerBoxRef.current?.focus()
     el.play().catch(() => {

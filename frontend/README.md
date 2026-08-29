@@ -160,9 +160,18 @@ The pieces that aren't obvious:
 
 - **Two things race on open** — the saved position and the player itself, either
   can land first. `resumeAt` stays `null` until the fetch answers (so "not loaded
-  yet" is distinct from "start at 0"), and a short poll does the seek as soon as
-  both exist. The player's `onReady` fires inside the creation effect, before the
-  position may have arrived, so it can't own this.
+  yet" is distinct from "start at 0"), and the seek runs as soon as both exist.
+  `onReady` fires inside the creation effect, before the position may have
+  arrived, so it can't own this on its own; instead it bumps `playerGen`, which
+  is the ready signal the seek effect keys off.
+- **The seek is once per PLAYER, not once per page.** The embed can be rebuilt
+  under us — a blocked unmuted autoplay is replaced by a muted player, and that
+  one starts at 0 with the old seek already spent. A one-shot `resumedRef` meant
+  the position survived only when no rebuild happened, which is exactly why a
+  refresh always worked and a click sometimes didn't: a cold load has no gesture,
+  so it starts muted from the first build and never rebuilds. `resumedForRef`
+  remembers *which* generation it resumed for, so the replacement gets its own
+  seek.
 - **A finished video restarts.** Resuming within `RESUME_TAIL_SEC` of the end
   would drop you onto the credits, so that case seeks to 0 instead.
 - **The card's bar is `watchProgress`, not `progress`** — `VideoCard` already
