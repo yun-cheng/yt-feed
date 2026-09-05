@@ -346,6 +346,112 @@ describe('previewLeft — where the popup sits', () => {
   })
 })
 
+describe('LocalControls — the per-video boost', () => {
+  // jsdom has no WebAudio, so the graph is stubbed. What's worth testing is
+  // WHEN it's built and what it's set to, both of which are ours.
+  function stubAudio() {
+    const gain = { gain: { value: 1 } }
+    const node = { connect: () => node }
+    const param = () => ({ value: 0 })
+    const ctx = {
+      createGain: () => gain,
+      createDynamicsCompressor: () => ({
+        ...node, threshold: param(), knee: param(), ratio: param(),
+        attack: param(), release: param(),
+      }),
+      createMediaElementSource: () => node,
+      resume: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    }
+    // An arrow function can't be `new`ed, and that's exactly how it's used.
+    const ctor = vi.fn(function () { return ctx })
+    ;(window as unknown as { AudioContext: unknown }).AudioContext = ctor
+    return { gain, ctor }
+  }
+
+  function renderLocal(src = '/api/downloads/a/file') {
+    const videoRef = createRef<HTMLVideoElement>() as { current: HTMLVideoElement | null }
+    videoRef.current = withDuration(videoEl(), 600)
+    const out = render(
+      <LocalControls videoRef={videoRef} src={src} hovering onFullscreen={vi.fn()} />
+    )
+    return { ...out, videoRef }
+  }
+
+  afterEach(() => { delete (window as unknown as { AudioContext?: unknown }).AudioContext })
+
+  it('is offered on a file we serve', () => {
+    stubAudio()
+    renderLocal()
+    expect(screen.getByTestId('boost-button')).toBeInTheDocument()
+  })
+
+  it('is not offered over the embed, whose audio is not ours to route', () => {
+    stubAudio()
+    renderOverEmbed()
+    expect(screen.queryByTestId('boost-button')).not.toBeInTheDocument()
+  })
+
+  it('is not offered without WebAudio, rather than offered and inert', () => {
+    renderLocal()  // no stub: no AudioContext at all
+    expect(screen.queryByTestId('boost-button')).not.toBeInTheDocument()
+  })
+
+  it('builds nothing until you actually ask for more than 1×', () => {
+    const { ctor } = stubAudio()
+    renderLocal()
+    expect(ctor).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '2' } })
+    expect(ctor).toHaveBeenCalledTimes(1)
+  })
+
+  it('amplifies by what the slider says', () => {
+    const { gain } = stubAudio()
+    renderLocal()
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '2.5' } })
+    expect(gain.gain.value).toBe(2.5)
+    expect(screen.getByTestId('boost-readout')).toHaveTextContent('2.5×')
+  })
+
+  it('the button toggles between normal and 2×', () => {
+    const { gain } = stubAudio()
+    renderLocal()
+    fireEvent.click(screen.getByTestId('boost-button'))
+    expect(gain.gain.value).toBe(2)
+    fireEvent.click(screen.getByTestId('boost-button'))
+    expect(gain.gain.value).toBe(1)
+  })
+
+  it('reads nothing at 1×, so the bar carries no number that never moves', () => {
+    stubAudio()
+    renderLocal()
+    expect(screen.queryByTestId('boost-readout')).not.toBeInTheDocument()
+  })
+
+  it('drops back to normal on the next video, which was mixed differently', () => {
+    const { gain, ctor } = stubAudio()
+    const videoRef = createRef<HTMLVideoElement>() as { current: HTMLVideoElement | null }
+    videoRef.current = withDuration(videoEl(), 600)
+    const { rerender } = render(
+      <LocalControls videoRef={videoRef} src="/one" hovering onFullscreen={vi.fn()} />
+    )
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '3' } })
+    expect(gain.gain.value).toBe(3)
+    rerender(<LocalControls videoRef={videoRef} src="/two" hovering onFullscreen={vi.fn()} />)
+    expect(gain.gain.value).toBe(1)
+    expect(screen.queryByTestId('boost-readout')).not.toBeInTheDocument()
+    expect(ctor).toHaveBeenCalledTimes(1)  // the graph is per element, not per video
+  })
+
+  it('will not go below normal — that is the volume slider’s job', () => {
+    const { gain } = stubAudio()
+    renderLocal()
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '0.25' } })
+    expect(gain.gain.value).toBe(1)
+  })
+})
+
 describe('LocalControls — the scrub preview', () => {
   it('shows a frame of the file when it has one to seek', () => {
     const videoRef = createRef<HTMLVideoElement>() as { current: HTMLVideoElement | null }

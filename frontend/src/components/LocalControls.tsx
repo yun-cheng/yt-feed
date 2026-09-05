@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
+import { useBoost, boostSupported, MAX_BOOST, BOOST_STEP } from '../hooks/audioBoost'
 import { formatTime } from '../lib/time'
 import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -172,6 +173,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // serve, never the cross-origin embed (see audioBoost).
   // A stable stand-in over the embed, where there's no element to route: a
   // fresh object each render would re-run the hook's effects forever.
+  const noElement = useRef<HTMLVideoElement | null>(null)
+  const { boost, setBoost } = useBoost(videoRef ?? noElement, src)
+  const canBoost = !!videoRef && boostSupported()
   const barRef = useRef<HTMLDivElement>(null)
   const scrubRef = useRef<HTMLVideoElement>(null)
   const draggingRef = useRef(false)
@@ -420,6 +424,50 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             {muted ? 0 : volume}%
           </span>
         </div>
+        {canBoost && (
+          /* Boost, as a second volume group beside the first: same shape, same
+             reveal, and deliberately NOT the same scope. The one on the left is
+             how loud you like things; this one is how quiet this particular
+             video was mixed, and it goes with the video rather than with you. */
+          <div className="group/boost flex items-center">
+            <button
+              onClick={() => setBoost(boost > 1 ? 1 : 2)}
+              className={BAR_BUTTON}
+              title={boost > 1
+                ? `Boosting this video ${boost}× — click for normal`
+                : 'Boost just this video, past 100%'}
+              aria-pressed={boost > 1}
+              aria-label="Boost this video’s volume"
+              data-testid="boost-button"
+            >
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M3 9v6h4l5 5V4L7 9H3z" />
+                <path d="M17 8h2v3h3v2h-3v3h-2v-3h-3v-2h3V8z" />
+              </svg>
+            </button>
+            <input
+              type="range"
+              min={1}
+              max={MAX_BOOST}
+              step={BOOST_STEP}
+              value={boost}
+              onChange={(e) => setBoost(Number(e.target.value))}
+              title="Volume boost, this video only"
+              aria-label="Volume boost"
+              className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/boost:w-16 group-hover/boost:opacity-100 focus:w-16 focus:opacity-100"
+            />
+            {/* Shown only while it's doing something. At 1× it would be a
+                number that never moves, next to one that does. */}
+            {boost > 1 && (
+              <span
+                data-testid="boost-readout"
+                className="ml-1.5 text-xs tabular-nums text-white/90"
+              >
+                {boost}×
+              </span>
+            )}
+          </div>
+        )}
         {/* 14px and 8px of padding, both YouTube's. */}
         <span className="px-2 text-sm tabular-nums text-white/90">
           {formatTime(time)} / {formatTime(duration)}

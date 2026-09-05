@@ -56,6 +56,12 @@ real video (muted, with custom captions and scrubbing).
   the **bell** at the top right says when it landed; clicking that opens the video
   with the summary already in its Ask panel, where you can keep asking
 - **Shorts** — a separate feed for vertical short-form videos
+- **Per-video volume boost** — some videos are mixed so quietly that 100% isn't
+  enough, and raising the shared volume just makes the next one shout. A second
+  volume control in the bar amplifies **this video only**, up to 8× — through a
+  limiter, so the extra range makes quiet dialogue louder instead of making loud
+  parts crackle — and resets when you move on. It works where the audio is ours
+  to touch: downloaded files and local folders, not the YouTube embed
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works
   offline — with our own control bar and a scrub preview of the actual frames

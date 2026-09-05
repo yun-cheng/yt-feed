@@ -547,6 +547,8 @@ YouTube IFrame player over the thumbnail and drives it directly:
 - **Mute is per-video**; only **volume** is shared and persisted, via
   `hooks/audioStore.ts` (a tiny `useSyncExternalStore`). Every value it takes is
   **snapped to a multiple of 5** (`VOLUME_STEP`), so a drag can't leave it on 48.
+  The **boost** (`hooks/audioBoost.ts`) is the opposite scope — see the control
+  bar below.
 - The thumbnail is held over the player until real frames render (avoids a blank
   card during the ~1–2s embed load), with a dim-to-black loading cue.
 - Captions are **rendered by us** from the `/api/feed/captions` transcript (not
@@ -1188,11 +1190,38 @@ never revisited:
 scrub preview. It carries play/pause, mute + a volume slider with the level beside it as a
 percentage (the shared, persisted store, so a level set here follows you to the
 next video; the slider stays collapsed until hovered, but the percentage is
-always on the bar), the clock,
+always on the bar), a **boost** group beside it (below), the clock,
 the CC button, pin and fullscreen — everything with a keyboard equivalent
 (`k`, `m`, `f`). It shows while the pointer is over the player or while paused,
 and mirrors the element's own events rather than polling, so a keyboard seek or
 the resume jump moves it too.
+
+The **volume boost** (`hooks/audioBoost.ts`) is the second group in that row,
+and deliberately not the same thing as the first. The shared volume is one level
+for everything you watch and stops at 100% — the loudest the file is. Some videos
+are simply mixed quiet, and turning the shared level up to compensate makes the
+*next* video shout. So the boost belongs to the video instead: 1× to 8× in
+quarter steps, multiplying the element's own volume, **reset whenever `src`
+changes**. The chain ends in a **limiter** (a `DynamicsCompressorNode` at −6dB,
+12:1, 3ms attack): plain gain on a track that already peaks near full scale
+clips rather than gets louder, so past about 4× the extra range is only worth
+having if the peaks are held down while the quiet parts keep climbing. The button
+toggles 1× ↔ 2×; the slider is the fine control. The multiplier shows only while
+it's above 1×, since at 1× it would be a number that never moves next to one
+that does.
+
+- **It needs the audio**, so it exists only where we serve the file — a download
+  or a local folder. The embed is a cross-origin iframe: its audio is not ours to
+  route, and nothing in the IFrame API amplifies. There is no boost there, and
+  the control isn't rendered rather than rendered and inert.
+- **The WebAudio graph is built lazily**, on the first raise above 1×.
+  `createMediaElementSource` is a one-way door — from then on the element's sound
+  reaches the speakers only through our graph — so a context that couldn't start
+  would mean silence, not a missing boost. That first raise is a click, which is
+  the gesture that lets the context run. Untouched, the ordinary path never goes
+  near WebAudio.
+- **The graph belongs to the element, not the video.** Moving to the next video
+  reuses it (an element can only be tapped once) and just sets the gain back to 1.
 
 The **scrub preview** is a second, hidden `<video>` of the same file seeked to the
 hovered time — the trick `VideoCard` already uses for download cards. The file is
