@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "YT Feed companion",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Strips YouTube's overlays off embedded players, and adds \"open in YT Feed\", \"save to Watch Later\" and \"save to a playlist\" buttons to video cards and the watch page on YouTube, plus \"add this channel\" on channel pages and \"import to YT Feed\" on playlist pages — including Watch Later and private playlists, which YouTube's API won't serve. Records what you watch on YouTube into YT Feed's own history, if the app is set to want it. Picks up which account it belongs to from the app itself.",
   "background": {
     "service_worker": "background.js"
@@ -37,6 +37,9 @@
       "run_at": "document_start",
       "css": [
         "embed.css"
+      ],
+      "js": [
+        "embed-boost.js"
       ]
     },
     {

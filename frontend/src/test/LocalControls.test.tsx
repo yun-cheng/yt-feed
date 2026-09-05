@@ -452,6 +452,88 @@ describe('LocalControls — the per-video boost', () => {
   })
 })
 
+describe('LocalControls — the boost over the embed', () => {
+  // Here the gain happens inside the iframe (the extension's embed-boost.js);
+  // this end only asks, so what's testable is the asking.
+  function renderWithFrame() {
+    const post = vi.fn()
+    const host = document.createElement('div')
+    const frame = document.createElement('iframe')
+    frame.src = 'https://www.youtube.com/embed/abc'
+    Object.defineProperty(frame, 'contentWindow', { value: { postMessage: post } })
+    host.appendChild(frame)
+    const hostRef = { current: host as HTMLElement | null }
+    const out = renderOverEmbed({ embedHost: hostRef })
+    return { ...out, post }
+  }
+
+  const ready = () => act(() => {
+    window.dispatchEvent(new MessageEvent('message', { data: { __ytFeed: 'boost', op: 'ready' } }))
+  })
+
+  it('offers nothing until the frame answers — no extension, no button', () => {
+    renderWithFrame()
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(screen.queryByTestId('boost-button')).not.toBeInTheDocument()
+  })
+
+  it('pings the frame at its own origin, looking for the extension', () => {
+    const { post } = renderWithFrame()
+    act(() => { vi.advanceTimersByTime(500) })
+    expect(post).toHaveBeenCalledWith(
+      { __ytFeed: 'boost', op: 'ping' },
+      'https://www.youtube.com',
+    )
+  })
+
+  it('offers the control once something answers', () => {
+    renderWithFrame()
+    ready()
+    expect(screen.getByTestId('boost-button')).toBeInTheDocument()
+  })
+
+  it('sends the level into the frame rather than touching audio here', () => {
+    const { post } = renderWithFrame()
+    ready()
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '2.5' } })
+    expect(post).toHaveBeenCalledWith(
+      { __ytFeed: 'boost', op: 'set', value: 2.5 },
+      'https://www.youtube.com',
+    )
+    expect(screen.getByTestId('boost-readout')).toHaveTextContent('2.5×')
+  })
+
+  it('takes the frame’s word for it when the boost did not happen', () => {
+    // The context inside the iframe can refuse to start. The slider has to go
+    // back to where the sound actually is rather than claim 2.5×.
+    renderWithFrame()
+    ready()
+    fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '2.5' } })
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        data: { __ytFeed: 'boost', op: 'result', ok: false },
+      }))
+    })
+    expect(screen.queryByTestId('boost-readout')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('boost-button')).not.toBeInTheDocument()
+  })
+
+  it('ignores messages that are not ours', () => {
+    renderWithFrame()
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: { op: 'ready' } }))
+      window.dispatchEvent(new MessageEvent('message', { data: 'ready' }))
+    })
+    expect(screen.queryByTestId('boost-button')).not.toBeInTheDocument()
+  })
+
+  it('gives up pinging rather than asking forever', () => {
+    const { post } = renderWithFrame()
+    act(() => { vi.advanceTimersByTime(30_000) })
+    expect(post.mock.calls.length).toBeLessThanOrEqual(10)
+  })
+})
+
 describe('LocalControls — the scrub preview', () => {
   it('shows a frame of the file when it has one to seek', () => {
     const videoRef = createRef<HTMLVideoElement>() as { current: HTMLVideoElement | null }

@@ -60,8 +60,9 @@ real video (muted, with custom captions and scrubbing).
   enough, and raising the shared volume just makes the next one shout. A second
   volume control in the bar amplifies **this video only**, up to 8× — through a
   limiter, so the extra range makes quiet dialogue louder instead of making loud
-  parts crackle — and resets when you move on. It works where the audio is ours
-  to touch: downloaded files and local folders, not the YouTube embed
+  parts crackle — and resets when you move on. Downloaded files and local folders it amplifies directly;
+  on a YouTube embed the audio is out of the page's reach, so the extension does
+  it from inside the player's own frame
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works
   offline — with our own control bar and a scrub preview of the actual frames
@@ -180,7 +181,8 @@ channel to the feed from that channel's page, and reports what you watch there
 into the app's watch history. On
 **embedded players** it strips YouTube's overlays —
 title, avatar, centre play button, share row, "More videos" — so the app draws
-its own control bar over bare video.
+its own control bar over bare video, and it amplifies a too-quiet player past
+100% on the app's ask, which only something inside that frame can do.
 
 Load `extension/` unpacked from `chrome://extensions` (Developer mode → Load
 unpacked), open its **Extension options** and paste the API key from the app's

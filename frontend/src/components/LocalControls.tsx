@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
-import { useBoost, boostSupported, MAX_BOOST, BOOST_STEP } from '../hooks/audioBoost'
+import { useBoost, useRemoteBoost, boostSupported, MAX_BOOST, BOOST_STEP } from '../hooks/audioBoost'
 import { formatTime } from '../lib/time'
 import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -131,7 +131,7 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  watch page keeps YouTube's controls and never renders this bar over an embed
  *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
  *  modes — there is no leftover chrome for it to paint over. */
-export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, nextControl, leftControls, extraControls, bookmarks, loop, others }: {
+export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, embedHost, nextControl, leftControls, extraControls, bookmarks, loop, others }: {
   // One of these two. `videoRef` + `src` give the scrub preview its frames
   // directly; over the embed, `storyboard` supplies them instead.
   videoRef?: RefObject<HTMLVideoElement | null>
@@ -142,6 +142,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   storyboard?: StoryboardInfo | null
   hovering: boolean
   onFullscreen: () => void
+  // Where the embed's iframe lives, for the per-video boost: the gain happens
+  // inside that frame (see audioBoost's useRemoteBoost). Unused with `videoRef`,
+  // whose element we can route ourselves.
+  embedHost?: RefObject<HTMLElement | null>
   // The page's "next video" button, sitting where YouTube puts it: immediately
   // after play/pause, before the volume group. The page owns it because only it
   // knows what comes next.
@@ -174,8 +178,14 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // A stable stand-in over the embed, where there's no element to route: a
   // fresh object each render would re-run the hook's effects forever.
   const noElement = useRef<HTMLVideoElement | null>(null)
-  const { boost, setBoost } = useBoost(videoRef ?? noElement, src)
-  const canBoost = !!videoRef && boostSupported()
+  const noHost = useRef<HTMLElement | null>(null)
+  const local = useBoost(videoRef ?? noElement, src)
+  // Over the embed the gain is applied inside the iframe by the companion
+  // extension, which answers a ping — so there the control appears only when
+  // something is actually listening.
+  const remote = useRemoteBoost(embedHost ?? noHost, src)
+  const { boost, setBoost } = videoRef ? local : remote
+  const canBoost = videoRef ? boostSupported() : remote.available
   const barRef = useRef<HTMLDivElement>(null)
   const scrubRef = useRef<HTMLVideoElement>(null)
   const draggingRef = useRef(false)

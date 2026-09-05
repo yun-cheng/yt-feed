@@ -16,6 +16,7 @@ behaviour is the default that ships.
 | File | Runs on | Does |
 |---|---|---|
 | `embed.css` | `youtube.com/embed/*`, all frames | Hides the player chrome |
+| `embed-boost.js` | `youtube.com/embed/*`, all frames | Amplifies the embedded player past 100%, on the app's ask |
 | `marker.js` | `localhost`, `127.0.0.1` | Sets `data-ytfeed-embed-clean="1"` on `<html>`, and hands the worker the app's address and this browser's API key |
 | `open-in-app.js` | `youtube.com/*` | The corner buttons on cards, the save-to-playlist menu, the watch-page pair, the channel-page pill, and the watch-history sampler |
 | `background.js` | service worker | Talks to the app's API, owns the configuration, and caches the Watch Later list, the channel list and the playlists |
@@ -474,6 +475,47 @@ and `showinfo` were the old ones and both are dead.
 
 Nothing in a web page can reach inside a cross-origin iframe to remove them.
 A content script can, so `embed.css` is one.
+
+## Volume boost inside the embed (`embed-boost.js`)
+
+The app can already amplify a video it serves itself: a WebAudio gain node
+between the `<video>` and the speakers, for the videos that were mixed too quiet
+to fix with the volume slider. It cannot do that to an embed. The player's
+`<video>` lives in the iframe, on youtube.com, and the page holding that iframe
+may not touch it; YouTube's IFrame API stops at `setVolume(100)`, which is the
+file's own loudness and no louder.
+
+This script is the one place both halves can meet: it runs **inside** the embed
+frame, where the element is reachable, and takes a level from the app over
+`postMessage`. Same boundary `embed.css` already crosses — and nothing but a
+number crosses it.
+
+```
+app  →  {__ytFeed:'boost', op:'ping'}            is anyone listening?
+     →  {__ytFeed:'boost', op:'set', value:1-8}  amplify by this much
+here →  {__ytFeed:'boost', op:'ready'}           yes, and this browser can
+     →  {__ytFeed:'boost', op:'result', ok, value}   what actually happened
+```
+
+- **The app asks before it offers a control.** No extension, no reply, no boost
+  button — rather than a button that does nothing. That also means the boost
+  appears over the embed exactly where our own control bar does, since both
+  depend on this extension being installed.
+- **Only the app is answered.** The sender has to be the parent frame *and* be on
+  `localhost` / `127.0.0.1`, matching the extension's own host permissions. Any
+  other page gets no reply and no gain, whatever it sends.
+- **The context is started before the audio is routed through it.**
+  `createMediaElementSource` is a one-way door: afterwards the player's sound
+  reaches the speakers only through our graph. The click that asked for the boost
+  happened in the app's frame, not this one, so the autoplay policy may refuse to
+  start the context — and routing anyway would be silence rather than a missing
+  boost. If it won't run we say `ok: false` and leave the player exactly as it
+  was; the app puts its slider back.
+- **One graph per frame.** A new video is a new frame, so the gain goes with it.
+- **The gain runs into a limiter**, the same one the app's own path uses:
+  multiplying a track that already peaks near full scale clips it, so the top of
+  the range would otherwise be distortion rather than volume. The frame clamps
+  the value itself rather than trusting what it was sent.
 
 ## Settings: the app's address, and who you are
 

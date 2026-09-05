@@ -124,3 +124,70 @@ export function useBoost(elRef: RefObject<HTMLMediaElement | null>, resetKey?: s
   return { boost, setBoost: apply }
 }
 
+/**
+ * The same boost over the EMBED, where the audio isn't ours to route.
+ *
+ * The gain lives inside the iframe, applied by the companion extension's
+ * `embed-boost.js`; this end only asks. It pings until that script answers, and
+ * the control is offered only once it has — without the extension (or on a
+ * browser with no WebAudio) nothing replies and there is no button, which is
+ * the truth rather than a button that does nothing.
+ *
+ * `hostRef` is the element the YT player was built into; the iframe is found
+ * beneath it, since it doesn't exist until the player is ready.
+ */
+export function useRemoteBoost(hostRef: RefObject<HTMLElement | null>, resetKey?: string) {
+  const [boost, setBoost] = useState(1)
+  const [available, setAvailable] = useState(false)
+
+  const send = useCallback((msg: Record<string, unknown>) => {
+    const frame = hostRef.current?.querySelector('iframe')
+    if (!frame?.contentWindow) return false
+    let origin: string
+    try {
+      origin = new URL(frame.src).origin
+    } catch {
+      return false
+    }
+    frame.contentWindow.postMessage({ __ytFeed: 'boost', ...msg }, origin)
+    return true
+  }, [hostRef])
+
+  // A different video is a different mix, and on this path also a different
+  // frame — the player is rebuilt, and the gain inside it goes with it.
+  useEffect(() => { setBoost(1); setAvailable(false) }, [resetKey])
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const d = e.data as { __ytFeed?: string; op?: string; ok?: boolean; value?: number } | null
+      if (!d || d.__ytFeed !== 'boost') return
+      if (d.op === 'ready') setAvailable(true)
+      // The frame is the authority on what it managed to do: if the context
+      // wouldn't start, the slider goes back to where the sound actually is.
+      if (d.op === 'result' && !d.ok) { setAvailable(false); setBoost(1) }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  // Ask until someone answers. The iframe arrives a beat after this mounts, and
+  // the script inside it may still be starting; a handful of tries covers both
+  // without leaving a timer running for the life of the page.
+  useEffect(() => {
+    if (available) return
+    let tries = 0
+    const id = window.setInterval(() => {
+      if (++tries > 10) { window.clearInterval(id); return }
+      send({ op: 'ping' })
+    }, 400)
+    return () => window.clearInterval(id)
+  }, [available, resetKey, send])
+
+  const apply = useCallback((next: number) => {
+    const v = Math.max(1, Math.min(MAX_BOOST, next))
+    if (!send({ op: 'set', value: v })) return
+    setBoost(v)
+  }, [send])
+
+  return { boost, setBoost: apply, available }
+}

@@ -1205,15 +1205,19 @@ quarter steps, multiplying the element's own volume, **reset whenever `src`
 changes**. The chain ends in a **limiter** (a `DynamicsCompressorNode` at −6dB,
 12:1, 3ms attack): plain gain on a track that already peaks near full scale
 clips rather than gets louder, so past about 4× the extra range is only worth
-having if the peaks are held down while the quiet parts keep climbing. The button
-toggles 1× ↔ 2×; the slider is the fine control. The multiplier shows only while
-it's above 1×, since at 1× it would be a number that never moves next to one
-that does.
+having if the peaks are held down while the quiet parts keep climbing. The button toggles 1× ↔ 2×; the slider is the fine control. The
+multiplier shows only while it's above 1×, since at 1× it would be a number that
+never moves next to one that does.
 
-- **It needs the audio**, so it exists only where we serve the file — a download
-  or a local folder. The embed is a cross-origin iframe: its audio is not ours to
-  route, and nothing in the IFrame API amplifies. There is no boost there, and
-  the control isn't rendered rather than rendered and inert.
+- **It needs the audio**, so the page can only do this where we serve the file — a
+  download or a local folder. The embed is a cross-origin iframe: its audio is
+  not ours to route, and nothing in the IFrame API amplifies.
+- **Over the embed the same control works through the extension** — `useRemoteBoost`
+  pings the iframe, and `extension/embed-boost.js`, which runs *inside* it, applies
+  the gain there and reports back. The control appears only once that ping is
+  answered, so without the extension there's no button rather than a dead one, and
+  a `result` saying the frame couldn't do it puts the slider back to 1×. The
+  protocol is in [extension/README.md](../extension/README.md).
 - **The WebAudio graph is built lazily**, on the first raise above 1×.
   `createMediaElementSource` is a one-way door — from then on the element's sound
   reaches the speakers only through our graph — so a context that couldn't start

@@ -2026,6 +2026,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           <LocalControls
             player={playerRef}
             storyboard={storyboard}
+            embedHost={hostRef}
             hovering={chromeUp}
             onFullscreen={toggleFullscreen}
             nextControl={nextButton}
