@@ -130,7 +130,7 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  watch page keeps YouTube's controls and never renders this bar over an embed
  *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
  *  modes — there is no leftover chrome for it to paint over. */
-export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, leftControls, extraControls, bookmarks, loop, others }: {
+export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, nextControl, leftControls, extraControls, bookmarks, loop, others }: {
   // One of these two. `videoRef` + `src` give the scrub preview its frames
   // directly; over the embed, `storyboard` supplies them instead.
   videoRef?: RefObject<HTMLVideoElement | null>
@@ -141,6 +141,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   storyboard?: StoryboardInfo | null
   hovering: boolean
   onFullscreen: () => void
+  // The page's "next video" button, sitting where YouTube puts it: immediately
+  // after play/pause, before the volume group. The page owns it because only it
+  // knows what comes next.
+  nextControl?: ReactNode
   // Controls the page owns, placed in the row instead of floating over the
   // video: captions on the left (after the clock, as YouTube has it), the rest
   // in the right-hand group.
@@ -372,6 +376,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             {paused ? <path d="M8 5v14l11-7z" /> : <path d="M6 5h4v14H6zm8 0h4v14h-4z" />}
           </svg>
         </button>
+        {nextControl}
         {/* Mute + volume, as one YouTube-style group: the slider is collapsed
             until the group is hovered (or the slider itself has focus, so it
             stays open while dragging or tabbing). */}

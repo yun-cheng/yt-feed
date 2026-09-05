@@ -207,6 +207,18 @@ describe('LocalControls — play and pause', () => {
   })
 })
 
+describe('LocalControls — the page’s own buttons', () => {
+  it('puts the next-video control right after play/pause', () => {
+    const { container } = renderOverEmbed({
+      nextControl: <button data-testid="next">next</button>,
+    })
+    const buttons = Array.from(container.querySelectorAll('button'))
+    const play = buttons.findIndex((b) => b.getAttribute('title')?.startsWith('Play'))
+    const next = buttons.findIndex((b) => b.dataset.testid === 'next')
+    expect(next).toBe(play + 1)
+  })
+})
+
 describe('LocalControls — the volume group', () => {
   it('mutes and unmutes', () => {
     const { player } = renderOverEmbed()

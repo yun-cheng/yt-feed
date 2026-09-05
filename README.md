@@ -43,7 +43,9 @@ real video (muted, with custom captions and scrubbing).
   is the same channel's **next one forward in time**, which is the order YouTube's
   own up-next never gives you and the one that lets you work through a backlog.
   It follows whatever narrowed the page you came from: pick a topic, a time
-  window, or "unwatched" on a channel, and the chain stays inside that list
+  window, or "unwatched" on a channel, and the chain stays inside that list.
+  The same video is a **next button in the control bar** for when you don't want
+  to sit through the rest — hover it and you see where you'd be going
 - **Ask AI** — a conversation about the video you're watching, answered from its
   own transcript: it cites the moment it read, and those timestamps are buttons that
   seek there. Because it only knows this video, it can say "that isn't in here"

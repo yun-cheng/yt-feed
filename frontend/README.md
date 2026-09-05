@@ -607,7 +607,8 @@ Other details:
   watchdog notices playback never started within ~4s and rebuilds the player
   muted, which always plays.
 - **Up next**: when the video ends, a card over the player offers the same
-  channel's next video **forward in time** — see below.
+  channel's next video **forward in time**, and a next button in the control bar
+  goes there without waiting for the end — see below.
 - **Metadata**: renders instantly from the clicked card's `VideoItem`, then
   enriches from `/api/feed/video/:id` (the only source on a cold load).
 - **Description**: its own fetch from `/api/feed/description/:id` (the backend
@@ -1010,6 +1011,15 @@ swaps video exactly as if you'd clicked it in the feed. It never autoplays.
   `nextFilter`; every other surface sends nothing and gets the plain
   next-in-time. The filters narrow **which** videos are eligible, never the
   order — which is why `sort` is deliberately not among them.
+- **The same suggestion is a button in the control bar**, where YouTube puts it:
+  right after play/pause (`nextControl`, which `LocalControls` only places — the
+  page owns it, because only the page knows what comes next). Hovering it shows
+  the very card you'd otherwise have waited for, anchored above the bar and
+  `pointer-events-none` so it can hang over the video without ever swallowing a
+  click meant for the player. One request feeds both, so the button costs
+  nothing extra, and it's absent when there's nothing ahead — a button that
+  can't go anywhere is worse than no button. Only in **our** bar: without the
+  extension the embed keeps YouTube's controls, and there's nowhere to put it.
 
 ### Ask (`AskPanel.tsx`)
 

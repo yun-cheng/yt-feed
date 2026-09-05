@@ -1826,6 +1826,54 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </button>
   )
 
+  // The next video as a button in the bar, so you can move on WITHOUT sitting
+  // through the end — the same suggestion the end-of-video card makes, from the
+  // same request, which is why hovering shows the very card you'd otherwise
+  // have waited for. Absent when there's nothing ahead: a button that can't go
+  // anywhere is worse than no button.
+  const nextButton = nextUp && (
+    <div className="group/next relative flex items-center">
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent<VideoItem>('app:watch', { detail: nextUp }))}
+        className={BAR_BUTTON}
+        // No `title`: the popup below IS the tooltip, and the native one would
+        // arrive a second later, on top of it, saying the same thing.
+        aria-label={`Next: ${nextUp.title}`}
+        data-testid="next-button"
+      >
+        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <path d="M6 18l8.5-6L6 6v12zM16 6h2v12h-2z" />
+        </svg>
+      </button>
+      {/* What you'd be going to. Anchored to the button's left edge and above
+          the bar; pointer-events-none so it can hang over the video without
+          ever eating a click meant for the player. */}
+      <div
+        data-testid="next-preview"
+        className="pointer-events-none absolute bottom-full left-0 mb-3 w-56 origin-bottom-left scale-95 overflow-hidden rounded-xl bg-[#282828] opacity-0 shadow-lg ring-1 ring-white/10 transition-all duration-150 group-hover/next:scale-100 group-hover/next:opacity-100 group-focus-within/next:scale-100 group-focus-within/next:opacity-100"
+      >
+        <div className="relative aspect-video w-full bg-black">
+          {nextUp.thumbnail_url && (
+            <img src={nextUp.thumbnail_url} alt="" className="h-full w-full object-cover" />
+          )}
+          {nextUp.duration_seconds > 0 && (
+            <span className="absolute bottom-1.5 right-1.5 rounded bg-black/80 px-1 py-0.5 text-[11px] font-medium text-white">
+              {formatTime(nextUp.duration_seconds)}
+            </span>
+          )}
+        </div>
+        <div className="px-2.5 py-2">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-[#aaa]">
+            Next from {nextUp.channel_name || meta?.channel_name || 'this channel'}
+          </p>
+          <p className="mt-0.5 text-sm font-medium leading-snug text-white line-clamp-2">
+            {nextUp.title}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+
   // Hand the video over to youtube.com at the moment you're on.
   //
   // The timestamp is read off the player at CLICK time rather than tracked in
@@ -1908,6 +1956,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               src={localSrc}
               hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu}
               onFullscreen={toggleFullscreen}
+              nextControl={nextButton}
               leftControls={<>{captionControl}{marksControls}</>}
               extraControls={<>{youtubeButton}{pinButton}</>}
               bookmarks={marks.bookmarks}
@@ -1979,6 +2028,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             storyboard={storyboard}
             hovering={chromeUp}
             onFullscreen={toggleFullscreen}
+            nextControl={nextButton}
             leftControls={<>{captionControl}{marksControls}</>}
             extraControls={<>{youtubeButton}{pinButton}</>}
             bookmarks={marks.bookmarks}
