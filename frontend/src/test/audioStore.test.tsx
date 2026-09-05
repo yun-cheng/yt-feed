@@ -55,12 +55,25 @@ describe('audioStore', () => {
     expect(screen.getByTestId('vol')).toHaveTextContent('0')
   })
 
-  it('rounds to a whole number', async () => {
-    // The volume slider reports fractions; a re-render per 0.01 is wasted work.
+  it('snaps to the nearest step of 5', async () => {
+    // Nothing that moves the volume — a drag, the arrow keys, the embed's own
+    // control read back — should be able to leave it on 48.
     const { useVolume, setAudioVolume } = await load()
     render(<Harness useVolume={useVolume} />)
+    act(() => { setAudioVolume(48) })
+    expect(screen.getByTestId('vol')).toHaveTextContent('50')
     act(() => { setAudioVolume(42.6) })
-    expect(screen.getByTestId('vol')).toHaveTextContent('43')
+    expect(screen.getByTestId('vol')).toHaveTextContent('45')
+    act(() => { setAudioVolume(2) })
+    expect(screen.getByTestId('vol')).toHaveTextContent('0')
+  })
+
+  it('snaps a stored value that is off the step', async () => {
+    // Whatever earlier versions persisted comes back on the grid.
+    localStorage.setItem(KEY, JSON.stringify({ volume: 43 }))
+    const { useVolume } = await load()
+    render(<Harness useVolume={useVolume} />)
+    expect(screen.getByTestId('vol')).toHaveTextContent('45')
   })
 
   it('ignores a set that changes nothing', async () => {

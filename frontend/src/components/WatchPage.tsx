@@ -4,7 +4,7 @@ import type { ReactNode, RefObject } from 'react'
 import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
-import { useVolume, setAudioVolume } from '../hooks/audioStore'
+import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
 import LocalControls, { localPlayer, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
@@ -1350,6 +1350,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
   // Player → store: if you change volume with the embed's own control, push it
   // back so previews follow. (No update while muted — that shouldn't zero it.)
+  // The store snaps to VOLUME_STEP, so the embed's own 48 becomes our 50 and is
+  // written straight back to it — otherwise the two would sit two points apart
+  // with nothing to reconcile them (a no-op set fires no store update).
   // The same tick answers "is it playing?", which is what tells our overlays
   // over the embed when to fade (see chromeUp) — the embed fires no events
   // we can listen to, and one poll serves both.
@@ -1363,7 +1366,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       setPlaying(s === 1 || s === 3)
       if (p.isMuted()) return
       const v = Math.round(p.getVolume())
-      if (v >= 0 && v !== volumeRef.current) setAudioVolume(v)
+      if (v < 0 || v === volumeRef.current) return
+      const snapped = Math.round(v / VOLUME_STEP) * VOLUME_STEP
+      if (snapped !== v) p.setVolume(snapped)
+      setAudioVolume(snapped)
     }, 1000)
     return () => clearInterval(id)
   }, [])

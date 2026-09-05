@@ -11,17 +11,30 @@
  *
  * Volume, on the other hand, is shared and persisted: a tiny external store read
  * via useSyncExternalStore, so changing it on one preview updates them all.
+ *
+ * Every value that lands here is SNAPPED to a multiple of VOLUME_STEP. The three
+ * ways volume moves — a slider drag, the arrow keys, and the embed's own control
+ * mirrored back — otherwise land on 48 or 49, which is a distinction no one can
+ * hear and a number nobody meant. Snapping in the store rather than at each
+ * control keeps the value the same wherever it came from.
  */
 import { useSyncExternalStore } from 'react'
 
 const KEY = 'yt-feed-audio-v1'
+
+/** The grain of the volume: the sliders step by it and every set snaps to it. */
+export const VOLUME_STEP = 5
+
+function snap(v: number): number {
+  return Math.max(0, Math.min(100, Math.round(v / VOLUME_STEP) * VOLUME_STEP))
+}
 
 function loadVolume(): number {
   try {
     const raw = localStorage.getItem(KEY)
     if (raw) {
       const p = JSON.parse(raw)
-      if (typeof p.volume === 'number') return Math.max(0, Math.min(100, p.volume))
+      if (typeof p.volume === 'number') return snap(p.volume)
     }
   } catch { /* ignore malformed storage */ }
   return 100
@@ -54,7 +67,7 @@ export function useVolume(): number {
 }
 
 export function setAudioVolume(v: number) {
-  const next = Math.max(0, Math.min(100, Math.round(v)))
+  const next = snap(v)
   if (volume === next) return
   volume = next
   persist(); emit()

@@ -545,7 +545,8 @@ YouTube IFrame player over the thumbnail and drives it directly:
   the ⋮ menu keep their own behavior and never unmute-or-open.
   Modifier/middle-clicks open YouTube in a new tab natively.
 - **Mute is per-video**; only **volume** is shared and persisted, via
-  `hooks/audioStore.ts` (a tiny `useSyncExternalStore`).
+  `hooks/audioStore.ts` (a tiny `useSyncExternalStore`). Every value it takes is
+  **snapped to a multiple of 5** (`VOLUME_STEP`), so a drag can't leave it on 48.
 - The thumbnail is held over the player until real frames render (avoids a blank
   card during the ~1–2s embed load), with a dim-to-black loading cue.
 - Captions are **rendered by us** from the `/api/feed/captions` transcript (not
@@ -597,7 +598,9 @@ Other details:
 
 - **Volume is shared with previews** both ways: the store's volume is applied on
   ready, live changes follow, and using the embed's own volume control mirrors
-  back to the store.
+  back to the store. The store snaps to `VOLUME_STEP`, so an embed-side 48 is
+  written back to the embed as 50 — a no-op set emits no store update, and
+  without that write the two would sit two points apart forever.
 - **Autoplay**: unmuted when a page gesture allows it (so it plays with sound
   immediately), muted otherwise (e.g. a cold-loaded `/watch` link). A *blocked*
   unmuted autoplay doesn't error — it wedges on a buffering spinner — so a
@@ -1172,8 +1175,10 @@ never revisited:
   file to serve, so those still use the embed.
 
 **Our own control bar** replaces the browser's native one, which can't show a
-scrub preview. It carries play/pause, mute + a volume slider (the shared,
-persisted store, so a level set here follows you to the next video), the clock,
+scrub preview. It carries play/pause, mute + a volume slider with the level beside it as a
+percentage (the shared, persisted store, so a level set here follows you to the
+next video; the slider stays collapsed until hovered, but the percentage is
+always on the bar), the clock,
 the CC button, pin and fullscreen — everything with a keyboard equivalent
 (`k`, `m`, `f`). It shows while the pointer is over the player or while paused,
 and mirrors the element's own events rather than polling, so a keyboard seek or

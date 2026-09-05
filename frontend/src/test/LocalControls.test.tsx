@@ -238,6 +238,28 @@ describe('LocalControls — the volume group', () => {
     expect(player.unMute).not.toHaveBeenCalled()
   })
 
+  it('shows the level as a percentage beside the slider', () => {
+    renderOverEmbed()
+    fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '40' } })
+    expect(screen.getByTestId('volume-readout')).toHaveTextContent('40%')
+  })
+
+  it('the readout says 0% while muted, like the slider', () => {
+    renderOverEmbed()
+    fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '80' } })
+    act(() => { vi.advanceTimersByTime(300) })
+    fireEvent.click(screen.getByTitle('Mute (m)'))
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('volume-readout')).toHaveTextContent('0%')
+  })
+
+  it('the slider moves in steps of 5, so the readout never lands on 48%', () => {
+    renderOverEmbed()
+    expect(screen.getByLabelText('Volume')).toHaveAttribute('step', '5')
+    fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '48' } })
+    expect(screen.getByTestId('volume-readout')).toHaveTextContent('50%')
+  })
+
   it('reads zero while muted, whatever the shared level is', () => {
     const { player } = renderOverEmbed()
     fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '80' } })

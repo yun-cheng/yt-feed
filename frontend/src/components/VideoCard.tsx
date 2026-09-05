@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import type { VideoItem, WatchProgress } from '../App'
-import { useVolume, setAudioVolume } from '../hooks/audioStore'
+import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { storyboardFrame } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
@@ -885,6 +885,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   type="range"
                   min={0}
                   max={100}
+                  step={VOLUME_STEP}
                   value={displayMuted ? 0 : volume}
                   onChange={(e) => handleVolumeChange(Number(e.target.value))}
                   onMouseDown={(e) => e.stopPropagation()}

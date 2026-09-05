@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
-import { useVolume, setAudioVolume } from '../hooks/audioStore'
+import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
 import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -163,6 +163,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // The slider reads and writes the SHARED volume (the same store the previews
   // and the embed use), so a level set here follows you to the next video.
   const volume = useVolume()
+  // The other half of the pair: a gain for THIS video only, above what the
+  // shared slider can reach. Only where the audio is ours to route — a file we
+  // serve, never the cross-origin embed (see audioBoost).
+  // A stable stand-in over the embed, where there's no element to route: a
+  // fresh object each render would re-run the hook's effects forever.
   const barRef = useRef<HTMLDivElement>(null)
   const scrubRef = useRef<HTMLVideoElement>(null)
   const draggingRef = useRef(false)
@@ -386,6 +391,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             type="range"
             min={0}
             max={100}
+            step={VOLUME_STEP}
             value={muted ? 0 : volume}
             onChange={(e) => {
               const next = Number(e.target.value)
@@ -398,6 +404,16 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             aria-label="Volume"
             className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-16 group-hover/vol:opacity-100 focus:w-16 focus:opacity-100"
           />
+          {/* The number the slider is sitting on. Always shown, unlike the
+              slider it labels: the level is worth knowing without having to go
+              looking for it, and in whole steps of 5 (see VOLUME_STEP) it's a
+              number that stays still. */}
+          <span
+            data-testid="volume-readout"
+            className="ml-1.5 w-9 text-right text-xs tabular-nums text-white/90"
+          >
+            {muted ? 0 : volume}%
+          </span>
         </div>
         {/* 14px and 8px of padding, both YouTube's. */}
         <span className="px-2 text-sm tabular-nums text-white/90">
