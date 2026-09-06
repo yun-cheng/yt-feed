@@ -1,10 +1,14 @@
 import type { TagInfo, LabelCount } from '../App'
-import { WATCH_STATUSES } from '../App'
+import { WATCH_STATUSES, isExcluded, tagName } from '../App'
 
 type Props = {
   tags: TagInfo[]
   selectedTags: string[]
   onToggleTag: (tag: string) => void
+  // The other half of a split chip: its body says "only this", this says "not
+  // this". A second hit zone rather than a second click on the first, so
+  // neither meaning is reached by cycling past the other.
+  onExcludeTag?: (tag: string) => void
   onSetTags: (tags: string[]) => void
   page: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search' | 'playlists' | 'playlist' | 'imported' | 'history' | 'local' | 'localfolder' | 'settings'
   onPageChange: (p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history' | 'local' | 'settings') => void
@@ -264,7 +268,7 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
 
 const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true }
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const showMode = filters.contentMode && !!onContentModeChange
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
@@ -657,14 +661,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             <div key={key}>
               {(() => {
                 const groupNames = groupTags.map(t => t.name)
+                // "All" means all of them selected FOR. A group where some are
+                // crossed out isn't all-selected, and clearing drops both ways
+                // of having chosen a tag.
                 const allSelected = groupNames.every(n => selectedTags.includes(n))
+                const withoutGroup = selectedTags.filter(t => !groupNames.includes(tagName(t)))
                 const toggleGroup = () => {
-                  if (allSelected) {
-                    onSetTags(selectedTags.filter(t => !groupNames.includes(t)))
-                  } else {
-                    const toAdd = groupNames.filter(n => !selectedTags.includes(n))
-                    onSetTags([...selectedTags, ...toAdd])
-                  }
+                  onSetTags(allSelected ? withoutGroup : [...withoutGroup, ...groupNames])
                 }
                 return (
                   <button
@@ -686,22 +689,61 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
               <div className="flex flex-wrap gap-1.5">
                 {groupTags.map((tag) => {
                   const active = selectedTags.includes(tag.name)
+                  const excluded = selectedTags.some(t => isExcluded(t) && tagName(t) === tag.name)
+                  const state = excluded ? 'excluded' : active ? 'on' : 'off'
+                  const count = tagFilteredCounts
+                    ? (tagFilteredCounts.get(tag.name) ?? 0)
+                    : tag.channel_count
                   return (
-                    <button
+                    // One pill, two hit zones. Deliberately NOT a 50/50 split:
+                    // "only this" is the common action and keeps the big
+                    // target, while the divider makes the seam something you
+                    // can see rather than something you have to know about.
+                    <span
                       key={tag.name}
-                      onClick={() => onToggleTag(tag.name)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
-                        active
-                          ? 'bg-white text-black font-medium'
-                          : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+                      className={`inline-flex items-center rounded-full text-sm transition-colors ${
+                        excluded
+                          ? 'bg-[#5c2626] text-[#ffc9c9] font-medium'
+                          : active
+                            ? 'bg-white text-black font-medium'
+                            : 'bg-[#272727] text-[#ddd]'
                       }`}
                     >
-                      <span>{tag.icon}</span>
-                      <span>{tag.name}</span>
-                      <span className={`text-[10px] ${active ? 'text-black/50' : 'text-[#555]'}`}>
-                        {tagFilteredCounts ? (tagFilteredCounts.get(tag.name) ?? 0) : tag.channel_count}
-                      </span>
-                    </button>
+                      <button
+                        onClick={() => onToggleTag(tag.name)}
+                        data-state={state}
+                        title={active ? `Showing only ${tag.name} — click to clear` : `Show only ${tag.name}`}
+                        className={`inline-flex items-center gap-1 rounded-l-full py-1 pl-2.5 pr-2 transition-colors ${
+                          active ? 'hover:bg-black/10' : 'hover:bg-white/10'
+                        }`}
+                      >
+                        <span>{tag.icon}</span>
+                        {/* Struck through rather than relabelled "not chinese":
+                            the chips wrap, and a name four characters longer
+                            reflows the whole group. */}
+                        <span className={excluded ? 'line-through decoration-2' : ''}>{tag.name}</span>
+                        <span className={`text-[10px] ${
+                          excluded ? 'text-white/40' : active ? 'text-black/50' : 'text-[#555]'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => onExcludeTag?.(tag.name)}
+                        data-exclude={excluded ? 'on' : 'off'}
+                        title={excluded ? `Hiding ${tag.name} — click to clear` : `Hide ${tag.name}`}
+                        aria-label={excluded ? `Stop hiding ${tag.name}` : `Hide ${tag.name}`}
+                        className={`rounded-r-full border-l px-1.5 py-1 leading-none transition-colors ${
+                          excluded
+                            ? 'border-white/25 text-white hover:bg-white/10'
+                            : active
+                              ? 'border-black/15 text-black/40 hover:bg-black/10 hover:text-black'
+                              : 'border-[#3a3a3a] text-[#666] hover:bg-white/10 hover:text-[#ddd]'
+                        }`}
+                      >
+                        −
+                      </button>
+                    </span>
                   )
                 })}
               </div>

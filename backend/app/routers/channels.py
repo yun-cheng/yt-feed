@@ -55,7 +55,11 @@ async def list_channels(
     everyone's — the catalog is shared so a channel two people follow costs one
     row, and that only works if reading it asks who wants to know.
     """
+    # `-name` means "everything but this tag" — see routers/tags.py's feed, which
+    # uses the same spelling so one sidebar selection serves both.
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    excluded_tags = [t[1:] for t in tag_list if t.startswith("-") and len(t) > 1]
+    tag_list = [t for t in tag_list if not t.startswith("-")]
     held = await users.held_channel_ids(db, user)
     if not held:
         return []
@@ -80,6 +84,15 @@ async def list_channels(
             .subquery()
         )
         stmt = stmt.where(Channel.youtube_id.in_(select(subq.c.channel_id)))
+
+    # …and drop the ones carrying a tag you crossed out, whatever else they have.
+    if excluded_tags:
+        banned = (
+            select(ChannelTag.channel_id)
+            .where(ChannelTag.user_id == user.id, ChannelTag.tag_name.in_(excluded_tags))
+            .distinct()
+        )
+        stmt = stmt.where(Channel.youtube_id.not_in(banned))
 
     result = await db.execute(stmt)
     channels = result.scalars().all()

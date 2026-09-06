@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterByTime, filterBySummarised, sortVideos, buildPath, pageFilters, parseStartAt } from '../App'
+import { filterByTime, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt } from '../App'
+import type { TagInfo } from '../App'
 import type { VideoItem } from '../App'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
@@ -360,6 +361,7 @@ describe('a playlist windows by publish date, not by when it was imported', () =
     expect(filterByTime(imported, { lo: 4, hi: 9 }, v => v.created_at)).toHaveLength(0)
   })
 })
+
 // ── the summarised filter ────────────────────────────────────
 
 describe('filterBySummarised', () => {
@@ -401,3 +403,98 @@ describe('buildPath — the summarised filter rides in the URL', () => {
   })
 })
 
+// ── for, against, or neither ─────────────────────────────────
+
+describe('setTagState', () => {
+  const only = (sel: string[], tag: string) => setTagState(sel, tag, false)
+  const not = (sel: string[], tag: string) => setTagState(sel, tag, true)
+
+  it('each half sets its own state from nothing', () => {
+    expect(only([], 'chinese')).toEqual(['chinese'])
+    expect(not([], 'chinese')).toEqual(['-chinese'])
+  })
+
+  it('each half is its own undo', () => {
+    // The point of splitting the chip: neither meaning is reached by cycling
+    // past the other, and neither is cleared by passing through it.
+    expect(only(['chinese'], 'chinese')).toEqual([])
+    expect(not(['-chinese'], 'chinese')).toEqual([])
+  })
+
+  it('switches sides without a stop in between', () => {
+    expect(not(['chinese'], 'chinese')).toEqual(['-chinese'])
+    expect(only(['-chinese'], 'chinese')).toEqual(['chinese'])
+  })
+
+  it('flips in place, so the filter pills do not reshuffle under the cursor', () => {
+    expect(not(['piano', 'chinese', 'ai'], 'chinese')).toEqual(['piano', '-chinese', 'ai'])
+  })
+
+  it('leaves the other tags alone', () => {
+    expect(only(['piano'], 'chinese')).toEqual(['piano', 'chinese'])
+    expect(not(['-piano', 'chinese'], 'chinese')).toEqual(['-piano', '-chinese'])
+  })
+})
+
+describe('isExcluded / tagName', () => {
+  it('reads only the first character, since tag names contain hyphens', () => {
+    // film-tv, real-estate, language-learning — all ordinary inclusions.
+    expect(isExcluded('film-tv')).toBe(false)
+    expect(tagName('film-tv')).toBe('film-tv')
+    expect(isExcluded('-film-tv')).toBe(true)
+    expect(tagName('-film-tv')).toBe('film-tv')
+  })
+})
+
+describe('filterByTags — excluding', () => {
+  const tags: TagInfo[] = [
+    { name: 'chinese', group: 'Language', icon: '', channel_count: 0 },
+    { name: 'english', group: 'Language', icon: '', channel_count: 0 },
+    { name: 'piano', group: 'Music', icon: '', channel_count: 0 },
+  ]
+  // cn plays Chinese piano, en plays English piano, misc is neither.
+  const tagChannels = new Map([
+    ['chinese', new Set(['cn'])],
+    ['english', new Set(['en'])],
+    ['piano', new Set(['cn', 'en'])],
+  ])
+  const videos = [
+    makeVideo({ youtube_id: 'v-cn', channel_id: 'cn' }),
+    makeVideo({ youtube_id: 'v-en', channel_id: 'en' }),
+    makeVideo({ youtube_id: 'v-misc', channel_id: 'misc' }),
+  ]
+  const ids = (sel: string[]) =>
+    filterByTags(videos, sel, tags, tagChannels).map(v => v.youtube_id)
+
+  it('an exclusion on its own means everything but that', () => {
+    // Not an empty page: with nothing selected FOR, there is no positive
+    // constraint to intersect against, only a veto to apply.
+    expect(ids(['-chinese'])).toEqual(['v-en', 'v-misc'])
+  })
+
+  it('vetoes across groups, not within one', () => {
+    expect(ids(['piano', '-chinese'])).toEqual(['v-en'])
+  })
+
+  it('two exclusions are AND-NOT, not OR-NOT', () => {
+    // The reading that folds them into the group rule would leave both in:
+    // "not Chinese OR not English" is true of everything.
+    expect(ids(['-chinese', '-english'])).toEqual(['v-misc'])
+  })
+
+  it('an exclusion beats an inclusion that would have kept it', () => {
+    expect(ids(['piano', '-chinese', '-english'])).toEqual([])
+  })
+
+  it('is unchanged when nothing is crossed out', () => {
+    expect(ids(['piano'])).toEqual(['v-cn', 'v-en'])
+    expect(ids([])).toEqual(['v-cn', 'v-en', 'v-misc'])
+  })
+})
+
+describe('buildPath — an exclusion survives the URL', () => {
+  it('carries the minus sign', () => {
+    expect(buildPath({ page: 'feed', tags: ['piano', '-chinese'] }))
+      .toBe('/?tags=piano%2C-chinese')
+  })
+})

@@ -644,7 +644,12 @@ async def feed_by_tags(
 
     from app.ranking import format_range, range_cutoffs, rank_videos, resolve_range
 
+    # A selection entry prefixed `-` means "everything BUT this tag". Only the
+    # first character is the marker — tag names contain hyphens (film-tv,
+    # real-estate) and none of them start with one.
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    excluded_tags = [t[1:] for t in tag_list if t.startswith("-") and len(t) > 1]
+    tag_list = [t for t in tag_list if not t.startswith("-")]
 
     if tag_list:
         # Group selected tags by their section (OR within a group, AND across).
@@ -674,6 +679,20 @@ async def feed_by_tags(
     # which is everybody's.
     held = await users.held_channel_ids(db, user)
     channel_ids = (channel_ids & held) if tag_list else held
+
+    # Excluded tags are a flat veto, applied after the include rule rather than
+    # inside it: a channel carrying one is out whatever else it carries, and
+    # whichever group the tag sits in. Folded into the OR-within-a-group rule,
+    # a second crossed-out language would start meaning "not Chinese OR not
+    # Japanese", which reads as no filter at all.
+    if excluded_tags:
+        banned = {r[0] for r in await db.execute(
+            select(ChannelTag.channel_id).where(
+                ChannelTag.user_id == user.id,
+                ChannelTag.tag_name.in_(excluded_tags),
+            ).distinct()
+        )}
+        channel_ids = channel_ids - banned
 
     # Exclude channels the user hid from home, so they never come down the wire.
     # `include_hidden` (the sidebar "show hidden" peek) bypasses this.
@@ -740,6 +759,7 @@ async def feed_by_tags(
         "age": format_range(date_range),
         "sort": sort,
         "tags": tag_list,
+        "excluded_tags": excluded_tags,
         "watch": sorted(wanted),
         "summarised": summarised,
         "videos": ranked[offset:offset + limit],

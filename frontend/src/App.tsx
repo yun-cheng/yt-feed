@@ -454,6 +454,40 @@ export function filterByWatchStatus<T extends VideoItem>(
   return videos.filter(v => statuses.includes(watchStatusOf(v.youtube_id, progressById)))
 }
 
+// ── Tag selection: for, against, or neither ─────────────────
+//
+// A selection is a flat list of tag names, each optionally prefixed `-` to mean
+// "everything BUT this" — so `['piano', '-chinese']` is piano channels that
+// aren't Chinese. One list rather than two keeps the URL, the query param and
+// every consumer on a single shape.
+//
+// Only the FIRST character is the marker: tag names contain hyphens (`film-tv`,
+// `real-estate`, `language-learning`) and none of them start with one.
+
+/** Is this selection entry an exclusion? */
+export const isExcluded = (t: string) => t.startsWith('-')
+/** The tag itself, whichever way it was selected. */
+export const tagName = (t: string) => (isExcluded(t) ? t.slice(1) : t)
+
+/** Put a tag into one of its two states, or take it back out of that one.
+ *
+ *  The chip is split: its body means "only this", the segment beside it means
+ *  "not this", and each is its own undo — clicking the state a tag is already in
+ *  clears it. So neither meaning is reached by cycling past the other, which is
+ *  what a single toggling button would have forced (and what would have made
+ *  clearing an include refetch the feed on the way through "exclude").
+ *
+ *  A tag already set the OTHER way is flipped in place rather than moved to the
+ *  end, so the filter pills don't reshuffle under the cursor. */
+export function setTagState(selected: string[], tag: string, exclude: boolean): string[] {
+  const entry = exclude ? `-${tag}` : tag
+  if (selected.includes(entry)) return selected.filter(t => t !== entry)
+  const other = exclude ? tag : `-${tag}`
+  return selected.includes(other)
+    ? selected.map(t => (t === other ? entry : t))
+    : [...selected, entry]
+}
+
 /** Narrow a loaded list to videos that have a finished summary.
  *
  *  The client-side half of the sidebar's "Summarised" filter, for the pages
@@ -481,16 +515,32 @@ export function filterByTags<T extends VideoItem>(
   tagChannels: Map<string, Set<string>>,
 ): T[] {
   if (selectedTags.length === 0) return videos
+
+  // Exclusions are a flat veto: a channel carrying an excluded tag is out
+  // whatever else it carries, and whichever group the tag belongs to. Grouping
+  // them the way inclusions are grouped would make "not Chinese" mean "not
+  // Chinese OR not Japanese" as soon as you excluded a second language, which
+  // is nobody's reading of two crossed-out chips.
+  const banned = new Set(
+    selectedTags.filter(isExcluded).flatMap(t => [...(tagChannels.get(tagName(t)) ?? [])])
+  )
+
+  // Inclusions keep the old rule: OR within a group, AND across groups.
+  const included = selectedTags.filter(t => !isExcluded(t))
   const byGroup = new Map<string, string[]>()
-  for (const t of selectedTags) {
+  for (const t of included) {
     const group = tags.find(x => x.name === t)?.group ?? '__ungrouped__'
     byGroup.set(group, [...(byGroup.get(group) ?? []), t])
   }
-  const allowed = [...byGroup.values()].reduce<Set<string> | null>((acc, groupTags) => {
+  // null, not an empty set: excluding without including anything means "all of
+  // it except these", which is a filter — an empty set would be a blank page.
+  const allowed = included.length === 0 ? null : ([...byGroup.values()].reduce<Set<string> | null>((acc, groupTags) => {
     const ids = new Set(groupTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
     return acc === null ? ids : new Set([...acc].filter(id => ids.has(id)))
-  }, null) ?? new Set<string>()
-  return videos.filter(v => allowed.has(v.channel_id))
+  }, null) ?? new Set<string>())
+
+  return videos.filter(v =>
+    (allowed === null || allowed.has(v.channel_id)) && !banned.has(v.channel_id))
 }
 
 /**
@@ -1245,8 +1295,21 @@ export default function App() {
   const tagFilteredCounts = useMemo(() => {
     if (selectedTags.length === 0) return null
 
+    // Counts follow the same split the filter does: inclusions constrain, and
+    // exclusions are subtracted from whatever is left.
+    const excludedNames = selectedTags.filter(isExcluded).map(tagName)
+    const banAll = new Set(excludedNames.flatMap(n => [...(tagChannels.get(n) ?? [])]))
+    // A crossed-out tag doesn't count itself out. Measured against its own ban
+    // its number could only ever be 0, which is the one thing it can't usefully
+    // say; measured against the others it says how many you're hiding, which is
+    // what you'd want to know before clicking it back on.
+    const banFor = (name: string) => (
+      excludedNames.includes(name)
+        ? new Set(excludedNames.filter(n => n !== name).flatMap(n => [...(tagChannels.get(n) ?? [])]))
+        : banAll
+    )
     const byGroup = new Map<string, string[]>()
-    for (const t of selectedTags) {
+    for (const t of selectedTags.filter(t => !isExcluded(t))) {
       const group = tags.find(x => x.name === t)?.group ?? '__ungrouped__'
       byGroup.set(group, [...(byGroup.get(group) ?? []), t])
     }
@@ -1267,14 +1330,19 @@ export default function App() {
     const allGroupSets = [...byGroup.values()].map(groupTags =>
       new Set(groupTags.flatMap(t => [...(tagChannels.get(t) ?? [])]))
     )
-    const fullFilter = intersect(allGroupSets)
+    // No inclusions at all (exclusions only) means nothing constrains the base —
+    // null rather than the empty set intersect() would hand back, which would
+    // report every tag as matching zero channels.
+    const fullFilter = allGroupSets.length === 0 ? null : intersect(allGroupSets)
 
     const counts = new Map<string, number>()
     for (const tag of tags) {
       const group = tag.group ?? '__ungrouped__'
       const tagIds = tagChannels.get(tag.name) ?? new Set<string>()
       const baseFilter = byGroup.has(group) ? filterWithoutGroup.get(group)! : fullFilter
-      counts.set(tag.name, baseFilter === null ? tagIds.size : [...tagIds].filter(id => baseFilter.has(id)).length)
+      const banned = banFor(tag.name)
+      const kept = [...tagIds].filter(id => (baseFilter === null || baseFilter.has(id)) && !banned.has(id))
+      counts.set(tag.name, kept.length)
     }
     return counts
   }, [selectedTags, tags, tagChannels])
@@ -1448,9 +1516,17 @@ export default function App() {
   }, [page])
 
   function toggleTag(tag: string) {
-    setSelectedTags(prev =>
-      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
-    )
+    setSelectedTags(prev => setTagState(prev, tag, false))
+  }
+
+  function excludeTag(tag: string) {
+    setSelectedTags(prev => setTagState(prev, tag, true))
+  }
+
+  /** Drop a tag from the selection whichever way it was set — what the × on a
+   *  filter pill means, as against cycling it forward. */
+  function clearTag(tag: string) {
+    setSelectedTags(prev => prev.filter(t => tagName(t) !== tagName(tag)))
   }
 
   // Read-only reload for the auto-refresh timer. Scanning YouTube is now owned
@@ -1574,6 +1650,7 @@ export default function App() {
           tags={tags}
           selectedTags={selectedTags}
           onToggleTag={toggleTag}
+          onExcludeTag={excludeTag}
           onSetTags={setSelectedTags}
           page={page}
           onPageChange={setPage}
@@ -1678,16 +1755,24 @@ export default function App() {
             <span className="text-xs text-[#555] font-medium">Filters:</span>
             <div className="flex flex-wrap gap-1.5">
               {selectedTags.map((tag) => {
-                const info = tags.find(t => t.name === tag)
+                const name = tagName(tag)
+                const not = isExcluded(tag)
+                const info = tags.find(t => t.name === name)
                 return (
                   <button
                     key={tag}
-                    onClick={() => toggleTag(tag)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full bg-white text-black font-medium hover:opacity-80 transition-opacity"
+                    // The × means "drop this", not "cycle it on" — a pill you
+                    // clicked to be rid of turning into its own opposite is the
+                    // one thing this row must not do.
+                    onClick={() => clearTag(tag)}
+                    title={not ? `Stop excluding ${name}` : `Remove the ${name} filter`}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full font-medium hover:opacity-80 transition-opacity ${
+                      not ? 'bg-[#5c2626] text-[#ffc9c9]' : 'bg-white text-black'
+                    }`}
                   >
                     <span>{info?.icon || '🏷️'}</span>
-                    <span>{tag}</span>
-                    <span className="ml-0.5 text-black/40 font-bold">×</span>
+                    <span className={not ? 'line-through decoration-2' : ''}>{name}</span>
+                    <span className={`ml-0.5 font-bold ${not ? 'text-white/40' : 'text-black/40'}`}>×</span>
                   </button>
                 )
               })}

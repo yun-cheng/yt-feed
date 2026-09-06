@@ -11,7 +11,9 @@ real video (muted, with custom captions and scrubbing).
 - **Time windows** — drag a two-handled slider to any span: the last 3 days, or
   3 days to 2 weeks ago
 - **Tag filtering** — channels are auto-tagged by an LLM into a topic taxonomy;
-  filter the feed by tag, and edit a channel's labels on its page
+  filter the feed by tag, and edit a channel's labels on its page. Each chip is
+  split — its body shows only that tag, the `−` beside it hides that tag — so
+  "Chinese" and "not Chinese" are one click each
 - **AI categorization** — an LLM (via OpenRouter) reads each channel and assigns
   topic + language labels; needs `OPENROUTER_API_KEY` (see `backend/README.md`)
 - **Video topics** — inside a channel, the LLM labels its videos by topic (a

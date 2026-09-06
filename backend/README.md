@@ -974,6 +974,20 @@ easy to misread as a model or network problem.
 Channels are tagged by an **LLM**, not keyword rules. Tags drive the sidebar
 filters and the per-channel label editor.
 
+**Selecting against a tag.** An entry in `tags=` prefixed `-` means "everything
+BUT this" — `tags=piano,-chinese` is piano channels that aren't Chinese. Only the
+first character is the marker, since real tag names contain hyphens (`film-tv`,
+`real-estate`) and none of them start with one. Both endpoints that take `tags=`
+(`/api/tags/feed` and `/api/channels`) read the same spelling, so one sidebar
+selection serves both.
+
+An exclusion is a **flat veto**, applied after the include rule rather than
+inside it: a channel carrying an excluded tag is out whatever else it carries
+and whichever group the tag sits in. Folding exclusions into the OR-within-a-group
+rule would make a second crossed-out language mean "not Chinese OR not Japanese",
+which is true of every channel there is. Excluding without including anything is
+a filter in its own right — "all of it except these" — not an empty result.
+
 - **Seed taxonomy** (`SEED_TAXONOMY`) — 9 fixed groups (Language, Entertainment,
   Music, Gaming, Sports, Lifestyle, Tech, Knowledge, Society), each with broad
   **main** labels (auto-applied) and specific **sub** labels (offered as

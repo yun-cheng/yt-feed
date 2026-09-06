@@ -233,6 +233,56 @@ there.
   refresh being a continuation rather than a fresh visit. Toggling it there
   leaves the feed's selection alone, and vice versa.
 
+### A tag chip is split: only this, or not this
+
+One pill, two hit zones. The **body** (`🀄 chinese 90`) says *show only this*;
+the **`−` segment** beside it says *hide this*. Each is its own undo — clicking
+the state a tag is already in clears it — and switching sides is one click, with
+no stop in between.
+
+Deliberately **not** a 50/50 split, and deliberately not right-click:
+
+- The common action keeps the big target. An unmarked half-and-half split on a
+  ~28px chip makes two opposite outcomes a coin flip on touch.
+- The divider makes the seam something you can **see** rather than something you
+  have to be told about.
+- Right-click would have been invisible, would have meant hijacking the context
+  menu (which this app does nowhere else), and — since this sidebar renders on
+  mobile — would have left exclusion with no way to reach it on a phone.
+- A single cycling button was the first attempt. It made clearing an *include*
+  pass through *exclude* on the way, which changes `selectedTags` and so fires a
+  wasted feed refetch and a visible list swap.
+
+- **One list, not two.** The selection stays a flat `string[]`, with an
+  exclusion spelled `-chinese` — so the URL, the `tags=` query param and every
+  consumer keep the shape they had. `isExcluded` / `tagName` read it, and
+  `setTagState` is the transition, exported so both directions are testable
+  without the component. A tag already set the other way is flipped **in place**
+  rather than appended, so the filter pills don't reshuffle under the cursor.
+- **Only the first character is the marker.** Tag names contain hyphens
+  (`film-tv`, `real-estate`, `language-learning`) and none of them start with one.
+- **An exclusion is a flat veto**, not part of the OR-within-a-group rule: a
+  channel carrying it is out whatever else it carries. Two crossed-out chips are
+  AND-NOT — grouped the other way, "not Chinese OR not Japanese" would be true of
+  everything and narrow nothing.
+- **Excluding alone still filters.** With nothing selected *for*, `allowed` is
+  `null` rather than the empty set — "all of it except these" is a filter; an
+  empty set would be a blank page.
+- **The × on a filter pill clears, it doesn't cycle.** A pill you clicked to be
+  rid of turning into its own opposite is the one thing that row must not do, so
+  it calls `clearTag` rather than `toggleTag`.
+- **A crossed-out chip's count excludes its own ban**, and so says how many
+  channels you're hiding. Measured against itself the number could only ever be
+  0, which is the one thing it can't usefully say.
+- **Each zone says what it is**: `data-state` (`off` / `on` / `excluded`) on the
+  body, `data-exclude` on the segment, and an `aria-label` on the segment so a
+  screen reader gets "Hide chinese" rather than a bare minus sign. Two hit zones
+  means two real `<button>`s, so exclusion stays reachable by keyboard and by
+  touch — at the cost of doubling the tab stops through the tag list.
+- **`onExcludeTag` is optional.** The channel-page sidebar swaps the taxonomy
+  for that channel's topics and passes none, so the segment is inert there
+  rather than broken.
+
 ### The summarised filter
 
 A one-chip sidebar section under the watch statuses: **Summarised**, on or off.

@@ -94,8 +94,62 @@ describe('Sidebar — expanded', () => {
 
   it('shows selected tags with active style', () => {
     render(<Sidebar {...defaultProps} selectedTags={['coding']} />)
-    const codingBtn = screen.getByText('coding').closest('button')!
-    expect(codingBtn.className).toMatch(/bg-white/)
+    // The pill wraps both halves of the split chip, so it — not the body
+    // button inside it — is what carries the state colour.
+    const pill = screen.getByText('coding').closest('span.rounded-full')!
+    expect(pill.className).toMatch(/bg-white/)
+  })
+})
+
+// ── the split chip: only this / not this ─────────────────────
+
+describe('Sidebar — a tag chip has two hit zones', () => {
+  const body = (tag: string) => screen.getByText(tag).closest('button')!
+  const minus = (tag: string) => screen.getByRole('button', { name: new RegExp(`hiding ${tag}|^Hide ${tag}`, 'i') })
+  const pill = (tag: string) => screen.getByText(tag).closest('span.rounded-full')!
+
+  it('the body asks for only this tag', () => {
+    const onToggleTag = vi.fn()
+    render(<Sidebar {...defaultProps} onToggleTag={onToggleTag} />)
+    fireEvent.click(body('coding'))
+    expect(onToggleTag).toHaveBeenCalledWith('coding')
+  })
+
+  it('the segment beside it asks for everything but this tag', () => {
+    const onExcludeTag = vi.fn()
+    const onToggleTag = vi.fn()
+    render(<Sidebar {...defaultProps} onToggleTag={onToggleTag} onExcludeTag={onExcludeTag} />)
+    fireEvent.click(minus('coding'))
+    expect(onExcludeTag).toHaveBeenCalledWith('coding')
+    // The two zones are genuinely separate — excluding must not also include.
+    expect(onToggleTag).not.toHaveBeenCalled()
+  })
+
+  it('shows an excluded tag struck through and in the negative colour', () => {
+    render(<Sidebar {...defaultProps} selectedTags={['-coding']} />)
+    expect(pill('coding').className).toMatch(/bg-\[#5c2626\]/)
+    expect(screen.getByText('coding').className).toMatch(/line-through/)
+  })
+
+  it('says which state each zone is in, for a test and for a screen reader', () => {
+    render(<Sidebar {...defaultProps} selectedTags={['-coding']} />)
+    expect(body('coding').dataset.state).toBe('excluded')
+    expect(minus('coding').dataset.exclude).toBe('on')
+    expect(minus('coding')).toHaveAccessibleName(/stop hiding coding/i)
+  })
+
+  it('leaves an unselected tag neutral in both zones', () => {
+    render(<Sidebar {...defaultProps} />)
+    expect(body('coding').dataset.state).toBe('off')
+    expect(minus('coding').dataset.exclude).toBe('off')
+    expect(pill('coding').className).toMatch(/bg-\[#272727\]/)
+  })
+
+  it('is inert rather than broken when nothing handles exclusion', () => {
+    // `onExcludeTag` is optional — the channel-page sidebar renders topics
+    // instead, and nothing there passes one.
+    render(<Sidebar {...defaultProps} />)
+    expect(() => fireEvent.click(minus('coding'))).not.toThrow()
   })
 })
 
