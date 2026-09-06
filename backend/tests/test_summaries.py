@@ -264,3 +264,88 @@ async def test_a_stale_job_does_not_block_a_fresh_attempt(client, db, monkeypatc
 
     await client.post("/api/summaries/vid1")
     assert (await client.get("/api/summaries/vid1")).json()["status"] == "done"
+
+
+# ── filtering a list down to what you've summarised ──────────────────
+
+
+@pytest.fixture
+async def a_library(db):
+    """One followed channel, three videos, one of them summarised.
+
+    Published now, so the feed's default age window can't be what excludes
+    anything — the thing under test is the summary filter.
+    """
+    import datetime
+
+    from app.models import Channel, SummaryJob
+
+    db.add(Channel(youtube_id="chan1", title="A Channel"))
+    for vid in ("done", "running", "plain"):
+        db.add(Video(youtube_id=vid, channel_id="chan1", title=f"Video {vid}",
+                     published_at=datetime.datetime.utcnow(), view_count=100))
+    db.add(SummaryJob(user_id=1, video_id="done", status="done"))
+    # Started but not landed: there's nothing to read yet, so it isn't one of
+    # "the videos I have a summary for".
+    db.add(SummaryJob(user_id=1, video_id="running", status="running"))
+    await db.commit()
+
+    user = await db.get(User, 1)
+    await users.hold(db, user, "chan1")
+    await db.commit()
+
+
+def ids(payload):
+    return {v["youtube_id"] for v in payload["videos"]}
+
+
+async def test_the_feed_is_unfiltered_unless_asked(client, a_library):
+    r = (await client.get("/api/tags/feed")).json()
+    assert ids(r) == {"done", "running", "plain"}
+    assert r["summarised"] is False
+
+
+async def test_the_feed_can_show_only_what_has_a_summary(client, a_library):
+    r = (await client.get("/api/tags/feed?summarised=true")).json()
+    assert ids(r) == {"done"}
+    assert r["summarised"] is True
+
+
+async def test_the_count_matches_what_you_are_shown(client, a_library):
+    """Filtered before ranking and paging, like the watch filter — a `total`
+    counting videos that were then dropped promises pages that aren't there."""
+    r = (await client.get("/api/tags/feed?summarised=true")).json()
+    assert r["total"] == 1
+
+
+async def test_a_channel_page_filters_the_same_way(client, a_library):
+    r = (await client.get("/api/channels/chan1/videos?summarised=true")).json()
+    assert ids(r) == {"done"}
+    assert (await client.get("/api/channels/chan1/videos")).json()["total"] == 3
+
+
+@pytest.mark.no_seeded_user
+async def test_someone_else_s_summary_does_not_count_as_yours(client, db, monkeypatch):
+    """The job table is per-user, and so is the filter reading it."""
+    import datetime
+
+    from app.models import Channel, SummaryJob
+    from app.users import ensure_local_user
+
+    me = await ensure_local_user(db)
+    them = User(google_sub="sub-2", email="them@example.test", api_key=users.new_api_key())
+    db.add(them)
+    await db.commit()
+    mine = {"Authorization": f"Bearer {me.api_key}"}
+
+    db.add(Channel(youtube_id="chan1", title="A Channel"))
+    db.add(Video(youtube_id="theirs", channel_id="chan1", title="Theirs",
+                 published_at=datetime.datetime.utcnow(), view_count=100))
+    db.add(SummaryJob(user_id=them.id, video_id="theirs", status="done"))
+    await db.commit()
+    await users.hold(db, me, "chan1")
+    await db.commit()
+
+    assert ids((await client.get("/api/tags/feed?summarised=true", headers=mine)).json()) == set()
+    # …and without the filter it's still there, so this isn't just an empty feed.
+    assert ids((await client.get("/api/tags/feed", headers=mine)).json()) == {"theirs"}

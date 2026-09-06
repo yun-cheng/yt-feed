@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { apiFetch } from './lib/api'
 import Toaster from './components/Toaster'
 import { startNotificationPolling } from './hooks/notificationStore'
-import { loadSummaries } from './hooks/summaryStore'
+import { loadSummaries, useSummarisedIds } from './hooks/summaryStore'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
@@ -267,6 +267,11 @@ const USES_SHORTS = new Set(['feed', 'channel', 'history'])
 const USES_TAGS = new Set(['feed', 'watchlater', 'history', 'channels'])
 // "Show hidden channels" only changes the home feed's query.
 const USES_HIDDEN = new Set(['feed'])
+// "Summarised only" works anywhere videos are listed and a summary can exist:
+// the two server-paged lists filter in SQL (see routers/summaries.py's
+// summarised_video_ids), the rest client-side off the map every card already
+// reads. Not on `channels`, which lists channels rather than videos.
+const USES_SUMMARISED = new Set(['feed', 'channel', 'watchlater', 'history', 'imported', 'playlist'])
 
 // What the sidebar should offer on a given page.
 export const pageFilters = (page: string) => ({
@@ -274,6 +279,7 @@ export const pageFilters = (page: string) => ({
   tags: USES_TAGS.has(page),
   hidden: USES_HIDDEN.has(page),
   contentMode: USES_SHORTS.has(page),
+  summarised: USES_SUMMARISED.has(page),
 })
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v => b.includes(v))
@@ -296,6 +302,10 @@ type QueryState = {
   watch: string[] | null
   label: string | null
   showHidden: boolean
+  // URL-only, deliberately: "show me the ones I've had summarised" is a look at
+  // the list, not a standing preference like the watch statuses. It shouldn't
+  // still be on tomorrow, and a link to it should carry it.
+  summarised: boolean
   q: string
 }
 
@@ -311,6 +321,7 @@ function parseQuery(page: Page): QueryState {
     watch: watch === null ? null : watch === 'none' ? [] : watch.split(',').filter(Boolean),
     label: p.get('label'),
     showHidden: p.get('hidden') === '1',
+    summarised: p.get('summarised') === '1',
     q: p.get('q') || '',
   }
 }
@@ -326,6 +337,7 @@ export type UrlState = {
   watch?: string[]
   label?: string | null
   showHidden?: boolean
+  summarised?: boolean
   q?: string
 }
 
@@ -347,6 +359,7 @@ export function buildPath(s: UrlState): string {
   }
   if (page === 'channel' && s.label) params.set('label', s.label)
   if (USES_HIDDEN.has(page) && s.showHidden) params.set('hidden', '1')
+  if (USES_SUMMARISED.has(page) && s.summarised) params.set('summarised', '1')
   if (page === 'search' && s.q) params.set('q', s.q)
   const qs = params.toString()
 
@@ -389,6 +402,7 @@ function stateFromUrl() {
     tags: q.tags,
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
+    summarised: q.summarised,
     views,
     watchStatuses: owns('feed', 'watchlater', 'imported', 'playlist') && q.watch !== null ? q.watch : loadWatchStatuses(),
     channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
@@ -438,6 +452,23 @@ export function filterByWatchStatus<T extends VideoItem>(
 ): T[] {
   if (statuses.length === 0 || statuses.length >= WATCH_STATUSES.length) return videos
   return videos.filter(v => statuses.includes(watchStatusOf(v.youtube_id, progressById)))
+}
+
+/** Narrow a loaded list to videos that have a finished summary.
+ *
+ *  The client-side half of the sidebar's "Summarised" filter, for the pages
+ *  that hold their whole list already (Watch Later, History, Imported, a
+ *  playlist). The feed and a channel page are paged from the server and filter
+ *  there instead, so `total` and the offsets stay honest — the same split the
+ *  watch-status filter makes, for the same reason.
+ */
+export function filterBySummarised<T extends VideoItem>(
+  videos: T[],
+  only: boolean,
+  summarised: Set<string>,
+): T[] {
+  if (!only) return videos
+  return videos.filter(v => summarised.has(v.youtube_id))
 }
 
 // Apply the sidebar's tag selection to an already-loaded list: OR within a tag
@@ -606,6 +637,11 @@ export default function App() {
   const [hiddenChannels, setHiddenChannels] = useState<Set<string>>(new Set())
   // When on, hidden channels' videos are shown in the feed anyway (a temporary peek).
   const [showHidden, setShowHidden] = useState(init.showHidden)
+  // "Show only what I've had summarised." The two server-paged lists send it as
+  // a query param; the rest are filtered here against the same map the cards
+  // read for their badge.
+  const [summarisedOnly, setSummarisedOnly] = useState(init.summarised)
+  const summarisedIds = useSummarisedIds()
 
   useEffect(() => {
     let cancelled = false
@@ -999,6 +1035,7 @@ export default function App() {
       setViews(s.views)
       setContentMode(s.contentMode)
       setShowHidden(s.showHidden)
+      setSummarisedOnly(s.summarised)
       setWatchStatuses(s.watchStatuses)
       setChannelWatchStatuses(s.channelWatchStatuses)
       setHistoryWatchStatuses(s.historyWatchStatuses)
@@ -1128,19 +1165,24 @@ export default function App() {
     const byMode = watchHistory.filter(v => !!v.is_short === shorts)
     const byTime = filterByTime(byMode, views.history.age, v => v.watched_at)
     const byStatus = filterByWatchStatus(byTime, historyWatchStatuses, progressById)
-    return filterByTags(byStatus, selectedTags, tags, tagChannels)
-  }, [watchHistory, contentMode, views.history.age, selectedTags, tags, tagChannels, historyWatchStatuses, progressById])
+    const byTag = filterByTags(byStatus, selectedTags, tags, tagChannels)
+    return filterBySummarised(byTag, summarisedOnly, summarisedIds)
+  }, [watchHistory, contentMode, views.history.age, selectedTags, tags, tagChannels,
+    historyWatchStatuses, progressById, summarisedOnly, summarisedIds])
 
   // Imported videos take the global watch-status filter, like Watch Later, and
   // window by when they were imported. Tags don't apply — these come from
   // channels you don't follow, so none of them are tagged — and neither does the
   // Videos/Shorts toggle: it's one flat list.
   const visibleImported = useMemo(
-    () => filterByWatchStatus(
-      filterByTime(imported, views.imported.age, v => v.created_at),
-      watchStatuses, progressById,
+    () => filterBySummarised(
+      filterByWatchStatus(
+        filterByTime(imported, views.imported.age, v => v.created_at),
+        watchStatuses, progressById,
+      ),
+      summarisedOnly, summarisedIds,
     ),
-    [imported, views.imported.age, watchStatuses, progressById],
+    [imported, views.imported.age, watchStatuses, progressById, summarisedOnly, summarisedIds],
   )
 
   // Downloads window by when the file was fetched. No watch-status or tag
@@ -1166,9 +1208,11 @@ export default function App() {
       : watchStatuses,
     label: selectedLabel,
     showHidden,
+    summarised: summarisedOnly,
     q: searchInput,
   }), [page, selectedChannelId, selectedPlaylistId, selectedTags, view, contentMode,
-    watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden, searchInput])
+    watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden,
+    summarisedOnly, searchInput])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
   const syncUrl = useCallback(() => {
@@ -1279,6 +1323,9 @@ export default function App() {
     if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
     if (watchStatuses.length > 0) params.set('watch', watchStatuses.join(','))
     if (showHidden) params.set('include_hidden', 'true')
+    // Server-side, because the feed is paged: filtering the page here would
+    // leave `total` promising videos that were then dropped.
+    if (summarisedOnly) params.set('summarised', 'true')
     const res = await apiFetch(`/api/tags/feed?${params}`)
     const data = await res.json()
     setFeedTotal(data.total || 0)
@@ -1290,7 +1337,7 @@ export default function App() {
         age: data.age,
       }
     })
-  }, [feedView, selectedTags, contentMode, showHidden, watchStatuses])
+  }, [feedView, selectedTags, contentMode, showHidden, watchStatuses, summarisedOnly])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
@@ -1548,6 +1595,8 @@ export default function App() {
           tagFilteredCounts={tagFilteredCounts}
           hiddenCount={hiddenChannels.size}
           showHidden={showHidden}
+          summarisedOnly={summarisedOnly}
+          onToggleSummarised={() => setSummarisedOnly(v => !v)}
           onToggleShowHidden={() => setShowHidden(v => !v)}
           watchStatuses={page === 'history' ? historyWatchStatuses : page === 'channel' ? channelWatchStatuses : watchStatuses}
           onToggleWatchStatus={page === 'history' ? toggleHistoryWatchStatus : page === 'channel' ? toggleChannelWatchStatus : toggleWatchStatus}
@@ -1681,6 +1730,8 @@ export default function App() {
             age={view.age}
             sort={view.sort}
             watchStatuses={watchStatuses}
+            summarisedOnly={summarisedOnly}
+            summarisedIds={summarisedIds}
           />
         ) : page === 'history' ? (
           <HistoryPage
@@ -1748,6 +1799,7 @@ export default function App() {
               let result = filterByTime(watchLater, view.age, v => v.created_at)
               result = filterByTags(result, selectedTags, tags, tagChannels)
               result = filterByWatchStatus(result, watchStatuses, progressById)
+              result = filterBySummarised(result, summarisedOnly, summarisedIds)
               result = sortVideos(result, view.sort)
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
@@ -1785,6 +1837,7 @@ export default function App() {
             onHasTopicsChange={setChannelHasTopics}
             progressById={progressById}
             watchStatuses={channelWatchStatuses}
+            summarisedOnly={summarisedOnly}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">

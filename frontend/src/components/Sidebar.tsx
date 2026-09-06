@@ -28,7 +28,12 @@ type Props = {
   // that can't change what you're looking at isn't rendered at all — the watch
   // status has nothing to filter on a list of channels, and imported videos come
   // from channels you don't follow, so no tag ever matches them.
-  filters?: { watchStatus: boolean; tags: boolean; hidden: boolean; contentMode: boolean }
+  filters?: { watchStatus: boolean; tags: boolean; hidden: boolean; contentMode: boolean; summarised: boolean }
+  // "Summarised only": narrow the list to videos you've had a summary written
+  // for. One direction on purpose — "not summarised" is nearly every video
+  // there is, which narrows nothing.
+  summarisedOnly?: boolean
+  onToggleSummarised?: () => void
   hiddenCount?: number
   showHidden?: boolean
   onToggleShowHidden?: () => void
@@ -232,9 +237,34 @@ const ToggleSwitch = ({ on }: { on: boolean }) => (
   </span>
 )
 
-const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true }
+// Summary chip. A section of one, rather than a fourth chip in the row above:
+// it answers a different question from the watch statuses, and unlabelled it
+// would read as one of them.
+const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void }) => {
+  if (!onToggle) return null
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#717171] px-1 -mx-1">
+        <span>📝</span>
+        <span>Summary</span>
+      </div>
+      <button
+        onClick={onToggle}
+        aria-pressed={!!on}
+        className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
+          on ? 'bg-white text-black font-medium' : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+        }`}
+      >
+        <span>📝</span>
+        <span>Summarised</span>
+      </button>
+    </div>
+  )
+}
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true }
+
+export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const showMode = filters.contentMode && !!onContentModeChange
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
@@ -549,6 +579,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
               onToggle={onToggleWatchStatus}
             />
           )}
+          {filters.summarised && (
+            <SummarySection on={summarisedOnly} onToggle={onToggleSummarised} />
+          )}
           <div>
           <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#717171]">
             <span>🏷️</span>
@@ -613,6 +646,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onSetTags, pa
             selected={watchStatuses}
             onToggle={onToggleWatchStatus}
           />
+        )}
+        {filters.summarised && (
+          <SummarySection on={summarisedOnly} onToggle={onToggleSummarised} />
         )}
         {filters.tags && GROUP_ORDER.map(({ key, icon }) => {
           const groupTags = grouped.get(key)

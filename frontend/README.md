@@ -233,6 +233,30 @@ there.
   refresh being a continuation rather than a fresh visit. Toggling it there
   leaves the feed's selection alone, and vice versa.
 
+### The summarised filter
+
+A one-chip sidebar section under the watch statuses: **Summarised**, on or off.
+One direction on purpose — "not summarised" is very nearly every video there is,
+which narrows nothing worth the chip.
+
+- **The split is the watch filter's, for the same reason.** The feed and a
+  channel page are paged from the server, so they send `summarised=true` and the
+  filter runs before ranking and paging (`total` counts what you'll be shown).
+  Watch Later, History, Imported and a playlist hold their whole list already, so
+  they use `filterBySummarised` on the client.
+- **The client half reads the map the cards already read** — `summaryStore`'s
+  `useSummarisedIds()`. That Set is rebuilt when the store changes rather than in
+  the selector: `useSyncExternalStore` compares snapshots by identity, so a Set
+  built per read would be a new object every render and never settle.
+- **`done` only, on both sides.** A job still running has nothing to read yet and
+  one that errored has nothing at all. The backend's `summarised_video_ids` is
+  the single definition, shared by both endpoints so the word can't come to mean
+  two things on two pages.
+- **URL-only, unlike the watch statuses.** "Show me the ones I've had
+  summarised" is a look at a list rather than a standing preference: it shouldn't
+  still be on tomorrow, and a link should carry it (`?summarised=1`).
+- **Not on the Channels page**, which lists channels — a channel has no summary.
+
 ### The time window
 
 `TimeRangeSlider.tsx` is a two-handled slider over a fixed ladder of day

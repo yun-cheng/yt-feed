@@ -48,6 +48,8 @@ type Props = {
   progressById?: Map<string, WatchProgress>
   // Watch statuses to keep; empty = no filter. Applied server-side.
   watchStatuses?: string[]
+  /** Narrow to videos with a finished summary (see App's USES_SUMMARISED). */
+  summarisedOnly?: boolean
   shorts?: boolean
   // Selected sidebar label to filter this channel's videos by (null = none).
   labelFilter?: string | null
@@ -61,7 +63,7 @@ type Props = {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, age, sort, onSortChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses }: Props) {
+export default function ChannelPage({ channelId, age, sort, onSortChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses, summarisedOnly }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -136,6 +138,8 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     })
     if (labelFilter) params.set('label', labelFilter)
     if (watchStatuses?.length) params.set('watch', watchStatuses.join(','))
+    // Server-side, like the watch filter: this list is paged.
+    if (summarisedOnly) params.set('summarised', 'true')
     // A 404 here isn't a failure any more — it's how this page finds out the
     // channel isn't one of ours, and it answers by offering to add it. Toasting
     // it as an error would be shouting about the page's own normal path.
@@ -146,7 +150,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     setTotal(d.total || 0)
     setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
     if (replace) initChannelLabels(d.channel)
-  }, [channelId, age, sort, shorts, labelFilter, watchStatuses, initChannelLabels])
+  }, [channelId, age, sort, shorts, labelFilter, watchStatuses, summarisedOnly, initChannelLabels])
   fetchPageRef.current = fetchPage
 
   // A finished fill means rows the current query never saw. Refetch page 0 the

@@ -20,6 +20,9 @@ real video (muted, with custom captions and scrubbing).
 - **Focus mode** — a toggle in the control bar: the bar then follows the cursor
   and nothing else, so pausing or seeking by keyboard leaves the picture clean.
   Move the mouse onto the video to bring it back
+- **Summarised filter** — a chip in the sidebar that narrows any list of videos
+  to the ones you've had a summary written for, on the feed, a channel, History,
+  Watch Later, Imported and playlists
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **Live streams** — a broadcast on air gets a LIVE pill in place of the clock,
   red at the edge and grey once you've fallen behind; click it to jump back to

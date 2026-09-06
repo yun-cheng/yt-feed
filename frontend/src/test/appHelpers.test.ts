@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterByTime, sortVideos, buildPath, pageFilters, parseStartAt } from '../App'
+import { filterByTime, filterBySummarised, sortVideos, buildPath, pageFilters, parseStartAt } from '../App'
 import type { VideoItem } from '../App'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
@@ -227,7 +227,7 @@ describe('pageFilters', () => {
     Object.entries(pageFilters(page)).filter(([, v]) => v).map(([k]) => k).sort()
 
   it('offers every filter on the feed', () => {
-    expect(on('feed')).toEqual(['contentMode', 'hidden', 'tags', 'watchStatus'])
+    expect(on('feed')).toEqual(['contentMode', 'hidden', 'summarised', 'tags', 'watchStatus'])
   })
 
   it('drops the watch status where there are no videos to filter', () => {
@@ -238,7 +238,15 @@ describe('pageFilters', () => {
   it('leaves the Imported page with only the watch status', () => {
     // Imported videos come from channels you don't follow, so no tag matches
     // them, and the page is one flat list — no Videos/Shorts split.
-    expect(on('imported')).toEqual(['watchStatus'])
+    expect(on('imported')).toEqual(['summarised', 'watchStatus'])
+  })
+
+  it('offers the summary filter wherever videos are listed, and nowhere else', () => {
+    // Not on `channels`: it lists channels, and a channel has no summary.
+    expect(on('channels')).not.toContain('summarised')
+    expect(on('history')).toContain('summarised')
+    expect(on('watchlater')).toContain('summarised')
+    expect(on('playlist')).toContain('summarised')
   })
 
   it('offers nothing on pages with no filterable list', () => {
@@ -248,7 +256,7 @@ describe('pageFilters', () => {
   })
 
   it('swaps tags for the channel page (which shows topics instead)', () => {
-    expect(on('channel')).toEqual(['contentMode', 'watchStatus'])
+    expect(on('channel')).toEqual(['contentMode', 'summarised', 'watchStatus'])
   })
 })
 
@@ -352,3 +360,44 @@ describe('a playlist windows by publish date, not by when it was imported', () =
     expect(filterByTime(imported, { lo: 4, hi: 9 }, v => v.created_at)).toHaveLength(0)
   })
 })
+// ── the summarised filter ────────────────────────────────────
+
+describe('filterBySummarised', () => {
+  const list = [
+    makeVideo({ youtube_id: 'has' }),
+    makeVideo({ youtube_id: 'hasnt' }),
+  ]
+  const summarised = new Set(['has'])
+
+  it('leaves the list alone until it is switched on', () => {
+    // Off is the ordinary case, and a filter that quietly narrowed anything
+    // while off would be the worst kind of bug to notice.
+    expect(filterBySummarised(list, false, summarised)).toBe(list)
+  })
+
+  it('keeps only what has a summary', () => {
+    expect(filterBySummarised(list, true, summarised).map(v => v.youtube_id)).toEqual(['has'])
+  })
+
+  it('can empty a list, and says so by being empty', () => {
+    // Unlike the watch-status filter, "nothing selected" isn't a thing here —
+    // one direction, so an empty result means you have no summaries in view
+    // rather than a filter that fell through to showing everything.
+    expect(filterBySummarised(list, true, new Set())).toEqual([])
+  })
+})
+
+describe('buildPath — the summarised filter rides in the URL', () => {
+  it('is absent when off, so an ordinary feed link stays clean', () => {
+    expect(buildPath({ page: 'feed', summarised: false })).toBe('/')
+  })
+
+  it('is carried when on, so the link shows what you were looking at', () => {
+    expect(buildPath({ page: 'feed', summarised: true })).toBe('/?summarised=1')
+  })
+
+  it('is dropped on a page that cannot use it', () => {
+    expect(buildPath({ page: 'channels', summarised: true })).toBe('/channels')
+  })
+})
+

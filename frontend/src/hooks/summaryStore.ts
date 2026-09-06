@@ -20,6 +20,11 @@ export type SummaryLength = 'short' | 'long'
 export type SummaryState = { status: SummaryStatus; length: SummaryLength }
 
 let statuses: Record<string, SummaryState> = {}
+// The same answer as `statuses`, in the shape the "summarised only" filter asks
+// it in. Derived once per change rather than per read: useSyncExternalStore
+// compares snapshots by identity, so a Set built inside the selector would be a
+// new object every render and never stop re-rendering.
+let summarised: Set<string> = new Set()
 const listeners = new Set<() => void>()
 let timer: ReturnType<typeof setTimeout> | null = null
 
@@ -29,6 +34,11 @@ const POLL_MS = 4_000
 
 function emit(next: Record<string, SummaryState>) {
   statuses = next
+  // 'done' only, matching the backend's summarised_video_ids: a job still
+  // running has nothing to read yet, and one that errored has nothing at all.
+  summarised = new Set(
+    Object.entries(next).filter(([, v]) => v.status === 'done').map(([id]) => id)
+  )
   listeners.forEach((l) => l())
 }
 
@@ -106,6 +116,12 @@ function subscribe(cb: () => void) {
 
 export function useSummaryStatus(videoId: string): SummaryState | undefined {
   return useSyncExternalStore(subscribe, () => statuses[videoId], () => statuses[videoId])
+}
+
+/** Every video with a finished summary — what the sidebar's filter matches on
+ *  for the lists that are already loaded in full (see App's USES_SUMMARISED). */
+export function useSummarisedIds(): Set<string> {
+  return useSyncExternalStore(subscribe, () => summarised, () => summarised)
 }
 
 /** Test seam — the stores are module state, which outlives a single test. */

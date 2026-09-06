@@ -38,6 +38,28 @@ from app.routers.ask import MAX_ANSWER_TOKENS, NoTranscript, build_context
 router = APIRouter(prefix="/summaries")
 
 
+async def summarised_video_ids(db: AsyncSession, user_id: int) -> set[str]:
+    """The videos this person has a finished summary for.
+
+    One definition, shared by every list that can filter on it (the feed and a
+    channel's videos), so "summarised" can't come to mean two different things
+    on two pages.
+
+    `done` only. A job still running has nothing to read yet and one that errored
+    has nothing at all — the filter exists to find the summaries you HAVE, and a
+    row that failed last week is not one of them. It also means the answer only
+    ever shrinks a list to things worth opening.
+    """
+    return {
+        r[0]
+        for r in await db.execute(
+            select(SummaryJob.video_id).where(
+                SummaryJob.user_id == user_id, SummaryJob.status == "done"
+            )
+        )
+    }
+
+
 async def get_db():
     async with async_session() as session:
         yield session

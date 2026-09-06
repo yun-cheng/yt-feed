@@ -322,6 +322,7 @@ async def channel_videos(
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     label: str = Query(default="", description="filter to videos carrying this title-label"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
+    summarised: bool = Query(default=False, description="keep only videos with a finished summary"),
     offset: int = Query(default=0, description="pagination: index into the ranked list"),
     limit: int = Query(default=60, description="pagination: page size"),
     user: User = Depends(auth.account),
@@ -421,6 +422,14 @@ async def channel_videos(
             item for item in ranked
             if hist.get(item["youtube_id"], "unwatched") in wanted
         ]
+
+    # Summarised-only, likewise before pagination. Same definition as the feed's
+    # — see summarised_video_ids.
+    if summarised:
+        from app.routers.summaries import summarised_video_ids
+
+        have = await summarised_video_ids(db, user.id)
+        ranked = [item for item in ranked if item["youtube_id"] in have]
 
     from app.routers.tags import channel_suggestions
 

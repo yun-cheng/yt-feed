@@ -628,6 +628,7 @@ async def feed_by_tags(
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     include_hidden: bool = Query(default=False, description="include channels hidden from home (peek mode)"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
+    summarised: bool = Query(default=False, description="keep only videos with a finished summary"),
     offset: int = 0,     # pagination: index into the ranked list
     limit: int = 60,     # pagination: page size
     user: User = Depends(auth.account),
@@ -726,12 +727,21 @@ async def feed_by_tags(
         }
         all_videos = [v for v in all_videos if hist.get(v.youtube_id, "unwatched") in wanted]
 
+    # Summarised-only, here for the same reason the watch filter is here: before
+    # ranking and paging, so `total` counts what you'll actually be shown.
+    if summarised:
+        from app.routers.summaries import summarised_video_ids
+
+        have = await summarised_video_ids(db, user.id)
+        all_videos = [v for v in all_videos if v.youtube_id in have]
+
     ranked = rank_videos(list(all_videos), chan_titles, sort=sort, channel_thumbnails=chan_thumbs, date_range=date_range)
     return {
         "age": format_range(date_range),
         "sort": sort,
         "tags": tag_list,
         "watch": sorted(wanted),
+        "summarised": summarised,
         "videos": ranked[offset:offset + limit],
         "total": len(ranked),
         "offset": offset,

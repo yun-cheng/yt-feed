@@ -546,6 +546,12 @@ is the absence of a row, `in_progress` a row, `watched` a row with the flag. It'
 applied **before ranking and paging**, so `total` and the offsets stay honest —
 filtering a page client-side would leave the count promising videos it then drops.
 
+`summarised=true` on the same two endpoints narrows a list to videos with a
+finished summary, filtered in the same place and for the same reason.
+`routers/summaries.py` owns the one definition (`summarised_video_ids`): jobs
+with status `done` and nobody else's, since a job still running has nothing to
+read yet and one that errored has nothing at all.
+
 **Watched** is decided in one place, server-side, so nothing downstream has to
 re-derive it: at 90% of the duration — past that it's credits and end cards — or
 within the last minute, which covers long videos where 90% still leaves a
