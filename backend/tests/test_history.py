@@ -85,6 +85,31 @@ async def test_a_glancing_open_is_not_recorded(client):
     assert (await client.get("/api/history")).json() == []
 
 
+async def test_a_broadcast_keeps_its_position(client):
+    """Where you paused a stream is worth as much as where you paused anything
+    else: it's a fixed point in the broadcast, and refreshing goes back to it."""
+    await report(client, position=3191.0, duration=6415, live=True)
+    row = (await client.get("/api/history/vid1")).json()
+    assert row["position_seconds"] == 3191.0
+    assert row["duration_seconds"] == 6415
+
+
+async def test_a_broadcast_is_never_finished(client):
+    """Watching live puts the play head at the "end" by definition, so the
+    ordinary rule would call a stream you joined a moment ago finished."""
+    out = await report(client, position=595.0, duration=600, live=True)
+    assert out["watched"] is False
+    assert (await client.get("/api/history/vid1")).json()["watched"] is False
+
+
+async def test_the_recording_of_a_stream_can_still_be_finished(client):
+    """Once it has aired the same id reports as an ordinary video, and the flag
+    that live could never set is set then."""
+    await report(client, position=595.0, duration=600, live=True)
+    await report(client, position=595.0, duration=600)
+    assert (await client.get("/api/history/vid1")).json()["watched"] is True
+
+
 async def test_progress_is_upserted_not_appended(client):
     await report(client, position=100.0)
     await report(client, position=250.0)

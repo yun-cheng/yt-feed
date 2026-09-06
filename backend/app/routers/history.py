@@ -41,6 +41,10 @@ class ProgressUpdate(BaseModel):
     youtube_id: str
     position_seconds: float = 0.0
     duration_seconds: int = 0
+    # A live broadcast: the position is recorded, but it can't mean "finished"
+    # — see report_progress. The client decides this: it can see the player, and
+    # liveness is a property of the moment rather than of the video.
+    live: bool = False
     # Metadata snapshot, so the History page can render a card for a video that
     # is no longer (or never was) in the feed.
     title: str = ""
@@ -120,7 +124,13 @@ async def report_progress(
     if p.position_seconds < MIN_POSITION_SECONDS:
         return {"status": "ignored"}
 
-    watched = is_watched(p.position_seconds, p.duration_seconds)
+    # A broadcast's position is stored like any other — it means the same thing,
+    # this far in from the start of the stream — but it can never mark the video
+    # finished. Watching live puts the play head at the "end" by definition, so
+    # `is_watched` would say yes to a stream you joined ten seconds ago. Once it
+    # has aired, the same id reports as an ordinary recording and this decides
+    # normally.
+    watched = False if p.live else is_watched(p.position_seconds, p.duration_seconds)
     now = datetime.utcnow()
     h = await db.get(WatchHistory, (user.id, p.youtube_id))
     if h is None:

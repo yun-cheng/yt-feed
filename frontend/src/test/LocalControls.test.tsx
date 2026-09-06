@@ -7,7 +7,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
-import LocalControls, { localPlayer, previewLeft } from '../components/LocalControls'
+import LocalControls, { localPlayer, playerIsLive, previewLeft } from '../components/LocalControls'
 import type { PlayerApi } from '../components/LocalControls'
 import type { StoryboardInfo } from '../lib/storyboard'
 
@@ -81,6 +81,15 @@ describe('localPlayer', () => {
     el.play = vi.fn().mockRejectedValue(new DOMException('NotAllowed'))
     expect(() => localPlayer(el).playVideo()).not.toThrow()
     await Promise.resolve()
+  })
+
+  it('calls an endless source live — which is what a broadcast is', () => {
+    // A file has a length; a stream has `Infinity`, and getDuration flattens
+    // that to 0 for callers who need a number. This is where it still means
+    // something.
+    expect(playerIsLive(localPlayer(withDuration(videoEl(), Infinity)))).toBe(true)
+    expect(playerIsLive(localPlayer(withDuration(videoEl(), 600)))).toBe(false)
+    expect(playerIsLive(null)).toBe(false)
   })
 
   it('reports YouTube’s state codes', () => {
@@ -774,5 +783,91 @@ describe('LocalControls — driving a <video> instead', () => {
     render(<LocalControls videoRef={{ current: el }} src="/x" hovering onFullscreen={vi.fn()} />)
     fireEvent.click(screen.getByTitle('Play (k)'))
     expect(el.play).toHaveBeenCalled()
+  })
+})
+
+// ── Live ─────────────────────────────────────────────────────────────
+//
+// A broadcast has no end to run towards, so the bar stops counting down to one.
+// Its "duration" is how long the stream has been up, which makes the play head's
+// distance from it the only number worth showing — and the only place worth
+// offering to go.
+
+/** A player showing a broadcast that has been running for `elapsed` seconds. */
+function liveEmbed(elapsed = 600, at = elapsed) {
+  const out = renderOverEmbed({}, {
+    getDuration: () => elapsed,
+    getVideoData: () => ({ isLive: true }),
+  })
+  act(() => { out.player._set(at) })
+  act(() => { vi.advanceTimersByTime(300) })
+  return out
+}
+
+describe('LocalControls — a live broadcast', () => {
+  it('says LIVE instead of counting towards an end that isn’t there', () => {
+    liveEmbed()
+    expect(screen.getByTestId('live-pill')).toBeInTheDocument()
+    expect(screen.queryByText('10:00 / 10:00')).not.toBeInTheDocument()
+  })
+
+  it('keeps the clock for an ordinary recording', () => {
+    renderOverEmbed()
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.queryByTestId('live-pill')).not.toBeInTheDocument()
+    expect(screen.getByText('0:00 / 10:00')).toBeInTheDocument()
+  })
+
+  it('counts the buffer as live, so the button isn’t lit the whole time', () => {
+    // A few seconds behind the edge is what pressing play gets you.
+    liveEmbed(600, 596)
+    expect(screen.getByTestId('live-pill')).toBeDisabled()
+  })
+
+  it('counts forward from the start of the broadcast, at the edge and behind it', () => {
+    // Where you are, not how far back — the same direction the clock on a
+    // recording runs, minus the total there's no such thing as.
+    liveEmbed(600, 300)
+    expect(screen.getByTestId('live-elapsed')).toHaveTextContent('5:00')
+    expect(screen.getByTestId('live-pill')).toBeEnabled()
+    liveEmbed(600, 598)
+    expect(screen.getAllByTestId('live-elapsed')[1]).toHaveTextContent('9:58')
+  })
+
+  it('jumps to the edge and plays, since being behind can mean being paused', () => {
+    const { player } = liveEmbed(600, 300)
+    fireEvent.click(screen.getByTestId('live-pill'))
+    expect(player.seekTo).toHaveBeenCalledWith(600, true)
+    expect(player.playVideo).toHaveBeenCalled()
+  })
+
+  it('still scrubs back into the stream', () => {
+    // The elapsed broadcast IS the track: half way along it is half an hour of
+    // air time ago, which is exactly where YouTube's own live bar sends you.
+    const { container, player } = liveEmbed(600)
+    fireEvent.pointerDown(bar(container), { clientX: 200, pointerId: 1 })
+    expect(player.seekTo).toHaveBeenCalledWith(300, true)
+  })
+
+  it('doesn’t overfill the bar when the head reads past the edge', () => {
+    // The two are sampled a moment apart, so the head can sit a hair beyond.
+    const { container } = liveEmbed(600, 603)
+    const fill = container.querySelector('.bg-red-500') as HTMLElement
+    expect(fill.style.width).toBe('100%')
+  })
+
+  it('doesn’t claim the edge before the player has loaded', () => {
+    // Nothing is known yet: time and duration are both 0, and a zero gap is not
+    // the same as standing at the edge.
+    renderOverEmbed({}, { getDuration: () => 0, getVideoData: () => ({ isLive: true }) })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('live-pill')).toBeEnabled()
+  })
+
+  it('drops back to a clock when the broadcast ends under it', () => {
+    const { player } = liveEmbed()
+    player.getVideoData = () => ({ isLive: false })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.queryByTestId('live-pill')).not.toBeInTheDocument()
   })
 })

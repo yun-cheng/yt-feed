@@ -565,6 +565,16 @@ Two guards keep the data honest:
   The watch page can report a position before its metadata resolves, and without
   this that ping would blank a row that already had one.
 
+A **live broadcast** is stored like anything else — its position means the same
+thing, this far in from the start of the stream, whether you come back an hour
+later or after it has ended and become a recording. The one rule that can't apply
+is `watched`: at the live edge the play head is at the "end" by definition, so the
+90% test would mark a stream finished ten seconds after you joined it. A ping with
+`live: true` therefore writes position and duration and leaves the flag alone. The
+client decides that flag, because it can see the player and because liveness is a
+property of the moment rather than of the video; once the stream has aired, the
+same id reports without it and `watched` is decided normally.
+
 ### Reporting with nothing but an id
 
 `POST /api/history/by-id/{id}` takes a play head and a duration and works the

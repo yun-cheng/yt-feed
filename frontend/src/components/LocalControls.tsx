@@ -92,6 +92,10 @@ export type PlayerApi = {
   // Optional: the embed player has it natively, a <video> has a real height
   // instead (see localPlayer, which leaves this off deliberately).
   getPlaybackQuality?: () => string
+  // YouTube's metadata for what's loaded. Undocumented but stable, and the one
+  // field read here is `isLive` — the only straight answer anyone gives about a
+  // broadcast (see playerIsLive).
+  getVideoData?: () => { isLive?: boolean } | undefined
 }
 
 /** Wrap a <video> element in the PlayerApi, matching YouTube's conventions:
@@ -110,8 +114,30 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
     getCurrentTime: () => el.currentTime,
     getDuration: () => (Number.isFinite(el.duration) ? el.duration : 0),
     seekTo: (seconds) => { el.currentTime = seconds },
+    // A source with no end reports `Infinity` for its duration — which is what
+    // an endless one is. (getDuration above hides that from callers who want a
+    // number; this is the one place it means something.)
+    getVideoData: () => ({ isLive: el.duration === Infinity }),
   }
 }
+
+/** Is this a live broadcast?
+ *
+ *  Asked of the player rather than of the video row, because liveness is a
+ *  property of the MOMENT: a stream that was live an hour ago is a recording
+ *  now, and a stored flag would be wrong by exactly as long as it has been
+ *  since the last sync. The player is watching the thing.
+ */
+export function playerIsLive(p: PlayerApi | null | undefined): boolean {
+  return Boolean(p?.getVideoData?.()?.isLive)
+}
+
+/** How far behind the broadcast still counts as watching it live.
+ *
+ *  Never zero: the play head runs a few seconds behind the edge even when you
+ *  have done nothing but press play — that gap IS the buffer — and a threshold
+ *  tighter than it would leave the "jump to live" button lit the whole time. */
+export const LIVE_EDGE_SEC = 10
 
 /** Our control bar, in place of the player's own.
  *
@@ -167,6 +193,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   const [duration, setDuration] = useState(0)
   const [paused, setPaused] = useState(true)
   const [muted, setMuted] = useState(false)
+  // A live broadcast is a different bar: no end to run towards, so no clock
+  // counting down to one (see the LIVE pill below).
+  const [live, setLive] = useState(false)
   const [resolution, setResolution] = useState<string | null>(null)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
   // The slider reads and writes the SHARED volume (the same store the previews
@@ -212,6 +241,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
       setPaused(s !== 1 && s !== 3)
       setMuted(p.isMuted())
       setDuration(p.getDuration())
+      // Polled with everything else rather than read once: over the embed the
+      // answer isn't there at all until the player has loaded the video, and a
+      // stream can end while you're watching it, which turns it into an
+      // ordinary recording under the same bar.
+      setLive(playerIsLive(p))
       // What's actually on screen. A file knows its own height; the embed only
       // has YouTube's name for the quality it settled on, which drifts on its
       // own while it's on auto — so this is polled with everything else rather
@@ -261,7 +295,16 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // Shown while the pointer is over the player, and whenever it's paused — a
   // paused video with no controls looks broken.
   const show = hovering || paused
-  const progress = duration ? time / duration : 0
+  // On a broadcast the "duration" is how long it has been running, and the play
+  // head can sit a hair past it (the two are measured a moment apart), so the
+  // ratio needs a ceiling it never needed on a file.
+  const progress = duration ? Math.min(1, time / duration) : 0
+  // How far back in the stream you are. At the edge this is the buffer and
+  // nothing more; further back it's where you scrubbed to.
+  const behind = Math.max(0, duration - time)
+  // `duration > 0` because a player that hasn't loaded yet reports 0 for both,
+  // and a zero gap would otherwise read as "at the edge" over a 0:00 clock.
+  const atLive = live && duration > 0 && behind <= LIVE_EDGE_SEC
 
   // The frame under the cursor, cut from YouTube's sprite sheet. Follows
   // `shownTime` rather than `hoverTime` so it holds its picture while the popup
@@ -478,10 +521,57 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             )}
           </div>
         )}
-        {/* 14px and 8px of padding, both YouTube's. */}
-        <span className="px-2 text-sm tabular-nums text-white/90">
-          {formatTime(time)} / {formatTime(duration)}
-        </span>
+        {/* Where you are. On a recording that's a position out of a total; on a
+            broadcast there is no total — only the edge, which moves — so the
+            clock gives way to the thing you actually want to know and to do:
+            am I live, and take me there. */}
+        {live ? (
+          <div className="flex items-center px-2">
+            {/* How far into the broadcast you are, counted from when it went
+                on air. Not the distance back from the edge: that number runs
+                backwards while the picture runs forwards, and at the edge it's
+                a jittering "-0:04" that says nothing but "the buffer exists".
+                This one just tells you where you are, the way the clock on a
+                recording does — only without a total to divide it by. */}
+            <span
+              data-testid="live-elapsed"
+              className="mr-2 text-sm tabular-nums text-white/90"
+              title="How far into the broadcast you are"
+            >
+              {formatTime(time)}
+            </span>
+            <button
+              onClick={() => {
+                const p = api()
+                if (!p || !duration) return
+                // The edge is wherever the stream has got to, which is what
+                // duration reports on a broadcast. Seeking there and playing is
+                // one gesture: you can be behind because you paused.
+                p.seekTo(duration, true)
+                setTime(duration)
+                p.playVideo()
+              }}
+              disabled={atLive}
+              data-testid="live-pill"
+              aria-label={atLive ? 'Watching live' : 'Jump to live'}
+              title={atLive ? 'Watching live' : 'Jump to live'}
+              className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-sm font-medium ${
+                atLive ? 'cursor-default text-white' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              {/* Red while you're at the edge, grey once you've fallen behind —
+                  the same tell YouTube uses, and the reason the word alone
+                  isn't enough: "LIVE" is true of the stream either way. */}
+              <span className={`h-2 w-2 rounded-full ${atLive ? 'bg-red-600' : 'bg-white/50'}`} />
+              LIVE
+            </button>
+          </div>
+        ) : (
+          /* 14px and 8px of padding, both YouTube's. */
+          <span className="px-2 text-sm tabular-nums text-white/90">
+            {formatTime(time)} / {formatTime(duration)}
+          </span>
+        )}
         {leftControls}
         {/* No gap, like YouTube's: each button carries its own padding (see
             BAR_BUTTON), which spaces the row evenly and keeps the hit targets

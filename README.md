@@ -18,6 +18,11 @@ real video (muted, with custom captions and scrubbing).
   vocabulary tailored per channel) so you can filter the channel by topic; the
   labels also show on the watch page
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
+- **Live streams** — a broadcast on air gets a LIVE pill in place of the clock,
+  red at the edge and grey once you've fallen behind; click it to jump back to
+  live. The track is the elapsed broadcast, so you can scrub back into it —
+  and where you paused is remembered, so a refresh returns you there rather than
+  to the edge. Watching live never marks the stream watched
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were.
   Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, and the

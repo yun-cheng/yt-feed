@@ -6,7 +6,7 @@ import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { formatTime } from '../lib/time'
-import LocalControls, { localPlayer, BAR_BUTTON } from './LocalControls'
+import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
@@ -117,6 +117,13 @@ const RESUME_MIN_SEC = 10
 // Nor is resuming this close to the end: the video restarts instead, so a
 // finished video doesn't reopen onto its own credits.
 const RESUME_TAIL_SEC = 20
+// How far from the position we asked for still counts as "the seek landed" —
+// see the confirmation in the resume effect. Wide on purpose: it separates a
+// seek that worked from one that vanished, and the two are minutes apart.
+const RESUME_CONFIRM_SEC = 30
+// How long to wait for playback to actually start before giving up on
+// confirming (× 250ms).
+const RESUME_CONFIRM_TRIES = 40
 // How often we ask the player whether it has ended. Half a second is under the
 // threshold where the up-next card would feel like it arrived late, and the call
 // is a property read on an object we already hold.
@@ -677,6 +684,29 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     resumedForRef.current = playerGen
     if (resumeAt === 0) return
     playerRef.current?.seekTo(resumeAt, true)
+
+    // …and then check it took. A seek issued at `onReady` can be thrown away by
+    // the player's own startup, and a LIVE player is where that actually bites:
+    // it puts itself at the broadcast's edge the moment playback really begins,
+    // so a resume that lands first is simply gone — and on a stream that's an
+    // hour from where you paused, not the few seconds a recording would cost.
+    // So wait for playback to genuinely start, and if the position isn't near
+    // where we asked for, ask once more.
+    let tries = 0
+    const id = window.setInterval(() => {
+      const p = playerRef.current
+      // 1 = PLAYING. Give up rather than watch a player that never starts —
+      // a blocked autoplay is about to rebuild it anyway, and the rebuild
+      // brings its own generation and its own seek.
+      if (!p || ++tries > RESUME_CONFIRM_TRIES) { window.clearInterval(id); return }
+      if (p.getPlayerState() !== 1) return
+      window.clearInterval(id)
+      // Deliberately a wide window: playback has moved on by however long it
+      // took to start. This is telling "the seek landed" from "the seek
+      // vanished", not measuring anything.
+      if (Math.abs(p.getCurrentTime() - resumeAt) > RESUME_CONFIRM_SEC) p.seekTo(resumeAt, true)
+    }, 250)
+    return () => window.clearInterval(id)
   }, [resumeAt, playerGen])
 
   // Report progress on a timer while the video plays, and once more on the way
@@ -689,6 +719,20 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       const position = p.getCurrentTime()
       const duration = p.getDuration?.() || meta?.duration_seconds || 0
       if (!position) return
+      // A broadcast's position is saved like any other, and means the same
+      // thing: this far in from the start of the stream, which is a fixed point
+      // in it whether you come back an hour later or after it has ended and
+      // become a recording. What it must NOT do is mark the video finished —
+      // watching live puts the play head at the "end" by definition. So the
+      // flag rides along and the backend leaves `watched` alone (see
+      // routers/history.py).
+      //
+      // Resuming needs no special case either: the near-the-end rule already
+      // does the right thing here. Paused halfway back, the gap is wide and you
+      // return to the pause. Watching at the edge, the position IS the end, so
+      // the rule declines to resume — and a live player with no seek opens
+      // where it always does, live.
+      const live = playerIsLive(p)
       apiFetch('/api/history', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -699,6 +743,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           youtube_id: videoId,
           position_seconds: position,
           duration_seconds: Math.round(duration),
+          live,
           title: meta?.title ?? '',
           channel_id: meta?.channel_id ?? '',
           channel_name: meta?.channel_name ?? '',

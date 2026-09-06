@@ -987,6 +987,55 @@ Other details:
   deliberately excluded (see above).
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
+### Live broadcasts
+
+A stream that is on air is a different shape of thing: no total to run towards,
+and a far end that keeps moving. The bar reads that off the player rather than
+off the video row — `playerIsLive()` asks `getVideoData().isLive` over the embed,
+and on a `<video>` asks whether the source has an end at all (an endless one
+reports `Infinity` for its duration, which `getDuration` otherwise flattens to
+0). Liveness is a property of the *moment*: a stream that was live an hour ago is
+a recording now, and a stored flag would be stale by however long it has been
+since the last sync. It's polled with everything else, so a broadcast that ends
+under you turns back into an ordinary video with an ordinary clock.
+
+- **The clock becomes a LIVE pill.** The elapsed time still shows, counted from
+  when the broadcast went on air — the same direction a recording's clock runs,
+  minus the total there isn't one of. Not a countdown from the edge: that number
+  runs backwards while the picture runs forwards.
+- **The dot is the tell.** Red at the edge, grey once you've fallen behind, which
+  is the distinction the word "LIVE" can't make on its own — the stream is live
+  either way. Clicking the pill seeks to the edge *and plays*, since one way to
+  be behind is to have paused.
+- **`LIVE_EDGE_SEC` is 10, never 0.** The play head trails the edge by a few
+  seconds even when you've done nothing but press play — that gap is the buffer,
+  and a tighter threshold would leave the button lit permanently.
+- **The track is the elapsed broadcast**, so scrubbing back into YouTube's rewind
+  window works exactly as it does on a recording; the play head can read a hair
+  *past* the edge (the two are sampled a moment apart), so the fill is clamped.
+- **The resume seek is confirmed, not just issued.** A seek made at `onReady`
+  can be thrown away by the player's own startup, and live is where that bites:
+  a live player puts itself at the broadcast's edge the moment playback really
+  begins, so a resume that lands first is simply gone — an hour from where you
+  paused rather than the few seconds a recording would cost. So the effect waits
+  for state 1 and, if the position isn't within `RESUME_CONFIRM_SEC` of what it
+  asked for, asks once more. The window is wide on purpose: playback has moved
+  on by however long it took to start, and this is telling a seek that landed
+  from one that vanished, not measuring anything.
+- **It resumes like anything else, and the existing rule is why.** A
+  broadcast's position means the same thing a recording's does — this far in
+  from the start of the stream — so pausing 20 minutes back and refreshing
+  returns you to the pause rather than to the edge. No special case: watching at
+  the edge puts the play head *at* the stored end, which is precisely what the
+  near-the-end rule declines to resume from, and a live player given no seek
+  opens where it always does. Paused well behind, the gap is wide and the resume
+  runs. One rule, both answers.
+- **What live must never do is finish the video.** At the edge the play head is
+  at the "end" by definition, so the ordinary 90% test would mark a stream
+  watched ten seconds after you joined it. The report carries `live: true` and
+  the backend keeps `watched` off (see `routers/history.py`); once the stream has
+  aired, the same id reports as a recording and the flag is decided normally.
+
 ### Up next (`/api/feed/next/:id`)
 
 When a video ends, a card over the player offers the same channel's next video
