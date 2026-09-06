@@ -17,6 +17,9 @@ real video (muted, with custom captions and scrubbing).
 - **Video topics** — inside a channel, the LLM labels its videos by topic (a
   vocabulary tailored per channel) so you can filter the channel by topic; the
   labels also show on the watch page
+- **Focus mode** — a toggle in the control bar: the bar then follows the cursor
+  and nothing else, so pausing or seeking by keyboard leaves the picture clean.
+  Move the mouse onto the video to bring it back
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **Live streams** — a broadcast on air gets a LIVE pill in place of the clock,
   red at the edge and grey once you've fallen behind; click it to jump back to

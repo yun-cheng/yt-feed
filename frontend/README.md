@@ -1245,6 +1245,26 @@ the CC button, pin and fullscreen — everything with a keyboard equivalent
 and mirrors the element's own events rather than polling, so a keyboard seek or
 the resume jump moves it too.
 
+**Focus mode** (`hooks/focusMode.ts`) takes the bar's three ways up and keeps
+one. Ordinarily it rises for the pointer moving over the video, for the video not
+playing, and — in `WatchPage` — for any shortcut key, since a keypress is
+evidence you're there and in fullscreen it's the only evidence there is. That
+last rule is what makes the bar keep painting itself back over a video you're
+steering by keyboard: every `k`, every arrow. In focus mode only the pointer
+raises it, pausing included.
+
+- **The overlays that answer a keypress are untouched** — the volume HUD, the
+  bookmark flash, the captions. Those *are* the feedback for what you pressed;
+  hiding them would leave the key doing nothing visible at all. It's the bar
+  that stays down.
+- **The cursor is the way back in**, which is also how you reach the button to
+  turn it off again. Turning it ON with the pointer on the video doesn't yank
+  the bar out from under the click that did it, for the same reason.
+- **Persisted, and read through a ref as well as a hook.** It's about how you
+  watch rather than what, so it follows you to the next video like the volume
+  does; the key handler is bound once, so it would otherwise keep answering with
+  whatever the setting was when the page opened.
+
 The **volume boost** (`hooks/audioBoost.ts`) is the second group in that row,
 and deliberately not the same thing as the first. The shared volume is one level
 for everything you watch and stops at 100% — the loudest the file is. Some videos

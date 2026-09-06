@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
+import { useFocusMode, setFocusMode } from '../hooks/focusMode'
 import { useBoost, useRemoteBoost, boostSupported, MAX_BOOST, BOOST_STEP } from '../hooks/audioBoost'
 import { formatTime } from '../lib/time'
 import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
@@ -294,7 +295,13 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
 
   // Shown while the pointer is over the player, and whenever it's paused — a
   // paused video with no controls looks broken.
-  const show = hovering || paused
+  //
+  // Focus mode gives up that second rule deliberately: it exists for watching
+  // by keyboard, where pausing is one of the things that kept painting the bar
+  // back over the picture. There, moving the cursor onto the video is the whole
+  // way in — and it's how you get back to this button to turn it off.
+  const focus = useFocusMode()
+  const show = focus ? hovering : hovering || paused
   // On a broadcast the "duration" is how long it has been running, and the play
   // head can sit a hair past it (the two are measured a moment apart), so the
   // ratio needs a ceiling it never needed on a file.
@@ -591,6 +598,29 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             </span>
           )}
           {extraControls}
+          {/* Focus mode. Sits with fullscreen rather than with the volume
+              groups because it's the same kind of thing they are: not about
+              this video, but about how much of the player you want to see. */}
+          <button
+            onClick={() => setFocusMode(!focus)}
+            className={`${BAR_BUTTON} ${focus ? '' : 'text-white/60'}`}
+            aria-pressed={focus}
+            aria-label="Focus mode"
+            data-testid="focus-button"
+            title={focus
+              ? 'Focus mode on — the bar follows the cursor only'
+              : 'Focus mode — keep the bar down unless the cursor is on the video'}
+          >
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              {/* A cursor, because that's the rule: in focus mode the bar
+                  answers the pointer and nothing else. Deliberately NOT a
+                  viewfinder or any other cornered glyph — fullscreen is four
+                  corner brackets and sits immediately to the right of this, so
+                  anything bracket-shaped here reads as a second fullscreen
+                  button. A solid diagonal shares no silhouette with it. */}
+              <path d="M5 2 17 14h-5.1l2.9 5.9-2.7 1.3L9.2 15.4 5 19z" />
+            </svg>
+          </button>
           <button
             onClick={onFullscreen}
             className={BAR_BUTTON}

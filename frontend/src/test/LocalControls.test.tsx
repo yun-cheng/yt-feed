@@ -10,6 +10,7 @@ import { createRef } from 'react'
 import LocalControls, { localPlayer, playerIsLive, previewLeft } from '../components/LocalControls'
 import type { PlayerApi } from '../components/LocalControls'
 import type { StoryboardInfo } from '../lib/storyboard'
+import { setFocusMode } from '../hooks/focusMode'
 
 // Two sheets, 5x5 tiles each, over the fakePlayer's 600s — one frame per 12s.
 const SB: StoryboardInfo = {
@@ -869,5 +870,58 @@ describe('LocalControls — a live broadcast', () => {
     player.getVideoData = () => ({ isLive: false })
     act(() => { vi.advanceTimersByTime(300) })
     expect(screen.queryByTestId('live-pill')).not.toBeInTheDocument()
+  })
+})
+
+// ── Focus mode ───────────────────────────────────────────────────────
+//
+// The bar has three ways up: the pointer, the video not playing, and (in
+// WatchPage) any shortcut key. Focus mode keeps only the first, for watching by
+// keyboard without the bar painting itself back over the picture every time you
+// press something.
+
+describe('LocalControls — focus mode', () => {
+  // The preference is module state, so clearing localStorage isn't enough to
+  // undo it — one case leaving it on would turn it on for everything after.
+  afterEach(() => { setFocusMode(false) })
+
+  it('is off to begin with, so the bar behaves as it always did', () => {
+    const { container } = renderOverEmbed({ hovering: false })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(container.firstElementChild).toHaveClass('opacity-100')  // paused
+  })
+
+  it('keeps the bar down while paused', () => {
+    setFocusMode(true)
+    const { container } = renderOverEmbed({ hovering: false })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(container.firstElementChild).toHaveClass('opacity-0')
+  })
+
+  it('still opens for the cursor — which is how you reach the button again', () => {
+    setFocusMode(true)
+    const { container } = renderOverEmbed({ hovering: true })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(container.firstElementChild).toHaveClass('opacity-100')
+  })
+
+  it('toggles from the bar, and says which way it is set', () => {
+    const { container } = renderOverEmbed({ hovering: true })
+    const button = screen.getByTestId('focus-button')
+    expect(button).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(button)
+    expect(screen.getByTestId('focus-button')).toHaveAttribute('aria-pressed', 'true')
+    // Turning it on with the pointer on the video doesn't yank the bar away
+    // from under the cursor that just clicked it.
+    expect(container.firstElementChild).toHaveClass('opacity-100')
+    fireEvent.click(screen.getByTestId('focus-button'))
+    expect(screen.getByTestId('focus-button')).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('is remembered, being about how you watch rather than what', () => {
+    setFocusMode(true)
+    expect(localStorage.getItem('yt-feed-focus-mode-v1')).toBe('1')
+    setFocusMode(false)
+    expect(localStorage.getItem('yt-feed-focus-mode-v1')).toBe('0')
   })
 })

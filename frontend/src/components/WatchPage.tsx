@@ -5,6 +5,7 @@ import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
+import { useFocusMode } from '../hooks/focusMode'
 import { formatTime } from '../lib/time'
 import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
@@ -571,6 +572,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const CHROME_IDLE_MS = 3000
   const activityAt = useRef(Date.now())
   const wakeChrome = () => { activityAt.current = Date.now() }
+  // The bar follows the cursor and nothing else — see hooks/focusMode. Read
+  // through a ref as well, because the key handler is bound once and would
+  // otherwise keep answering with whatever this was when the page opened.
+  const focusMode = useFocusMode()
+  const focusModeRef = useRef(focusMode)
+  focusModeRef.current = focusMode
   const [chromeIdle, setChromeIdle] = useState(false)
   useEffect(() => {
     // Cheaper than it looks: setting state to the value it already holds doesn't
@@ -583,7 +590,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   }, [])
   // Awake while the pointer is on the player and moving, and whenever playback
   // isn't running — a paused player keeps its controls, like every other one.
-  const chromeAwake = (pointerOverPlayer && !chromeIdle) || !playing
+  // Except in focus mode, which drops that second rule with the first: there
+  // the pointer is the only thing that raises the bar, so pausing to look at
+  // something leaves the picture alone.
+  const chromeAwake = (pointerOverPlayer && !chromeIdle) || (!playing && !focusMode)
   // An open caption menu pins the chrome up wherever the chrome lives. It would
   // be absurd for a button to fade out from under the menu it opened — and with
   // our own bar the menu goes with it, so the menu faded out from under the
@@ -1444,7 +1454,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       // Any shortcut counts as being here — in fullscreen it's the only activity
       // we can see at all (see chromeAwake). Safe from this once-bound listener:
       // it only writes a ref.
-      wakeChrome()
+      //
+      // Not in focus mode, where the whole point is that steering by keyboard
+      // doesn't paint the bar back over the picture. The overlays that answer a
+      // keypress directly — the volume HUD, the bookmark flash — are separate
+      // and still show; it's the bar that stays down.
+      if (!focusModeRef.current) wakeChrome()
       const k = e.key
       if (e.code === 'Space' || k === 'k') {
         e.preventDefault()
