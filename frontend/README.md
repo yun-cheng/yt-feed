@@ -307,6 +307,39 @@ which narrows nothing worth the chip.
   still be on tomorrow, and a link should carry it (`?summarised=1`).
 - **Not on the Channels page**, which lists channels — a channel has no summary.
 
+### Filter presets
+
+A sidebar selection, named and put back on with one click. The section sits
+above the watch statuses in both sidebar branches, because it's the shortcut
+past everything below it: the chips build a selection, this puts one back on.
+`lib/presets.ts` holds the model and the calls; `App.tsx` owns the state.
+
+- **A preset is a filter set and nothing else** — no page, no sort, no window.
+  So one preset ("unwatched, not Shorts") works on the feed, History and Watch
+  Later rather than being one preset per page. Applying it walks `pageFilters`
+  and skips whatever this page doesn't offer.
+- **`watch: null` ≠ `watch: []`.** Saved from a page with no watch chips, a
+  preset has nothing to say about the statuses and mustn't clear them the first
+  time it lands somewhere that has them. An empty list is the explicit "no watch
+  filter", the same distinction the URL spells `?watch=none`.
+- **`captureFilters` records only what the page showed.** `showHidden` is live
+  state even on History, which has no switch for it — saving there would
+  otherwise smuggle in a value you never set.
+- **`forPage` trims what this page can't wear.** History has no *Unwatched*
+  chip, so a preset carrying it drops it on the way in; otherwise a filter would
+  be in force with nothing on screen to show it or turn it off. Both applying
+  and the is-this-one-on comparison go through it, so the two can't disagree.
+- **`isActive` skips the sections the page isn't showing**, for the same reason:
+  a preset can't be "not matching" because of a chip that isn't there. Only one
+  chip lights up — two presets that select the same thing are one filter under
+  two names.
+- **The `×` arms before it fires**, and only the zone itself reddens. Colouring
+  the whole chip would paint it in the excluded-tag palette, which in this
+  sidebar already means "not this" — a pending delete would read as a
+  reverse-select.
+- **Server-side, not localStorage**, like Watch Later and hidden channels: a
+  preset is about how you look at your library, not about this browser.
+
 ### The time window
 
 `TimeRangeSlider.tsx` is a two-handled slider over a fixed ladder of day
@@ -523,7 +556,8 @@ data refresh, no scraping on the client.
 
 ```
 components/
-  Sidebar.tsx / TopBar.tsx        chrome: nav, search box, tag filters
+  Sidebar.tsx / TopBar.tsx        chrome: nav, search box, tag filters, saved
+                                  filter presets
                                   (on a channel page the sidebar swaps the
                                   global taxonomy for that channel's topic chips)
   TimeSortControls.tsx            the time-window slider + sort pills
@@ -589,6 +623,7 @@ hooks/
                                   something is running
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
+  presets.ts                      saved sidebar filter sets: the model + its calls
   ext.ts                          is the clean-embed extension installed?
   quality.ts                      YouTube's quality names → "1080p"
   local.ts                        local-folder types + fetch helpers
@@ -1495,6 +1530,7 @@ two shims Radix's slider needs to mount at all (below).
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
+| `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, and when a preset counts as the one in force |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a

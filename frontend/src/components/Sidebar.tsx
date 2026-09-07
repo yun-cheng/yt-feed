@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import type { TagInfo, LabelCount } from '../App'
 import { WATCH_STATUSES, isExcluded, tagName } from '../App'
+import type { Preset } from '../lib/presets'
 
 type Props = {
   tags: TagInfo[]
@@ -38,6 +40,15 @@ type Props = {
   // there is, which narrows nothing.
   summarisedOnly?: boolean
   onToggleSummarised?: () => void
+  // Saved filter presets: the whole sidebar selection, named. Page-agnostic on
+  // purpose — see lib/presets.ts.
+  presets?: Preset[]
+  activePresetId?: number | null
+  // Null when the current selection is empty: a preset of nothing is the Clear
+  // button, and there's nothing to name.
+  onSavePreset?: ((name: string) => void) | null
+  onApplyPreset?: (p: Preset) => void
+  onDeletePreset?: (id: number) => void
   hiddenCount?: number
   showHidden?: boolean
   onToggleShowHidden?: () => void
@@ -266,9 +277,136 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
   )
 }
 
+// Saved presets. Sits above every other section because it's the shortcut past
+// them: the chips below are how you build a selection, this is how you put one
+// back on.
+//
+// Renders nothing when there's nothing to show AND nothing to save, so a
+// sidebar that has never had a preset looks exactly as it did before.
+const PresetSection = ({
+  presets = [],
+  activeId,
+  onSave,
+  onApply,
+  onDelete,
+}: {
+  presets?: Preset[]
+  activeId?: number | null
+  onSave?: ((name: string) => void) | null
+  onApply?: (p: Preset) => void
+  onDelete?: (id: number) => void
+}) => {
+  const [naming, setNaming] = useState(false)
+  const [name, setName] = useState('')
+  // The delete zone arms before it fires. Unlike a tag chip's second half,
+  // which toggles, this one destroys something you named — one stray click
+  // shouldn't be enough. Only the zone itself reddens: colouring the whole
+  // chip would paint it in the excluded-tag palette, which in this sidebar
+  // already means "not this" — a delete would read as a reverse-select.
+  const [armed, setArmed] = useState<number | null>(null)
+
+  if (!onApply || (presets.length === 0 && !onSave)) return null
+
+  const trimmed = name.trim()
+  const clash = presets.find(p => p.name === trimmed)
+  const commit = () => {
+    if (!trimmed || !onSave) return
+    onSave(trimmed)
+    setName('')
+    setNaming(false)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#717171] px-1 -mx-1">
+        <span>🔖</span>
+        <span>Presets</span>
+        {onSave && !naming && (
+          <button
+            onClick={() => { setNaming(true); setArmed(null) }}
+            title="Save the current filters as a preset"
+            className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal hover:opacity-100 transition-opacity cursor-pointer"
+          >
+            save current
+          </button>
+        )}
+      </div>
+
+      {naming && (
+        <div className="mb-2">
+          <input
+            autoFocus
+            value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commit()
+              if (e.key === 'Escape') { setName(''); setNaming(false) }
+            }}
+            placeholder="Name these filters"
+            aria-label="Preset name"
+            maxLength={60}
+            className="w-full px-2 py-1 text-sm rounded bg-[#121212] border border-[#3a3a3a] text-[#ddd] placeholder-[#555] focus:outline-none focus:border-[#666]"
+          />
+          {/* Saving under a name you already used replaces that preset — said
+              here rather than discovered afterwards. */}
+          {clash && (
+            <div className="mt-1 text-[10px] text-amber-400/80">
+              Replaces the preset you saved under this name
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((p) => {
+          const active = p.id === activeId
+          const arming = armed === p.id
+          return (
+            <span
+              key={p.id}
+              className={`inline-flex items-center rounded-full text-sm transition-colors ${
+                active ? 'bg-white text-black font-medium' : 'bg-[#272727] text-[#ddd]'
+              }`}
+            >
+              <button
+                onClick={() => { setArmed(null); onApply(p) }}
+                data-active={active ? 'on' : 'off'}
+                title={`Filter by “${p.name}”`}
+                className={`inline-flex items-center gap-1 rounded-l-full py-1 pl-2.5 pr-2 transition-colors ${
+                  active ? 'hover:bg-black/10' : 'hover:bg-white/10'
+                }`}
+              >
+                <span>{p.name}</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (arming) { onDelete?.(p.id); setArmed(null) } else setArmed(p.id)
+                }}
+                onBlur={() => setArmed(cur => (cur === p.id ? null : cur))}
+                data-armed={arming ? 'on' : 'off'}
+                title={arming ? `Click again to delete “${p.name}”` : `Delete “${p.name}”`}
+                aria-label={arming ? `Confirm deleting ${p.name}` : `Delete ${p.name}`}
+                className={`rounded-r-full border-l px-1.5 py-1 leading-none transition-colors ${
+                  arming
+                    ? 'border-red-500 bg-red-600 text-white text-[11px]'
+                    : active
+                      ? 'border-black/15 text-black/40 hover:bg-black/10 hover:text-black'
+                      : 'border-[#3a3a3a] text-[#666] hover:bg-white/10 hover:text-[#ddd]'
+                }`}
+              >
+                {arming ? 'delete?' : '×'}
+              </button>
+            </span>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true }
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, presets, activePresetId, onSavePreset, onApplyPreset, onDeletePreset, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const showMode = filters.contentMode && !!onContentModeChange
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
@@ -576,6 +714,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           to one channel. */}
       {channelMode ? (
         <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+          <PresetSection
+            presets={presets}
+            activeId={activePresetId}
+            onSave={onSavePreset}
+            onApply={onApplyPreset}
+            onDelete={onDeletePreset}
+          />
           {filters.watchStatus && (
             <WatchStatusSection
               options={watchStatusOptions}
@@ -644,6 +789,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             <span className="text-sm">Show hidden channels</span>
           </button>
         )}
+        <PresetSection
+          presets={presets}
+          activeId={activePresetId}
+          onSave={onSavePreset}
+          onApply={onApplyPreset}
+          onDelete={onDeletePreset}
+        />
         {filters.watchStatus && (
           <WatchStatusSection
             options={watchStatusOptions}

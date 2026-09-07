@@ -507,6 +507,36 @@ class HiddenChannel(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class FilterPreset(Base):
+    """A named set of sidebar filters, saved to be put back on with one click.
+
+    The filters are stored as JSON rather than as columns because they're a
+    SNAPSHOT of a client-side shape, not a schema this side reasons about — the
+    server never queries by them, it hands them back to the sidebar that made
+    them. A new filter therefore costs nothing here.
+
+    Deliberately page-agnostic: a preset is a filter set, applied to whatever
+    list you're looking at. The parts a page has no use for are simply ignored
+    by the sidebar (see App's `pageFilters`), so one preset works on the feed
+    and on History without carrying either page around with it.
+
+    The name is unique per user, which makes saving twice under one name an
+    overwrite rather than a pair of chips you can't tell apart.
+    """
+    __tablename__ = "filter_presets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
+    name = Column(String, nullable=False)
+    # JSON {"tags": [...], "watch": [...] | null, "summarised": bool,
+    #       "shorts": bool, "hidden": bool} — see routers/presets.py.
+    filters = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_filter_preset_user_name"),)
+
+
 class Bookmark(Base):
     """A moment in a video the user marked while watching (the `b` shortcut).
 

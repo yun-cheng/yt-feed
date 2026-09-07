@@ -204,3 +204,86 @@ describe('Sidebar — Watch Later', () => {
     expect(screen.getByText('Later')).toBeInTheDocument()
   })
 })
+
+describe('Sidebar — saved presets', () => {
+  const chinese = {
+    id: 1,
+    name: 'Chinese, unwatched',
+    filters: { tags: ['chinese'], watch: ['unwatched'], summarised: false, shorts: false, hidden: false },
+    created_at: null,
+  }
+
+  it('stays out of the way until there is a preset or something to save', () => {
+    render(<Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[]} onSavePreset={null} />)
+    expect(screen.queryByText('Presets')).not.toBeInTheDocument()
+  })
+
+  it('offers to save once a filter is on', () => {
+    render(<Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[]} onSavePreset={vi.fn()} />)
+    expect(screen.getByText('Presets')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /save current/i })).toBeInTheDocument()
+  })
+
+  it('names a preset and saves it on Enter', () => {
+    const onSavePreset = vi.fn()
+    render(<Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[]} onSavePreset={onSavePreset} />)
+    fireEvent.click(screen.getByRole('button', { name: /save current/i }))
+    const input = screen.getByLabelText('Preset name')
+    // Trimmed here as well as server-side — the chip is drawn from what comes
+    // back, but the warning about replacing an existing name compares locally.
+    fireEvent.change(input, { target: { value: '  Evening  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onSavePreset).toHaveBeenCalledWith('Evening')
+  })
+
+  it('warns before a save replaces one you already named', () => {
+    render(<Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[chinese]} onSavePreset={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /save current/i }))
+    const input = screen.getByLabelText('Preset name')
+    fireEvent.change(input, { target: { value: 'Chinese, unwatched' } })
+    expect(screen.getByText(/replaces the preset/i)).toBeInTheDocument()
+  })
+
+  it('applies a preset when its chip is clicked', () => {
+    const onApplyPreset = vi.fn()
+    render(<Sidebar {...defaultProps} onApplyPreset={onApplyPreset} presets={[chinese]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Chinese, unwatched' }))
+    expect(onApplyPreset).toHaveBeenCalledWith(chinese)
+  })
+
+  it('marks the preset currently in force', () => {
+    const { container } = render(
+      <Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[chinese]} activePresetId={1} />)
+    expect(container.querySelector('[data-active="on"]')).toBeInTheDocument()
+  })
+
+  it('deletes only on a second click, so one stray click cannot lose a preset', () => {
+    const onDeletePreset = vi.fn()
+    render(<Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[chinese]} onDeletePreset={onDeletePreset} />)
+    fireEvent.click(screen.getByRole('button', { name: /Delete Chinese, unwatched/i }))
+    expect(onDeletePreset).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /Confirm deleting Chinese, unwatched/i }))
+    expect(onDeletePreset).toHaveBeenCalledWith(1)
+  })
+
+  it('arms without dressing the chip up as a crossed-out tag', () => {
+    // The excluded-tag palette means "not this" everywhere else in this
+    // sidebar. A pending delete reddens its own zone and says so in words.
+    const { container } = render(
+      <Sidebar {...defaultProps} onApplyPreset={vi.fn()} presets={[chinese]} onDeletePreset={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /Delete Chinese, unwatched/i }))
+    const chip = container.querySelector('[data-armed]')!.parentElement!
+    expect(chip.className).not.toMatch(/#5c2626/)
+    expect(screen.getByText('delete?')).toBeInTheDocument()
+  })
+
+  it('disarms a delete when you go and click the preset instead', () => {
+    const onDeletePreset = vi.fn()
+    const onApplyPreset = vi.fn()
+    render(<Sidebar {...defaultProps} onApplyPreset={onApplyPreset} presets={[chinese]} onDeletePreset={onDeletePreset} />)
+    fireEvent.click(screen.getByRole('button', { name: /Delete Chinese, unwatched/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Chinese, unwatched' }))
+    expect(onDeletePreset).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /Delete Chinese, unwatched/i })).toBeInTheDocument()
+  })
+})

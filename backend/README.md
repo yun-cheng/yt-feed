@@ -81,6 +81,7 @@ app/
     ask.py         questions about a video, answered from its transcript (streamed)
     summaries.py   the same answer, written in the background from a card
     notifications.py  the bell: what finished while you were on another page
+    presets.py     named sidebar filter selections, saved and re-applied
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 config/            categories.yaml, subscriptions.yaml, oauth token
@@ -665,6 +666,28 @@ Four things about the shape:
 independent edits: `[` on the running loop shouldn't have to restate that it's
 running, and picking one out of the menu shouldn't have to restate where its ends
 are. Only the fields sent are touched, so an explicit null still unpins an end.
+
+---
+
+## Filter presets (`routers/presets.py`)
+
+A named sidebar selection, saved to be put back on later. `GET` lists them
+oldest first, `POST` saves one, `DELETE` drops one.
+
+Deliberately opaque: the filters travel as one JSON blob this side never looks
+inside. What a filter *means* is the sidebar's business, and nothing here
+queries by them — so a new filter in the sidebar costs the backend nothing. Two
+things it does own:
+
+- **The shape.** An unknown key is a 422 rather than a typo stored forever. A
+  `watch` of `null` is kept distinct from `[]`: null means the preset says
+  nothing about the watch statuses, `[]` means "no watch filter" — the same
+  distinction the URL spells as `?watch=none`.
+- **The name**, unique per user, which turns a second save under one name into
+  an overwrite rather than two chips you can't tell apart.
+
+A preset carries no page, no sort and no window — see the frontend README for
+why, and for what happens to a filter the page you're on doesn't offer.
 
 ---
 
@@ -1531,6 +1554,7 @@ worker posts from a `youtube.com` page context and a cookie would need
 | `imported_videos` | metadata for videos the feed doesn't hold: ones added by URL, plus (under `source="youtube"`) ones opened via the extension's button. A shared cache — `user_imports` says whose page each appears on |
 | `watch_history` | how far **each user** got in each video, and whether they finished it |
 | `bookmarks` | moments one user marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
+| `filter_presets` | one user's named sidebar selections — the filters as an opaque JSON blob, the name unique per user so a re-save overwrites |
 | `video_loops` | the passages of a video one user marked to repeat — many per video, at most one `active`, either end nullable (one end pinned still repeats) |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
@@ -1737,6 +1761,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
 | POST | `/api/history/by-id/{id}` | report a position for a video we're given nothing but the id of — what the extension posts while you watch on youtube.com. Metadata is resolved here |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
+| GET/POST/DELETE | `/api/presets` | saved filter presets: list / save (re-using a name overwrites) / `DELETE /api/presets/{id}` |
 | GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
 | GET/POST | `/api/bookmarks/{video_id}/loops` | that video's saved passages, as `{id, a, b, active}`; POST marks a new one, which becomes the running one. `PATCH`/`DELETE .../loops/id/{n}` move an end or switch to it / drop it |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |

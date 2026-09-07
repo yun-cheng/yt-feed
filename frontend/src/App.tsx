@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { apiFetch } from './lib/api'
+import { captureFilters, forPage, hasAnyFilter, isActive, listPresets, savePreset, deletePreset } from './lib/presets'
+import type { Preset } from './lib/presets'
 import Toaster from './components/Toaster'
 import { startNotificationPolling } from './hooks/notificationStore'
 import { loadSummaries, useSummarisedIds } from './hooks/summaryStore'
@@ -1631,8 +1633,78 @@ export default function App() {
     setSelectedTags([])
   }
 
-  // Which sidebar sections this page can actually use.
-  const sidebarFilters = pageFilters(page)
+  // Which sidebar sections this page can actually use. Memoised because the
+  // preset comparisons below key off it, and a fresh object every render would
+  // recompute them every render.
+  const sidebarFilters = useMemo(() => pageFilters(page), [page])
+
+  // ---- Saved filter presets -------------------------------------------------
+  // A preset is a filter set with a name, and nothing else: no page, no sort,
+  // no window. Clicking one applies it to whatever list is showing, skipping
+  // the parts this page doesn't offer — which is what lets "unwatched, no
+  // Shorts" be one preset rather than one per page.
+  const [presets, setPresets] = useState<Preset[]>([])
+  useEffect(() => { listPresets().then(setPresets) }, [])
+
+  // The watch-status filter is per-page (History and a channel page keep their
+  // own), so a preset reads and writes whichever one this page is showing.
+  const pageWatch = page === 'history' ? historyWatchStatuses
+    : page === 'channel' ? channelWatchStatuses : watchStatuses
+  const setPageWatch = page === 'history' ? setHistoryWatchStatuses
+    : page === 'channel' ? setChannelWatchStatuses : setWatchStatuses
+  // History has no "unwatched" chip — nothing on a list of what you've watched
+  // can match it. A preset carrying it would otherwise put a filter in force
+  // with no chip on screen to show it or turn it off.
+  const watchValues = useMemo(
+    () => (page === 'history' ? HISTORY_WATCH_OPTIONS : WATCH_STATUSES).map(w => w.value),
+    [page])
+
+  const liveFilters = useMemo(() => ({
+    tags: selectedTags,
+    watch: pageWatch,
+    summarised: summarisedOnly,
+    shorts: contentMode === 'shorts',
+    hidden: showHidden,
+  }), [selectedTags, pageWatch, summarisedOnly, contentMode, showHidden])
+
+  const currentFilters = useMemo(
+    () => captureFilters(liveFilters, sidebarFilters),
+    [liveFilters, sidebarFilters])
+
+  const activePresetId = useMemo(() => {
+    // Only ever one: presets are compared by what they select, and two that
+    // select the same thing are the same filter under two names.
+    const hit = presets.find((p) => {
+      const wearable = forPage(p.filters, watchValues)
+      return hasAnyFilter(wearable) && isActive(wearable, liveFilters, sidebarFilters)
+    })
+    return hit?.id ?? null
+  }, [presets, liveFilters, sidebarFilters, watchValues])
+
+  const applyPreset = useCallback((p: Preset) => {
+    if (sidebarFilters.tags) setSelectedTags(p.filters.tags)
+    const wearable = forPage(p.filters, watchValues)
+    // A null watch list is "this preset says nothing about the statuses",
+    // which is not the same as clearing them — see lib/presets.ts.
+    if (sidebarFilters.watchStatus && wearable.watch) setPageWatch(wearable.watch)
+    if (sidebarFilters.summarised) setSummarisedOnly(p.filters.summarised)
+    if (sidebarFilters.contentMode) setContentMode(p.filters.shorts ? 'shorts' : 'videos')
+    if (sidebarFilters.hidden) setShowHidden(p.filters.hidden)
+  }, [sidebarFilters, setPageWatch, watchValues])
+
+  const storePreset = useCallback(async (name: string) => {
+    const saved = await savePreset(name, currentFilters)
+    if (!saved) return
+    // Saving under an existing name overwrites it server-side, so replace in
+    // place rather than appending a second chip with the same label.
+    setPresets(prev => prev.some(p => p.id === saved.id)
+      ? prev.map(p => (p.id === saved.id ? saved : p))
+      : [...prev, saved])
+  }, [currentFilters])
+
+  const dropPreset = useCallback(async (id: number) => {
+    if (await deletePreset(id)) setPresets(prev => prev.filter(p => p.id !== id))
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -1667,6 +1739,11 @@ export default function App() {
           localFoldersCount={localFolders.length}
           playlistsCount={playlists.length}
           onClearFilter={clearFilter}
+          presets={presets}
+          activePresetId={activePresetId}
+          onApplyPreset={applyPreset}
+          onDeletePreset={dropPreset}
+          onSavePreset={hasAnyFilter(currentFilters) ? storePreset : null}
           collapsed={sidebarCollapsed}
           watchLaterCount={watchLater.length}
           tagFilteredCounts={tagFilteredCounts}
