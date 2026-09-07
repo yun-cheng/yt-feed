@@ -20,6 +20,11 @@ function listSortOptions(label: string) {
   return [{ value: 'recent', label }, ...SORT_OPTIONS]
 }
 
+// Meilisearch's own order for a query's hits. Offered only while a search is
+// running (see `searching`), because there is nothing to be relevant to
+// otherwise — and it leads the row, being the order a search arrives in.
+export const RELEVANCE_SORT = { value: 'relevance', label: 'Relevance' } as const
+
 export const CHANNEL_SORT_OPTIONS = [
   { value: 'subs', label: 'Subs' },
   { value: 'alpha', label: 'A-Z' },
@@ -59,12 +64,15 @@ type Props = {
   count?: number
   sort: string
   onSortChange: (s: string) => void
+  // A search is narrowing this page right now, so relevance is on the table.
+  searching?: boolean
 }
 
 // ── Inline time + sort (no TopBar wrapper) ─────────────────
 
-export default function TimeSortControls({ variant = 'feed', age, onAgeChange, count, sort, onSortChange }: Props) {
-  const options = sortOptionsFor(variant) ?? SORT_OPTIONS
+export default function TimeSortControls({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, searching = false }: Props) {
+  const base = sortOptionsFor(variant) ?? SORT_OPTIONS
+  const options = searching ? [RELEVANCE_SORT, ...base] : base
   const slider = age && onAgeChange
 
   return (

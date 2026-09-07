@@ -217,6 +217,15 @@ describe('buildPath', () => {
     expect(buildPath({ page: 'feed', showHidden: true })).toBe('/?hidden=1')
     expect(buildPath({ page: 'search', q: 'jazz' })).toBe('/search?q=jazz')
   })
+
+  // A search confined to one channel is that channel's page filtered by text,
+  // so the query rides on the channel URL — and the page it sits on is what
+  // says whether a `q` is a search or a scoped one.
+  it('carries a query on the search page and on a channel page', () => {
+    expect(buildPath({ page: 'channel', channelId: 'UC1', q: 'jazz' })).toBe('/channel/UC1?q=jazz')
+    expect(buildPath({ page: 'feed', q: 'jazz' })).toBe('/')
+    expect(buildPath({ page: 'watchlater', q: 'jazz' })).toBe('/watchlater')
+  })
 })
 
 // ── pageFilters ──────────────────────────────────────────────

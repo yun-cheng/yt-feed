@@ -67,3 +67,44 @@ describe('TopBar', () => {
     expect(screen.getByText('Past 1m')).toBeInTheDocument()
   })
 })
+
+// Confining a search to one channel. One button, lit or not — its words never
+// change, because what it does never changes.
+describe('TopBar — search scope', () => {
+  it('offers nowhere to narrow to by default', () => {
+    render(<TopBar {...defaultProps} />)
+    expect(screen.queryByRole('button', { name: 'Search only this channel' })).not.toBeInTheDocument()
+  })
+
+  it('offers the narrowing when a channel is on screen', () => {
+    const onScopeToggle = vi.fn()
+    render(<TopBar {...defaultProps} variant="channel" onScopeToggle={onScopeToggle} />)
+    const btn = screen.getByRole('button', { name: 'Search only this channel' })
+    expect(btn).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(btn)
+    expect(onScopeToggle).toHaveBeenCalled()
+  })
+
+  // Lit, not relabelled: the name of the channel is on the page already, and a
+  // button whose words change is a different button.
+  it('shows the same words when it is on, marked pressed', () => {
+    render(<TopBar {...defaultProps} scoped onScopeToggle={vi.fn()} />)
+    const btn = screen.getByRole('button', { name: 'Search only this channel' })
+    expect(btn).toHaveAttribute('aria-pressed', 'true')
+    expect(btn).toHaveTextContent('In this channel')
+  })
+
+  // Widening the search is not abandoning it: the same button turns the scope
+  // off and the typed query stays put.
+  it('widens without clearing the query', () => {
+    const onScopeToggle = vi.fn()
+    const onSearchChange = vi.fn()
+    render(
+      <TopBar {...defaultProps} searchQuery="pasta" scoped
+        onScopeToggle={onScopeToggle} onSearchChange={onSearchChange} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Search only this channel' }))
+    expect(onScopeToggle).toHaveBeenCalled()
+    expect(onSearchChange).not.toHaveBeenCalled()
+  })
+})

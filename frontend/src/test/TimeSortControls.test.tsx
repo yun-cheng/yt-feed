@@ -117,3 +117,38 @@ describe('which pages get a bar at all', () => {
     }
   })
 })
+
+// Relevance is Meilisearch's order for a query's hits, so the pill exists only
+// while a search is narrowing the page.
+describe('TimeSortControls — relevance', () => {
+  const props = {
+    variant: 'channel' as const,
+    age: { lo: 0, hi: 5 },
+    onAgeChange: vi.fn(),
+    sort: 'likes',
+    onSortChange: vi.fn(),
+  }
+
+  it('offers no relevance sort when nothing is being searched', () => {
+    render(<TimeSortControls {...props} />)
+    expect(screen.queryByRole('button', { name: 'Relevance' })).not.toBeInTheDocument()
+  })
+
+  it('leads with relevance while a search is on, keeping every other sort', () => {
+    render(<TimeSortControls {...props} searching />)
+    const labels = screen.getAllByRole('button')
+      .map((b) => b.textContent)
+      .filter((t) => t && [...SORT_OPTIONS.map((o) => o.label), 'Relevance'].includes(t))
+    expect(labels[0]).toBe('Relevance')
+    for (const opt of SORT_OPTIONS) {
+      expect(screen.getByRole('button', { name: opt.label })).toBeInTheDocument()
+    }
+  })
+
+  it('reports the relevance sort when it is picked', () => {
+    const onSortChange = vi.fn()
+    render(<TimeSortControls {...props} searching onSortChange={onSortChange} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Relevance' }))
+    expect(onSortChange).toHaveBeenCalledWith('relevance')
+  })
+})

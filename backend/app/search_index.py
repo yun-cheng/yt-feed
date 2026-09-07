@@ -262,3 +262,29 @@ async def search(
     except Exception as e:
         print(f"[search] query failed: {e}")
         return {"channels": [], "videos": [], "videos_total": 0}
+
+
+async def matching_video_ids(q: str, channel_id: str, cap: int = 500) -> list[str]:
+    """Which of one channel's videos match `q` — ids only, best-effort.
+
+    The channel page does its own windowing, ranking and paging over rows in the
+    DB, so searching inside a channel asks Meilisearch for the one thing only it
+    can answer (which titles match, typos and Chinese segmentation included) and
+    leaves everything else where it already works. The list comes back in
+    RELEVANCE order, which the caller keeps only when the page's bar asks for it
+    — every other sort is the page's own.
+
+    `cap` bounds the id list a SQL `IN` is handed. A query matching more than
+    that inside a single channel is one nobody is reading to the end anyway.
+    """
+    q = (q or "").strip()
+    if not q:
+        return []
+    try:
+        res = await _search_raw(
+            VIDEOS_INDEX, q, cap, 0, _in_filter("channel_id", [channel_id])
+        )
+        return [h["youtube_id"] for h in res.get("hits", []) if h.get("youtube_id")]
+    except Exception as e:
+        print(f"[search] channel query failed: {e}")
+        return []

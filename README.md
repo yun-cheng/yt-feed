@@ -114,7 +114,11 @@ real video (muted, with custom captions and scrubbing).
   its video files become their own feed: poster frames, durations, hover previews
   and resume, played in the same control bar downloads use. Each folder stays a
   separate page; files are only ever read
-- **Search** — typo-tolerant, via a Meilisearch companion
+- **Search** — typo-tolerant, via a Meilisearch companion. From a channel page
+  the box can be confined to that channel: it filters the page you're on, so the
+  window, the topic chips and the watch filters keep working on what it finds.
+  The sort goes to Relevance while the search runs, and back to yours when it
+  ends
 - **Backend-scheduled refresh** — the backend re-scans channels on its own
   interval (default 15 min); the UI just re-reads the results
 

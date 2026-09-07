@@ -53,6 +53,11 @@ type Props = {
   shorts?: boolean
   // Selected sidebar label to filter this channel's videos by (null = none).
   labelFilter?: string | null
+  /** Search text confining the page to matching titles (see the search box's
+   *  "In this channel"). Everything else about the page — window, sort, topic,
+   *  watch status — goes on applying, which is the point of filtering here
+   *  rather than on a results page of its own. */
+  q?: string
   // Report the channel's label vocabulary (the sidebar chips) up to App.
   onVocabChange?: (vocab: LabelCount[] | null) => void
   // Report whether phase-1 vocab building is in progress (sidebar spinner).
@@ -63,7 +68,7 @@ type Props = {
 
 const CHANNEL_PAGE_SIZE = 60
 
-export default function ChannelPage({ channelId, age, sort, onSortChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses, summarisedOnly }: Props) {
+export default function ChannelPage({ channelId, age, sort, onSortChange, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, shorts = false, labelFilter = null, q = '', onVocabChange, onBuildingChange, onHasTopicsChange, progressById, watchStatuses, summarisedOnly }: Props) {
   const [channel, setChannel] = useState<ChannelInfo | null>(null)
   const [videos, setVideos] = useState<VideoItem[]>([])
   const [total, setTotal] = useState(0)
@@ -140,6 +145,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     if (watchStatuses?.length) params.set('watch', watchStatuses.join(','))
     // Server-side, like the watch filter: this list is paged.
     if (summarisedOnly) params.set('summarised', 'true')
+    if (q.trim()) params.set('q', q.trim())
     // A 404 here isn't a failure any more — it's how this page finds out the
     // channel isn't one of ours, and it answers by offering to add it. Toasting
     // it as an error would be shouting about the page's own normal path.
@@ -150,7 +156,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     setTotal(d.total || 0)
     setVideos((prev) => replace ? (d.videos || []) : [...prev, ...(d.videos || [])])
     if (replace) initChannelLabels(d.channel)
-  }, [channelId, age, sort, shorts, labelFilter, watchStatuses, summarisedOnly, initChannelLabels])
+  }, [channelId, age, sort, shorts, labelFilter, q, watchStatuses, summarisedOnly, initChannelLabels])
   fetchPageRef.current = fetchPage
 
   // A finished fill means rows the current query never saw. Refetch page 0 the
@@ -341,9 +347,13 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
               // Just added: the grid is empty because its videos are still on
               // their way, which is a different thing from an empty window.
               ? 'Fetching this channel’s recent videos…'
-              : labelFilter
-                ? `No "${labelFilter}" videos in this time range.`
-                : 'No videos in this time range.'}
+              : q.trim()
+                // The window is as much a reason for an empty search as the
+                // words are, so say both rather than only "no results".
+                ? `Nothing matching “${q.trim()}” in this time range.`
+                : labelFilter
+                  ? `No "${labelFilter}" videos in this time range.`
+                  : 'No videos in this time range.'}
           </span>
           {/* The moment you want more history is the moment a window comes back
               empty, so the action lives here rather than behind a setting. Only

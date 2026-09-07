@@ -362,7 +362,10 @@ export function buildPath(s: UrlState): string {
   if (page === 'channel' && s.label) params.set('label', s.label)
   if (USES_HIDDEN.has(page) && s.showHidden) params.set('hidden', '1')
   if (USES_SUMMARISED.has(page) && s.summarised) params.set('summarised', '1')
-  if (page === 'search' && s.q) params.set('q', s.q)
+  // `q` on the search page is the search; on a channel page it's the search
+  // CONFINED to that channel, which is the channel page filtered by text. Same
+  // param either way — the page it sits on is what says which.
+  if ((page === 'search' || page === 'channel') && s.q) params.set('q', s.q)
   const qs = params.toString()
 
   const path = page === 'feed' ? '/'
@@ -401,6 +404,9 @@ function stateFromUrl() {
   return {
     ...path,
     q: q.q,
+    // A `?q=` on a channel page IS the scope — there's nowhere else it could be
+    // confined to — so the URL never has to name the channel twice.
+    inChannel: owns('channel') && q.q ? path.channelId : null,
     tags: q.tags,
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
@@ -600,6 +606,10 @@ export default function App() {
   // A cold load of /local/:folder/:video has always worked this way.
   const overlayOpenRef = useRef<boolean>(false)
   const [searchInput, setSearchInput] = useState<string>(init.q)
+  // Search scope: the channel a search is confined to. Set, the box filters that
+  // channel's own page — so the window, the sort, the topic chips and the watch
+  // statuses all go on applying, which a results page of its own could not do.
+  const [searchChannel, setSearchChannel] = useState<string | null>(init.inChannel)
   // True once we've pushed a /search history entry, so clearing the box can go
   // back() to the page (and its state) we were on before searching.
   const searchPushedRef = useRef(false)
@@ -1079,6 +1089,7 @@ export default function App() {
       setSelectedVideo(null)
       setPageRaw(s.page)
       setSearchInput(s.q)
+      setSearchChannel(s.inChannel)
       setSelectedChannelId(s.channelId)
       setSelectedPlaylistId(s.playlistId)
       setLocalFolderId(s.localFolderId)
@@ -1457,6 +1468,8 @@ export default function App() {
     setSelectedPlaylistId(null)
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
+    // A scope belongs to the channel you set it from; walking away drops it.
+    setSearchChannel(null)
     if (p !== 'channel') {
       setSelectedChannelId(null)
       setSelectedLabel(null)
@@ -1472,6 +1485,10 @@ export default function App() {
   // Search box: typing routes to the /search page; the URL tracks the query.
   const onSearchChange = useCallback((q: string) => {
     setSearchInput(q)
+    // Confined to a channel: the box filters the page you're already on, and
+    // the URL picks the text up through the ordinary filter sync. Clearing it
+    // unfilters that page rather than ending a search session.
+    if (searchChannel) return
     if (!q.trim()) {
       // Cleared the box.
       if (searchPushedRef.current) {
@@ -1500,22 +1517,95 @@ export default function App() {
       return
     }
     history.replaceState(null, '', buildPath({ page: 'search', q }))
-  }, [])
+  }, [searchChannel])
 
   // Refocusing the box while it still holds a query returns to the results page
   // (the query now persists across navigation, so the text can outlive /search).
   const onSearchFocus = useCallback(() => {
-    if (!searchInput.trim() || page === 'search') return
+    if (!searchInput.trim() || page === 'search' || searchChannel) return
     searchPushedRef.current = true
     history.pushState(null, '', buildPath({ page: 'search', q: searchInput }))
     setPageRaw('search')
-  }, [searchInput, page])
+  }, [searchInput, page, searchChannel])
 
   // Leaving the search page by any route (nav, channel open, browser back) ends
   // the search session, so the next search pushes a fresh returnable entry.
   useEffect(() => {
     if (page !== 'search') searchPushedRef.current = false
   }, [page])
+
+  /** Confine the search to the channel on screen.
+   *
+   * The channel's OWN page is where a confined search lives — that's what keeps
+   * the window, the sort, the topic chips and the watch statuses working on the
+   * results — so doing this from the results page walks back to it, carrying
+   * whatever is typed. */
+  const scopeSearchToChannel = useCallback(() => {
+    if (!selectedChannelId) return
+    setSearchChannel(selectedChannelId)
+    if (page !== 'channel') {
+      searchPushedRef.current = false
+      history.pushState(null, '', buildPath({
+        page: 'channel', channelId: selectedChannelId, q: searchInput, tags: selectedTags,
+      }))
+      setPageRaw('channel')
+      mainRef.current?.scrollTo({ top: 0 })
+    }
+  }, [selectedChannelId, searchInput, page, selectedTags])
+
+  /** Widen back out to every channel you follow, keeping the query — which
+   *  means the ordinary results page, since one channel's bar can't order
+   *  another's videos. */
+  const clearSearchScope = useCallback(() => {
+    setSearchChannel(null)
+    if (!searchInput.trim()) return
+    searchPushedRef.current = true
+    history.pushState(null, '', buildPath({ page: 'search', q: searchInput }))
+    setPageRaw('search')
+  }, [searchInput])
+
+  // The channel page refetches whenever its query changes, so let typing settle
+  // first — the same pause the results page takes before it searches.
+  const [scopedQuery, setScopedQuery] = useState(searchInput)
+  useEffect(() => {
+    const id = setTimeout(() => setScopedQuery(searchInput), 200)
+    return () => clearTimeout(id)
+  }, [searchInput])
+
+  // Is a search narrowing the channel page right now? Relevance is only on
+  // offer while one is — it's Meilisearch's order for the query's hits.
+  const searchingChannel = page === 'channel'
+    && searchChannel === selectedChannelId
+    && scopedQuery.trim().length > 0
+
+  /**
+   * A search picks the order up, and hands it back.
+   *
+   * Starting one switches the channel to Relevance — a search is a question
+   * about words, and answering it in like-count order buries the video you
+   * typed the words for. Ending one puts back the sort that was in force
+   * before, so the search borrows the bar rather than resetting it.
+   *
+   * Only the two EDGES do anything: pick another sort mid-search and it stands,
+   * and a link that arrives with its own `sort` is left exactly as it came.
+   * Writes `views.channel` directly rather than through `setSort`, which would
+   * aim at whatever page is showing when a search ends elsewhere.
+   */
+  const wasSearchingRef = useRef(searchingChannel)
+  const sortBeforeSearchRef = useRef<string | null>(null)
+  useEffect(() => {
+    const was = wasSearchingRef.current
+    wasSearchingRef.current = searchingChannel
+    if (was === searchingChannel) return
+    const setChannelSort = (sort: string) =>
+      setViews(v => ({ ...v, channel: { ...v.channel, sort } }))
+    if (searchingChannel) {
+      sortBeforeSearchRef.current = views.channel.sort
+      if (views.channel.sort !== 'relevance') setChannelSort('relevance')
+    } else if (views.channel.sort === 'relevance') {
+      setChannelSort(sortBeforeSearchRef.current ?? defaultsFor('channel').sort)
+    }
+  }, [searchingChannel, views.channel.sort])
 
   function toggleTag(tag: string) {
     setSelectedTags(prev => setTagState(prev, tag, false))
@@ -1547,6 +1637,7 @@ export default function App() {
   function selectChannel(channelId: string) {
     history.pushState(null, '', buildPath({ page: 'channel', channelId, tags: selectedTags }))
     setSelectedChannelId(channelId)
+    setSearchChannel(null)
     setSelectedPlaylistId(null)
     setPageRaw('channel')
     resetView('channel')
@@ -1812,6 +1903,16 @@ export default function App() {
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
+          searching={searchingChannel}
+          scoped={!!searchChannel}
+          onScopeToggle={
+            // Offered wherever a channel is the thing you're looking at: its own
+            // page, and the search you opened from it (selectedChannelId outlives
+            // that navigation, so the button follows you into the results).
+            selectedChannelId && (page === 'channel' || page === 'search')
+              ? (searchChannel ? clearSearchScope : scopeSearchToChannel)
+              : undefined
+          }
           age={USES_WINDOW.has(page) ? view.age : undefined}
           onAgeChange={setAge}
           count={page === 'feed' ? feedTotal : undefined}
@@ -1994,6 +2095,7 @@ export default function App() {
             onHideChannel={hideChannel}
             shorts={contentMode === 'shorts'}
             labelFilter={selectedLabel}
+            q={searchChannel === selectedChannelId ? scopedQuery : ''}
             onVocabChange={setChannelLabelVocab}
             onBuildingChange={setChannelLabelsBuilding}
             onHasTopicsChange={setChannelHasTopics}

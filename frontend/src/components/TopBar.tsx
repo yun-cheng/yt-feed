@@ -18,11 +18,19 @@ type Props = {
   searchQuery?: string
   onSearchChange?: (q: string) => void
   onSearchFocus?: () => void
+  // Search scope. A search normally covers every channel you follow; this one
+  // button narrows it to the channel on screen and widens it again. Present
+  // only when there IS such a channel; `scoped` is whether it's on.
+  scoped?: boolean
+  onScopeToggle?: () => void
+  // Passed through to the sort row: a search is narrowing the page, so it can
+  // offer to order by relevance.
+  searching?: boolean
   // Set on the Imported page: renders the "Import" button at the top right.
   onImport?: () => void
 }
 
-export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, onImport }: Props) {
+export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, scoped = false, onScopeToggle, searching, onImport }: Props) {
   // Search, playlists, local folders and settings show no bar at all: their
   // order is the library's own and there's nothing to window. Every other page
   // gets its own sort buttons, and the slider only if a window came with them.
@@ -34,6 +42,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
       count={count}
       sort={sort}
       onSortChange={onSortChange}
+      searching={searching}
     />
   )
 
@@ -66,6 +75,31 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               aria-label="Search"
               className="flex-1 min-w-0 bg-transparent pl-4 pr-2 py-1.5 text-sm text-white placeholder-[#717171] outline-none"
             />
+            {onScopeToggle && (
+              /* One button, two states — the same words either way, because
+                 what it does never changes. Lit means the search is confined to
+                 the channel on screen; clicking it again widens back out. */
+              <button
+                onClick={onScopeToggle}
+                aria-pressed={scoped}
+                aria-label="Search only this channel"
+                title="Search only this channel"
+                className={`flex items-center gap-1 mr-1 pl-1.5 pr-2 py-0.5 rounded-full text-xs transition-colors flex-shrink-0 ${
+                  scoped
+                    ? 'bg-white text-black font-medium'
+                    : 'bg-[#272727] text-[#aaa] hover:text-white hover:bg-[#3a3a3a]'
+                }`}
+              >
+                <svg
+                  className={`w-3 h-3 transition-opacity ${scoped ? 'opacity-100' : 'opacity-0'}`}
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                In this channel
+              </button>
+            )}
             {searchQuery ? (
               <button
                 onClick={() => onSearchChange?.('')}

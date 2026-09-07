@@ -1133,6 +1133,41 @@ cut off) rather than returning `None` for a caller to trip over.
 
 ---
 
+## Searching inside a channel (`search_index.py`, `routers/channels.py`)
+
+The search box can be confined to one channel, and when it is, it filters **that
+channel's own page** rather than opening a results page of its own. That's the
+whole design decision: a channel page already knows how to window, rank, filter
+by topic and watch status, and page — a second ranking beside it would have to
+learn all of it again, and would answer the same question differently.
+
+So `GET /api/channels/{id}/videos` takes a `q`, and Meilisearch is asked for the
+one thing only it can do well: **which of that channel's titles match**, typos
+and Chinese segmentation included. `search_index.matching_video_ids` returns ids
+only, in relevance order, and they become one more `WHERE` clause beside the
+window and the mode. Everything downstream is untouched — including the ranking,
+which reorders them by whatever the bar says unless that's relevance (below).
+
+**Relevance is a sort, and only while searching.** Meilisearch's order for the
+hits is the one ordering the DB can't produce — it's about the words, not the
+numbers — so `sort=relevance` re-applies it *after* the ranking pass, once the
+window, the mode and the filters have had their say. Without a `q` there is
+nothing to be relevant to, so it falls back to the page's default rather than
+reaching `rank_videos` as an unknown name and quietly becoming "hot".
+
+Two consequences worth stating:
+
+- **No match is an empty page, never an unfiltered one.** A Meilisearch that
+  isn't running looks exactly like a query nothing matched, which is the safe way
+  round: search degrades to "no results", not to "here is everything".
+- **The other filters still apply**, which is the point — but it means a Short
+  won't appear while the page is in Videos mode, and a match outside the window
+  won't appear until you widen it. The empty state says "in this time range" for
+  that reason.
+
+`GET /api/search` is untouched by this: it stays the library-wide search across
+every channel you follow.
+
 ## Accounts (`users.py`)
 
 The app was single-user by construction — one OAuth token in a file, one
@@ -1277,7 +1312,8 @@ stay shared (a copy per person would be the same documents N times); instead
 `channel_id` and `youtube_id` are `filterableAttributes`, and every query carries
 `IN [...]` for the asker's channels. An empty set short-circuits to no results
 rather than an unfiltered query — that slip would hand somebody the whole
-catalog.
+catalog. Searching *inside* one channel doesn't go through here at all — see
+"Searching inside a channel".
 
 A **channel page** is still reachable by id whether or not you follow it. That's
 deliberate: it's the preview you land on before deciding to add it, and adding it
@@ -1736,7 +1772,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
-| GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic). The channel block carries `source` and `scanning` |
+| GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic, `?q=` by title text; `sort=relevance` keeps Meilisearch's order for a `?q=`). The channel block carries `source` and `scanning` |
 | GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
 | POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |
 | DELETE | `/api/channels/{id}` | stop following a hand-added channel; its videos go too if nobody else here follows it. 400 for a subscribed one — unsubscribe on YouTube instead |
@@ -1808,6 +1844,7 @@ no per-test decorator). What's covered:
 | `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
+| `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one (which is also what a Meilisearch that isn't running looks like) |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |

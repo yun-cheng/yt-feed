@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from app import auth, users
+from app import auth, search_index, users
 from app.database import async_session
 from app.models import Channel, ChannelTag, User, UserChannel, Video, WatchHistory
 from app.categorizer import get_categories, get_channel_groups, set_channel_group
@@ -23,6 +23,10 @@ router = APIRouter(prefix="/channels")
 # not be a page size — it is the point at which we would rather truncate loudly
 # than exhaust the process.
 WINDOW_FETCH_CAP = 10_000
+
+# What this page orders by when nothing says otherwise — also where a
+# "relevance" with no query to be relevant to lands.
+DEFAULT_SORT = "likes"
 
 
 async def get_db():
@@ -331,11 +335,12 @@ async def remove_channel(
 async def channel_videos(
     channel_id: str,
     age: str = Query(default="", description="publish-age range in days, e.g. 0-30 or 3-14"),
-    sort: str = Query(default="likes", description="score | views | likes | like% | newest | oldest"),
+    sort: str = Query(default=DEFAULT_SORT, description="score | views | likes | like% | newest | oldest | relevance (with ?q= only)"),
     shorts: bool = Query(default=False, description="show Shorts instead of long-form videos"),
     label: str = Query(default="", description="filter to videos carrying this title-label"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     summarised: bool = Query(default=False, description="keep only videos with a finished summary"),
+    q: str = Query(default="", description="keep only videos whose title matches this text"),
     offset: int = Query(default=0, description="pagination: index into the ranked list"),
     limit: int = Query(default=60, description="pagination: page size"),
     user: User = Depends(auth.account),
@@ -377,6 +382,19 @@ async def channel_videos(
     conds = [Video.channel_id == channel_id, Video.is_short == shorts, Video.published_at < newer]
     if older is not None:
         conds.append(Video.published_at >= older)
+    # Searching inside the channel. Meilisearch says which titles match — the
+    # one part of this it can do better than SQL — and the rest of the page goes
+    # on working as it does: same window, same sort, same filters, same paging.
+    # No match (or no Meilisearch) is an empty page, not an unfiltered one.
+    matches: list[str] = []
+    if q.strip():
+        matches = await search_index.matching_video_ids(q, channel_id)
+        conds.append(Video.youtube_id.in_(matches))
+    elif sort == "relevance":
+        # Relevance is Meilisearch's ordering of a query's hits, so it means
+        # nothing without a query — the page's ordinary default does instead.
+        # (rank_videos would otherwise read the unknown name as "score".)
+        sort = DEFAULT_SORT
     vid_result = await db.execute(
         select(Video).where(*conds).order_by(Video.published_at.desc()).limit(WINDOW_FETCH_CAP)
     )
@@ -385,6 +403,14 @@ async def channel_videos(
         print(f"[channels] {channel_id} hit the {WINDOW_FETCH_CAP}-video window cap; list is truncated")
 
     ranked = rank_videos(videos, {channel_id: channel.title}, sort=sort, channel_thumbnails={channel_id: channel.thumbnail_url}, date_range=date_range)
+
+    # Sorting by relevance means keeping the order Meilisearch handed back — the
+    # one ordering the DB can't produce, since it's about the words rather than
+    # the numbers. Everything else about the page (window, mode, topic, watch
+    # status) has already had its say; this only decides what comes first.
+    if sort == "relevance":
+        rank_of = {vid: i for i, vid in enumerate(matches)}
+        ranked.sort(key=lambda item: rank_of.get(item["youtube_id"], len(rank_of)))
 
     # Attach each video's title-derived labels (null = not labeled yet).
     labels_by_id = {v.youtube_id: v.title_labels for v in videos}

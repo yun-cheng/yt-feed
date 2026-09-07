@@ -64,7 +64,8 @@ does client-side routing itself:
 - **Every filter and sort is in the URL**, so a refresh — or a pasted link —
   restores the exact view: `tags`, `age`, `sort`, `shorts`,
   `watch`, `label` (a channel's topic chip), `hidden` (show hidden channels),
-  and `q` (search). See "URL state" below.
+  and `q` — the search on `/search`, and the same search confined to one channel
+  on a channel page. See "URL state" below.
 - Data is fetched from `/api/*` into React state (`fetchFeed`, `fetchTags`, …);
   the feed is paged by `offset`/`limit` with a load-more trigger (`loadMoreFeed`).
   Every call goes through `apiFetch` (`lib/api.ts`) — a drop-in `fetch` wrapper
@@ -84,7 +85,17 @@ Each page's pair lives in one `views` record keyed by page (`PageView = {age,
 sort}`), rather than a `useState` per page per control. The bar reads
 `views[page]`, so adding a page's controls is a row in a table instead of two
 more pieces of state and two more branches in the ternary that used to pick
-between them. `TimeSortControls` holds the matching sort table (`PAGE_SORTS`)
+between them. A channel page grows one more pill, **Relevance**, while a search
+is narrowing it — Meilisearch's own order for the hits, which means nothing
+without a query, so it appears and disappears with one.
+
+A search **borrows** that bar: starting one switches to Relevance (a search is a
+question about words, and answering it in like-count order buries the video you
+typed the words for), and ending one puts back the sort that was in force
+before. Only the two edges act, so a sort picked mid-search stands, and a link
+that arrives carrying its own `sort` is left exactly as it came.
+
+`TimeSortControls` holds the matching sort table (`PAGE_SORTS`)
 and renders the slider only when a window is passed to it — a page absent from
 that table has no control bar at all.
 
@@ -113,6 +124,15 @@ panel is empty.
   (`age=0-3` is the feed's default but not a channel's, whose default is `0-30`).
 - `buildPath(state)` takes an object, not a positional list — there are ten
   fields now, and it's the one place that knows what a page's URL looks like.
+- `q` is written on **two** pages, and the page it sits on is what it means:
+  on `/search` it's the search, and on a channel page it's that same search
+  **confined to the channel** — which is the channel page filtered by text.
+  A `?q=` on a channel page therefore *is* the scope (there is nowhere else it
+  could be confined to), so the URL never names the channel twice. The box's
+  "In this channel" is one button in two states — lit, with a check, when the
+  scope is on — rather than a control that renames itself to the channel: the
+  name is already on the page, and a button whose words change is a different
+  button.
 - `stateFromUrl()` is the inverse, and is used by **both** the cold load and
   `popstate`, so the two can't drift apart.
 - **Navigations only name their page.** `setPage` / `selectChannel` push the
@@ -556,15 +576,21 @@ data refresh, no scraping on the client.
 
 ```
 components/
-  Sidebar.tsx / TopBar.tsx        chrome: nav, search box, tag filters, saved
-                                  filter presets
+  Sidebar.tsx / TopBar.tsx        chrome: nav, search box (with the "in this
+                                  channel" scope at its right-hand end), tag
+                                  filters, saved filter presets
                                   (on a channel page the sidebar swaps the
                                   global taxonomy for that channel's topic chips)
-  TimeSortControls.tsx            the time-window slider + sort pills
+  TimeSortControls.tsx            the time-window slider + sort pills (plus
+                                  Relevance, while a search narrows the page)
   TimeRangeSlider.tsx             two-handled window picker (see "The time window")
   VideoCard.tsx                   the card + hover preview (the complex one)
   VideoRow.tsx                    list-row variant
   ChannelPage.tsx / ChannelsPage.tsx
+                                  ChannelPage takes a `q`: a search confined to
+                                  this channel filters the page in place, so the
+                                  window, sort, topics and watch statuses go on
+                                  applying to what it finds
   ChannelHeader.tsx               avatar/name/subs/description/YouTube link —
                                   shared by the held and not-yet-added pages
   AddChannelDialog.tsx            paste a link or @handle, preview, add
