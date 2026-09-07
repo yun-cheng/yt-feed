@@ -27,8 +27,8 @@ behaviour is the default that ships.
 Hover any video thumbnail on YouTube — home, search, a channel, the sidebar of a
 watch page — and three small buttons appear, stacked, in its top-left corner.
 
-The first opens that video in the app rather than on YouTube. Repeat clicks
-reuse a single app tab instead of piling up new ones.
+The first opens that video in the app rather than on YouTube, in a new tab each
+time, so opening a second video never takes the place of the first.
 
 The second saves it to the app's Watch Later without leaving the page you're on,
 and is the only thing here that talks to the app rather than just linking to it.

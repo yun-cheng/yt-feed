@@ -39,8 +39,8 @@ async function refreshOrigin() {
   if (reply?.ok && reply.origin) appOrigin = reply.origin
 }
 
-/* Named so repeat clicks REUSE one app tab rather than piling up tabs. */
-const APP_TAB = 'ytfeed'
+/* Every click gets its own tab, so one video never replaces another. */
+const APP_TAB = '_blank'
 
 /* Below this, a link is a chip or a text mention rather than a video card. */
 const MIN_THUMB_WIDTH = 80
