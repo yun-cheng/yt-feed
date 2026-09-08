@@ -1551,7 +1551,7 @@ two shims Radix's slider needs to mount at all (below).
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
 | `NotificationBell.test.tsx` | the badge and its cap, opening the bell clearing it, the cover and its icon fallback, a summary row opening the video on its Ask panel while a failure row has nowhere to send you, and dismissing one row without touching the rest |
-| `summaryStore.test.tsx` | the length reaching the server, the label appearing on the click rather than the round trip, coming back off when the request is refused, and holding its last known value when the server can't be reached |
+| `summaryStore.test.tsx` | the length reaching the server, the label appearing on the click rather than the round trip, coming back off when the request is refused, and holding its last known value when the server can't be reached — plus the filter's half of the store: the finished ids only, one landing mid-session, and the snapshot identity `useSyncExternalStore` would otherwise re-render forever on |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
@@ -1561,8 +1561,11 @@ two shims Radix's slider needs to mount at all (below).
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
-| `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, and when a preset counts as the one in force |
-| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls`, `appHelpers` | the feed surfaces |
+| `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't |
+| `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range |
+| `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
+| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces |
+| `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, and the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a
 behaviour change: `isContentEditable` is not implemented (so the shortcut guard's

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterByTime, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt } from '../App'
+import { filterByTime, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt, watchStatusOf, filterByWatchStatus, loadWatchStatuses, WATCH_STATUSES, DEFAULT_WATCH_STATUSES } from '../App'
 import type { TagInfo } from '../App'
-import type { VideoItem } from '../App'
+import type { VideoItem, WatchProgress } from '../App'
 
 function makeVideo(overrides: Partial<VideoItem> = {}): VideoItem {
   return {
@@ -505,5 +505,97 @@ describe('buildPath — an exclusion survives the URL', () => {
   it('carries the minus sign', () => {
     expect(buildPath({ page: 'feed', tags: ['piano', '-chinese'] }))
       .toBe('/?tags=piano%2C-chinese')
+  })
+})
+
+// ── The watch-status filter ──────────────────────────────────
+//
+// Three states derived from one progress row: nothing recorded is unwatched,
+// a row that isn't finished is in progress, a finished one is watched. The
+// filter is the sidebar's chips applied to an already-loaded list — the same
+// answer the backend gives the paged ones, so a page can switch between them
+// without the list changing meaning.
+
+describe('watchStatusOf', () => {
+  const progress = new Map<string, WatchProgress>([
+    ['started', { position_seconds: 42, watched: false }],
+    ['finished', { position_seconds: 600, watched: true }],
+  ])
+
+  it('calls a video with no row unwatched — nothing recorded is nothing seen', () => {
+    expect(watchStatusOf('never-opened', progress)).toBe('unwatched')
+  })
+
+  it('calls an unfinished row in progress', () => {
+    expect(watchStatusOf('started', progress)).toBe('in_progress')
+  })
+
+  it('calls a finished row watched, wherever it was left', () => {
+    expect(watchStatusOf('finished', progress)).toBe('watched')
+  })
+
+  it('reads the flag rather than the position: watched at 0s is still watched', () => {
+    const m = new Map<string, WatchProgress>([['v', { position_seconds: 0, watched: true }]])
+    expect(watchStatusOf('v', m)).toBe('watched')
+  })
+})
+
+describe('filterByWatchStatus', () => {
+  const videos = [
+    makeVideo({ youtube_id: 'never' }),
+    makeVideo({ youtube_id: 'started' }),
+    makeVideo({ youtube_id: 'finished' }),
+  ]
+  const progress = new Map<string, WatchProgress>([
+    ['started', { position_seconds: 42, watched: false }],
+    ['finished', { position_seconds: 600, watched: true }],
+  ])
+  const ids = (statuses: string[]) =>
+    filterByWatchStatus(videos, statuses, progress).map(v => v.youtube_id)
+
+  it('keeps only the statuses selected', () => {
+    expect(ids(['unwatched'])).toEqual(['never'])
+    expect(ids(['unwatched', 'in_progress'])).toEqual(['never', 'started'])
+    expect(ids(['watched'])).toEqual(['finished'])
+  })
+
+  it('treats an empty selection as no filter, never as a blank page', () => {
+    // Matching the tag filter and the backend's `watch` param: unselecting
+    // everything can't leave you staring at nothing wondering why.
+    expect(ids([])).toEqual(['never', 'started', 'finished'])
+  })
+
+  it('treats every status selected as no filter either', () => {
+    expect(ids(WATCH_STATUSES.map(w => w.value))).toEqual(['never', 'started', 'finished'])
+  })
+
+  it('leaves the input array alone', () => {
+    const before = [...videos]
+    filterByWatchStatus(videos, ['watched'], progress)
+    expect(videos).toEqual(before)
+  })
+})
+
+describe('loadWatchStatuses', () => {
+  afterEach(() => { localStorage.clear() })
+
+  it('falls back to the default when nothing was ever chosen', () => {
+    expect(loadWatchStatuses()).toEqual(DEFAULT_WATCH_STATUSES)
+  })
+
+  it('remembers the last choice, empty included — that is a choice too', () => {
+    localStorage.setItem('watch_statuses', JSON.stringify(['watched']))
+    expect(loadWatchStatuses()).toEqual(['watched'])
+    localStorage.setItem('watch_statuses', JSON.stringify([]))
+    expect(loadWatchStatuses()).toEqual([])
+  })
+
+  it('ignores a value that is not a list of names', () => {
+    // Hand-edited storage, or a key from an older shape. The default is a
+    // working feed; a bad parse shouldn't be a crash on load.
+    localStorage.setItem('watch_statuses', 'not json')
+    expect(loadWatchStatuses()).toEqual(DEFAULT_WATCH_STATUSES)
+    localStorage.setItem('watch_statuses', JSON.stringify([1, 2]))
+    expect(loadWatchStatuses()).toEqual(DEFAULT_WATCH_STATUSES)
   })
 })

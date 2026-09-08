@@ -9,7 +9,7 @@ typo'd key is a 400 instead of a preset that silently filters nothing.
 import pytest
 
 from app import users
-from app.models import User
+from app.models import FilterPreset, User
 
 
 async def save(client, name, **filters):
@@ -93,3 +93,30 @@ async def test_presets_are_yours_alone(client, db):
     # And the same name is free for both of them.
     assert (await client.post("/api/presets", json={"name": "Mine"}, headers=theirs)).status_code == 200
     assert [p["name"] for p in await listed(client, mine)] == ["Mine"]
+
+
+async def test_a_very_long_name_is_cut_rather_than_refused(client):
+    """The chip has a row to live on. Sixty characters is already more than one
+    holds, and a name that long is a slip rather than a request."""
+    made = await save(client, "x" * 200)
+    assert made["name"] == "x" * 60
+
+
+async def test_they_come_back_in_the_order_they_were_made(client):
+    for name in ("First", "Second", "Third"):
+        await save(client, name)
+    assert [p["name"] for p in await listed(client)] == ["First", "Second", "Third"]
+
+
+async def test_a_blob_that_will_not_parse_filters_nothing(client, db):
+    """One unreadable row shouldn't take the whole sidebar down with it — the
+    preset is still there to be clicked, it just asks for nothing."""
+    made = await save(client, "Broken", tags=["chinese"])
+    row = await db.get(FilterPreset, made["id"])
+    row.filters = "{not json"
+    await db.commit()
+    listing = await listed(client)
+    assert [p["name"] for p in listing] == ["Broken"]
+    assert listing[0]["filters"] == {
+        "tags": [], "watch": None, "summarised": False, "shorts": False, "hidden": False,
+    }

@@ -1,7 +1,7 @@
 import { render, screen, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  startSummary, loadSummaries, useSummaryStatus, _resetSummaries,
+  startSummary, loadSummaries, useSummaryStatus, useSummarisedIds, _resetSummaries,
 } from '../hooks/summaryStore'
 
 function Harness({ id }: { id: string }) {
@@ -76,5 +76,62 @@ describe('summaryStore', () => {
     await act(async () => { await startSummary('abc', 'short') })
     const body = JSON.parse(String((fn.mock.calls[0][1] as RequestInit).body))
     expect(body).toEqual({ length: 'short' })
+  })
+})
+
+// ── The "summarised only" filter's half of the store ─────────
+//
+// The same map, in the shape the sidebar's chip asks it in: which videos have
+// a finished summary. Derived on write rather than per read, because
+// useSyncExternalStore compares snapshots by identity and a Set built inside
+// the selector would be a new object every render.
+
+function IdHarness() {
+  const ids = useSummarisedIds()
+  return <div data-testid="ids">{[...ids].sort().join(',') || 'none'}</div>
+}
+
+describe('useSummarisedIds', () => {
+  it('is empty before anything has been summarised', () => {
+    render(<IdHarness />)
+    expect(screen.getByTestId('ids')).toHaveTextContent('none')
+  })
+
+  it('holds the finished ones only', async () => {
+    // A job still running has nothing to read yet and one that errored has
+    // nothing at all — matching the backend's summarised_video_ids, so the
+    // client-side filter and the paged one agree about the same library.
+    stubFetch(() => ({ jobs: [
+      { video_id: 'done1', status: 'done', length: 'long' },
+      { video_id: 'busy', status: 'running', length: 'long' },
+      { video_id: 'broke', status: 'error', length: 'short' },
+      { video_id: 'done2', status: 'done', length: 'short' },
+    ] }))
+    render(<IdHarness />)
+    await act(async () => { await loadSummaries() })
+    await waitFor(() => expect(screen.getByTestId('ids')).toHaveTextContent('done1,done2'))
+  })
+
+  it('picks up a summary that lands while the page is open', async () => {
+    stubFetch(() => ({ jobs: [{ video_id: 'abc', status: 'running', length: 'long' }] }))
+    render(<IdHarness />)
+    await act(async () => { await loadSummaries() })
+    expect(screen.getByTestId('ids')).toHaveTextContent('none')
+
+    stubFetch(() => ({ jobs: [{ video_id: 'abc', status: 'done', length: 'long' }] }))
+    await act(async () => { await loadSummaries() })
+    await waitFor(() => expect(screen.getByTestId('ids')).toHaveTextContent('abc'))
+  })
+
+  it('hands back the same set until one actually changes', async () => {
+    // The identity contract useSyncExternalStore is checking: a re-render that
+    // changed nothing must not look like a change, or it never stops.
+    const seen: Set<string>[] = []
+    function Spy() { seen.push(useSummarisedIds()); return null }
+    stubFetch(() => ({ jobs: [{ video_id: 'abc', status: 'done', length: 'long' }] }))
+    const { rerender } = render(<Spy />)
+    await act(async () => { await loadSummaries() })
+    rerender(<Spy />)
+    expect(seen[seen.length - 1]).toBe(seen[seen.length - 2])
   })
 })
