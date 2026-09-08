@@ -83,7 +83,15 @@ describe('isActive', () => {
 describe('hasAnyFilter', () => {
   it('is false for an empty selection — that preset would be the Clear button', () => {
     expect(hasAnyFilter(NO_FILTERS)).toBe(false)
-    expect(hasAnyFilter({ ...NO_FILTERS, watch: [] })).toBe(false)
+  })
+
+  it('counts an explicitly empty watch list, which is "every status"', () => {
+    // Turning every watch chip OFF is a selection: the pages default to
+    // unwatched-and-in-progress, so "show me the lot" is a state you have to
+    // ask for — and one you could save under a name like any other. A null
+    // list stays nothing, being the preset having no opinion at all.
+    expect(hasAnyFilter({ ...NO_FILTERS, watch: [] })).toBe(true)
+    expect(hasAnyFilter({ ...NO_FILTERS, watch: null })).toBe(false)
   })
 
   it('is true for any one of them', () => {

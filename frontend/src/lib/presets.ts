@@ -101,9 +101,14 @@ export function isActive(p: PresetFilters, live: LiveFilters, on: FilterSections
   return true
 }
 
-/** Is there anything here worth saving? A preset of nothing is the Clear button. */
+/** Is there anything here worth saving? A preset of nothing is the Clear button.
+ *
+ *  An EMPTY watch list counts, unlike a null one: `[]` is the deliberate "show
+ *  me every status", which a page whose chips default to unwatched-and-in-
+ *  progress does not do on its own. Null is the preset having nothing to say
+ *  about the statuses, which really is nothing. */
 export function hasAnyFilter(f: PresetFilters): boolean {
-  return f.tags.length > 0 || (f.watch?.length ?? 0) > 0 || f.summarised || f.shorts || f.hidden
+  return f.tags.length > 0 || f.watch !== null || f.summarised || f.shorts || f.hidden
 }
 
 export async function listPresets(): Promise<Preset[]> {

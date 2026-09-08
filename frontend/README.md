@@ -342,6 +342,11 @@ past everything below it: the chips build a selection, this puts one back on.
   preset has nothing to say about the statuses and mustn't clear them the first
   time it lands somewhere that has them. An empty list is the explicit "no watch
   filter", the same distinction the URL spells `?watch=none`.
+- **An empty watch list is still something to save.** Turning every status
+  chip off is a selection — the pages open on unwatched-and-in-progress, so
+  "show me the lot" is a state you asked for — and `hasAnyFilter` counts it,
+  which is what puts the Save button there and lets such a preset light up as
+  the one in force. A null list stays nothing, being the preset with no opinion.
 - **`captureFilters` records only what the page showed.** `showHidden` is live
   state even on History, which has no switch for it — saving there would
   otherwise smuggle in a value you never set.
