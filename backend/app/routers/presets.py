@@ -34,6 +34,8 @@ class Filters(BaseModel):
     `watch` is nullable for the same reason the URL spells "none": an empty list
     is an explicit "no watch-status filter", while null means "don't touch what
     the page already has" — a preset about tags shouldn't quietly clear it.
+    `length` is nullable on the same grounds, and for the same reason: saved
+    from a page with no length chips, it has nothing to say about them.
     """
     model_config = {"extra": "forbid"}
 
@@ -42,6 +44,7 @@ class Filters(BaseModel):
     summarised: bool = False
     shorts: bool = False
     hidden: bool = False
+    length: list[str] | None = None
 
 
 class PresetPayload(BaseModel):

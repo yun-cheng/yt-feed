@@ -3,17 +3,17 @@ import { captureFilters, forPage, hasAnyFilter, isActive, NO_FILTERS } from '../
 import type { FilterSections, LiveFilters } from '../lib/presets'
 
 const ALL: FilterSections = {
-  watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true,
+  watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true, length: true,
 }
 // What History offers: statuses, tags, summaries and the Shorts toggle — but no
 // "show hidden channels", which only changes the home feed's query.
 const HISTORY: FilterSections = { ...ALL, hidden: false }
 const NOTHING: FilterSections = {
-  watchStatus: false, tags: false, hidden: false, contentMode: false, summarised: false,
+  watchStatus: false, tags: false, hidden: false, contentMode: false, summarised: false, length: false,
 }
 
 const live = (over: Partial<LiveFilters> = {}): LiveFilters => ({
-  tags: [], watch: [], summarised: false, shorts: false, hidden: false, ...over,
+  tags: [], watch: [], summarised: false, shorts: false, hidden: false, length: [], ...over,
 })
 
 describe('captureFilters', () => {
@@ -23,7 +23,7 @@ describe('captureFilters', () => {
       ALL,
     )).toEqual({
       tags: ['chinese', '-piano'], watch: ['unwatched'],
-      summarised: true, shorts: true, hidden: true,
+      summarised: true, shorts: true, hidden: true, length: [],
     })
   })
 
@@ -100,6 +100,39 @@ describe('hasAnyFilter', () => {
     expect(hasAnyFilter({ ...NO_FILTERS, summarised: true })).toBe(true)
     expect(hasAnyFilter({ ...NO_FILTERS, shorts: true })).toBe(true)
     expect(hasAnyFilter({ ...NO_FILTERS, hidden: true })).toBe(true)
+    expect(hasAnyFilter({ ...NO_FILTERS, length: ['under5'] })).toBe(true)
+  })
+
+  it('does not count an empty length list, whose empty IS the default', () => {
+    // The mirror image of the watch statuses above. No length chip on means
+    // "any length", which is what you get without asking — so a preset holding
+    // only that would restore nothing.
+    expect(hasAnyFilter({ ...NO_FILTERS, length: [] })).toBe(false)
+    expect(hasAnyFilter({ ...NO_FILTERS, length: null })).toBe(false)
+  })
+})
+
+describe('length in a preset', () => {
+  it('is captured only where the page has the chips', () => {
+    expect(captureFilters(live({ length: ['under5'] }), ALL).length).toEqual(['under5'])
+    // Saved from a page with no length section, the preset has no opinion
+    // about it — null, not an empty list that would clear someone else's.
+    expect(captureFilters(live({ length: ['under5'] }), NOTHING).length).toBeNull()
+  })
+
+  it('decides whether the preset is the one currently on', () => {
+    const p = { ...NO_FILTERS, length: ['under5', 'over20'] }
+    // Order is a chip-clicking accident, not part of the selection.
+    expect(isActive(p, live({ length: ['over20', 'under5'] }), ALL)).toBe(true)
+    expect(isActive(p, live({ length: ['under5'] }), ALL)).toBe(false)
+    // A page with no length chips can't be the reason a preset doesn't match.
+    expect(isActive(p, live({ length: [] }), { ...ALL, length: false })).toBe(true)
+  })
+
+  it('lets a null length pass on a page that does have the chips', () => {
+    // Nothing to say about the lengths is not "clear the lengths" — the same
+    // rule a null watch list follows.
+    expect(isActive(NO_FILTERS, live({ length: ['under5'] }), ALL)).toBe(true)
   })
 })
 

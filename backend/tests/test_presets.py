@@ -30,7 +30,7 @@ async def test_a_saved_preset_comes_back_whole(client):
     assert made["name"] == "Chinese, unwatched"
     assert made["filters"] == {
         "tags": ["chinese", "-piano"], "watch": ["unwatched"],
-        "summarised": True, "shorts": False, "hidden": False,
+        "summarised": True, "shorts": False, "hidden": False, "length": None,
     }
     assert await listed(client) == [made]
 
@@ -119,4 +119,5 @@ async def test_a_blob_that_will_not_parse_filters_nothing(client, db):
     assert [p["name"] for p in listing] == ["Broken"]
     assert listing[0]["filters"] == {
         "tags": [], "watch": None, "summarised": False, "shorts": False, "hidden": False,
+        "length": None,
     }

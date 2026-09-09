@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
-import { filterByTime, filterBySummarised, filterByWatchStatus, sortVideos } from '../App'
+import { filterByTime, filterBySummarised, filterByWatchStatus, filterByLength, sortVideos } from '../App'
 import type { VideoItem, WatchProgress } from '../App'
 import type { TimeRange } from '../lib/timeWindow'
 
@@ -23,11 +23,14 @@ type Props = {
    *  sidebar's filter (see App's filterBySummarised). */
   summarisedOnly?: boolean
   summarisedIds?: Set<string>
+  /** Runtime buckets to keep; empty = no filter. Client-side here, the whole
+   *  playlist being loaded already. */
+  lengths?: string[]
 }
 
 export default function PlaylistPage({
   playlistId, onChannelClick, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onDeleted, progressById,
-  age, sort = 'recent', watchStatuses = [], summarisedOnly = false, summarisedIds,
+  age, sort = 'recent', watchStatuses = [], summarisedOnly = false, summarisedIds, lengths = [],
 }: Props) {
   const [name, setName] = useState('')
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -102,8 +105,9 @@ export default function PlaylistPage({
     let result = age ? filterByTime(videos, age, v => v.published_at) : videos
     if (progressById) result = filterByWatchStatus(result, watchStatuses, progressById)
     if (summarisedIds) result = filterBySummarised(result, summarisedOnly, summarisedIds)
+    result = filterByLength(result, lengths)
     return sortVideos(result, sort)
-  }, [videos, age, sort, watchStatuses, progressById, summarisedOnly, summarisedIds])
+  }, [videos, age, sort, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths])
 
   const removeFromPlaylist = async (video: VideoItem) => {
     setVideos((prev) => prev.filter((v) => v.youtube_id !== video.youtube_id))  // optimistic

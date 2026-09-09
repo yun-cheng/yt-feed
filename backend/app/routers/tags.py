@@ -5,7 +5,7 @@ Tag router — channels can have multiple tags. Tags are used for filtering in t
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
+from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth, users
@@ -19,6 +19,51 @@ from app.models import (
 # (There's no "started but at 0" — the history endpoint ignores anything under a
 # few seconds, so every row means real playback.)
 WATCH_STATUSES = ("unwatched", "in_progress", "watched")
+
+# Runtime buckets, half-open [min, max) in seconds, so 5:00 belongs to exactly
+# one of them. The bounds are in the names because they ARE the meaning of a
+# bucket: moving one should retire its name (an unknown name is dropped below)
+# rather than quietly re-point a saved preset at a range nobody chose.
+# The sidebar has the same table — VIDEO_LENGTHS in App.tsx — and the two have
+# to agree: the paged lists filter here, the loaded ones filter there.
+LENGTH_BUCKETS: dict[str, tuple[int, int | None]] = {
+    "under5": (0, 5 * 60),
+    "5to10": (5 * 60, 10 * 60),
+    "10to20": (10 * 60, 20 * 60),
+    "over20": (20 * 60, None),
+}
+
+
+def wanted_lengths(length: str) -> set[str]:
+    """The buckets a `?length=` param asks for.
+
+    Nothing named — or every bucket named — is "don't filter", the same rule
+    the watch statuses follow, so an empty selection can never leave you
+    staring at a blank page. Names we don't know are dropped rather than
+    refused: a stale link is worth less than a 422.
+    """
+    wanted = {s.strip() for s in length.split(",") if s.strip()} & set(LENGTH_BUCKETS)
+    return set() if wanted >= set(LENGTH_BUCKETS) else wanted
+
+
+def length_condition(wanted: set[str]):
+    """SQL for "the runtime falls in one of these buckets", or None for no filter.
+
+    A video whose duration we never learned is stored as 0, and 0 is not "under
+    five minutes" — it's "we don't know", so `> 0` leaves it out of every
+    bucket. It comes back the moment you stop filtering, which is the only
+    honest place for it.
+    """
+    if not wanted:
+        return None
+    clauses = []
+    for key in sorted(wanted):
+        low, high = LENGTH_BUCKETS[key]
+        parts = [Video.duration_seconds > low] if low == 0 else [Video.duration_seconds >= low]
+        if high is not None:
+            parts.append(Video.duration_seconds < high)
+        clauses.append(and_(*parts))
+    return or_(*clauses)
 
 router = APIRouter(prefix="/tags")
 
@@ -629,6 +674,7 @@ async def feed_by_tags(
     include_hidden: bool = Query(default=False, description="include channels hidden from home (peek mode)"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     summarised: bool = Query(default=False, description="keep only videos with a finished summary"),
+    length: str = Query(default="", description="runtime buckets to KEEP: under5,5to10,10to20,over20 (empty = all)"),
     offset: int = 0,     # pagination: index into the ranked list
     limit: int = 60,     # pagination: page size
     user: User = Depends(auth.account),
@@ -719,6 +765,12 @@ async def feed_by_tags(
     conds = [Video.channel_id.in_(channel_ids), Video.is_short == shorts]
     if older is not None:
         conds.append(Video.published_at >= older)
+    # In the WHERE rather than a pass afterwards: the runtime is a column, and
+    # keeping it here means the cap below is spent on videos you asked for.
+    lengths = wanted_lengths(length)
+    length_where = length_condition(lengths)
+    if length_where is not None:
+        conds.append(length_where)
     stmt = select(Video).where(*conds).order_by(Video.published_at.desc()).limit(WINDOW_FETCH_CAP)
     result = await db.execute(stmt)
     all_videos = result.scalars().all()
@@ -762,6 +814,7 @@ async def feed_by_tags(
         "excluded_tags": excluded_tags,
         "watch": sorted(wanted),
         "summarised": summarised,
+        "length": sorted(lengths),
         "videos": ranked[offset:offset + limit],
         "total": len(ranked),
         "offset": offset,

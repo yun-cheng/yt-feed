@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterByTime, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt, watchStatusOf, filterByWatchStatus, loadWatchStatuses, WATCH_STATUSES, DEFAULT_WATCH_STATUSES } from '../App'
+import { filterByTime, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt, watchStatusOf, filterByWatchStatus, loadWatchStatuses, lengthOf, filterByLength, WATCH_STATUSES, DEFAULT_WATCH_STATUSES, VIDEO_LENGTHS } from '../App'
 import type { TagInfo } from '../App'
 import type { VideoItem, WatchProgress } from '../App'
 
@@ -237,7 +237,7 @@ describe('pageFilters', () => {
     Object.entries(pageFilters(page)).filter(([, v]) => v).map(([k]) => k).sort()
 
   it('offers every filter on the feed', () => {
-    expect(on('feed')).toEqual(['contentMode', 'hidden', 'summarised', 'tags', 'watchStatus'])
+    expect(on('feed')).toEqual(['contentMode', 'hidden', 'length', 'summarised', 'tags', 'watchStatus'])
   })
 
   it('drops the watch status where there are no videos to filter', () => {
@@ -245,10 +245,11 @@ describe('pageFilters', () => {
     expect(on('channels')).toEqual(['tags'])
   })
 
-  it('leaves the Imported page with only the watch status', () => {
+  it('drops tags and the Shorts split on the Imported page', () => {
     // Imported videos come from channels you don't follow, so no tag matches
-    // them, and the page is one flat list — no Videos/Shorts split.
-    expect(on('imported')).toEqual(['summarised', 'watchStatus'])
+    // them, and the page is one flat list — no Videos/Shorts split. What's left
+    // is what a flat list of videos can still answer.
+    expect(on('imported')).toEqual(['length', 'summarised', 'watchStatus'])
   })
 
   it('offers the summary filter wherever videos are listed, and nowhere else', () => {
@@ -266,7 +267,25 @@ describe('pageFilters', () => {
   })
 
   it('swaps tags for the channel page (which shows topics instead)', () => {
-    expect(on('channel')).toEqual(['contentMode', 'summarised', 'watchStatus'])
+    expect(on('channel')).toEqual(['contentMode', 'length', 'summarised', 'watchStatus'])
+  })
+
+  it('closes the length buckets in Shorts mode, where they say nothing', () => {
+    // Every Short is a couple of minutes at most, so the buckets would be one
+    // chip that keeps the lot and three that can only empty the page.
+    const shorts = (page: string) => Object.entries(pageFilters(page, true))
+      .filter(([, v]) => v).map(([k]) => k).sort()
+    expect(shorts('feed')).not.toContain('length')
+    expect(shorts('channel')).not.toContain('length')
+    expect(shorts('history')).not.toContain('length')
+  })
+
+  it('leaves them open on the pages the Shorts mode does not govern', () => {
+    // Watch Later, Imported and a playlist are one flat list — they never split
+    // into Videos and Shorts, so the mode has no say over their buckets.
+    for (const page of ['watchlater', 'imported', 'playlist']) {
+      expect(pageFilters(page, true).length).toBe(true)
+    }
   })
 })
 
@@ -597,5 +616,72 @@ describe('loadWatchStatuses', () => {
     expect(loadWatchStatuses()).toEqual(DEFAULT_WATCH_STATUSES)
     localStorage.setItem('watch_statuses', JSON.stringify([1, 2]))
     expect(loadWatchStatuses()).toEqual(DEFAULT_WATCH_STATUSES)
+  })
+})
+
+// ── video length ─────────────────────────────────────────────
+
+describe('lengthOf', () => {
+  it('puts each boundary second in the longer bucket', () => {
+    // Half-open ranges: 4:59 is still "under 5", 5:00 starts "5–10", and 10:00
+    // and 20:00 open theirs. No second belongs to two chips.
+    expect(lengthOf(1)).toBe('under5')
+    expect(lengthOf(5 * 60 - 1)).toBe('under5')
+    expect(lengthOf(5 * 60)).toBe('5to10')
+    expect(lengthOf(10 * 60 - 1)).toBe('5to10')
+    expect(lengthOf(10 * 60)).toBe('10to20')
+    expect(lengthOf(20 * 60 - 1)).toBe('10to20')
+    expect(lengthOf(20 * 60)).toBe('over20')
+    expect(lengthOf(3 * 60 * 60)).toBe('over20')
+  })
+
+  it('has no bucket for a runtime it was never told', () => {
+    // A missing duration arrives as 0, and 0 is "we don't know" — not "under
+    // five minutes", which is where a naive range check would file it.
+    expect(lengthOf(0)).toBeNull()
+  })
+})
+
+describe('filterByLength', () => {
+  const tiny = makeVideo({ youtube_id: 'tiny', duration_seconds: 30 })
+  const eight = makeVideo({ youtube_id: 'eight', duration_seconds: 8 * 60 })
+  const ten = makeVideo({ youtube_id: 'ten', duration_seconds: 10 * 60 })
+  const hour = makeVideo({ youtube_id: 'hour', duration_seconds: 60 * 60 })
+  const unknown = makeVideo({ youtube_id: 'unknown', duration_seconds: 0 })
+  const all = [tiny, eight, ten, hour, unknown]
+  const kept = (lengths: string[]) => filterByLength(all, lengths).map(v => v.youtube_id)
+
+  it('keeps only the chosen buckets', () => {
+    expect(kept(['under5'])).toEqual(['tiny'])
+    expect(kept(['5to10'])).toEqual(['eight'])
+    expect(kept(['10to20'])).toEqual(['ten'])
+    expect(kept(['under5', 'over20'])).toEqual(['tiny', 'hour'])
+  })
+
+  it('treats no chips and every chip alike, as no filter', () => {
+    // Both mean "any length", so both hand the list back untouched — which is
+    // also the only way the unknown-length video is ever shown.
+    expect(kept([])).toEqual(['tiny', 'eight', 'ten', 'hour', 'unknown'])
+    expect(kept(VIDEO_LENGTHS.map(l => l.value))).toEqual(['tiny', 'eight', 'ten', 'hour', 'unknown'])
+  })
+
+  it('drops a video of unknown length from every actual selection', () => {
+    for (const { value } of VIDEO_LENGTHS) expect(kept([value])).not.toContain('unknown')
+  })
+
+  it('leaves the list it was given alone', () => {
+    filterByLength(all, ['under5'])
+    expect(all.map(v => v.youtube_id)).toEqual(['tiny', 'eight', 'ten', 'hour', 'unknown'])
+  })
+})
+
+describe('buildPath with a length filter', () => {
+  it('carries the chosen buckets and leaves an empty selection out', () => {
+    expect(buildPath({ page: 'feed', length: ['under5', 'over20'] })).toContain('length=under5%2Cover20')
+    expect(buildPath({ page: 'feed', length: [] })).toBe('/')
+  })
+
+  it('never writes one on a page that has no length chips', () => {
+    expect(buildPath({ page: 'downloads', length: ['under5'] })).toBe('/downloads')
   })
 })

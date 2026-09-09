@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { TagInfo, LabelCount } from '../App'
-import { WATCH_STATUSES, isExcluded, tagName } from '../App'
+import { WATCH_STATUSES, VIDEO_LENGTHS, isExcluded, tagName } from '../App'
 import type { Preset } from '../lib/presets'
 
 type Props = {
@@ -34,7 +34,12 @@ type Props = {
   // that can't change what you're looking at isn't rendered at all — the watch
   // status has nothing to filter on a list of channels, and imported videos come
   // from channels you don't follow, so no tag ever matches them.
-  filters?: { watchStatus: boolean; tags: boolean; hidden: boolean; contentMode: boolean; summarised: boolean }
+  filters?: { watchStatus: boolean; tags: boolean; hidden: boolean; contentMode: boolean; summarised: boolean; length: boolean }
+  // Length filter: which of the runtime buckets to show. Multi-select like the
+  // watch statuses, and read the same way — none chosen (or all of them) is no
+  // filter, not an empty page.
+  lengths?: string[]
+  onToggleLength?: (value: string) => void
   // "Summarised only": narrow the list to videos you've had a summary written
   // for. One direction on purpose — "not summarised" is nearly every video
   // there is, which narrows nothing.
@@ -246,6 +251,60 @@ const WatchStatusSection = ({
   )
 }
 
+// Length chips. Deliberately the same shape as the watch statuses above: both
+// answer "is this one for me right now", and a control that behaves the same
+// should look the same.
+const LengthSection = ({
+  selected = [],
+  onToggle,
+}: {
+  selected?: string[]
+  onToggle?: (value: string) => void
+}) => {
+  if (!onToggle) return null
+  const allSelected = VIDEO_LENGTHS.every(l => selected.includes(l.value))
+  return (
+    <div>
+      <button
+        onClick={() => VIDEO_LENGTHS.forEach(l => {
+          if (allSelected || !selected.includes(l.value)) onToggle(l.value)
+        })}
+        className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
+          allSelected
+            ? 'text-white hover:bg-[#2a2a2a]'
+            : 'text-[#717171] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+        }`}
+      >
+        <span>⏳</span>
+        <span>Length</span>
+        <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
+          {allSelected ? 'deselect all' : 'select all'}
+        </span>
+      </button>
+      <div className="flex flex-wrap gap-1.5">
+        {VIDEO_LENGTHS.map((l) => {
+          const active = selected.includes(l.value)
+          return (
+            <button
+              key={l.value}
+              onClick={() => onToggle(l.value)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
+                active
+                  ? 'bg-white text-black font-medium'
+                  : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+              }`}
+            >
+              <span>{l.icon}</span>
+              <span>{l.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const ToggleSwitch = ({ on }: { on: boolean }) => (
   <span className={`relative inline-block w-9 h-5 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-blue-500' : 'bg-[#3f3f3f]'}`}>
     <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : ''}`} />
@@ -404,9 +463,9 @@ const PresetSection = ({
   )
 }
 
-const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true }
+const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true, length: true }
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, presets, activePresetId, onSavePreset, onApplyPreset, onDeletePreset, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
+export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, lengths, onToggleLength, presets, activePresetId, onSavePreset, onApplyPreset, onDeletePreset, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const showMode = filters.contentMode && !!onContentModeChange
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
@@ -728,6 +787,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
               onToggle={onToggleWatchStatus}
             />
           )}
+          {filters.length && (
+            <LengthSection selected={lengths} onToggle={onToggleLength} />
+          )}
           {filters.summarised && (
             <SummarySection on={summarisedOnly} onToggle={onToggleSummarised} />
           )}
@@ -802,6 +864,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             selected={watchStatuses}
             onToggle={onToggleWatchStatus}
           />
+        )}
+        {filters.length && (
+          <LengthSection selected={lengths} onToggle={onToggleLength} />
         )}
         {filters.summarised && (
           <SummarySection on={summarisedOnly} onToggle={onToggleSummarised} />

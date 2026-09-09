@@ -209,7 +209,7 @@ describe('Sidebar — saved presets', () => {
   const chinese = {
     id: 1,
     name: 'Chinese, unwatched',
-    filters: { tags: ['chinese'], watch: ['unwatched'], summarised: false, shorts: false, hidden: false },
+    filters: { tags: ['chinese'], watch: ['unwatched'], summarised: false, shorts: false, hidden: false, length: null },
     created_at: null,
   }
 
@@ -285,5 +285,54 @@ describe('Sidebar — saved presets', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Chinese, unwatched' }))
     expect(onDeletePreset).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /Delete Chinese, unwatched/i })).toBeInTheDocument()
+  })
+})
+
+describe('Sidebar — length chips', () => {
+  // Every section is opt-in through `filters`; the default props leave it out,
+  // so the chips only appear where a page says it can use them.
+  const on = { watchStatus: false, tags: false, hidden: false, contentMode: false, summarised: false, length: true }
+
+  it('is not rendered on a page that cannot use it', () => {
+    render(<Sidebar {...defaultProps} onToggleLength={vi.fn()} filters={{ ...on, length: false }} />)
+    expect(screen.queryByText('Length')).not.toBeInTheDocument()
+  })
+
+  it('is not rendered without a handler to call', () => {
+    render(<Sidebar {...defaultProps} filters={on} />)
+    expect(screen.queryByText('Length')).not.toBeInTheDocument()
+  })
+
+  it('offers one chip per bucket and reports which was clicked', () => {
+    const onToggleLength = vi.fn()
+    render(<Sidebar {...defaultProps} filters={on} onToggleLength={onToggleLength} />)
+    for (const label of ['Under 5 min', '5–10 min', '10–20 min', 'Over 20 min']) {
+      expect(screen.getByRole('button', { name: new RegExp(label) })).toBeInTheDocument()
+    }
+    fireEvent.click(screen.getByRole('button', { name: /5–10 min/ }))
+    expect(onToggleLength).toHaveBeenCalledWith('5to10')
+  })
+
+  it('shows which buckets are on', () => {
+    render(<Sidebar {...defaultProps} filters={on} lengths={['over20']} onToggleLength={vi.fn()} />)
+    expect(screen.getByRole('button', { name: /Over 20 min/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Under 5 min/ })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('turns the rest on from the header, and all of them off again', () => {
+    // "Select all" only has to toggle what isn't already on — clicking a chip
+    // that's on would turn it off, leaving the row half-selected.
+    const onToggleLength = vi.fn()
+    const { unmount } = render(
+      <Sidebar {...defaultProps} filters={on} lengths={['under5']} onToggleLength={onToggleLength} />)
+    fireEvent.click(screen.getByText('Length').closest('button')!)
+    expect(onToggleLength.mock.calls.map(c => c[0])).toEqual(['5to10', '10to20', 'over20'])
+    unmount()
+
+    onToggleLength.mockClear()
+    render(<Sidebar {...defaultProps} filters={on}
+      lengths={['under5', '5to10', '10to20', 'over20']} onToggleLength={onToggleLength} />)
+    fireEvent.click(screen.getByText('Length').closest('button')!)
+    expect(onToggleLength.mock.calls.map(c => c[0])).toEqual(['under5', '5to10', '10to20', 'over20'])
   })
 })

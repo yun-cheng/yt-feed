@@ -139,6 +139,72 @@ export function loadWatchStatuses(): string[] {
   return DEFAULT_WATCH_STATUSES
 }
 
+// ── Video length ────────────────────────────────────────────
+
+// Four buckets, cut where a viewing decision is actually made: something to put
+// on between two other things, a coffee, a sitting, an evening.
+//
+// YouTube's own filter cuts at 4 and 20, and this started there for the
+// familiarity. It moved because 4/20 put HALF this library in the middle chip
+// (31/52/17) while 5/10/20 spreads it 37/23/24/17 — and a chip that holds half
+// of everything narrows almost nothing, which is the one thing a filter is for.
+//
+// The bounds are in the names on purpose. They're the whole meaning of a
+// bucket, so moving one should retire the old name rather than quietly re-point
+// a saved preset at a range its owner never chose — an unknown name is dropped
+// (see wanted_lengths), which loses the filter loudly instead.
+//
+// The backend has the same table — LENGTH_BUCKETS in routers/tags.py — because
+// the paged lists filter in SQL and the rest filter here. They have to agree,
+// or "10-20 min" would mean one thing on the feed and another on Watch Later.
+export const VIDEO_LENGTHS = [
+  { value: 'under5', label: 'Under 5 min', icon: '⚡' },
+  { value: '5to10', label: '5–10 min', icon: '☕' },
+  { value: '10to20', label: '10–20 min', icon: '⏱️' },
+  { value: 'over20', label: 'Over 20 min', icon: '🍿' },
+] as const
+
+// Half-open [min, max) in seconds, so the boundaries belong to exactly one
+// bucket and 5:00 is never both "under 5" and "5-10".
+const LENGTH_BOUNDS: Record<string, { min: number; max: number }> = {
+  under5: { min: 0, max: 5 * 60 },
+  '5to10': { min: 5 * 60, max: 10 * 60 },
+  '10to20': { min: 10 * 60, max: 20 * 60 },
+  over20: { min: 20 * 60, max: Infinity },
+}
+
+/** Which bucket a runtime falls in, or null when there's no runtime to go on.
+ *
+ *  A missing duration reads as 0 in the payload, and 0 is not "under five
+ *  minutes" — it's "we don't know". Saying otherwise would quietly stuff every
+ *  unprobed video into the shortest bucket. */
+export function lengthOf(seconds: number): string | null {
+  if (!seconds || seconds <= 0) return null
+  const hit = VIDEO_LENGTHS.find(({ value }) => {
+    const b = LENGTH_BOUNDS[value]
+    return seconds >= b.min && seconds < b.max
+  })
+  return hit?.value ?? null
+}
+
+/** Keep the videos whose runtime falls in one of the chosen buckets.
+ *
+ *  Selecting every bucket — or none — means "don't filter", the same rule the
+ *  watch statuses and the tags follow. Which is also how a video of unknown
+ *  length comes back: it belongs to no bucket, so any actual selection drops
+ *  it, and only "no filter at all" returns it.
+ *
+ *  The client-side half, for the pages that hold their whole list already. The
+ *  feed and a channel page are paged from the server and filter there — the
+ *  same split filterBySummarised describes. */
+export function filterByLength<T extends VideoItem>(videos: T[], lengths: string[]): T[] {
+  if (lengths.length === 0 || lengths.length >= VIDEO_LENGTHS.length) return videos
+  return videos.filter(v => {
+    const bucket = lengthOf(v.duration_seconds)
+    return bucket !== null && lengths.includes(bucket)
+  })
+}
+
 // ── URL helpers ─────────────────────────────────────────────
 
 // NB: there's no 'watch' page — /watch/:id is a full-screen overlay rendered on
@@ -274,14 +340,26 @@ const USES_HIDDEN = new Set(['feed'])
 // summarised_video_ids), the rest client-side off the map every card already
 // reads. Not on `channels`, which lists channels rather than videos.
 const USES_SUMMARISED = new Set(['feed', 'channel', 'watchlater', 'history', 'imported', 'playlist'])
+// "How long is it" applies wherever videos are listed, for the same reason the
+// summarised filter does — and split the same way: the two server-paged lists
+// filter in SQL (LENGTH_BUCKETS in routers/tags.py), the rest client-side off
+// the duration every card already shows.
+const USES_LENGTH = new Set(['feed', 'channel', 'watchlater', 'history', 'imported', 'playlist'])
 
 // What the sidebar should offer on a given page.
-export const pageFilters = (page: string) => ({
+//
+// `shorts` is the one thing besides the page that can close a section: a Short
+// is a Short, all of them under a few minutes, so the length buckets would be
+// one chip that keeps everything and three that can only empty the page.
+export const pageFilters = (page: string, shorts = false) => ({
   watchStatus: USES_WATCH.has(page),
   tags: USES_TAGS.has(page),
   hidden: USES_HIDDEN.has(page),
   contentMode: USES_SHORTS.has(page),
   summarised: USES_SUMMARISED.has(page),
+  // Only where the mode governs the list: Watch Later and Imported never split
+  // into Videos and Shorts, so nothing about the mode can close their buckets.
+  length: USES_LENGTH.has(page) && !(USES_SHORTS.has(page) && shorts),
 })
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(v => b.includes(v))
@@ -308,6 +386,10 @@ type QueryState = {
   // the list, not a standing preference like the watch statuses. It shouldn't
   // still be on tomorrow, and a link to it should carry it.
   summarised: boolean
+  // Likewise URL-only: a length is something you're in the mood for this
+  // afternoon, not a standing preference. Empty is the default and the "no
+  // filter" value at once, so unlike `watch` it needs no way to spell nothing.
+  length: string[]
   q: string
 }
 
@@ -324,6 +406,7 @@ function parseQuery(page: Page): QueryState {
     label: p.get('label'),
     showHidden: p.get('hidden') === '1',
     summarised: p.get('summarised') === '1',
+    length: p.get('length')?.split(',').filter(Boolean) ?? [],
     q: p.get('q') || '',
   }
 }
@@ -340,6 +423,7 @@ export type UrlState = {
   label?: string | null
   showHidden?: boolean
   summarised?: boolean
+  length?: string[]
   q?: string
 }
 
@@ -362,6 +446,7 @@ export function buildPath(s: UrlState): string {
   if (page === 'channel' && s.label) params.set('label', s.label)
   if (USES_HIDDEN.has(page) && s.showHidden) params.set('hidden', '1')
   if (USES_SUMMARISED.has(page) && s.summarised) params.set('summarised', '1')
+  if (USES_LENGTH.has(page) && s.length?.length) params.set('length', s.length.join(','))
   // `q` on the search page is the search; on a channel page it's the search
   // CONFINED to that channel, which is the channel page filtered by text. Same
   // param either way — the page it sits on is what says which.
@@ -411,6 +496,7 @@ function stateFromUrl() {
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
     summarised: q.summarised,
+    lengths: q.length,
     views,
     watchStatuses: owns('feed', 'watchlater', 'imported', 'playlist') && q.watch !== null ? q.watch : loadWatchStatuses(),
     channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
@@ -704,6 +790,25 @@ export default function App() {
   // read for their badge.
   const [summarisedOnly, setSummarisedOnly] = useState(init.summarised)
   const summarisedIds = useSummarisedIds()
+  // The length buckets, split the same way: a query param on the two paged
+  // lists, filtered here on the rest. One selection for every page, unlike the
+  // watch statuses — "I have twenty minutes" is about you, not about the list
+  // you happen to be looking at.
+  const [lengths, setLengths] = useState<string[]>(init.lengths)
+  const toggleLength = useCallback((value: string) => {
+    setLengths(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }, [])
+  // Shorts mode hides the buckets (see pageFilters), so they have to stop
+  // FILTERING too — a filter still in force with no chip on screen to show it
+  // or turn it off is the one thing the sidebar's rules exist to prevent. The
+  // selection itself is only set aside, not cleared: switching back to Videos
+  // finds the chips as you left them, and the URL never stopped carrying them.
+  //
+  // The three lists that obey the mode read this; Watch Later, Imported and a
+  // playlist go on reading `lengths`, having no Videos/Shorts split to obey.
+  const modeLengths = useMemo(
+    () => (contentMode === 'shorts' ? [] : lengths),
+    [contentMode, lengths])
 
   useEffect(() => {
     let cancelled = false
@@ -1099,6 +1204,7 @@ export default function App() {
       setContentMode(s.contentMode)
       setShowHidden(s.showHidden)
       setSummarisedOnly(s.summarised)
+      setLengths(s.lengths)
       setWatchStatuses(s.watchStatuses)
       setChannelWatchStatuses(s.channelWatchStatuses)
       setHistoryWatchStatuses(s.historyWatchStatuses)
@@ -1229,23 +1335,26 @@ export default function App() {
     const byTime = filterByTime(byMode, views.history.age, v => v.watched_at)
     const byStatus = filterByWatchStatus(byTime, historyWatchStatuses, progressById)
     const byTag = filterByTags(byStatus, selectedTags, tags, tagChannels)
-    return filterBySummarised(byTag, summarisedOnly, summarisedIds)
+    return filterByLength(filterBySummarised(byTag, summarisedOnly, summarisedIds), modeLengths)
   }, [watchHistory, contentMode, views.history.age, selectedTags, tags, tagChannels,
-    historyWatchStatuses, progressById, summarisedOnly, summarisedIds])
+    historyWatchStatuses, progressById, summarisedOnly, summarisedIds, modeLengths])
 
   // Imported videos take the global watch-status filter, like Watch Later, and
   // window by when they were imported. Tags don't apply — these come from
   // channels you don't follow, so none of them are tagged — and neither does the
   // Videos/Shorts toggle: it's one flat list.
   const visibleImported = useMemo(
-    () => filterBySummarised(
-      filterByWatchStatus(
-        filterByTime(imported, views.imported.age, v => v.created_at),
-        watchStatuses, progressById,
+    () => filterByLength(
+      filterBySummarised(
+        filterByWatchStatus(
+          filterByTime(imported, views.imported.age, v => v.created_at),
+          watchStatuses, progressById,
+        ),
+        summarisedOnly, summarisedIds,
       ),
-      summarisedOnly, summarisedIds,
+      lengths,
     ),
-    [imported, views.imported.age, watchStatuses, progressById, summarisedOnly, summarisedIds],
+    [imported, views.imported.age, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths],
   )
 
   // Downloads window by when the file was fetched. No watch-status or tag
@@ -1272,10 +1381,11 @@ export default function App() {
     label: selectedLabel,
     showHidden,
     summarised: summarisedOnly,
+    length: lengths,
     q: searchInput,
   }), [page, selectedChannelId, selectedPlaylistId, selectedTags, view, contentMode,
     watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden,
-    summarisedOnly, searchInput])
+    summarisedOnly, lengths, searchInput])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
   const syncUrl = useCallback(() => {
@@ -1407,6 +1517,7 @@ export default function App() {
     // Server-side, because the feed is paged: filtering the page here would
     // leave `total` promising videos that were then dropped.
     if (summarisedOnly) params.set('summarised', 'true')
+    if (modeLengths.length > 0) params.set('length', modeLengths.join(','))
     const res = await apiFetch(`/api/tags/feed?${params}`)
     const data = await res.json()
     setFeedTotal(data.total || 0)
@@ -1418,7 +1529,7 @@ export default function App() {
         age: data.age,
       }
     })
-  }, [feedView, selectedTags, contentMode, showHidden, watchStatuses, summarisedOnly])
+  }, [feedView, selectedTags, contentMode, showHidden, watchStatuses, summarisedOnly, modeLengths])
 
   const fetchFeed = useCallback(async (background = false) => {
     if (!background) {
@@ -1727,7 +1838,14 @@ export default function App() {
   // Which sidebar sections this page can actually use. Memoised because the
   // preset comparisons below key off it, and a fresh object every render would
   // recompute them every render.
-  const sidebarFilters = useMemo(() => pageFilters(page), [page])
+  //
+  // The Shorts mode is passed too, and not only to hide the chips: everything
+  // about presets reads this, so a preset saved while in Shorts mode records
+  // `length: null` — nothing to say — rather than the accident of whatever the
+  // buckets were left at.
+  const sidebarFilters = useMemo(
+    () => pageFilters(page, contentMode === 'shorts'),
+    [page, contentMode])
 
   // ---- Saved filter presets -------------------------------------------------
   // A preset is a filter set with a name, and nothing else: no page, no sort,
@@ -1756,7 +1874,8 @@ export default function App() {
     summarised: summarisedOnly,
     shorts: contentMode === 'shorts',
     hidden: showHidden,
-  }), [selectedTags, pageWatch, summarisedOnly, contentMode, showHidden])
+    length: modeLengths,
+  }), [selectedTags, pageWatch, summarisedOnly, contentMode, showHidden, modeLengths])
 
   const currentFilters = useMemo(
     () => captureFilters(liveFilters, sidebarFilters),
@@ -1781,6 +1900,9 @@ export default function App() {
     if (sidebarFilters.summarised) setSummarisedOnly(p.filters.summarised)
     if (sidebarFilters.contentMode) setContentMode(p.filters.shorts ? 'shorts' : 'videos')
     if (sidebarFilters.hidden) setShowHidden(p.filters.hidden)
+    // Null again means "this preset was saved somewhere with no length chips",
+    // so it has nothing to say about them — see lib/presets.ts.
+    if (sidebarFilters.length && p.filters.length) setLengths(p.filters.length)
   }, [sidebarFilters, setPageWatch, watchValues])
 
   const storePreset = useCallback(async (name: string) => {
@@ -1847,6 +1969,8 @@ export default function App() {
           onToggleWatchStatus={page === 'history' ? toggleHistoryWatchStatus : page === 'channel' ? toggleChannelWatchStatus : toggleWatchStatus}
           watchStatusOptions={page === 'history' ? HISTORY_WATCH_OPTIONS : WATCH_STATUSES}
           filters={sidebarFilters}
+          lengths={modeLengths}
+          onToggleLength={toggleLength}
           contentMode={contentMode}
           onContentModeChange={setContentMode}
           channelMode={page === 'channel'}
@@ -1995,6 +2119,7 @@ export default function App() {
             watchStatuses={watchStatuses}
             summarisedOnly={summarisedOnly}
             summarisedIds={summarisedIds}
+            lengths={lengths}
           />
         ) : page === 'history' ? (
           <HistoryPage
@@ -2063,6 +2188,7 @@ export default function App() {
               result = filterByTags(result, selectedTags, tags, tagChannels)
               result = filterByWatchStatus(result, watchStatuses, progressById)
               result = filterBySummarised(result, summarisedOnly, summarisedIds)
+              result = filterByLength(result, lengths)
               result = sortVideos(result, view.sort)
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
@@ -2102,6 +2228,7 @@ export default function App() {
             progressById={progressById}
             watchStatuses={channelWatchStatuses}
             summarisedOnly={summarisedOnly}
+            lengths={modeLengths}
           />
         ) : page === 'feed' ? (
           <div className="px-6 py-4">

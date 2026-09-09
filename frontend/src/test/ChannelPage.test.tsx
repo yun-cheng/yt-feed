@@ -121,3 +121,23 @@ describe('ChannelPage — searching inside the channel', () => {
     expect(screen.getByText('Pasta again')).toBeInTheDocument()
   })
 })
+
+describe('ChannelPage — the length filter', () => {
+  /** This page is paged, so its length filter has to be the server's: filtering
+   *  the page here would leave `total` promising videos that were dropped. */
+  const withLengths = (lengths?: string[]) => render(
+    <ChannelPage channelId="chan1" age={ALL_RANGE} sort="likes" onSortChange={() => {}} lengths={lengths} />
+  )
+
+  it('sends the chosen buckets on to the server', async () => {
+    withLengths(['under5', 'over20'])
+    await waitFor(() => expect(videoCalls.length).toBeGreaterThan(0))
+    expect(params().get('length')).toBe('under5,over20')
+  })
+
+  it('sends no length at all when no chip is on', async () => {
+    withLengths([])
+    await waitFor(() => expect(videoCalls.length).toBeGreaterThan(0))
+    expect(params().has('length')).toBe(false)
+  })
+})

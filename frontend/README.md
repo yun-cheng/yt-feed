@@ -99,23 +99,25 @@ that arrives carrying its own `sort` is left exactly as it came.
 and renders the slider only when a window is passed to it — a page absent from
 that table has no control bar at all.
 
-Those same sets feed `pageFilters(page)`, which is what the **sidebar** renders
-from — so a filter is either usable *and* in the URL, or in neither:
+Those same sets feed `pageFilters(page, shorts)`, which is what the **sidebar**
+renders from — so a filter is either usable *and* in the URL, or in neither:
 
-| page | Videos/Shorts | watch status | tags | topics | show hidden |
-|---|---|---|---|---|---|
-| feed | ✓ | ✓ | ✓ | | ✓ |
-| channel | ✓ | ✓ | | ✓ | |
-| history | ✓ | ✓ | ✓ | | |
-| watchlater | | ✓ | ✓ | | |
-| imported | | ✓ | | | |
-| channels | | | ✓ | | |
-| downloads / playlists / search / local | | | | | |
+| page | Videos/Shorts | watch status | length | tags | topics | show hidden |
+|---|---|---|---|---|---|---|
+| feed | ✓ | ✓ | ✓ | ✓ | | ✓ |
+| channel | ✓ | ✓ | ✓ | | ✓ | |
+| history | ✓ | ✓ | ✓ | ✓ | | |
+| watchlater | | ✓ | ✓ | ✓ | | |
+| imported | | ✓ | ✓ | | | |
+| playlist | | ✓ | ✓ | | | |
+| channels | | | | ✓ | | |
+| downloads / playlists / search / local | | | | | | |
 
 The reasoning: tags live on **channels**, so they can't filter a page of videos
 from channels you don't follow (imported), and a channel page swaps them for
 that channel's own topics. Watch status needs a list of videos, which the
-channels page isn't. Videos↔Shorts needs a list that's actually split that way.
+channels page isn't, and neither is a runtime. Videos↔Shorts needs a list
+that's actually split that way.
 Downloads, Playlists and Search do no sidebar filtering at all, so their filter
 panel is empty.
 
@@ -327,6 +329,51 @@ which narrows nothing worth the chip.
   still be on tomorrow, and a link should carry it (`?summarised=1`).
 - **Not on the Channels page**, which lists channels — a channel has no summary.
 
+### The length filter
+
+Four chips under the watch statuses — **Under 5 min**, **5–10 min**, **10–20
+min**, **Over 20 min** — multi-select, and read exactly as the watch statuses
+are: none on, or all four on, is *no filter*, so an empty row can never leave
+you staring at a blank page.
+
+- **The cuts are 5 / 10 / 20, not YouTube's 4 / 20.** It started at YouTube's,
+  for the familiarity, and moved because that put *half* this library in the
+  middle chip — 31 / 52 / 17, against 37 / 23 / 24 / 17 for these — and a chip
+  holding half of everything narrows almost nothing, which is the one thing a
+  filter is for.
+- **Closed in Shorts mode.** Every Short is a couple of minutes at most, so the
+  buckets would be one chip that keeps the lot and three that can only empty the
+  page. `pageFilters` takes the mode alongside the page for this — the only
+  thing besides the page that can close a section — and only where the mode
+  governs the list: Watch Later, Imported and a playlist never split into Videos
+  and Shorts, so their buckets stay open. Hiding the chips isn't enough on its
+  own, so `modeLengths` sets the selection aside as well: a filter still in force
+  with nothing on screen to turn it off is the one thing these rules exist to
+  prevent. *Set aside*, not cleared — the URL goes on carrying it, so switching
+  back to Videos (or reloading) finds the chips as you left them.
+- **The bounds are half-open**: 5:00 begins "5–10" rather than ending "under 5",
+  so no video is in two buckets. The table is `VIDEO_LENGTHS` +
+  `LENGTH_BOUNDS` in `App.tsx` and `LENGTH_BUCKETS` in `routers/tags.py`; the
+  two have to agree, because…
+- **…the split is the summary filter's, for the same reason.** The feed and a
+  channel page are paged, so they send `?length=` and the backend filters in the
+  WHERE — before the window cap, so the cap is spent on videos you asked for and
+  `total` counts what you'll be shown. The loaded lists use `filterByLength`.
+- **A video of unknown length is in no bucket.** A missing duration arrives as
+  `0`, and 0 is "we never probed it", not "under five minutes" — filing it in
+  the shortest bucket would quietly stuff every unprobed video there. It comes
+  back the moment you stop filtering, which is the only honest place for it.
+- **One selection for every page**, unlike the watch statuses, which History and
+  a channel page keep their own copies of. "I have twenty minutes" is about you,
+  not about the list you happen to be looking at.
+- **The bounds are in the names** (`under5`, `5to10`, `10to20`, `over20`),
+  because they *are* the meaning of a bucket. Move one and the old name retires
+  with the old range: an unknown name is dropped rather than 422'd, so a saved
+  preset loses the filter out loud instead of quietly coming to mean a range
+  its owner never chose.
+- **URL-only** (`?length=under5,over20`), like the summary filter and for the
+  same reason: a length is a mood this afternoon, not a standing preference.
+
 ### Filter presets
 
 A sidebar selection, named and put back on with one click. The section sits
@@ -347,6 +394,10 @@ past everything below it: the chips build a selection, this puts one back on.
   "show me the lot" is a state you asked for — and `hasAnyFilter` counts it,
   which is what puts the Save button there and lets such a preset light up as
   the one in force. A null list stays nothing, being the preset with no opinion.
+- **The lengths run the other way**, because *their* empty list is the default:
+  no chip on is "any length", which is what you get without asking, so a preset
+  holding only that would restore nothing. Null still means "saved somewhere
+  with no length chips" and is still passed through untouched.
 - **`captureFilters` records only what the page showed.** `showHidden` is live
   state even on History, which has no switch for it — saving there would
   otherwise smuggle in a value you never set.
@@ -1561,11 +1612,11 @@ two shims Radix's slider needs to mount at all (below).
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
-| `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't |
-| `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range |
+| `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing |
+| `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range; plus the length buckets going to the server, this list being paged |
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
-| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces |
-| `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, and the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from |
+| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off |
+| `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a
 behaviour change: `isContentEditable` is not implemented (so the shortcut guard's

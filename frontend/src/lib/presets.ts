@@ -20,6 +20,10 @@ export type PresetFilters = {
   summarised: boolean
   shorts: boolean
   hidden: boolean
+  /** Length buckets, or null from a page that has no length chips. Unlike
+   *  `watch`, an empty list here is also the ordinary default — no length
+   *  filter — so it says nothing worth putting a Save button up for. */
+  length: string[] | null
 }
 
 export type Preset = {
@@ -36,10 +40,11 @@ export type FilterSections = {
   hidden: boolean
   contentMode: boolean
   summarised: boolean
+  length: boolean
 }
 
 export const NO_FILTERS: PresetFilters = {
-  tags: [], watch: null, summarised: false, shorts: false, hidden: false,
+  tags: [], watch: null, summarised: false, shorts: false, hidden: false, length: null,
 }
 
 /** The sidebar's live state, in the terms a preset stores. */
@@ -49,6 +54,7 @@ export type LiveFilters = {
   summarised: boolean
   shorts: boolean
   hidden: boolean
+  length: string[]
 }
 
 /**
@@ -65,6 +71,7 @@ export function captureFilters(live: LiveFilters, on: FilterSections): PresetFil
     summarised: on.summarised ? live.summarised : false,
     shorts: on.contentMode ? live.shorts : false,
     hidden: on.hidden ? live.hidden : false,
+    length: on.length ? [...live.length] : null,
   }
 }
 
@@ -98,6 +105,7 @@ export function isActive(p: PresetFilters, live: LiveFilters, on: FilterSections
   if (on.summarised && p.summarised !== live.summarised) return false
   if (on.contentMode && p.shorts !== live.shorts) return false
   if (on.hidden && p.hidden !== live.hidden) return false
+  if (on.length && p.length && !sameList([...p.length].sort(), [...live.length].sort())) return false
   return true
 }
 
@@ -106,9 +114,13 @@ export function isActive(p: PresetFilters, live: LiveFilters, on: FilterSections
  *  An EMPTY watch list counts, unlike a null one: `[]` is the deliberate "show
  *  me every status", which a page whose chips default to unwatched-and-in-
  *  progress does not do on its own. Null is the preset having nothing to say
- *  about the statuses, which really is nothing. */
+ *  about the statuses, which really is nothing.
+ *
+ *  The lengths run the other way, because THEIR empty list is the default: no
+ *  bucket chosen is every video, which is what you get without asking. */
 export function hasAnyFilter(f: PresetFilters): boolean {
   return f.tags.length > 0 || f.watch !== null || f.summarised || f.shorts || f.hidden
+    || (f.length !== null && f.length.length > 0)
 }
 
 export async function listPresets(): Promise<Preset[]> {

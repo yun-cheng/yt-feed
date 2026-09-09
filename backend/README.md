@@ -553,6 +553,22 @@ finished summary, filtered in the same place and for the same reason.
 with status `done` and nobody else's, since a job still running has nothing to
 read yet and one that errored has nothing at all.
 
+`length=` on the same two endpoints keeps the videos whose runtime falls in one
+of four buckets — `under5`, `5to10`, `10to20`, `over20` — half-open, so 5:00
+begins `5to10` rather than ending `under5`. `LENGTH_BUCKETS` in
+`routers/tags.py` is the table, and the sidebar has a matching one
+(`VIDEO_LENGTHS` in `App.tsx`) because the loaded lists filter there. Naming
+nothing — or naming all four — is *no filter*, the same rule `watch=` follows,
+and a name we don't know is dropped rather than 422'd: a stale link is worth
+less than an error page. That drop is also what a **moved boundary** looks
+like, which is why the bounds are in the names: retiring `10to20` loses a saved
+preset's filter out loud, where a stable name like `medium` would quietly come
+to mean a range nobody chose. Unlike the two filters above it this one goes in
+the **WHERE**, the runtime being a column, so the window cap is spent on videos
+you asked for. A video whose duration was never probed is stored as `0` and is in
+**no** bucket — 0 is "we don't know", not "under five minutes" — so it returns
+only once you stop filtering.
+
 **Watched** is decided in one place, server-side, so nothing downstream has to
 re-derive it: at 90% of the duration — past that it's credits and end cards — or
 within the last minute, which covers long videos where 90% still leaves a
@@ -1844,6 +1860,7 @@ no per-test decorator). What's covered:
 | `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
 | `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
 | `test_tags.py` | the derived taxonomy maps, language detection |
+| `test_video_length.py` | the runtime buckets: each boundary second belonging to the longer one, an unprobed duration belonging to none, both ways of meaning "any length", an unknown name dropped rather than refused, `total` counting what you'll be shown, and a channel page filtering the same way |
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |

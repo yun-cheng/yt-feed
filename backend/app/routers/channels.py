@@ -340,6 +340,7 @@ async def channel_videos(
     label: str = Query(default="", description="filter to videos carrying this title-label"),
     watch: str = Query(default="", description="watch statuses to KEEP: unwatched,in_progress,watched (empty = all)"),
     summarised: bool = Query(default=False, description="keep only videos with a finished summary"),
+    length: str = Query(default="", description="runtime buckets to KEEP: under5,5to10,10to20,over20 (empty = all)"),
     q: str = Query(default="", description="keep only videos whose title matches this text"),
     offset: int = Query(default=0, description="pagination: index into the ranked list"),
     limit: int = Query(default=60, description="pagination: page size"),
@@ -382,6 +383,13 @@ async def channel_videos(
     conds = [Video.channel_id == channel_id, Video.is_short == shorts, Video.published_at < newer]
     if older is not None:
         conds.append(Video.published_at >= older)
+    # Runtime buckets, in the WHERE for the same reason the window is: the cap
+    # below should be spent on videos that could actually be shown.
+    from app.routers.tags import length_condition, wanted_lengths
+
+    length_where = length_condition(wanted_lengths(length))
+    if length_where is not None:
+        conds.append(length_where)
     # Searching inside the channel. Meilisearch says which titles match — the
     # one part of this it can do better than SQL — and the rest of the page goes
     # on working as it does: same window, same sort, same filters, same paging.
