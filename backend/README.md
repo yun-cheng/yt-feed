@@ -405,6 +405,77 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   a video's languages never change. Stores the derived codes, not the raw track
   info — that blob is ~512KB with ~7h-signed URLs, so it would be both fat and
   stale.
+- **Generated captions** (`/api/feed/captions-generate/{id}`, POST to start, GET
+  for progress) — for the videos YouTube has no track for **at all**, not even its
+  own ASR. Whisper runs locally (`app/asr.py`) over audio yt-dlp fetches, and the
+  cues it writes are the **same shape `_parse_json3` returns**, so a generated
+  track is served, rendered, translated, grouped into sentences and read by the
+  model through the code that already existed. On a video with no track,
+  `_fetch_captions` falls back to a finished generated one — which is the single
+  line that lights up the transcript panel, Ask and the summaries.
+
+  **A job, not the position-chasing the translation uses.** Translation is
+  position-based because each request costs tokens; transcription is free once the
+  weights are resident and runs at ~8.6x realtime, so it simply runs forward from
+  the start and outpaces the viewer. It also *has* to: a window boundary must fall
+  where Whisper says a segment ended, or it cuts a word in half, and a seek can't
+  promise that.
+
+  **The windows ramp** — 30s, then 60s, then 120s. Measured on an M4 with
+  `large-v3-turbo`: throughput barely moves with window length (10.6x at 60s,
+  11.9x at 300s) but the wait for the FIRST caption is all window, so long windows
+  cost a good half-minute of blank screen to buy nothing. The ramp puts the first
+  line up in about seven seconds and costs ~8% over a two-hour video. A real
+  end-to-end job on the 12-minute test video, audio download included, held 8.3x.
+
+  **Explicit, never implicit.** It spends the GPU and pulls ~10MB, so a person
+  asks for it. Everything that READS a finished track gets it free; nothing may
+  start one. Only `done` is served — a half-transcript would let a summary be
+  confidently wrong about a video it has heard four minutes of.
+
+  **Optional.** `mlx-whisper` is Apple-Silicon only and deliberately NOT in
+  requirements.txt; `asr.available()` gates the offer, and the watch page hides it
+  on a server that answers False. `pip install mlx-whisper
+  opencc-python-reimplemented` turns it on. Note it pulls torch — about 500MB
+  installed, on top of ~1.5GB of model weights. Without OpenCC the feature still
+  runs; the Chinese is just mostly-Traditional rather than reliably so.
+
+  **Always Traditional Chinese.** Whisper writes Simplified for Mandarin whatever
+  the speaker's own script would have been. A Traditional `initial_prompt` shifts
+  most of it — and, more usefully, shifts the vocabulary toward Taiwan usage — but
+  only most: a measured 60-second run still mixed 17 Simplified-only characters in
+  among the Traditional, and a transcript in two scripts at once is worse than one
+  consistently in the wrong script. So the prompt sets the register and **OpenCC
+  (`s2twp`) guarantees the script**. Measured over the whole 12-minute video after:
+  0 Simplified-only characters, 266 Traditional-only.
+
+  **Segments are cut into caption lines.** Whisper segments on breath and pause,
+  not on what you can read at a glance — the measured tail on a real video was 92
+  characters over 15.9 seconds, five clauses in one block. `split_line` breaks at
+  punctuation (sentence marks first, then clause marks, a blind width cut only for
+  speech that offers no punctuation at all) against a budget of `MAX_LINE_COLUMNS`
+  = 40, counting CJK as two columns so a Chinese line and an English one can be
+  compared honestly. A clause up to 25% over is left whole: one slightly wide line
+  reads better than a clean-looking cut through the middle of a phrase followed by
+  an orphan. Only the tail is affected — median cue length is unchanged at 12
+  characters, while the maximum went 92 → 25 and 15.9s → 4.4s.
+
+  This is what `word_timestamps=True` is for (~28%, 11.0x → 8.6x): each line
+  appears when its own first word is spoken rather than at a guessed fraction of
+  the segment. Without a word stream it apportions the span by character count,
+  which is wrong by a fraction of a second and still far better than one 16-second
+  cue.
+
+  Two Whisper failure modes are handled rather than hoped about: language is
+  detected once and then **pinned** (per-window detection on a stretch of music
+  can return the wrong script), and its **repetition loop** — where it latches
+  onto a token and emits it until the window ends — is defused with
+  `condition_on_previous_text=False` plus an immediate-repeat filter. The loop is
+  not hypothetical: an unguarded run produced 44 consecutive cues of 有什么事. Note
+  the ordering: the script conversion runs **before** the repeat check, or the
+  comparison is between a converted cue and a raw segment and every repeat walks
+  straight past it.
+
 - **AI-translated captions**
   (`/api/feed/captions-translate/{id}?lang=<source>&at=<seconds>&count=<n>`) — a run
   of **whole sentences** around playback position `at`, translated into
@@ -1783,6 +1854,8 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
 | GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
+| POST | `/api/feed/captions-generate/{id}` | Transcribe a video with no captions locally (Whisper). Idempotent; resumes a job a restart killed. 501 where the model isn't installed |
+| GET | `/api/feed/captions-generate/{id}` | Progress of that job and the cues so far: `{status, covered, duration, lang, cues, supported}` |
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
@@ -1846,6 +1919,7 @@ no per-test decorator). What's covered:
 
 | File | Covers |
 |------|--------|
+| `test_generated_captions.py` | local transcription as a JOB: the ramping windows, the seam taken from Whisper rather than the window we asked for, a silent window still advancing, resuming a job a restart killed, the repetition-loop filter, and that a finished track reaches every reader of captions while a half-finished one reaches none. Plus the line treatment: Simplified converted to Traditional (and idempotent, and a no-op on English), long segments cut at punctuation against the column budget, short ones left exactly as they are, and the fallback that shares a span out by length when there is no word timing |
 | `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, and that turning the fill off stops a sweep mid-flight |
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |

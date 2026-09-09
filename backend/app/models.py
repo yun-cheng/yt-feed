@@ -251,6 +251,36 @@ class CaptionTranslation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class GeneratedCaptions(Base):
+    """Captions we transcribed ourselves, for a video YouTube gave none for.
+
+    Written FORWARD as the job walks the audio, not once at the end: the point
+    of generating locally is that you can start watching immediately, and that
+    only works if the rows are readable while they are still being made.
+    `covered` is how far the transcript reaches, which is both the progress bar
+    and where a resumed job picks up.
+
+    Keyed by model as well as video, so trying a bigger one later adds a track
+    beside the old rather than silently changing what a stored track means.
+
+    Unlike the other caption caches (in-memory, TTL'd) this is worth persisting
+    for the same reason `CaptionTranslation` is: rebuilding it costs real time
+    on a real GPU, and a video's speech never changes.
+    """
+
+    __tablename__ = "generated_captions"
+
+    video_id = Column(String, primary_key=True)
+    model = Column(String, primary_key=True, default="")
+    lang = Column(String, default="")  # base code Whisper detected, e.g. "zh"
+    cues = Column(Text, nullable=False, default="[]")  # JSON, the /captions shape
+    covered = Column(Float, default=0.0)   # seconds of audio transcribed so far
+    duration = Column(Float, default=0.0)  # length of the audio, for progress
+    status = Column(String, default="running")  # running | done | error
+    error = Column(String, default="")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class CaptionLangs(Base):
     """Which caption languages a video offers, and which track is its native one.
 

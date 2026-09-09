@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import type { ReactNode, RefObject } from 'react'
 import type { VideoItem } from '../App'
@@ -93,6 +93,19 @@ function highlight(text: string, query: string): ReactNode {
 // A rendered caption line: its text and whether it came from a word-by-word
 // (auto) track — which drives left-alignment vs centering.
 type CaptionLine = { text: string; wordByWord: boolean }
+
+// A local transcription job. `covered`/`duration` are seconds of audio, which is
+// the only honest progress bar available: the work is measured in audio, not in
+// requests. 'stalled' is a job a server restart killed — it reads as an offer to
+// resume rather than a spinner that will never stop.
+type GenState = {
+  status: 'none' | 'running' | 'done' | 'error' | 'stalled'
+  covered: number
+  duration: number
+  lang: string
+  error: string
+  supported?: boolean
+}
 
 // Sentinel for the second-subtitle slot meaning "AI-translate the main track into
 // Traditional Chinese" rather than "use the video's own track for this language".
@@ -415,6 +428,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [nativeLang, setNativeLang] = useState('')
   const [captionLang, setCaptionLang] = useState(savedPrefs.lang)
   const [activeLang, setActiveLang] = useState<string | null>(null)
+  // Locally generated captions, for a video YouTube has no track for at all.
+  // `null` until we've asked. `supported` is false on a server without the
+  // model installed, which is the only reason to hide the offer entirely.
+  const [gen, setGen] = useState<GenState | null>(null)
+  const genPoll = useRef<number | undefined>(undefined)
   // Dual subtitles: an optional SECOND track rendered stacked under the main one
   // (e.g. original + translation, for language learning). '' = none.
   const [captions2, setCaptions2] = useState<Cue[] | null>(null)
@@ -864,6 +882,92 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       .catch(() => { if (!cancelled) setCaptions([]) })
     return () => { cancelled = true }
   }, [videoId, effCaptionLang])
+
+  // Once we have started (or adopted) a job, the poll below is the only thing
+  // that may touch `gen` — see the probe effect for what it is guarding against.
+  const genOwned = useRef(false)
+  useEffect(() => { genOwned.current = false; setGen(null) }, [videoId])
+
+  // Follow a job that is already running, rendering cues as they land rather
+  // than at the end: at ~8.6x realtime the transcript runs away from the play
+  // head almost immediately, so waiting for `done` would mean staring at a
+  // blank player for a minute to gain nothing.
+  const followJob = useCallback(() => {
+    window.clearInterval(genPoll.current)
+    genOwned.current = true
+
+    const read = (d: GenState & { cues?: Cue[] }) => {
+      setGen(d)
+      if (d.cues?.length) {
+        setCaptions(d.cues)
+        setActiveLang(d.lang || null)
+      }
+      if (d.status !== 'running') {
+        window.clearInterval(genPoll.current)
+        // Finished: let the menu rebuild itself from the track that now exists,
+        // so the generated language takes its place beside any real ones.
+        if (d.status === 'done') {
+          apiFetch(`/api/feed/caption-langs/${videoId}`, { quiet: true })
+            .then((r) => r.json())
+            .then((l) => {
+              setCaptionLangs(Array.isArray(l?.langs) ? l.langs : [])
+              setNativeLang(l?.native ?? '')
+            })
+            .catch(() => { /* the captions still play; only the menu is poorer */ })
+        }
+      }
+    }
+
+    // Two seconds: a window lands every five to ten, so this is responsive
+    // without being a request per frame of progress.
+    genPoll.current = window.setInterval(() => {
+      apiFetch(`/api/feed/captions-generate/${videoId}`, { quiet: true })
+        .then((r) => r.json())
+        .then(read)
+        .catch(() => { /* transient; the next tick tries again */ })
+    }, 2000)
+    return read
+  }, [videoId])
+
+  const startGenerating = useCallback(() => {
+    setShowCaptions(true)
+    setGen((g) => ({ status: 'running', covered: 0, duration: g?.duration ?? 0,
+                     lang: '', error: '', supported: true }))
+    const read = followJob()
+    apiFetch(`/api/feed/captions-generate/${videoId}`, { method: 'POST', quiet: true })
+      .then((r) => r.json())
+      .then(read)
+      .catch(() => setGen((g) => g && { ...g, status: 'error', error: 'Could not start' }))
+  }, [videoId, followJob])
+
+  // Is there anything to offer here? Only asked when the video turned out to
+  // have no track of its own — on everything else this is a request that could
+  // only ever answer "nothing to do".
+  //
+  // The `genOwned` guard is what keeps this cheap check from fighting the job
+  // it starts: a running job WRITES captions as its windows land, which would
+  // otherwise re-run this effect and reset the very progress it reports.
+  useEffect(() => {
+    if (genOwned.current) return
+    if (captions === null || captions.length || captionLangs.length) return
+    let cancelled = false
+    apiFetch(`/api/feed/captions-generate/${videoId}`, { quiet: true })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return
+        setGen(d)
+        // Started from another tab, or before a reload: it is still going, and
+        // a progress bar that never moves is worse than none.
+        if (d.status === 'running') followJob()
+      })
+      .catch(() => { /* the offer just doesn't appear */ })
+    return () => { cancelled = true }
+  }, [videoId, captions, captionLangs.length, followJob])
+
+  // Stop polling when the video changes — a job left running on the server is
+  // fine (it finishes, and the cues are waiting next time), but this page has
+  // stopped being the one asking.
+  useEffect(() => () => { window.clearInterval(genPoll.current) }, [videoId])
 
   // The second (dual-subtitle) track, for a real language the video provides.
   // AI translation doesn't come through here — it streams in blocks below.
@@ -1602,7 +1706,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // The caption switcher and the pin toggle. Against the embed they float over
   // the player — its control bar is inside the iframe, out of reach. With our
   // own bar (local playback) they sit in its button row like any other control.
-  const captionControl = captionLangs.length > 0 && (
+  // A video with no track of its own still gets the button, so long as this
+  // server can transcribe — otherwise the offer would have nowhere to live: the
+  // caption menu is the only place captions are ever chosen.
+  const offerGenerate = captionLangs.length === 0 && !!gen && gen.supported !== false
+  const genPct = gen && gen.duration > 0
+    ? Math.min(100, Math.round((gen.covered / gen.duration) * 100)) : 0
+
+  const captionControl = (captionLangs.length > 0 || offerGenerate) && (
     <div
       ref={captionMenuRef}
       // The embed placement slots it into the iframe's own bottom-left button
@@ -1615,6 +1726,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // is off (toggle by clicking the active row). The same track can't sit
         // in both columns; picking it in the other slot moves/swaps it.
         <div className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
+          {captionLangs.length > 0 ? (
           <div className="flex">
             {([
               { title: 'Main', cur: curMain, pick: pickMain },
@@ -1671,6 +1783,39 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               </div>
             ))}
           </div>
+          ) : (
+            /* Nothing to choose between — the only caption this video can have
+               is one we make. Progress is in seconds of audio because that is
+               what the work is measured in, and the cues appear as they land. */
+            <div className="min-w-[13rem] py-1">
+              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">
+                No captions on this video
+              </div>
+              <button
+                onClick={startGenerating}
+                disabled={gen?.status === 'running'}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10 disabled:cursor-default disabled:hover:bg-transparent"
+              >
+                <span className="w-4 shrink-0">⚡</span>
+                {gen?.status === 'running' ? 'Transcribing…'
+                  : gen?.status === 'stalled' ? 'Resume transcribing'
+                  : gen?.status === 'error' ? 'Try again'
+                  : 'Generate captions'}
+                <span className="ml-auto pl-2 text-xs text-[#888]">
+                  {gen?.status === 'running' ? `${genPct}%` : 'AI'}
+                </span>
+              </button>
+              {gen?.status === 'running' && (
+                <div className="mx-3 mb-1.5 mt-1 h-[3px] overflow-hidden rounded-full bg-white/15">
+                  <div className="h-full bg-[#3ea6ff] transition-[width] duration-500"
+                       style={{ width: `${genPct}%` }} />
+                </div>
+              )}
+              {gen?.status === 'error' && (
+                <div className="px-3 pb-1.5 text-xs text-[#f28b82]">{gen.error}</div>
+              )}
+            </div>
+          )}
 
           {/* How the block is drawn, under the two track columns because it
               applies to both of them. Position and size are the two things

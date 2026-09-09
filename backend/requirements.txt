@@ -19,3 +19,17 @@ yt-dlp>=2026.08.19
 # SessionMiddleware signs the sign-in cookie with it
 itsdangerous>=2.2.0
 
+# --- Optional: local speech-to-text (app/asr.py) ---
+# For the videos YouTube has no caption track for at all. Left OUT of the
+# install on purpose: mlx-whisper is Apple-Silicon only and pulls torch (~500MB
+# installed) plus ~1.5GB of model weights, which is a lot to inflict on a server
+# that may never transcribe anything. `asr.available()` gates the whole feature,
+# and the watch page simply doesn't offer it where the answer is no.
+#
+#   pip install mlx-whisper opencc-python-reimplemented
+#
+# OpenCC is what guarantees Traditional Chinese: the prompt gets most of the way
+# and its vocabulary to Taiwan usage, but only the conversion stops a transcript
+# coming back in two scripts at once. Without it the feature still runs — the
+# captions are just mostly-Traditional rather than reliably so.
+

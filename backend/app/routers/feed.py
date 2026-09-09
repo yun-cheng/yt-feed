@@ -4,6 +4,7 @@ Feed endpoints — ranked videos grouped by category.
 
 import asyncio
 import json
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -14,12 +15,12 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import auth, users
+from app import asr, auth, users
 from app.config import settings
 from app.database import async_session
 from app.models import (
-    CaptionLangs, CaptionTranslation, Channel, ImportedVideo, User, Video,
-    WatchHistory,
+    CaptionLangs, CaptionTranslation, Channel, Download, GeneratedCaptions,
+    ImportedVideo, User, Video, WatchHistory,
 )
 from app.ranking import format_range, range_cutoffs, rank_videos, resolve_range, score_video
 from app.categorizer import get_categories, get_channel_groups
@@ -482,6 +483,31 @@ def _parse_json3(url: str) -> list[dict] | None:
     return cues or None
 
 
+async def _generated_captions(video_id: str, lang: str = "") -> dict | None:
+    """A track we transcribed ourselves, if there is a finished one.
+
+    `done` only. A job still running is served through /captions-generate, which
+    reports how far it reaches; handing a half-transcript to Ask or a summary
+    would let them answer confidently about a video they have only heard the
+    first four minutes of.
+
+    A language ASKED for is honoured only if it happens to be the one that was
+    spoken — we have one track, not a menu, and returning Mandarin to a request
+    for English would be worse than returning nothing.
+    """
+    async with async_session() as db:
+        row = await db.get(GeneratedCaptions, (video_id, settings.asr_model))
+    if not row or row.status != "done":
+        return None
+    if lang and lang != (row.lang or ""):
+        return None
+    try:
+        cues = json.loads(row.cues or "[]")
+    except ValueError:
+        return None
+    return {"cues": cues, "lang": row.lang or None, "generated": True} if cues else None
+
+
 async def _fetch_captions(video_id: str, lang: str = "") -> dict | None:
     """Timed caption cues for a video, as {cues, lang}, or None if none.
 
@@ -490,12 +516,14 @@ async def _fetch_captions(video_id: str, lang: str = "") -> dict | None:
     code (e.g. "zh"), so the client can highlight the active choice.
     """
     tracks = await _caption_tracks(video_id)
-    if not tracks:
-        return None
-    subs, auto, source_lang = tracks
-    picked = _pick_track(subs, auto, source_lang, lang)
+    subs, auto, source_lang = tracks or ({}, {}, None)
+    picked = _pick_track(subs, auto, source_lang, lang) if tracks else None
     if not picked or not picked[0].get("url"):
-        return None
+        # Nothing from YouTube — but we may have made one ourselves. This single
+        # fallback is what lights up the transcript panel, Ask and the summaries
+        # on a video with no track: they all read captions through here, and none
+        # of them needs to learn that a track can be generated.
+        return await _generated_captions(video_id, lang)
     try:
         cues = await asyncio.get_event_loop().run_in_executor(
             _preview_pool, _parse_json3, picked[0]["url"]
@@ -519,14 +547,34 @@ async def _available_caption_langs(video_id: str) -> list[dict]:
     """
     tracks = await _caption_tracks(video_id)
     if not tracks:
-        return []
+        return await _generated_lang_only(video_id)
     subs, auto, _ = tracks
     prefixes = {k.split("-")[0].lower() for k in subs}
     for key, tk in auto.items():
         t = _json3(tk)
         if t and "tlang=" not in t.get("url", ""):  # original ASR, not a translation
             prefixes.add(key.split("-")[0].lower())
-    return [{"code": code, "label": label} for code, label in CAPTION_LANG_OPTIONS if code in prefixes]
+    offered = [{"code": code, "label": label}
+               for code, label in CAPTION_LANG_OPTIONS if code in prefixes]
+    # An extraction that SUCCEEDS and finds nothing is the ordinary case here —
+    # `_extract_caption_tracks` returns ({}, {}, None), which is a perfectly
+    # truthy tuple. So the fallback hangs off the derived list being empty, not
+    # off the extraction having failed.
+    return offered or await _generated_lang_only(video_id)
+
+
+async def _generated_lang_only(video_id: str) -> list[dict]:
+    """The one language of a track we made, as a menu entry — or nothing.
+
+    A generated track is the only one some videos will ever have, and the menu
+    is where you find out it exists.
+    """
+    made = await _generated_captions(video_id)
+    if not made or not made.get("lang"):
+        return []
+    code = made["lang"]
+    return [{"code": code, "label": dict(CAPTION_LANG_OPTIONS).get(code, code),
+             "generated": True}]
 
 
 async def _native_caption_lang(video_id: str) -> str:
@@ -536,11 +584,15 @@ async def _native_caption_lang(video_id: str) -> str:
     can learn it without waiting for a track to download and parse.
     """
     tracks = await _caption_tracks(video_id)
-    if not tracks:
-        return ""
-    subs, auto, source_lang = tracks
-    picked = _pick_track(subs, auto, source_lang, "")
-    return picked[1].split("-")[0].lower() if picked else ""
+    subs, auto, source_lang = tracks or ({}, {}, None)
+    picked = _pick_track(subs, auto, source_lang, "") if tracks else None
+    if picked:
+        return picked[1].split("-")[0].lower()
+    # On a video with no tracks, the track we generated IS the one served with
+    # no language asked for — so it is the native one as far as the menu's tick
+    # mark is concerned.
+    made = await _generated_captions(video_id)
+    return (made or {}).get("lang") or ""
 
 
 def _captions_cached(video_id: str, lang: str) -> "Awaitable[Optional[dict]]":
@@ -1171,6 +1223,185 @@ async def get_translated_captions(
             for i in range(idx, end) if have.get(str(i))
         ],
     }
+
+
+# ── Generated captions ──────────────────────────────────────────────────────
+#
+# For the videos YouTube has no track for at all. See app/asr.py for the engine
+# and the measurements; what lives here is the JOB — acquiring the audio, walking
+# it forward, and writing the cues down as they land.
+#
+# A job, deliberately, rather than the position-chasing the AI translation uses
+# next door. That one is position-based because each request costs tokens, and
+# translating an hour you'll watch five minutes of is money burnt. Transcription
+# is free once the weights are resident and runs at ~8.6x realtime, so the cheap
+# thing is simply to run forward from the start and let the transcript outpace
+# the viewer — which also avoids the seam problem a seek would create, since a
+# window boundary has to fall where Whisper says a segment ended.
+
+# One task per video, so a second press of the button (or a page reload while it
+# runs) joins the job in flight instead of starting a rival one.
+_asr_jobs: dict[str, asyncio.Task] = {}
+
+
+def _asr_audio_path(video_id: str) -> str:
+    return os.path.join(settings.asr_audio_dir, f"{video_id}.m4a")
+
+
+def _asr_fetch_audio(video_id: str) -> str:
+    """Get audio for one video on disk and return the path. Blocking.
+
+    Audio only — a tenth the bytes of the video, and the picture is no use to a
+    transcriber.
+    """
+    import yt_dlp
+
+    os.makedirs(settings.asr_audio_dir, exist_ok=True)
+    out = _asr_audio_path(video_id)
+    if os.path.exists(out):
+        return out
+    opts = {
+        "format": "bestaudio[ext=m4a]/bestaudio",
+        "outtmpl": out,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "overwrites": True,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
+    return out
+
+
+async def _asr_source(video_id: str) -> str:
+    """The file a job should read, downloading audio only if it must.
+
+    A video already downloaded for offline playback is a local file with the
+    same speech in it, so the download is skipped entirely — ffmpeg pulls the
+    audio track out of the mp4 just as happily.
+    """
+    async with async_session() as db:
+        rec = await db.get(Download, video_id)
+    if rec and rec.status == "ready":
+        path = os.path.join(settings.downloads_dir, f"{video_id}.mp4")
+        if os.path.exists(path):
+            return path
+    return await asyncio.get_event_loop().run_in_executor(
+        _preview_pool, _asr_fetch_audio, video_id
+    )
+
+
+async def _asr_save(video_id: str, **fields) -> None:
+    """Merge one progress write into the row, on its own session.
+
+    Its own, because the job outlives any request's session: the person who
+    started it has very likely navigated away, and the row is the only thing
+    that can still report where the work got to.
+    """
+    async with async_session() as db:
+        await db.merge(GeneratedCaptions(
+            video_id=video_id, model=settings.asr_model, **fields))
+        await db.commit()
+
+
+async def _run_asr_job(video_id: str) -> None:
+    """Transcribe one video, writing cues forward as each window lands."""
+    loop = asyncio.get_event_loop()
+    path = None
+    try:
+        async with async_session() as db:
+            row = await db.get(GeneratedCaptions, (video_id, settings.asr_model))
+            cues = json.loads(row.cues) if row and row.cues else []
+            at = float(row.covered or 0) if row else 0.0
+            lang = (row.lang or "") if row else ""
+
+        path = await _asr_source(video_id)
+        duration = await loop.run_in_executor(_preview_pool, asr.duration_of, path)
+        await _asr_save(video_id, status="running", duration=duration,
+                        covered=at, lang=lang, cues=json.dumps(cues, ensure_ascii=False))
+
+        index = 0
+        # Half a second short of the end: a final sliver of audio holds no
+        # sentence, and chasing it would cost a whole window's overhead.
+        while at < duration - 0.5:
+            out = await loop.run_in_executor(
+                asr.asr_pool, asr.transcribe_window,
+                path, at, asr.window_for(index), lang or None,
+            )
+            cues.extend(out["cues"])
+            lang = lang or out["language"]
+            # `end` is where the last complete segment finished, so the next
+            # window starts mid-nothing. The max() is a liveness guard: a window
+            # that somehow ends before it began would otherwise loop forever.
+            at = max(out["end"], at + 1.0)
+            index += 1
+            await _asr_save(video_id, status="running", duration=duration,
+                            covered=min(at, duration), lang=lang,
+                            cues=json.dumps(cues, ensure_ascii=False))
+
+        await _asr_save(video_id, status="done", duration=duration,
+                        covered=duration, lang=lang,
+                        cues=json.dumps(cues, ensure_ascii=False), error="")
+        # The finished track is what /captions serves from here on, and the
+        # in-memory cache is still holding the "no captions" it learned earlier.
+        _cc_cache.pop(f"{video_id}::", None)
+        _ct_cache.pop(video_id, None)
+    except Exception as e:  # noqa: BLE001 — any failure has to reach the UI
+        await _asr_save(video_id, status="error", error=str(e)[:500])
+    finally:
+        _asr_jobs.pop(video_id, None)
+        # The cues are the keepsake; the audio is ten megabytes of nothing once
+        # they exist, and a resumed job re-fetches it in about a second.
+        if path and path.startswith(settings.asr_audio_dir):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+async def _asr_row(video_id: str) -> dict:
+    """What the client needs to draw progress and render what has landed."""
+    async with async_session() as db:
+        row = await db.get(GeneratedCaptions, (video_id, settings.asr_model))
+    if not row:
+        return {"status": "none", "covered": 0.0, "duration": 0.0,
+                "lang": "", "cues": [], "error": ""}
+    try:
+        cues = json.loads(row.cues or "[]")
+    except ValueError:
+        cues = []
+    # A row left "running" by a restart is not running — nothing is. Saying so
+    # lets the page offer the button again rather than spin on a dead job.
+    status = row.status
+    if status == "running" and video_id not in _asr_jobs:
+        status = "stalled"
+    return {
+        "status": status, "covered": float(row.covered or 0),
+        "duration": float(row.duration or 0), "lang": row.lang or "",
+        "cues": cues, "error": row.error or "",
+    }
+
+
+@router.post("/captions-generate/{video_id}")
+async def start_generated_captions(video_id: str):
+    """Transcribe this video locally. Idempotent, and resumes where it stopped.
+
+    Explicit, never implicit: it spends the GPU and pulls ten megabytes down, so
+    it is a thing you asked for. Everything that READS a finished track — the
+    transcript panel, Ask, the summaries — gets it for free once it exists, but
+    none of them may start one.
+    """
+    if not asr.available():
+        raise HTTPException(501, "This server has no local speech-to-text installed")
+    if video_id not in _asr_jobs:
+        _asr_jobs[video_id] = asyncio.create_task(_run_asr_job(video_id))
+    return await _asr_row(video_id)
+
+
+@router.get("/captions-generate/{video_id}")
+async def get_generated_captions(video_id: str):
+    """Progress and whatever cues have landed so far."""
+    return {**await _asr_row(video_id), "supported": asr.available()}
 
 
 @router.get("/description/{video_id}")

@@ -44,6 +44,20 @@ class Settings(BaseSettings):
     # sentences) — see _to_sentences — and it went 10/10 once that was fixed.
     llm_translate_model: str = "google/gemini-2.5-flash-lite"
 
+    # --- Local speech-to-text (see app/asr.py) ---
+    # For the videos YouTube has no caption track for at all. Optional and NOT
+    # in requirements.txt: mlx-whisper is Apple-Silicon only, so the feature
+    # advertises itself through asr.available() and simply isn't offered
+    # elsewhere. `pip install mlx-whisper opencc-python-reimplemented` turns it
+    # on — see the note at the foot of requirements.txt.
+    #
+    # large-v3-turbo rather than large-v3: measured on an M4 it holds ~8.6x
+    # realtime with word timestamps on, which is the whole reason the transcript
+    # can stay ahead of playback, and its Mandarin was clean enough to read
+    # as-is. The key is part of the stored track's identity, so pointing this at
+    # a bigger model adds a track beside the old rather than reinterpreting it.
+    asr_model: str = "mlx-community/whisper-large-v3-turbo"
+
     # --- Archive fill (deep per-channel history; see app/archive.py) ---
     # Off by default: switching it on commits the API quota and the disk for
     # every channel's whole back catalogue, which should be a thing you chose
@@ -56,6 +70,15 @@ class Settings(BaseSettings):
     @property
     def downloads_dir(self) -> str:
         return str(Path(self.db_path).parent / "downloads")
+
+    @property
+    def asr_audio_dir(self) -> str:
+        """Scratch space for audio a transcription job is working through.
+
+        A cache only: each file is deleted when its job finishes, and a job that
+        died mid-way re-fetches in about a second. What survives is the cues.
+        """
+        return str(Path(self.db_path).parent / "asr-audio")
 
     @property
     def local_thumbs_dir(self) -> str:

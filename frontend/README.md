@@ -1068,6 +1068,34 @@ Other details:
   (`setSlots`): toggling the Main off promotes the Second up; picking the Second's
   language as Main clears the Second; picking the Main's language as Second swaps the
   two.
+- **Generate captions**: on a video with **no track at all**, the menu has no
+  languages to list — so instead of the two columns it shows one row, "⚡ Generate
+  captions", and the caption button appears for that alone (`offerGenerate`). It
+  is the only place captions are ever chosen, so it is the only place the offer
+  can live. Pressing it POSTs to `/api/feed/captions-generate/:id` and then polls
+  every 2s, rendering cues **as they land** — a job runs at ~8.6x realtime, so the
+  transcript outruns the play head almost immediately and waiting for it to finish
+  would buy nothing. Progress is drawn in **seconds of audio** (`covered` /
+  `duration`), which is what the work is actually measured in, not requests.
+
+  Two things the polling has to get right. A running job **writes captions**, and
+  the probe that decides whether to make the offer **reads them** — so `genOwned`
+  hands ownership of that state to the poll the moment a job starts, or the first
+  window of cues would reset the progress it is reporting. And a job found already
+  running (another tab, or a reload mid-transcription) is **adopted** rather than
+  merely displayed, since a percentage that never moves is worse than none.
+
+  The lines themselves are the backend's business, not this component's: they
+  arrive already cut to a readable width at punctuation, and already in
+  Traditional Chinese, so nothing here has to know that Whisper's segments run to
+  fifteen seconds or that it writes Simplified.
+
+  When it finishes, the language menu is refetched: the generated track takes its
+  place as an ordinary language (`generated: true`, and `native` too, since it is
+  what `/captions` serves), and from then on this video behaves like any other —
+  including being AI-translatable, which for a Simplified-Chinese transcript is
+  most of the point.
+
 - **AI translate**: a **Chinese** row (with an "AI" badge) in either column, offered
   whenever the source track isn't already Chinese. Unlike a real track it can fill
   **either slot** — as Main it shows the translation alone (the source track is still
