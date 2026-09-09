@@ -11,6 +11,11 @@ google-api-python-client>=2.197.0
 greenlet>=3.0.0
 httpx>=0.27.0
 pyyaml>=6.0
-yt-dlp>=2026.06.09
+# Floor bumped 2026-09-09: YouTube started demanding a PO token from the clients
+# 2026.07.04 reaches for, so every media download 403s partway through — see the
+# `visionos` client this version picks instead. Extraction (titles, captions,
+# storyboards) went on working, which is why it took a caption job to notice.
+yt-dlp>=2026.08.19
 # SessionMiddleware signs the sign-in cookie with it
 itsdangerous>=2.2.0
+
