@@ -312,7 +312,8 @@ const PAGE_DEFAULTS: Record<string, { age: string; sort: string; watch: string[]
   // One playlist is the same kind of list, windowed by when each video joined
   // it. 'recent' leaves the order alone, which for an imported playlist means
   // YouTube's own order — the thing you'd least want a default to destroy.
-  playlist: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
+  // Nothing filtered out, either: a playlist is a set you chose whole.
+  playlist: { age: '0-all', sort: 'recent', watch: [] },
 }
 const DEFAULTS = PAGE_DEFAULTS.feed
 const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
@@ -514,8 +515,9 @@ function stateFromUrl() {
     summarised: q.summarised,
     lengths: q.length,
     views,
-    watchStatuses: owns('feed', 'watchlater', 'imported', 'playlist') && q.watch !== null ? q.watch : loadWatchStatuses(),
+    watchStatuses: owns('feed', 'watchlater', 'imported') && q.watch !== null ? q.watch : loadWatchStatuses(),
     channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
+    playlistWatchStatuses: owns('playlist') && q.watch !== null ? q.watch : [],
     historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : [],
     selectedLabel: owns('channel') ? q.label : null,
   }
@@ -1255,6 +1257,7 @@ export default function App() {
       setLengths(s.lengths)
       setWatchStatuses(s.watchStatuses)
       setChannelWatchStatuses(s.channelWatchStatuses)
+      setPlaylistWatchStatuses(s.playlistWatchStatuses)
       setHistoryWatchStatuses(s.historyWatchStatuses)
       setSelectedLabel(s.selectedLabel)
       mainRef.current?.scrollTo({ top: 0 })
@@ -1371,6 +1374,13 @@ export default function App() {
     setChannelWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
   }, [])
 
+  // A playlist too: you open one to see the set you put together, so it starts
+  // with nothing selected, and each playlist you open starts over.
+  const [playlistWatchStatuses, setPlaylistWatchStatuses] = useState<string[]>(init.playlistWatchStatuses)
+  const togglePlaylistWatchStatus = useCallback((value: string) => {
+    setPlaylistWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }, [])
+
   // History obeys the same two global controls as the feed: the Videos/Shorts
   // toggle and the sidebar's tag selection. Both are applied client-side — the
   // list is already loaded, and it's small.
@@ -1434,6 +1444,7 @@ export default function App() {
     shorts: contentMode === 'shorts',
     watch: page === 'channel' ? channelWatchStatuses
       : page === 'history' ? historyWatchStatuses
+      : page === 'playlist' ? playlistWatchStatuses
       : watchStatuses,
     label: selectedLabel,
     showHidden,
@@ -1443,8 +1454,8 @@ export default function App() {
     // writing it anyway would turn it into a search on the next reload.
     q: page in SEARCHABLE_PAGES && searchPage !== page ? '' : searchInput,
   }), [page, selectedChannelId, selectedPlaylistId, selectedTags, view, contentMode,
-    watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden,
-    summarisedOnly, lengths, searchInput, searchPage])
+    watchStatuses, channelWatchStatuses, historyWatchStatuses, playlistWatchStatuses, selectedLabel,
+    showHidden, summarisedOnly, lengths, searchInput, searchPage])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
   const syncUrl = useCallback(() => {
@@ -1887,6 +1898,7 @@ export default function App() {
     history.pushState(null, '', `/playlist/${id}`)
     setSelectedPlaylistId(id)
     setSearchPage(null)
+    setPlaylistWatchStatuses([])
     setPageRaw('playlist')
     mainRef.current?.scrollTo({ top: 0 })
   }
@@ -1968,9 +1980,11 @@ export default function App() {
   // The watch-status filter is per-page (History and a channel page keep their
   // own), so a preset reads and writes whichever one this page is showing.
   const pageWatch = page === 'history' ? historyWatchStatuses
-    : page === 'channel' ? channelWatchStatuses : watchStatuses
+    : page === 'channel' ? channelWatchStatuses
+    : page === 'playlist' ? playlistWatchStatuses : watchStatuses
   const setPageWatch = page === 'history' ? setHistoryWatchStatuses
-    : page === 'channel' ? setChannelWatchStatuses : setWatchStatuses
+    : page === 'channel' ? setChannelWatchStatuses
+    : page === 'playlist' ? setPlaylistWatchStatuses : setWatchStatuses
   // History has no "unwatched" chip — nothing on a list of what you've watched
   // can match it. A preset carrying it would otherwise put a filter in force
   // with no chip on screen to show it or turn it off.
@@ -2108,8 +2122,10 @@ export default function App() {
           summarisedOnly={summarisedOnly}
           onToggleSummarised={() => setSummarisedOnly(v => !v)}
           onToggleShowHidden={() => setShowHidden(v => !v)}
-          watchStatuses={page === 'history' ? historyWatchStatuses : page === 'channel' ? channelWatchStatuses : watchStatuses}
-          onToggleWatchStatus={page === 'history' ? toggleHistoryWatchStatus : page === 'channel' ? toggleChannelWatchStatus : toggleWatchStatus}
+          watchStatuses={pageWatch}
+          onToggleWatchStatus={page === 'history' ? toggleHistoryWatchStatus
+            : page === 'channel' ? toggleChannelWatchStatus
+            : page === 'playlist' ? togglePlaylistWatchStatus : toggleWatchStatus}
           watchStatusOptions={page === 'history' ? HISTORY_WATCH_OPTIONS : WATCH_STATUSES}
           filters={sidebarFilters}
           lengths={modeLengths}
@@ -2264,7 +2280,7 @@ export default function App() {
             onDeleted={() => setPage('playlists')}
             age={view.age}
             sort={view.sort}
-            watchStatuses={watchStatuses}
+            watchStatuses={playlistWatchStatuses}
             summarisedOnly={summarisedOnly}
             summarisedIds={summarisedIds}
             lengths={lengths}

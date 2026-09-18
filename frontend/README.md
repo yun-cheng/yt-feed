@@ -154,7 +154,7 @@ panel is empty.
   bare path; the `syncUrl` effect then `replaceState`s the full query once the
   state has settled. Nothing else has to know the param list.
 - Filters that reset on a fresh visit (a channel's watch status and topic label,
-  History's watch status) are cleared **by the navigation**, not by an effect on
+  History's and a playlist's watch status) are cleared **by the navigation**, not by an effect on
   `[page]`/`[channelId]` — an effect would also fire on a cold load and wipe the
   very value the URL just restored. A reload isn't a fresh visit.
 
@@ -250,8 +250,8 @@ there.
   `/api/tags/feed` and `/api/channels/{id}/videos`) so `total` and the paging stay
   honest. Watch Later, Imported and History are already-loaded lists, so they use
   `filterByWatchStatus` on the client.
-- **Watch Later and Imported share the global selection**; History and a channel
-  page each keep their own (see below).
+- **Watch Later and Imported share the global selection**; History, a channel
+  page and a playlist each keep their own (see below).
 - Selecting **every** status — or **none** — means "don't filter", matching both
   the tag filter and the backend, so an empty selection can't leave you staring
   at a blank page.
@@ -259,6 +259,9 @@ there.
   channel — you open one to see what it has, not what's left of it, and one
   channel's filter shouldn't follow you to the next. The sidebar swaps the global taxonomy for that
   channel's topic chips there, but the watch-status section stays.
+- **A playlist gets its own selection**, empty when you open one and cleared
+  by each `selectPlaylist`: a playlist is a set you chose whole, so the default
+  is all of it rather than the feed's unwatched-and-in-progress.
 - **History gets its own selection**, not the global one — which hides watched
   videos, backwards on a page whose whole job is listing what you've watched.
   `unwatched` can't match anything there either, so that chip isn't offered. The
