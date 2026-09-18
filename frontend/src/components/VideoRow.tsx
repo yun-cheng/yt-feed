@@ -82,7 +82,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
         {group.icon && <span className="text-lg">{group.icon}</span>}
         <h2 className="text-lg font-semibold text-white">{group.name}</h2>
         <span className="text-xs text-[#717171] ml-1">
-          {totalCount ?? group.videos.length} videos
+          {(() => { const n = totalCount ?? group.videos.length; return `${n} ${n === 1 ? 'video' : 'videos'}` })()}
         </span>
       </div>
 
