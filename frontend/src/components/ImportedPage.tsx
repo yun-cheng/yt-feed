@@ -8,6 +8,9 @@ type Props = {
   // How many are imported before that filter — tells "nothing imported yet"
   // apart from "nothing matches what you've selected".
   totalCount: number
+  // The search confined to this page ("In imported"), already applied to
+  // `videos`; here only to say why the list came back empty.
+  query?: string
   sort: string
   onChannelClick: (channelId: string) => void
   watchLaterIds: Set<string>
@@ -21,7 +24,7 @@ type Props = {
 
 export default function ImportedPage({
   videos, totalCount, sort, onChannelClick, watchLaterIds, onToggleWatchLater,
-  onDownload, downloadIds, onRemoveImported, onImport, progressById,
+  onDownload, downloadIds, onRemoveImported, onImport, progressById, query = '',
 }: Props) {
   if (totalCount === 0) {
     return (
@@ -40,7 +43,9 @@ export default function ImportedPage({
   if (videos.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
-        No imported videos match the current filters.
+        {query.trim()
+          ? `Nothing imported matches “${query.trim()}” with the current filters.`
+          : 'No imported videos match the current filters.'}
       </div>
     )
   }

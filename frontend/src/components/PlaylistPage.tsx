@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
-import { filterByTime, filterBySummarised, filterByWatchStatus, filterByLength, sortVideos } from '../App'
+import { filterByTime, filterBySummarised, filterByWatchStatus, filterByLength, filterByText, sortVideos } from '../App'
 import type { VideoItem, WatchProgress } from '../App'
 import type { TimeRange } from '../lib/timeWindow'
 
@@ -26,11 +26,13 @@ type Props = {
   /** Runtime buckets to keep; empty = no filter. Client-side here, the whole
    *  playlist being loaded already. */
   lengths?: string[]
+  /** The search confined to this playlist ("In this playlist"). */
+  q?: string
 }
 
 export default function PlaylistPage({
   playlistId, onChannelClick, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onDeleted, progressById,
-  age, sort = 'recent', watchStatuses = [], summarisedOnly = false, summarisedIds, lengths = [],
+  age, sort = 'recent', watchStatuses = [], summarisedOnly = false, summarisedIds, lengths = [], q = '',
 }: Props) {
   const [name, setName] = useState('')
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -106,8 +108,9 @@ export default function PlaylistPage({
     if (progressById) result = filterByWatchStatus(result, watchStatuses, progressById)
     if (summarisedIds) result = filterBySummarised(result, summarisedOnly, summarisedIds)
     result = filterByLength(result, lengths)
+    result = filterByText(result, q)
     return sortVideos(result, sort)
-  }, [videos, age, sort, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths])
+  }, [videos, age, sort, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths, q])
 
   const removeFromPlaylist = async (video: VideoItem) => {
     setVideos((prev) => prev.filter((v) => v.youtube_id !== video.youtube_id))  // optimistic
@@ -169,7 +172,9 @@ export default function PlaylistPage({
         </div>
       ) : shown.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
-          No videos in this playlist match the current filters.
+          {q.trim()
+            ? `Nothing in this playlist matches “${q.trim()}” with the current filters.`
+            : 'No videos in this playlist match the current filters.'}
         </div>
       ) : (
         <VideoRow

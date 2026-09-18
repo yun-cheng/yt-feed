@@ -126,7 +126,8 @@ panel is empty.
   (`age=0-3` is the feed's default but not a channel's, whose default is `0-30`).
 - `buildPath(state)` takes an object, not a positional list — there are ten
   fields now, and it's the one place that knows what a page's URL looks like.
-- `q` is written on **two** pages, and the page it sits on is what it means:
+- `q` is written on the search page, a channel page and every library page,
+  and the page it sits on is what it means:
   on `/search` it's the search, and on a channel page it's that same search
   **confined to the channel** — which is the channel page filtered by text.
   A `?q=` on a channel page therefore *is* the scope (there is nowhere else it
@@ -135,6 +136,18 @@ panel is empty.
   scope is on — rather than a control that renames itself to the channel: the
   name is already on the page, and a button whose words change is a different
   button.
+- The library pages — History, Watch Later, Downloads, Imported and a
+  playlist (`SEARCHABLE_PAGES`, which also holds each button's words: "In
+  history", "In this playlist", …) — have the same scope, and `?q=` on one of
+  them is it. They filter on the client (`filterByText`: every word, anywhere
+  in the title or channel name, case- and width-folded), since each already
+  holds its whole list; a channel page is paged, so its search runs on the
+  server. A search begun on one of them remembers where it came from
+  (`searchFrom`), so the results page still offers to confine it back. The
+  scope (`searchPage`) drops the moment you leave that page — an effect on
+  `[page]`, which is safe here because a cold load of `/history?q=` *is* that
+  page and has nothing to wipe — and opening another playlist drops it too.
+  Text left in the box without the scope on stays out of the page's URL.
 - `stateFromUrl()` is the inverse, and is used by **both** the cold load and
   `popstate`, so the two can't drift apart.
 - **Navigations only name their page.** `setPage` / `selectChannel` push the

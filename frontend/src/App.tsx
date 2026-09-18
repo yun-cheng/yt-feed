@@ -345,6 +345,19 @@ const USES_SUMMARISED = new Set(['feed', 'channel', 'watchlater', 'history', 'im
 // filter in SQL (LENGTH_BUCKETS in routers/tags.py), the rest client-side off
 // the duration every card already shows.
 const USES_LENGTH = new Set(['feed', 'channel', 'watchlater', 'history', 'imported', 'playlist'])
+/**
+ * The pages the search box can be confined to in place — every one that holds
+ * its whole list already, so it filters on the client under the page's own
+ * window, sort and sidebar filters. The value is the scope button's words.
+ * (A channel is scoped too, but it searches on the server; see searchChannel.)
+ */
+export const SEARCHABLE_PAGES: Partial<Record<Page, string>> = {
+  history: 'In history',
+  watchlater: 'In Watch Later',
+  downloads: 'In downloads',
+  imported: 'In imported',
+  playlist: 'In this playlist',
+}
 
 // What the sidebar should offer on a given page.
 //
@@ -448,9 +461,10 @@ export function buildPath(s: UrlState): string {
   if (USES_SUMMARISED.has(page) && s.summarised) params.set('summarised', '1')
   if (USES_LENGTH.has(page) && s.length?.length) params.set('length', s.length.join(','))
   // `q` on the search page is the search; on a channel page it's the search
-  // CONFINED to that channel, which is the channel page filtered by text. Same
-  // param either way — the page it sits on is what says which.
-  if ((page === 'search' || page === 'channel') && s.q) params.set('q', s.q)
+  // CONFINED to that channel, which is the channel page filtered by text, and
+  // on a library page (History, a playlist, …) it's that page filtered the
+  // same way. Same param every time — the page it sits on is what says which.
+  if ((page === 'search' || page === 'channel' || page in SEARCHABLE_PAGES) && s.q) params.set('q', s.q)
   const qs = params.toString()
 
   const path = page === 'feed' ? '/'
@@ -492,6 +506,8 @@ function stateFromUrl() {
     // A `?q=` on a channel page IS the scope — there's nowhere else it could be
     // confined to — so the URL never has to name the channel twice.
     inChannel: owns('channel') && q.q ? path.channelId : null,
+    // Likewise on a library page: a `?q=` there is a search of that list.
+    inPage: path.page in SEARCHABLE_PAGES && q.q ? path.page : null,
     tags: q.tags,
     contentMode: (q.shorts ? 'shorts' : 'videos') as 'videos' | 'shorts',
     showHidden: q.showHidden,
@@ -580,6 +596,27 @@ export function setTagState(selected: string[], tag: string, exclude: boolean): 
   return selected.includes(other)
     ? selected.map(t => (t === other ? entry : t))
     : [...selected, entry]
+}
+
+/**
+ * Narrow a loaded list to videos whose title or channel name holds every word
+ * of the query — the client-side half of a scoped search, for the pages that
+ * hold their whole list already (see SEARCHABLE_PAGES). A channel page is
+ * paged from the server, so its search runs there.
+ *
+ * Every word, in any order and anywhere: "piano jazz" finds "Jazz Piano
+ * Lessons". Case and width are folded (NFKC), so a full-width query finds a
+ * half-width title. The channel name counts because in a list you built you
+ * remember who as often as what.
+ */
+export function filterByText<T extends { title: string; channel_name?: string }>(videos: T[], q: string): T[] {
+  const fold = (t: string) => t.normalize('NFKC').toLowerCase()
+  const words = fold(q).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return videos
+  return videos.filter(v => {
+    const hay = fold(`${v.title} ${v.channel_name ?? ''}`)
+    return words.every(w => hay.includes(w))
+  })
 }
 
 /** Narrow a loaded list to videos that have a finished summary.
@@ -696,6 +733,16 @@ export default function App() {
   // channel's own page — so the window, the sort, the topic chips and the watch
   // statuses all go on applying, which a results page of its own could not do.
   const [searchChannel, setSearchChannel] = useState<string | null>(init.inChannel)
+  // The other scope: the search confined to a library page (SEARCHABLE_PAGES).
+  // Same idea — the box filters that page in place, under its window, sort and
+  // filters. Holds the page it's confined to, null when unconfined.
+  const [searchPage, setSearchPage] = useState<Page | null>(init.inPage)
+  // Either scope: the box is filtering the page you're on, not searching.
+  const searchScoped = !!searchChannel || !!searchPage
+  // The page a search was started from, so the results page can still offer to
+  // confine it back there (a library page has no id to outlive the trip the
+  // way a channel's selectedChannelId does; a playlist's id does survive it).
+  const [searchFrom, setSearchFrom] = useState<Page | null>(null)
   // True once we've pushed a /search history entry, so clearing the box can go
   // back() to the page (and its state) we were on before searching.
   const searchPushedRef = useRef(false)
@@ -1195,6 +1242,7 @@ export default function App() {
       setPageRaw(s.page)
       setSearchInput(s.q)
       setSearchChannel(s.inChannel)
+      setSearchPage(s.inPage)
       setSelectedChannelId(s.channelId)
       setSelectedPlaylistId(s.playlistId)
       setLocalFolderId(s.localFolderId)
@@ -1335,16 +1383,18 @@ export default function App() {
     const byTime = filterByTime(byMode, views.history.age, v => v.watched_at)
     const byStatus = filterByWatchStatus(byTime, historyWatchStatuses, progressById)
     const byTag = filterByTags(byStatus, selectedTags, tags, tagChannels)
-    return filterByLength(filterBySummarised(byTag, summarisedOnly, summarisedIds), modeLengths)
+    const byLength = filterByLength(filterBySummarised(byTag, summarisedOnly, summarisedIds), modeLengths)
+    return searchPage === 'history' ? filterByText(byLength, searchInput) : byLength
   }, [watchHistory, contentMode, views.history.age, selectedTags, tags, tagChannels,
-    historyWatchStatuses, progressById, summarisedOnly, summarisedIds, modeLengths])
+    historyWatchStatuses, progressById, summarisedOnly, summarisedIds, modeLengths,
+    searchPage, searchInput])
 
   // Imported videos take the global watch-status filter, like Watch Later, and
   // window by when they were imported. Tags don't apply — these come from
   // channels you don't follow, so none of them are tagged — and neither does the
   // Videos/Shorts toggle: it's one flat list.
   const visibleImported = useMemo(
-    () => filterByLength(
+    () => filterByText(filterByLength(
       filterBySummarised(
         filterByWatchStatus(
           filterByTime(imported, views.imported.age, v => v.created_at),
@@ -1353,15 +1403,22 @@ export default function App() {
         summarisedOnly, summarisedIds,
       ),
       lengths,
-    ),
-    [imported, views.imported.age, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths],
+    ), searchPage === 'imported' ? searchInput : ''),
+    [imported, views.imported.age, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths,
+      searchPage, searchInput],
   )
 
   // Downloads window by when the file was fetched. No watch-status or tag
   // filter here: the page is the shelf of what's on disk.
   const visibleDownloads = useMemo(
-    () => sortVideos(filterByTime(downloads, views.downloads.age, d => d.created_at), views.downloads.sort),
-    [downloads, views.downloads],
+    () => sortVideos(
+      filterByText(
+        filterByTime(downloads, views.downloads.age, d => d.created_at),
+        searchPage === 'downloads' ? searchInput : '',
+      ),
+      views.downloads.sort,
+    ),
+    [downloads, views.downloads, searchPage, searchInput],
   )
 
   // ── URL sync (continued) ──────────────────────────────
@@ -1382,10 +1439,12 @@ export default function App() {
     showHidden,
     summarised: summarisedOnly,
     length: lengths,
-    q: searchInput,
+    // Leftover text on a library page is just text until the scope is on;
+    // writing it anyway would turn it into a search on the next reload.
+    q: page in SEARCHABLE_PAGES && searchPage !== page ? '' : searchInput,
   }), [page, selectedChannelId, selectedPlaylistId, selectedTags, view, contentMode,
     watchStatuses, channelWatchStatuses, historyWatchStatuses, selectedLabel, showHidden,
-    summarisedOnly, lengths, searchInput])
+    summarisedOnly, lengths, searchInput, searchPage])
 
   // replaceState for reactive filter changes (tags, window, sort, …) — no new history entry
   const syncUrl = useCallback(() => {
@@ -1579,8 +1638,9 @@ export default function App() {
     setSelectedPlaylistId(null)
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
-    // A scope belongs to the channel you set it from; walking away drops it.
+    // A scope belongs to the page you set it from; walking away drops it.
     setSearchChannel(null)
+    setSearchPage(null)
     if (p !== 'channel') {
       setSelectedChannelId(null)
       setSelectedLabel(null)
@@ -1599,7 +1659,7 @@ export default function App() {
     // Confined to a channel: the box filters the page you're already on, and
     // the URL picks the text up through the ordinary filter sync. Clearing it
     // unfilters that page rather than ending a search session.
-    if (searchChannel) return
+    if (searchScoped) return
     if (!q.trim()) {
       // Cleared the box.
       if (searchPushedRef.current) {
@@ -1623,21 +1683,23 @@ export default function App() {
       // page when the box is cleared. The ref guards against a second push if
       // several keystrokes land before the re-render.
       searchPushedRef.current = true
+      setSearchFrom(page)
       history.pushState(null, '', buildPath({ page: 'search', q }))
       setPageRaw('search')
       return
     }
     history.replaceState(null, '', buildPath({ page: 'search', q }))
-  }, [searchChannel])
+  }, [searchScoped, page])
 
   // Refocusing the box while it still holds a query returns to the results page
   // (the query now persists across navigation, so the text can outlive /search).
   const onSearchFocus = useCallback(() => {
-    if (!searchInput.trim() || page === 'search' || searchChannel) return
+    if (!searchInput.trim() || page === 'search' || searchScoped) return
     searchPushedRef.current = true
+    setSearchFrom(page)
     history.pushState(null, '', buildPath({ page: 'search', q: searchInput }))
     setPageRaw('search')
-  }, [searchInput, page, searchChannel])
+  }, [searchInput, page, searchScoped])
 
   // Leaving the search page by any route (nav, channel open, browser back) ends
   // the search session, so the next search pushes a fresh returnable entry.
@@ -1675,6 +1737,33 @@ export default function App() {
     setPageRaw('search')
   }, [searchInput])
 
+  /** Confine the search to a library page — that page itself, filtered, so its
+   *  window, sort and sidebar filters go on applying. From the results page
+   *  this walks back to the page carrying the query, as the channel scope
+   *  walks back to the channel. */
+  const scopeSearchToPage = useCallback((target: Page) => {
+    setSearchPage(target)
+    if (page !== target) {
+      searchPushedRef.current = false
+      history.pushState(null, '', buildPath({
+        page: target, playlistId: selectedPlaylistId, q: searchInput, tags: selectedTags,
+      }))
+      setPageRaw(target)
+      mainRef.current?.scrollTo({ top: 0 })
+    }
+  }, [searchInput, page, selectedTags, selectedPlaylistId])
+
+  /** Widen back out to everything you follow, keeping the query. */
+  const clearPageScope = useCallback(() => {
+    const from = searchPage
+    setSearchPage(null)
+    if (!searchInput.trim()) return
+    searchPushedRef.current = true
+    setSearchFrom(from)
+    history.pushState(null, '', buildPath({ page: 'search', q: searchInput }))
+    setPageRaw('search')
+  }, [searchInput, searchPage])
+
   // The channel page refetches whenever its query changes, so let typing settle
   // first — the same pause the results page takes before it searches.
   const [scopedQuery, setScopedQuery] = useState(searchInput)
@@ -1682,6 +1771,23 @@ export default function App() {
     const id = setTimeout(() => setScopedQuery(searchInput), 200)
     return () => clearTimeout(id)
   }, [searchInput])
+
+  // A library-page scope IS that page filtered, so any road off the page — a
+  // channel link on a card, the sidebar, back — leaves it behind. Otherwise the
+  // box would go on "filtering" a page that isn't there and typing would do
+  // nothing at all.
+  useEffect(() => {
+    setSearchPage(sp => (sp && sp !== page ? null : sp))
+  }, [page])
+
+  // The library page a scope would confine to: the one on screen, or the one a
+  // results page was reached from by typing there. A playlist needs its id to
+  // still be in hand to go back to.
+  const scopablePage: Page | null =
+    page in SEARCHABLE_PAGES ? page
+    : page === 'search' && searchFrom && searchFrom in SEARCHABLE_PAGES
+      && (searchFrom !== 'playlist' || selectedPlaylistId != null) ? searchFrom
+    : null
 
   // Is a search narrowing the channel page right now? Relevance is only on
   // offer while one is — it's Meilisearch's order for the query's hits.
@@ -1777,6 +1883,7 @@ export default function App() {
   function selectPlaylist(id: number) {
     history.pushState(null, '', `/playlist/${id}`)
     setSelectedPlaylistId(id)
+    setSearchPage(null)
     setPageRaw('playlist')
     mainRef.current?.scrollTo({ top: 0 })
   }
@@ -2028,14 +2135,19 @@ export default function App() {
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
           searching={searchingChannel}
-          scoped={!!searchChannel}
+          scoped={searchScoped}
+          scopeLabel={scopablePage ? SEARCHABLE_PAGES[scopablePage] : 'In this channel'}
           onScopeToggle={
             // Offered wherever a channel is the thing you're looking at: its own
             // page, and the search you opened from it (selectedChannelId outlives
             // that navigation, so the button follows you into the results).
-            selectedChannelId && (page === 'channel' || page === 'search')
-              ? (searchChannel ? clearSearchScope : scopeSearchToChannel)
-              : undefined
+            // A library page gets the same button, on itself and on a search
+            // begun there.
+            scopablePage
+              ? (searchPage ? clearPageScope : () => scopeSearchToPage(scopablePage))
+              : selectedChannelId && (page === 'channel' || page === 'search')
+                ? (searchChannel ? clearSearchScope : scopeSearchToChannel)
+                : undefined
           }
           age={USES_WINDOW.has(page) ? view.age : undefined}
           onAgeChange={setAge}
@@ -2120,11 +2232,13 @@ export default function App() {
             summarisedOnly={summarisedOnly}
             summarisedIds={summarisedIds}
             lengths={lengths}
+            q={searchPage === 'playlist' ? searchInput : ''}
           />
         ) : page === 'history' ? (
           <HistoryPage
             history={visibleHistory}
             totalCount={watchHistory.length}
+            query={searchPage === 'history' ? searchInput : ''}
             sort={view.sort}
             progressById={progressById}
             onChannelClick={selectChannel}
@@ -2138,6 +2252,7 @@ export default function App() {
           <ImportedPage
             videos={visibleImported}
             totalCount={imported.length}
+            query={searchPage === 'imported' ? searchInput : ''}
             sort={view.sort}
             onChannelClick={selectChannel}
             watchLaterIds={watchLaterIds}
@@ -2169,6 +2284,7 @@ export default function App() {
           <DownloadsPage
             downloads={visibleDownloads}
             totalCount={downloads.length}
+            query={searchPage === 'downloads' ? searchInput : ''}
             onDelete={deleteDownload}
             onRetry={startDownload}
           />
@@ -2189,10 +2305,14 @@ export default function App() {
               result = filterByWatchStatus(result, watchStatuses, progressById)
               result = filterBySummarised(result, summarisedOnly, summarisedIds)
               result = filterByLength(result, lengths)
+              const wlQuery = searchPage === 'watchlater' ? searchInput.trim() : ''
+              result = filterByText(result, wlQuery)
               result = sortVideos(result, view.sort)
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
-                  No saved videos match the current filters.
+                  {wlQuery
+                    ? `Nothing saved matches “${wlQuery}” with the current filters.`
+                    : 'No saved videos match the current filters.'}
                 </div>
               ) : (
                 <VideoRow

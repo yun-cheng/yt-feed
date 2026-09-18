@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { filterByTime, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt, watchStatusOf, filterByWatchStatus, loadWatchStatuses, lengthOf, filterByLength, WATCH_STATUSES, DEFAULT_WATCH_STATUSES, VIDEO_LENGTHS } from '../App'
+import { filterByTime, filterByText, filterBySummarised, filterByTags, setTagState, isExcluded, tagName, sortVideos, buildPath, pageFilters, parseStartAt, watchStatusOf, filterByWatchStatus, loadWatchStatuses, lengthOf, filterByLength, WATCH_STATUSES, DEFAULT_WATCH_STATUSES, VIDEO_LENGTHS } from '../App'
 import type { TagInfo } from '../App'
 import type { VideoItem, WatchProgress } from '../App'
 
@@ -224,7 +224,43 @@ describe('buildPath', () => {
   it('carries a query on the search page and on a channel page', () => {
     expect(buildPath({ page: 'channel', channelId: 'UC1', q: 'jazz' })).toBe('/channel/UC1?q=jazz')
     expect(buildPath({ page: 'feed', q: 'jazz' })).toBe('/')
-    expect(buildPath({ page: 'watchlater', q: 'jazz' })).toBe('/watchlater')
+    expect(buildPath({ page: 'settings', q: 'jazz' })).toBe('/settings')
+  })
+
+  // A library page's search is that page filtered by text, the same arrangement.
+  it('carries a query on every library page', () => {
+    expect(buildPath({ page: 'history', q: 'jazz' })).toBe('/history?q=jazz')
+    expect(buildPath({ page: 'watchlater', q: 'jazz' })).toBe('/watchlater?q=jazz')
+    expect(buildPath({ page: 'downloads', q: 'jazz' })).toBe('/downloads?q=jazz')
+    expect(buildPath({ page: 'imported', q: 'jazz' })).toBe('/imported?q=jazz')
+    expect(buildPath({ page: 'playlist', playlistId: 3, q: 'jazz' })).toBe('/playlist/3?q=jazz')
+    expect(buildPath({ page: 'playlists', q: 'jazz' })).toBe('/playlists')
+  })
+})
+
+// ── filterByText ─────────────────────────────────────────────
+
+describe('filterByText', () => {
+  const a = makeVideo({ youtube_id: 'a', title: 'Jazz Piano Lessons', channel_name: 'Keys Club' })
+  const b = makeVideo({ youtube_id: 'b', title: 'Rock guitar', channel_name: 'Riffs' })
+
+  it('keeps everything for an empty or blank query', () => {
+    expect(filterByText([a, b], '')).toHaveLength(2)
+    expect(filterByText([a, b], '   ')).toHaveLength(2)
+  })
+
+  it('needs every word, in any order, ignoring case', () => {
+    expect(filterByText([a, b], 'piano JAZZ').map(v => v.youtube_id)).toEqual(['a'])
+    expect(filterByText([a, b], 'piano rock')).toHaveLength(0)
+  })
+
+  it('matches the channel name as well as the title', () => {
+    expect(filterByText([a, b], 'riffs').map(v => v.youtube_id)).toEqual(['b'])
+    expect(filterByText([a, b], 'keys lessons').map(v => v.youtube_id)).toEqual(['a'])
+  })
+
+  it('folds full-width text to half-width', () => {
+    expect(filterByText([a, b], 'ＪＡＺＺ').map(v => v.youtube_id)).toEqual(['a'])
   })
 })
 

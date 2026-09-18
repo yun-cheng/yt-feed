@@ -94,6 +94,10 @@ real video (muted, with custom captions and scrubbing).
 - **Watch history** — every video remembers where you stopped: revisiting resumes
   from that timestamp, cards show a red progress bar before you hover, and finished
   videos get a "Watched" badge. All of it on its own History page
+- **Search in a list** — on History, Watch Later, Downloads, Imported or a
+  playlist, the search box's "In history" / "In this playlist" / … button turns
+  it into a filter for that page, by title or channel name, alongside the page's
+  window, sort and sidebar filters, the way "In this channel" works on a channel page
 - **Watch status filter** — a sidebar section for unwatched / in progress / watched;
   the home feed excludes watched by default, so it's about what you haven't seen
 - **Imported videos** — paste any YouTube link to add a one-off video from a

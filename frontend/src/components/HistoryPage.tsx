@@ -17,11 +17,14 @@ type Props = {
   onDownload: (video: VideoItem) => void
   downloadIds: Set<string>
   onRemoveHistory: (video: VideoItem) => void
+  // The search confined to History ("In history"), already applied to
+  // `history`; here only to say why the list came back empty.
+  query?: string
 }
 
 export default function HistoryPage({
   history, totalCount, sort, progressById, onChannelClick, watchLaterIds,
-  onToggleWatchLater, onDownload, downloadIds, onRemoveHistory,
+  onToggleWatchLater, onDownload, downloadIds, onRemoveHistory, query = '',
 }: Props) {
   if (totalCount === 0) {
     return (
@@ -38,7 +41,9 @@ export default function HistoryPage({
   if (history.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
-        No watched videos match the current filters.
+        {query.trim()
+          ? `Nothing you've watched matches “${query.trim()}” with the current filters.`
+          : 'No watched videos match the current filters.'}
       </div>
     )
   }

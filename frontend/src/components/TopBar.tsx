@@ -23,6 +23,8 @@ type Props = {
   // only when there IS such a channel; `scoped` is whether it's on.
   scoped?: boolean
   onScopeToggle?: () => void
+  // What the scope is — "In this channel", "In history".
+  scopeLabel?: string
   // Passed through to the sort row: a search is narrowing the page, so it can
   // offer to order by relevance.
   searching?: boolean
@@ -30,7 +32,7 @@ type Props = {
   onImport?: () => void
 }
 
-export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, scoped = false, onScopeToggle, searching, onImport }: Props) {
+export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, scoped = false, onScopeToggle, scopeLabel = 'In this channel', searching, onImport }: Props) {
   // Search, playlists, local folders and settings show no bar at all: their
   // order is the library's own and there's nothing to window. Every other page
   // gets its own sort buttons, and the slider only if a window came with them.
@@ -82,8 +84,8 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               <button
                 onClick={onScopeToggle}
                 aria-pressed={scoped}
-                aria-label="Search only this channel"
-                title="Search only this channel"
+                aria-label={`Search only ${scopeLabel.replace(/^In /, '')}`}
+                title={`Search only ${scopeLabel.replace(/^In /, '')}`}
                 className={`flex items-center gap-1 mr-1 pl-1.5 pr-2 py-0.5 rounded-full text-xs transition-colors flex-shrink-0 ${
                   scoped
                     ? 'bg-white text-black font-medium'
@@ -97,7 +99,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                In this channel
+                {scopeLabel}
               </button>
             )}
             {searchQuery ? (

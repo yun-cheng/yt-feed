@@ -9,6 +9,9 @@ type Props = {
   // How many are on disk before that — tells "nothing downloaded yet" apart
   // from "nothing matches the window you've picked".
   totalCount: number
+  // The search confined to this page ("In downloads"), already applied to
+  // `downloads`; here only to say why the list came back empty.
+  query?: string
   onDelete: (videoId: string) => void
   onRetry: (d: DownloadItem) => void
 }
@@ -31,7 +34,7 @@ function toVideoItem(d: DownloadItem): VideoItem {
   }
 }
 
-export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry }: Props) {
+export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry, query = '' }: Props) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   // The whole downloaded file, loaded into memory as a blob URL, so the hover
   // preview seeks entirely offline — no per-jump range fetch that a lost network
@@ -76,7 +79,9 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
     return (
       <div className="px-6 py-4">
         <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
-          No downloads match the current filters.
+          {query.trim()
+            ? `No download matches “${query.trim()}” with the current filters.`
+            : 'No downloads match the current filters.'}
         </div>
       </div>
     )
