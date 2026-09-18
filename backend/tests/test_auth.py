@@ -1,5 +1,7 @@
 """Signing in — who is admitted, which row they land on, and how they're read back."""
 
+import json
+
 import pytest
 from sqlalchemy import func, select
 
@@ -250,3 +252,36 @@ async def test_the_key_endpoint_returns_the_callers_own(client, db):
 
 async def test_nobody_gets_a_key_without_an_account(client):
     assert (await client.get("/api/auth/api-key")).status_code == 401
+
+
+# ── The saved YouTube token ──────────────────────────────────────────
+
+
+def test_a_saved_token_keeps_the_scopes_it_was_granted(tmp_path, monkeypatch):
+    """A token file written before the identity scopes existed must refresh with
+    the ONE scope it was granted.
+
+    Passing today's SCOPES here instead would make the refresh ask Google for
+    more than the grant covers, and Google answers `invalid_scope` — which reads
+    as a dead token. It cost a month of subscriptions: the scan has its own,
+    narrower scope list and kept working, so nothing said the daily resync had
+    stopped and a channel followed on YouTube never arrived here.
+    """
+    path = tmp_path / "youtube_oauth_token.json"
+    granted = ["https://www.googleapis.com/auth/youtube.readonly"]
+    path.write_text(json.dumps({
+        "token": "the-short-lived-half",
+        "refresh_token": "the-durable-half",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": "client-id",
+        "client_secret": "client-secret",
+        "scopes": granted,
+    }))
+    monkeypatch.setattr(auth_google, "TOKEN_PATH", str(path))
+
+    assert auth_google._get_token().scopes == granted
+
+
+def test_no_token_file_is_nobody_rather_than_a_crash(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth_google, "TOKEN_PATH", str(tmp_path / "nope.json"))
+    assert auth_google._get_token() is None

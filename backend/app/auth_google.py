@@ -66,10 +66,22 @@ _pending_verifiers: dict[str, str] = {}
 
 
 def _get_token() -> Credentials | None:
-    """Load the saved OAuth token written by the in-app login flow."""
+    """Load the saved OAuth token written by the in-app login flow.
+
+    Deliberately WITHOUT passing SCOPES. A saved token records what was actually
+    granted, and a refresh asks for exactly that; stamping today's SCOPES onto a
+    file written before the identity scopes were added makes the refresh ask for
+    more than the grant covers, and Google answers `invalid_scope` — a dead token
+    that isn't dead. The scan kept working through it (youtube_api.py asks for
+    the one scope it uses), so the only visible symptom was the daily resync
+    quietly failing and new subscriptions never arriving.
+
+    Re-authenticating writes the wider scopes into the file, which is the only
+    thing that should ever widen them.
+    """
     try:
         with open(TOKEN_PATH) as f:
-            return Credentials.from_authorized_user_info(json.load(f), SCOPES)
+            return Credentials.from_authorized_user_info(json.load(f))
     except (FileNotFoundError, ValueError):
         return None
 

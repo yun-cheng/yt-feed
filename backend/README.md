@@ -269,6 +269,18 @@ Four things make it safe to run unattended:
   its videos only follow it when nobody else here holds them
   (`users.orphaned_channel_ids`).
 
+**Its failures are quiet, so know the one that bit.** `auth_google._get_token()`
+loads the saved token with the scopes *recorded in the file*, never today's
+`SCOPES`. The file says what Google actually granted, and a refresh asks for
+exactly that; stamping the wider list onto a token granted before the identity
+scopes existed makes the refresh ask for more than the grant covers, and Google
+answers `invalid_scope` — a live token that reads as a dead one. It went a month
+unnoticed (2026-08-09 to 2026-09-11): the scan refreshes through `youtube_api.py`,
+which asks for the one scope it uses, so new videos kept arriving while new
+subscriptions never did. If channels you followed on YouTube aren't showing up,
+check `last_resync_at` first. Re-authenticating is the only thing that should
+widen a token's scopes.
+
 What it deliberately does **not** touch: `last_video_fetched`, `llm_labels`,
 `video_label_vocab`, or the tags of channels you're still subscribed to.
 `import_subscriptions` updates existing rows field-by-field rather than
@@ -1944,7 +1956,7 @@ no per-test decorator). What's covered:
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |
-| `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, and the whole sign-in end to end against a stubbed Google |
+| `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, the whole sign-in end to end against a stubbed Google, and a saved YouTube token keeping the scopes it was granted rather than today's wider list (plus no token file being nobody, not a crash) |
 | `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
 | `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account, and the three guards around the single YouTube token |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
