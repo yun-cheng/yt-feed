@@ -63,6 +63,28 @@ async def test_writing_an_unknown_setting_is_a_400(client):
 
 
 @pytest.mark.asyncio
+async def test_page_defaults_round_trip_as_an_object(client):
+    """Stored as JSON text, served back as the object that was written."""
+    value = {"feed": {"age": "0-7", "sort": "score"}, "history": {"watch": ["watched"]}}
+    res = await client.put("/api/settings", json={"values": {"page_defaults": value}})
+    assert res.status_code == 200
+    assert (await client.get("/api/settings")).json()["values"]["page_defaults"] == value
+
+
+@pytest.mark.asyncio
+async def test_page_defaults_start_empty(client):
+    """Nothing overridden: every page follows the frontend's built-in table."""
+    assert (await client.get("/api/settings")).json()["values"]["page_defaults"] == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [[], "feed", {"feed": "newest"}])
+async def test_page_defaults_of_the_wrong_shape_are_a_400(client, bad):
+    res = await client.put("/api/settings", json={"values": {"page_defaults": bad}})
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_the_fill_does_nothing_while_the_setting_is_off():
     from app import archive
 

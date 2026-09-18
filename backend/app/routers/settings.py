@@ -32,10 +32,11 @@ async def read_settings(user: User | None = Depends(auth.user_or_sole)):
 async def write_settings(
     body: SettingsUpdate, user: User | None = Depends(auth.user_or_sole)
 ):
-    """Partial update. An unknown key is a 400, not a silent no-op."""
+    """Partial update. An unknown key or a malformed value is a 400, not a
+    silent no-op."""
     try:
         values = await app_settings.put(body.values, user.id if user else None)
-    except KeyError as e:
+    except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e)) from None
     except PermissionError as e:
         raise HTTPException(401, str(e)) from None

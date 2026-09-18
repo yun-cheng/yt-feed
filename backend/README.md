@@ -1760,7 +1760,14 @@ and no frontend change. Defaults are lazy callables, which is what lets an
 `.env` value act as a bootstrap default without becoming a second source of
 truth: it seeds the first read and is ignored once a value is stored.
 
-Two settings so far, one of each scope. `archive_fill_enabled` (the nightly
+`page_defaults` is **`user`** too: what each page opens on (window, sort,
+watch filter), as a JSON object of only the fields you changed. The frontend
+owns that vocabulary, which pages exist and which sorts each one offers, so the
+backend checks only the shape (an object of objects, else a 400) and stores the
+object as JSON text. Its `type` is its own name, because the page renders a
+purpose-built editor for it rather than a generic control.
+
+The two switches are one of each scope. `archive_fill_enabled` (the nightly
 history fill) is **`app`**: one sweep spends a daily API quota billed to a single
 Cloud project, so a per-person copy would let whoever flipped it last commit
 everybody's allowance. `youtube_history_sync` (whether the extension records what
@@ -1932,7 +1939,7 @@ no per-test decorator). What's covered:
 | File | Covers |
 |------|--------|
 | `test_generated_captions.py` | local transcription as a JOB: the ramping windows, the seam taken from Whisper rather than the window we asked for, a silent window still advancing, resuming a job a restart killed, the repetition-loop filter, and that a finished track reaches every reader of captions while a half-finished one reaches none. Plus the line treatment: Simplified converted to Traditional (and idempotent, and a no-op on English), long segments cut at punctuation against the column budget, short ones left exactly as they are, and the fallback that shares a span out by length when there is no word timing |
-| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, and that turning the fill off stops a sweep mid-flight |
+| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, and that turning the fill off stops a sweep mid-flight |
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |

@@ -298,7 +298,20 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
     mine, *_ = pair
     spec = {s["key"]: s["scope"]
             for s in (await client.get("/api/settings", headers=mine)).json()["settings"]}
-    assert spec == {"archive_fill_enabled": "app", "youtube_history_sync": "user"}
+    assert spec == {"archive_fill_enabled": "app", "youtube_history_sync": "user",
+                    "page_defaults": "user"}
+
+
+async def test_page_defaults_are_personal(client, pair):
+    """What the feed opens on is a taste, not a household rule."""
+    mine, theirs, *_ = pair
+    await client.put("/api/settings", headers=mine,
+                     json={"values": {"page_defaults": {"feed": {"sort": "newest"}}}})
+
+    assert (await client.get("/api/settings", headers=mine)
+            ).json()["values"]["page_defaults"] == {"feed": {"sort": "newest"}}
+    assert (await client.get("/api/settings", headers=theirs)
+            ).json()["values"]["page_defaults"] == {}
 
 
 # ── The extension's endpoint ─────────────────────────────────────────

@@ -22,6 +22,7 @@ flipped it last commit everybody's allowance.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -35,7 +36,9 @@ from app.models import AppSetting, UserSetting
 @dataclass(frozen=True)
 class Spec:
     key: str
-    type: str  # "bool" — more as they're needed; the UI switches on this
+    # "bool", or "page_defaults" (a JSON object — see that entry). The UI
+    # switches on this to pick the control.
+    type: str
     default: Callable[[], Any]
     label: str
     description: str
@@ -92,7 +95,26 @@ SPEC: tuple[Spec, ...] = (
         ),
         group="Library",
     ),
+    Spec(
+        key="page_defaults",
+        # A JSON object of page -> {age, sort, watch}, holding only what you
+        # changed; anything absent follows the built-in table in the frontend's
+        # lib/pageDefaults.ts. The frontend owns the vocabulary (which pages,
+        # which sorts), so this side only checks the shape and stores it.
+        type="page_defaults",
+        default=lambda: {},
+        scope="user",
+        label="What each page opens on",
+        description=(
+            "The time window, sort and watch filter a page starts with. "
+            "Changing them on the page itself still lasts only for that visit."
+        ),
+        group="Pages",
+    ),
 )
+
+# Types stored as JSON text rather than as a flag.
+_JSON_TYPES = {"page_defaults"}
 
 _BY_KEY = {s.key: s for s in SPEC}
 
@@ -100,13 +122,31 @@ _BY_KEY = {s.key: s for s in SPEC}
 def _decode(spec: Spec, raw: str) -> Any:
     if spec.type == "bool":
         return raw == "1"
+    if spec.type in _JSON_TYPES:
+        # A row that no longer parses reads as the default rather than
+        # breaking the settings page it would be shown on.
+        try:
+            return json.loads(raw)
+        except ValueError:
+            return spec.default()
     return raw
 
 
 def _encode(spec: Spec, value: Any) -> str:
     if spec.type == "bool":
         return "1" if value else "0"
+    if spec.type in _JSON_TYPES:
+        return json.dumps(value, separators=(",", ":"))
     return str(value)
+
+
+def _check(spec: Spec, value: Any) -> None:
+    """Refuse a value of the wrong shape before it's stored."""
+    if spec.type == "page_defaults":
+        if not isinstance(value, dict) or not all(
+            isinstance(v, dict) for v in value.values()
+        ):
+            raise ValueError(f"{spec.key} must be an object of objects")
 
 
 async def _read(session, spec: Spec, user_id: int | None):
@@ -162,10 +202,14 @@ async def all_values(user_id: int | None = None) -> dict[str, Any]:
 
 
 async def put(updates: dict[str, Any], user_id: int | None = None) -> dict[str, Any]:
-    """Store some settings. Unknown keys raise rather than being swallowed."""
+    """Store some settings. Unknown keys raise KeyError and a value of the
+    wrong shape ValueError, rather than either being swallowed."""
     unknown = set(updates) - set(_BY_KEY)
     if unknown:
         raise KeyError(f"unknown setting(s): {', '.join(sorted(unknown))}")
+
+    for key, value in updates.items():
+        _check(_BY_KEY[key], value)
 
     needs_user = [k for k in updates if _BY_KEY[k].scope == "user"]
     if needs_user and user_id is None:
