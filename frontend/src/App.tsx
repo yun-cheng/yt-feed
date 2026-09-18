@@ -1631,6 +1631,7 @@ export default function App() {
   // ── Actions ───────────────────────────────────────────
   // pushState for explicit navigations (page/channel changes create a history entry)
   const setPage = useCallback((p: 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'playlists' | 'imported' | 'history' | 'local' | 'settings') => {
+    if (p !== page) leavePresetRef.current()
     // Push the bare page path; the URL-sync effect appends that page's filters
     // (replaceState) once the state below has settled.
     history.pushState(null, '', buildPath({ page: p, channelId: selectedChannelId, tags: selectedTags }))
@@ -1651,7 +1652,7 @@ export default function App() {
     if (p === 'history') setHistoryWatchStatuses([])
     if (p === 'local') { setLocalFolderId(null); setSelectedLocalVideoId(null) }
     if (p !== 'feed') setMobileMenuOpen(false)
-  }, [selectedChannelId, selectedTags])
+  }, [selectedChannelId, selectedTags, page])
 
   // Search box: typing routes to the /search page; the URL tracks the query.
   const onSearchChange = useCallback((q: string) => {
@@ -1852,6 +1853,7 @@ export default function App() {
   }
 
   function selectChannel(channelId: string) {
+    leavePresetRef.current()
     history.pushState(null, '', buildPath({ page: 'channel', channelId, tags: selectedTags }))
     setSelectedChannelId(channelId)
     setSearchChannel(null)
@@ -1881,6 +1883,7 @@ export default function App() {
   }
 
   function selectPlaylist(id: number) {
+    leavePresetRef.current()
     history.pushState(null, '', `/playlist/${id}`)
     setSelectedPlaylistId(id)
     setSearchPage(null)
@@ -1998,9 +2001,33 @@ export default function App() {
     return hit?.id ?? null
   }, [presets, liveFilters, sidebarFilters, watchValues])
 
-  const applyPreset = useCallback((p: Preset) => {
-    if (sidebarFilters.tags) setSelectedTags(p.filters.tags)
+  // Takes a preset off: every section it set goes back to this page's
+  // default. Sections it has nothing to say about (a null watch or length) are
+  // left as they are, as when applying.
+  const takeOffPreset = useCallback((p: Preset) => {
     const wearable = forPage(p.filters, watchValues)
+    if (sidebarFilters.tags) setSelectedTags([])
+    if (sidebarFilters.watchStatus && wearable.watch) setPageWatch(defaultsFor(page).watch)
+    if (sidebarFilters.summarised) setSummarisedOnly(false)
+    if (sidebarFilters.contentMode && p.filters.shorts) setContentMode('videos')
+    if (sidebarFilters.hidden) setShowHidden(false)
+    if (sidebarFilters.length && p.filters.length) setLengths([])
+  }, [sidebarFilters, setPageWatch, watchValues, page])
+
+  // A preset belongs to the page it was put on. The filters it sets are shared
+  // across pages, so without this one applied on the feed would still be in
+  // force on Watch Later. `setPage` is declared above all this, hence the ref.
+  const leavePresetRef = useRef<() => void>(() => {})
+  leavePresetRef.current = () => {
+    const on = presets.find(p => p.id === activePresetId)
+    if (on) takeOffPreset(on)
+  }
+
+  const applyPreset = useCallback((p: Preset) => {
+    // A second click on the preset that's on takes it off.
+    if (p.id === activePresetId) { takeOffPreset(p); return }
+    const wearable = forPage(p.filters, watchValues)
+    if (sidebarFilters.tags) setSelectedTags(p.filters.tags)
     // A null watch list is "this preset says nothing about the statuses",
     // which is not the same as clearing them — see lib/presets.ts.
     if (sidebarFilters.watchStatus && wearable.watch) setPageWatch(wearable.watch)
@@ -2010,7 +2037,7 @@ export default function App() {
     // Null again means "this preset was saved somewhere with no length chips",
     // so it has nothing to say about them — see lib/presets.ts.
     if (sidebarFilters.length && p.filters.length) setLengths(p.filters.length)
-  }, [sidebarFilters, setPageWatch, watchValues])
+  }, [sidebarFilters, setPageWatch, watchValues, activePresetId, takeOffPreset])
 
   const storePreset = useCallback(async (name: string) => {
     const saved = await savePreset(name, currentFilters)

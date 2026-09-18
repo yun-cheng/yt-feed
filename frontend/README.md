@@ -428,6 +428,15 @@ past everything below it: the chips build a selection, this puts one back on.
   with no tag chips, looking applied while half of it isn't. A null watch or
   length list is skipped, matching what applying it does. Only one chip lights
   up — two presets that select the same thing are one filter under two names.
+- **Clicking the chip that's on takes it off** (`takeOffPreset`): each section
+  it set goes back to the page's default, and a null watch or length is left
+  alone, as applying leaves it.
+- **A preset belongs to the page it was put on.** Tags, summaries and lengths
+  are one selection for every page, and the feed and Watch Later share a watch
+  selection, so without this a preset applied on the feed would still be in
+  force on Watch Later. `setPage`, `selectChannel` and `selectPlaylist` take the
+  active one off on the way out (through `leavePresetRef`, since they're
+  declared before the presets). Back restores it with the rest of the URL.
 - **The `×` arms before it fires**, and only the zone itself reddens. Colouring
   the whole chip would paint it in the excluded-tag palette, which in this
   sidebar already means "not this" — a pending delete would read as a

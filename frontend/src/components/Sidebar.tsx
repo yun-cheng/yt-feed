@@ -430,7 +430,8 @@ const PresetSection = ({
               <button
                 onClick={() => { setArmed(null); onApply(p) }}
                 data-active={active ? 'on' : 'off'}
-                title={`Filter by “${p.name}”`}
+                title={active ? `Clear “${p.name}”` : `Filter by “${p.name}”`}
+                aria-pressed={active}
                 className={`inline-flex items-center gap-1 rounded-l-full py-1 pl-2.5 pr-2 transition-colors ${
                   active ? 'hover:bg-black/10' : 'hover:bg-white/10'
                 }`}
