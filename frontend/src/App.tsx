@@ -2026,6 +2026,15 @@ export default function App() {
     if (await deletePreset(id)) setPresets(prev => prev.filter(p => p.id !== id))
   }, [])
 
+  // Presets only on the pages with the full filter set — tags, watch status,
+  // length and summaries: the feed, Watch Later and History. Elsewhere a
+  // preset could only be half-worn, its tags silently dropped. Judged without
+  // the Shorts mode, so switching to Shorts doesn't make the section vanish.
+  const offersPresets = useMemo(() => {
+    const f = pageFilters(page)
+    return f.tags && f.watchStatus && f.length && f.summarised
+  }, [page])
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Mobile backdrop */}
@@ -2061,9 +2070,9 @@ export default function App() {
           onClearFilter={clearFilter}
           presets={presets}
           activePresetId={activePresetId}
-          onApplyPreset={applyPreset}
+          onApplyPreset={offersPresets ? applyPreset : undefined}
           onDeletePreset={dropPreset}
-          onSavePreset={hasAnyFilter(currentFilters) ? storePreset : null}
+          onSavePreset={offersPresets && hasAnyFilter(currentFilters) ? storePreset : null}
           collapsed={sidebarCollapsed}
           watchLaterCount={watchLater.length}
           tagFilteredCounts={tagFilteredCounts}

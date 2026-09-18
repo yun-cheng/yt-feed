@@ -95,11 +95,18 @@ const sameList = (a: string[], b: string[]) =>
 /**
  * Is this preset the one currently on?
  *
- * Compared section by section, and only where the page offers the section — a
- * preset can't be "not matching" because of a chip that isn't on screen. A null
- * `watch` is likewise skipped, matching what applying it does: nothing.
+ * Compared section by section. A section the page doesn't offer can't match
+ * either: a preset that sets tags isn't "on" on a page with no tag chips, even
+ * when everything else it holds happens to be that page's defaults — it would
+ * light up as though applied while half of it isn't. A null `watch` or
+ * `length` is skipped, matching what applying it does: nothing.
  */
 export function isActive(p: PresetFilters, live: LiveFilters, on: FilterSections): boolean {
+  if (!on.tags && p.tags.length > 0) return false
+  if (!on.summarised && p.summarised) return false
+  if (!on.contentMode && p.shorts) return false
+  if (!on.hidden && p.hidden) return false
+  if (!on.length && p.length && p.length.length > 0) return false
   if (on.tags && !sameList([...p.tags].sort(), [...live.tags].sort())) return false
   if (on.watchStatus && p.watch && !sameList([...p.watch].sort(), [...live.watch].sort())) return false
   if (on.summarised && p.summarised !== live.summarised) return false

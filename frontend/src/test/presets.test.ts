@@ -64,10 +64,13 @@ describe('isActive', () => {
     expect(isActive(preset, live({ tags: ['piano'], watch: ['unwatched'] }), ALL)).toBe(false)
   })
 
-  it("doesn't fail on a section the page isn't showing", () => {
-    // The tags disagree, but this page has no tag chips — the preset is still
-    // the one in force, because applying it again would change nothing.
-    expect(isActive(preset, live({ tags: [], watch: ['unwatched'] }), { ...ALL, tags: false })).toBe(true)
+  it("is off on a page that can't show part of it", () => {
+    // The rest matches, but this page has no tag chips — lighting the preset
+    // up would claim its tags were in force when they aren't.
+    expect(isActive(preset, live({ tags: [], watch: ['unwatched'] }), { ...ALL, tags: false })).toBe(false)
+    // A preset with no tags has nothing the missing section could drop.
+    const noTags = { ...NO_FILTERS, watch: ['unwatched'] }
+    expect(isActive(noTags, live({ watch: ['unwatched'] }), { ...ALL, tags: false })).toBe(true)
   })
 
   it('skips a null watch, matching what applying it does', () => {
@@ -125,8 +128,8 @@ describe('length in a preset', () => {
     // Order is a chip-clicking accident, not part of the selection.
     expect(isActive(p, live({ length: ['over20', 'under5'] }), ALL)).toBe(true)
     expect(isActive(p, live({ length: ['under5'] }), ALL)).toBe(false)
-    // A page with no length chips can't be the reason a preset doesn't match.
-    expect(isActive(p, live({ length: [] }), { ...ALL, length: false })).toBe(true)
+    // Nor on a page with no length chips: the buckets would be dropped.
+    expect(isActive(p, live({ length: [] }), { ...ALL, length: false })).toBe(false)
   })
 
   it('lets a null length pass on a page that does have the chips', () => {

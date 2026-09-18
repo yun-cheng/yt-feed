@@ -27,8 +27,8 @@ real video (muted, with custom captions and scrubbing).
   Watch Later, Imported and playlists
 - **Filter presets** — name the sidebar selection you've built and put it back
   on with one click. A preset is a filter set and nothing else — no page, no
-  sort — so the same one works on the feed, History or Watch Later, skipping
-  whichever chips that page doesn't have
+  sort — so the same one works on the feed, History or Watch Later, the three
+  pages with the full set of filters
 - **Hover preview** — plays the actual YouTube video inline; click to unmute
 - **Live streams** — a broadcast on air gets a LIVE pill in place of the clock,
   red at the edge and grey once you've fallen behind; click it to jump back to

@@ -398,6 +398,11 @@ past everything below it: the chips build a selection, this puts one back on.
   So one preset ("unwatched, not Shorts") works on the feed, History and Watch
   Later rather than being one preset per page. Applying it walks `pageFilters`
   and skips whatever this page doesn't offer.
+- **Only the pages with the full filter set show the section** — tags, watch
+  status, length and summaries: the feed, Watch Later and History
+  (`offersPresets`). Imported, a playlist and a channel page have no tags, so a
+  preset there could only be half-worn. Judged without the Shorts mode, so
+  switching to Shorts doesn't make the section vanish.
 - **`watch: null` ≠ `watch: []`.** Saved from a page with no watch chips, a
   preset has nothing to say about the statuses and mustn't clear them the first
   time it lands somewhere that has them. An empty list is the explicit "no watch
@@ -418,10 +423,11 @@ past everything below it: the chips build a selection, this puts one back on.
   chip, so a preset carrying it drops it on the way in; otherwise a filter would
   be in force with nothing on screen to show it or turn it off. Both applying
   and the is-this-one-on comparison go through it, so the two can't disagree.
-- **`isActive` skips the sections the page isn't showing**, for the same reason:
-  a preset can't be "not matching" because of a chip that isn't there. Only one
-  chip lights up — two presets that select the same thing are one filter under
-  two names.
+- **`isActive` fails a preset that sets a section the page isn't showing.**
+  Otherwise a preset of tags plus the default statuses would light up on a page
+  with no tag chips, looking applied while half of it isn't. A null watch or
+  length list is skipped, matching what applying it does. Only one chip lights
+  up — two presets that select the same thing are one filter under two names.
 - **The `×` arms before it fires**, and only the zone itself reddens. Colouring
   the whole chip would paint it in the excluded-tag palette, which in this
   sidebar already means "not this" — a pending delete would read as a
