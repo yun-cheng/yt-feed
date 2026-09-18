@@ -815,8 +815,8 @@ Other details:
   IFrame API, so shortcuts work wherever focus is on the page — not only while
   the iframe holds focus. `space`/`k` play-pause, `m` mute, `f` fullscreen (of
   our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
-  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, and the
-  marks below (`b`, `[`, `]`, `\`). We focus our
+  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `p` pin, and
+  the marks below (`b`, `[`, `]`, `\`). We focus our
   box, not the iframe, and pull focus back whenever a click lands in the video —
   a cross-origin iframe otherwise swallows its own keys. A brief volume HUD shows
   while adjusting.
@@ -1460,7 +1460,7 @@ percentage (the shared, persisted store, so a level set here follows you to the
 next video; the slider stays collapsed until hovered, but the percentage is
 always on the bar), a **boost** group beside it (below), the clock,
 the CC button, pin and fullscreen — everything with a keyboard equivalent
-(`k`, `m`, `f`). It shows while the pointer is over the player or while paused,
+(`k`, `m`, `c`, `p`, `f`). It shows while the pointer is over the player or while paused,
 and mirrors the element's own events rather than polling, so a keyboard seek or
 the resume jump moves it too.
 

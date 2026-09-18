@@ -37,8 +37,8 @@ real video (muted, with custom captions and scrubbing).
   to the edge. Watching live never marks the stream watched
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were.
-  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, and the
-  marks below) and our
+  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, p, and
+  the marks below) and our
   own captions, rendered from the transcript and styled like YouTube's —
   switchable between English / Chinese / Japanese / Korean when offered, with
   dual subtitles, an AI translation into Traditional Chinese, and a top/bottom

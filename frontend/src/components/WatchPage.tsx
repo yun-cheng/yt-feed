@@ -1594,6 +1594,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // native `c` only works while the iframe is focused, which we avoid.
         e.preventDefault()
         setShowCaptions((v) => !v)
+      } else if (k === 'p') {
+        // The same toggle the pin button makes: whether the player holds its
+        // place while the details scroll, or the whole page scrolls together.
+        // Deciding that is a thing you do WHILE reading the comments, which is
+        // exactly when the mouse is nowhere near the player — so it earns a key.
+        e.preventDefault()
+        setPinned((v) => !v)
       } else if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'j' || k === 'l') {
         e.preventDefault()
         const step = (k === 'j' || k === 'l' ? 10 : 5) * (k === 'ArrowLeft' || k === 'j' ? -1 : 1)
@@ -2015,7 +2022,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       className={ownBar
         ? BAR_BUTTON
         : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
-      title={pinned ? 'Unpin — scroll the whole page' : 'Pin — keep the video in view'}
+      title={pinned ? 'Unpin — scroll the whole page (p)' : 'Pin — keep the video in view (p)'}
       aria-pressed={pinned}
     >
       {pinned ? (
