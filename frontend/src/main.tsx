@@ -4,12 +4,15 @@ import './index.css'
 import App from './App'
 import ErrorBoundary from './ErrorBoundary'
 import SignInGate from './components/SignInGate'
+import DefaultsLoader from './components/DefaultsLoader'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <SignInGate>
-        <App />
+        <DefaultsLoader>
+          <App />
+        </DefaultsLoader>
       </SignInGate>
     </ErrorBoundary>
   </StrictMode>,

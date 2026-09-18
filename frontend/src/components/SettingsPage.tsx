@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import People from './People'
+import PageDefaultsEditor from './PageDefaultsEditor'
+import type { PageDefaultOverrides } from '../lib/pageDefaults'
 
 type SettingSpec = {
   key: string
@@ -127,7 +129,13 @@ function Toggle({ on, busy, onChange }: { on: boolean; busy: boolean; onChange: 
  * grows a control for it without being touched, which is the whole point of
  * having a page rather than another .env line.
  */
-export default function SettingsPage() {
+type PageProps = {
+  // Page defaults take effect in the running app the moment they're saved,
+  // not on the next reload — App owns the views they reset.
+  onPageDefaultsChange?: (overrides: PageDefaultOverrides) => void
+}
+
+export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
   const [data, setData] = useState<SettingsResponse | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -141,7 +149,7 @@ export default function SettingsPage() {
     return () => { live = false }
   }, [])
 
-  const update = useCallback(async (key: string, value: unknown) => {
+  const update = useCallback(async (key: string, value: unknown): Promise<boolean> => {
     setBusy(key)
     setError(null)
     // Optimistic: a toggle that waits for a round-trip feels broken, and the
@@ -155,8 +163,10 @@ export default function SettingsPage() {
       })
       if (!res.ok) throw new Error()
       setData(await res.json())
+      return true
     } catch {
       setError('Could not save that. Reloading the page will show what stuck.')
+      return false
     } finally {
       setBusy(null)
     }
@@ -207,6 +217,14 @@ export default function SettingsPage() {
                   </p>
                   {spec.status && (
                     <StatusLine path={spec.status} refreshKey={data.values[spec.key]} />
+                  )}
+                  {spec.type === 'page_defaults' && (
+                    <PageDefaultsEditor
+                      value={data.values[spec.key]}
+                      onChange={(next) => {
+                        void update(spec.key, next).then((ok) => { if (ok) onPageDefaultsChange?.(next) })
+                      }}
+                    />
                   )}
                 </div>
                 {spec.type === 'bool' && (

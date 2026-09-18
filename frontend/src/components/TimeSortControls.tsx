@@ -66,22 +66,25 @@ type Props = {
   onSortChange: (s: string) => void
   // A search is narrowing this page right now, so relevance is on the table.
   searching?: boolean
+  // Slider above the sort row at every width, for a narrow column (the
+  // settings page) rather than a page-wide bar.
+  stacked?: boolean
 }
 
 // ── Inline time + sort (no TopBar wrapper) ─────────────────
 
-export default function TimeSortControls({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, searching = false }: Props) {
+export default function TimeSortControls({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, searching = false, stacked = false }: Props) {
   const base = sortOptionsFor(variant) ?? SORT_OPTIONS
   const options = searching ? [RELEVANCE_SORT, ...base] : base
   const slider = age && onAgeChange
 
   return (
-    <div className={slider ? 'flex flex-col gap-3 md:flex-row md:items-center md:gap-6' : 'flex justify-end'}>
+    <div className={stacked ? 'flex flex-col items-start gap-3' : slider ? 'flex flex-col gap-3 md:flex-row md:items-center md:gap-6' : 'flex justify-end'}>
       {/* Row 1 on mobile / left on desktop: the time window */}
       {slider && <TimeRangeSlider value={age} onChange={onAgeChange} count={count} />}
 
       {/* Row 2 on mobile / right on desktop: sort buttons */}
-      <div className="flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 md:ml-auto md:flex-shrink-0 overflow-x-auto no-scrollbar">
+      <div className={`flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 overflow-x-auto no-scrollbar max-w-full ${stacked ? '' : 'md:ml-auto md:flex-shrink-0'}`}>
         {options.map((opt) => (
           <button
             key={opt.value}

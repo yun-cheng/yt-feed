@@ -29,6 +29,7 @@ import SettingsPage from './components/SettingsPage'
 import { fetchFolders, fetchFolderVideos } from './lib/local'
 import type { LocalFolder, LocalVideo } from './lib/local'
 import { DEFAULT_RANGE, formatAge, inWindow, parseAge } from './lib/timeWindow'
+import { DEFAULT_PAGES, DEFAULT_WATCH_STATUSES, defaultsFor, setPageDefaultOverrides } from './lib/pageDefaults'
 import type { TimeRange } from './lib/timeWindow'
 
 export type DownloadItem = {
@@ -120,9 +121,7 @@ export const WATCH_STATUSES = [
   { value: 'watched', label: 'Watched', icon: '✅' },
 ] as const
 
-// Watched is off by default: the home feed is for finding something to watch,
-// and things you've already seen are noise there.
-export const DEFAULT_WATCH_STATUSES = ['unwatched', 'in_progress']
+export { DEFAULT_WATCH_STATUSES }
 
 // The History page only ever lists videos you've started, so 'unwatched' has
 // nothing to match there and isn't offered.
@@ -136,7 +135,7 @@ export function loadWatchStatuses(): string[] {
     const raw = JSON.parse(localStorage.getItem(WATCH_STATUS_KEY) || 'null')
     if (Array.isArray(raw) && raw.every(v => typeof v === 'string')) return raw
   } catch { /* fall through to the default */ }
-  return DEFAULT_WATCH_STATUSES
+  return defaultsFor('feed').watch
 }
 
 // ── Video length ────────────────────────────────────────────
@@ -279,44 +278,8 @@ function parsePath(): PathState {
   return { page: 'feed', ...base }
 }
 
-// Every filter and sort the UI exposes is mirrored in the query string, so a
-// refresh — or a pasted link — lands on the same view.
-//
-// Pages keep SEPARATE sort / window / watch-status state (a channel page's sort
-// isn't the feed's), but the URL carries one of each: the page being shown owns
-// them, and every other page's copy sits at its own default. A value equal to
-// that default is left out, so ordinary URLs stay short.
-const PAGE_DEFAULTS: Record<string, { age: string; sort: string; watch: string[] }> = {
-  feed: { age: '0-3', sort: 'likes', watch: DEFAULT_WATCH_STATUSES },
-  // A channel page opens on a wider window (one channel posts far less often)
-  // and with nothing filtered out — you came to see what it has.
-  channel: { age: '0-30', sort: 'likes', watch: [] },
-  channels: { age: '0-3', sort: 'subs', watch: [] },
-
-  // ── The library pages ──
-  // Watch Later, Imported, Downloads, History: lists you built on purpose,
-  // rather than a stream of what's new. All four open on ALL TIME and in the
-  // order the list keeps itself in ('recent'), because a list you assembled has
-  // no "too old to bother with" — you put it there to come back to it, and a
-  // three-day window would hide almost all of it on the first visit.
-  //
-  // Their window filters the moment a row JOINED the list — saved, imported,
-  // downloaded, watched — not the video's publish date, which is what the sort
-  // beside it orders by too. See `filterByTime`.
-  watchlater: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
-  // Imported shares the global watch-status selection (like Watch Later), so it
-  // shares its default too; History and Downloads keep their own, unfiltered.
-  imported: { age: '0-all', sort: 'recent', watch: DEFAULT_WATCH_STATUSES },
-  downloads: { age: '0-all', sort: 'recent', watch: [] },
-  history: { age: '0-all', sort: 'recent', watch: [] },
-  // One playlist is the same kind of list, windowed by when each video joined
-  // it. 'recent' leaves the order alone, which for an imported playlist means
-  // YouTube's own order — the thing you'd least want a default to destroy.
-  // Nothing filtered out, either: a playlist is a set you chose whole.
-  playlist: { age: '0-all', sort: 'recent', watch: [] },
-}
-const DEFAULTS = PAGE_DEFAULTS.feed
-const defaultsFor = (page: string) => PAGE_DEFAULTS[page] ?? DEFAULTS
+// What each page opens on — built in, with your overrides from Settings on top.
+// See lib/pageDefaults.ts.
 /** A page's opening window, as the ticks the slider speaks. */
 const defaultRange = (page: string) => parseAge(defaultsFor(page).age) ?? DEFAULT_RANGE
 
@@ -327,6 +290,8 @@ const defaultRange = (page: string) => parseAge(defaultsFor(page).age) ?? DEFAUL
 // what you're looking at shouldn't be there to click, and it shouldn't be in the
 // URL either. One table, so the two can't disagree.
 const USES_WINDOW = new Set(['feed', 'channel', 'watchlater', 'imported', 'downloads', 'history', 'playlist'])
+/** Whether a page has a time window at all (Channels, a grid of channels, doesn't). */
+export const pageHasWindow = (page: string) => USES_WINDOW.has(page)
 const USES_SORT = new Set(['feed', 'channel', 'channels', 'watchlater', 'imported', 'downloads', 'history', 'playlist'])
 const USES_WATCH = new Set(['feed', 'watchlater', 'channel', 'history', 'imported', 'playlist'])
 const USES_SHORTS = new Set(['feed', 'channel', 'history'])
@@ -479,7 +444,7 @@ export function buildPath(s: UrlState): string {
   return qs ? `${path}?${qs}` : path
 }
 
-// What one page's control bar is set to. Every page in PAGE_DEFAULTS has its
+// What one page's control bar is set to. Every page in DEFAULT_PAGES has its
 // own, so switching pages never carries a window or a sort across — the feed's
 // "past 3 days, by likes" and Watch Later's "all time, by when I saved it" are
 // both live at once, each where it belongs.
@@ -487,8 +452,8 @@ export type PageView = { age: TimeRange; sort: string }
 
 /** Every page at its own opening settings. */
 function defaultViews(): Record<string, PageView> {
-  return Object.fromEntries(Object.entries(PAGE_DEFAULTS).map(([p, d]) => [
-    p, { age: parseAge(d.age) ?? DEFAULT_RANGE, sort: d.sort },
+  return Object.fromEntries(DEFAULT_PAGES.map(p => [
+    p, { age: defaultRange(p), sort: defaultsFor(p).sort },
   ]))
 }
 
@@ -516,9 +481,9 @@ function stateFromUrl() {
     lengths: q.length,
     views,
     watchStatuses: owns('feed', 'watchlater', 'imported') && q.watch !== null ? q.watch : loadWatchStatuses(),
-    channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : [],
-    playlistWatchStatuses: owns('playlist') && q.watch !== null ? q.watch : [],
-    historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : [],
+    channelWatchStatuses: owns('channel') && q.watch !== null ? q.watch : defaultsFor('channel').watch,
+    playlistWatchStatuses: owns('playlist') && q.watch !== null ? q.watch : defaultsFor('playlist').watch,
+    historyWatchStatuses: owns('history') && q.watch !== null ? q.watch : defaultsFor('history').watch,
     selectedLabel: owns('channel') ? q.label : null,
   }
 }
@@ -1356,9 +1321,10 @@ export default function App() {
 
   // History keeps its own selection rather than sharing the global one, which
   // hides watched videos — backwards on a page whose whole job is to list what
-  // you've watched. It starts EMPTY (no filter) and is cleared again by every
-  // navigation to the page (see setPage): a filter you set last time is a
-  // surprise waiting for you, and the useful default here is "show everything".
+  // you've watched. It starts on its default — EMPTY (no filter) unless you've
+  // picked one in Settings — and goes back to it on every navigation to the
+  // page (see setPage): a filter you set last time is a surprise waiting for
+  // you, and the useful default here is "show everything".
   // A reload is not a fresh visit, so `?watch=` in the URL still wins.
   const [historyWatchStatuses, setHistoryWatchStatuses] = useState<string[]>(init.historyWatchStatuses)
   const toggleHistoryWatchStatus = useCallback((value: string) => {
@@ -1367,7 +1333,7 @@ export default function App() {
 
   // A channel page filters its own list the same way, and likewise starts with
   // nothing selected — you open a channel to see what it has, not what's left of
-  // it. Cleared by each navigation to a channel, so one channel's filter doesn't
+  // it. Reset by each navigation to a channel, so one channel's filter doesn't
   // follow you to the next — but a reload of a `?watch=` URL keeps it.
   const [channelWatchStatuses, setChannelWatchStatuses] = useState<string[]>(init.channelWatchStatuses)
   const toggleChannelWatchStatus = useCallback((value: string) => {
@@ -1380,6 +1346,21 @@ export default function App() {
   const togglePlaylistWatchStatus = useCallback((value: string) => {
     setPlaylistWatchStatuses(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
   }, [])
+
+  // New defaults from Settings. Every page's view is live at once and kept
+  // until you change it, so a page whose default moved is put back on it now —
+  // otherwise the new default would only show after a reload. That includes
+  // the feed's watch selection, the one Watch Later and Imported share. The
+  // other watch selections reset on arrival and pick the new value up then.
+  const applyPageDefaults = useCallback((overrides: unknown) => {
+    const before = Object.fromEntries(DEFAULT_PAGES.map(p => [p, defaultsFor(p)]))
+    setPageDefaultOverrides(overrides)
+    for (const p of DEFAULT_PAGES) {
+      const was = before[p], now = defaultsFor(p)
+      if (was.age !== now.age || was.sort !== now.sort) resetView(p)
+    }
+    if (!sameSet(before.feed.watch, defaultsFor('feed').watch)) setWatchStatuses(defaultsFor('feed').watch)
+  }, [resetView])
 
   // History obeys the same two global controls as the feed: the Videos/Shorts
   // toggle and the sidebar's tag selection. Both are applied client-side — the
@@ -1656,11 +1637,11 @@ export default function App() {
     if (p !== 'channel') {
       setSelectedChannelId(null)
       setSelectedLabel(null)
-      setChannelWatchStatuses([])
+      setChannelWatchStatuses(defaultsFor('channel').watch)
     }
     if (p === 'channel') resetView('channel')
-    // Every visit to History starts unfiltered — see historyWatchStatuses.
-    if (p === 'history') setHistoryWatchStatuses([])
+    // Every visit to History starts on its default — see historyWatchStatuses.
+    if (p === 'history') setHistoryWatchStatuses(defaultsFor('history').watch)
     if (p === 'local') { setLocalFolderId(null); setSelectedLocalVideoId(null) }
     if (p !== 'feed') setMobileMenuOpen(false)
   }, [selectedChannelId, selectedTags, page])
@@ -1871,7 +1852,7 @@ export default function App() {
     setSelectedPlaylistId(null)
     setPageRaw('channel')
     resetView('channel')
-    setChannelWatchStatuses([])
+    setChannelWatchStatuses(defaultsFor('channel').watch)
     setSelectedLabel(null)
     mainRef.current?.scrollTo({ top: 0 })
   }
@@ -1898,7 +1879,7 @@ export default function App() {
     history.pushState(null, '', `/playlist/${id}`)
     setSelectedPlaylistId(id)
     setSearchPage(null)
-    setPlaylistWatchStatuses([])
+    setPlaylistWatchStatuses(defaultsFor('playlist').watch)
     setPageRaw('playlist')
     mainRef.current?.scrollTo({ top: 0 })
   }
@@ -1943,7 +1924,7 @@ export default function App() {
   function goHome() {
     history.pushState(null, '', buildPath({ page: 'feed', shorts: contentMode === 'shorts' }))
     setSelectedTags([])
-    setWatchStatuses(DEFAULT_WATCH_STATUSES)
+    setWatchStatuses(defaultsFor('feed').watch)
     setSelectedChannelId(null)
     setSelectedPlaylistId(null)
     setSelectedLabel(null)
@@ -2252,7 +2233,7 @@ export default function App() {
           </div>
         )}
         {page === 'settings' ? (
-          <SettingsPage />
+          <SettingsPage onPageDefaultsChange={applyPageDefaults} />
         ) : page === 'search' ? (
           <SearchPage
             query={searchInput}

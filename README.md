@@ -101,6 +101,10 @@ real video (muted, with custom captions and scrubbing).
   window, sort and sidebar filters, the way "In this channel" works on a channel page
 - **Watch status filter** — a sidebar section for unwatched / in progress / watched;
   the home feed excludes watched by default, so it's about what you haven't seen
+- **Your own page defaults** — Settings → Pages sets the time window, sort and
+  watch filter each page opens on (Home's past-3-days-by-likes, for one), with
+  the same slider and sort buttons the page itself shows. Links and reloads
+  follow your defaults too
 - **Imported videos** — paste any YouTube link to add a one-off video from a
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)

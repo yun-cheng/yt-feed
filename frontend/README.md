@@ -78,8 +78,31 @@ does client-side routing itself:
 Pages keep **separate** sort / window / watch-status state — a channel page's
 sort isn't the feed's — but the URL carries **one** `sort`, `age` and `watch`.
 The page being shown owns them; every other page's copy sits at its own default.
-`PAGE_DEFAULTS` is that table, and the `USES_*` sets say which controls a page
-actually has, so a param a page can't change is never written.
+`lib/pageDefaults.ts` holds those defaults, and the `USES_*` sets say which
+controls a page actually has, so a param a page can't change is never written.
+
+The defaults come in two layers. `BUILT_IN_DEFAULTS` is the app's table, argued
+for entry by entry. Over it sit your overrides, the `page_defaults` setting
+edited under **Settings → Pages**. Only the fields you changed are stored, so a
+page you never touched follows the built-in value. `defaultsFor(page)` reads the
+two together, and everything else asks it: the URL's omit-if-default rule, a
+cold load, the resets on arriving at a channel / History / a playlist, Home,
+and a preset coming off.
+
+- **Loaded before the first render.** `DefaultsLoader` (inside `SignInGate`)
+  fetches `/api/settings` and installs the overrides before `App` mounts. `App`
+  reads the URL into state on that first render, and a param equal to the
+  default is absent from the URL, so the default decides what a plain link means.
+  A failed read falls back to the built-ins.
+- **Applied the moment you save.** Every page's view stays live until you change
+  it, so `applyPageDefaults` resets the view of each page whose default moved,
+  plus the feed's watch selection if its default moved. Watch Later and Imported
+  share that selection, so they have no watch default of their own
+  (`SHARES_FEED_WATCH`); the editor says so rather than offering one.
+- **The editor** (`PageDefaultsEditor`) reuses each page's own `TimeSortControls`
+  (`stacked` for the narrow column) and saves once per pause while you drag.
+  Setting a field back to its built-in value removes the override
+  (`withDefault`).
 
 Each page's pair lives in one `views` record keyed by page (`PageView = {age,
 sort}`), rather than a `useState` per page per control. The bar reads
@@ -688,6 +711,9 @@ components/
                                   serves — adding a setting is a backend change.
                                   Badges the ones scoped to the whole machine,
                                   and shows the extension's API key to copy
+  PageDefaultsEditor.tsx          the `page_defaults` setting's control: each
+                                  page's opening window, sort and watch filter
+  DefaultsLoader.tsx              holds the app back until those defaults load
   People.tsx                      who shares this app; adds someone and hands
                                   back the login link to send them. Composes the
                                   link from window.location.origin — the API
