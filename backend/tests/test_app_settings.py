@@ -88,6 +88,7 @@ async def test_page_defaults_of_the_wrong_shape_are_a_400(client, bad):
 async def test_language_settings_start_on_the_browser_and_the_videos_own(client):
     values = (await client.get("/api/settings")).json()["values"]
     assert (values["app_language"], values["caption_lang"], values["caption_lang2"]) == ("auto", "", "")
+    assert values["translate_lang"] == ""
 
 
 @pytest.mark.asyncio
@@ -95,6 +96,7 @@ async def test_a_choice_serves_its_options_in_menu_order(client):
     spec = {s["key"]: s for s in (await client.get("/api/settings")).json()["settings"]}
     assert [o["value"] for o in spec["app_language"]["options"]] == ["auto", "en", "zh-Hant"]
     assert [o["value"] for o in spec["caption_lang"]["options"]] == ["", "en", "zh", "ja", "ko"]
+    assert [o["value"] for o in spec["translate_lang"]["options"]] == ["", "en", "zh-Hant", "ja", "ko"]
     assert "options" not in spec["page_defaults"]
 
 
@@ -107,7 +109,7 @@ async def test_a_choice_round_trips(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None)])
+@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None), ("translate_lang", "zh")])
 async def test_a_choice_outside_its_options_is_a_400(client, key, bad):
     res = await client.put("/api/settings", json={"values": {key: bad}})
     assert res.status_code == 400

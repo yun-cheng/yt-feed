@@ -3,14 +3,17 @@ Feed endpoints — ranked videos grouped by category.
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import re
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1433,6 +1436,108 @@ async def get_comments(video_id: str, sort: str = "top", replies: bool = False):
         "disabled": False, "fetched": 0, "capped": False,
         "has_replies": False, "threads": [],
     }
+
+
+# ── Translating a comment ────────────────────────────────────────────
+
+# The languages a comment can be translated into (languages.TRANSLATE_LANG_OPTIONS,
+# less "", which the frontend resolves to the app language), and how the model is
+# told to write each.
+_COMMENT_TARGETS = {
+    "en": "English",
+    "zh-Hant": (
+        "Traditional Chinese (繁體中文, Taiwan usage). Traditional characters only, "
+        "never Simplified: a comment written in Simplified Chinese is converted"
+    ),
+    "ja": "Japanese",
+    "ko": "Korean",
+}
+
+_COMMENT_TRANSLATE_SYSTEM = (
+    "You translate one YouTube comment into {target}.\n"
+    "\n"
+    "Reply with the translation and nothing else: no quotes around it, no notes,\n"
+    "no explanation.\n"
+    "\n"
+    "Rules:\n"
+    "- Keep the line breaks.\n"
+    "- Keep timestamps (1:23, 1:02:03), @mentions, #hashtags, URLs and emoji\n"
+    "  exactly as written.\n"
+    "- Keep proper nouns, product names and code that have no established form\n"
+    "  in the target language.\n"
+    "- Translate slang and jokes for meaning, in the register the commenter used.\n"
+    "- The video's title, if given, is context for ambiguous words only; never\n"
+    "  translate or repeat it.\n"
+    "- If the comment is already in the target language, return it unchanged."
+)
+
+# A comment is a few hundred characters at most on YouTube (10,000 is the hard
+# cap); refusing past that keeps one request from being an arbitrary document.
+_COMMENT_MAX_CHARS = 10_000
+
+# Translations by (target, sha1 of the text). In memory, like the comments
+# themselves: they're refetched on a TTL anyway, and a translation costs a
+# fraction of a cent, so persisting them would be care spent on nothing.
+_ct_comment_cache: "OrderedDict[tuple[str, str], str]" = OrderedDict()
+_CT_COMMENT_MAX = 2000
+
+
+class CommentTranslateBody(BaseModel):
+    text: str
+    target: str
+    video_id: str = ""
+
+
+@router.post("/comments-translate")
+async def translate_comment(body: CommentTranslateBody, db: AsyncSession = Depends(get_db)):
+    """One comment, translated into the app's language: `{"text": ...}`.
+
+    Asked for one comment at a time, when someone presses Translate under it —
+    a comments section is mostly things nobody opens, and translating it whole
+    up front would pay for all of them.
+    """
+    target = _COMMENT_TARGETS.get(body.target)
+    if target is None:
+        raise HTTPException(400, f"can't translate into {body.target!r}")
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "nothing to translate")
+    if len(text) > _COMMENT_MAX_CHARS:
+        raise HTTPException(400, "comment too long to translate")
+
+    key = (body.target, hashlib.sha1(text.encode()).hexdigest())
+    if key in _ct_comment_cache:
+        _ct_comment_cache.move_to_end(key)
+        return {"text": _ct_comment_cache[key]}
+
+    title = ""
+    if body.video_id:
+        title = (await db.execute(
+            select(Video.title).where(Video.youtube_id == body.video_id)
+        )).scalar() or ""
+    user = (f"Video title: {title}\n\n" if title else "") + "Comment:\n" + text
+
+    from app import llm
+    try:
+        out = await asyncio.get_event_loop().run_in_executor(
+            _translate_pool,
+            lambda: llm.chat(
+                _COMMENT_TRANSLATE_SYSTEM.format(target=target), user,
+                model=settings.llm_translate_model,
+                max_tokens=2000, timeout=60, reasoning=False,
+                provider_sort="latency",
+            ),
+        )
+    except Exception as e:
+        raise HTTPException(502, f"translation failed: {e}") from None
+    out = (out or "").strip()
+    if not out:
+        raise HTTPException(502, "translation came back empty")
+
+    _ct_comment_cache[key] = out
+    if len(_ct_comment_cache) > _CT_COMMENT_MAX:
+        _ct_comment_cache.popitem(last=False)
+    return {"text": out}
 
 
 @router.get("/statistics")

@@ -15,6 +15,16 @@ CAPTION_LANG_OPTIONS = [
     ("ko", "한국어"),
 ]
 
+# The languages a comment can be translated into. "" follows the app language.
+# Each has a line in the translator's prompt (routers/feed.py _COMMENT_TARGETS).
+TRANSLATE_LANG_OPTIONS = [
+    ("", "Same as the app"),
+    ("en", "English"),
+    ("zh-Hant", "繁體中文"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+]
+
 # The languages the app's own text comes in. "auto" follows the browser.
 APP_LANG_OPTIONS = [
     ("auto", "Follow the browser"),

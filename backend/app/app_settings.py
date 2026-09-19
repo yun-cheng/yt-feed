@@ -30,7 +30,7 @@ from sqlalchemy import select
 
 from app.config import settings as env_settings
 from app.database import async_session
-from app.languages import APP_LANG_OPTIONS, CAPTION_LANG_OPTIONS
+from app.languages import APP_LANG_OPTIONS, CAPTION_LANG_OPTIONS, TRANSLATE_LANG_OPTIONS
 from app.models import AppSetting, UserSetting
 
 
@@ -98,6 +98,19 @@ SPEC: tuple[Spec, ...] = (
         description=(
             "A second language shown under the first, for following along in "
             "two at once."
+        ),
+        group="Language",
+    ),
+    Spec(
+        key="translate_lang",
+        type="choice",
+        options=tuple(TRANSLATE_LANG_OPTIONS),
+        default=lambda: "",
+        scope="user",
+        label="Translate comments into",
+        description=(
+            "The language a comment's Translate button translates into. A comment "
+            "already in it offers no button."
         ),
         group="Language",
     ),

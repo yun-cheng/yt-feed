@@ -8,6 +8,7 @@ around it, because yt-dlp's field names promise more than they deliver.
 
 import pytest
 
+from app.models import Video
 from app.routers import feed
 from app.routers.feed import COMMENT_PARENTS, _thread_comments
 
@@ -230,3 +231,91 @@ async def test_a_failed_extraction_reads_as_an_empty_section(client, monkeypatch
         "disabled": False, "fetched": 0, "capped": False,
         "has_replies": False, "threads": [],
     }
+
+
+# ── translating one ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def model(monkeypatch):
+    """The translation model: echoes a marked copy, and records each call."""
+    from app import llm
+    calls: list[dict] = []
+
+    def _chat(system, user, **kw):
+        calls.append({"system": system, "user": user})
+        return "  translated: " + user.rsplit("Comment:\n", 1)[1] + "\n"
+
+    monkeypatch.setattr(llm, "chat", _chat)
+    feed._ct_comment_cache.clear()
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_a_comment_comes_back_translated(client, model):
+    res = await client.post("/api/feed/comments-translate",
+                            json={"text": "great video 1:23", "target": "zh-Hant"})
+    assert res.status_code == 200
+    assert res.json() == {"text": "translated: great video 1:23"}
+    assert "Traditional Chinese" in model[0]["system"]
+
+
+@pytest.mark.asyncio
+async def test_the_target_is_the_app_language(client, model):
+    await client.post("/api/feed/comments-translate", json={"text": "好看", "target": "en"})
+    assert "into English" in model[0]["system"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target,name", [("ja", "Japanese"), ("ko", "Korean")])
+async def test_it_also_translates_into_japanese_and_korean(client, model, target, name):
+    res = await client.post("/api/feed/comments-translate", json={"text": "hi", "target": target})
+    assert res.status_code == 200
+    assert f"into {name}" in model[0]["system"]
+
+
+@pytest.mark.asyncio
+async def test_the_videos_title_rides_along_as_context(client, db, model):
+    import datetime
+    db.add(Video(youtube_id="vid1", channel_id="ch1", title="A talk about pricing",
+                 published_at=datetime.datetime(2026, 1, 1)))
+    await db.commit()
+    await client.post("/api/feed/comments-translate",
+                      json={"text": "so true", "target": "en", "video_id": "vid1"})
+    assert model[0]["user"].startswith("Video title: A talk about pricing")
+
+
+@pytest.mark.asyncio
+async def test_the_same_comment_is_translated_once(client, model):
+    for _ in range(2):
+        res = await client.post("/api/feed/comments-translate", json={"text": "hi", "target": "zh-Hant"})
+        assert res.json()["text"] == "translated: hi"
+    assert len(model) == 1
+    # A different target is a different translation.
+    await client.post("/api/feed/comments-translate", json={"text": "hi", "target": "en"})
+    assert len(model) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [
+    {"text": "hi", "target": "fr"},
+    {"text": "   ", "target": "en"},
+    {"text": "x" * 10_001, "target": "en"},
+])
+async def test_what_it_refuses(client, model, body):
+    assert (await client.post("/api/feed/comments-translate", json=body)).status_code == 400
+    assert model == []
+
+
+@pytest.mark.asyncio
+async def test_a_model_failure_is_a_502_and_is_not_cached(client, monkeypatch):
+    from app import llm
+    feed._ct_comment_cache.clear()
+
+    def boom(*a, **kw):
+        raise llm.LLMError("no key")
+
+    monkeypatch.setattr(llm, "chat", boom)
+    res = await client.post("/api/feed/comments-translate", json={"text": "hi", "target": "en"})
+    assert res.status_code == 502
+    assert feed._ct_comment_cache == {}

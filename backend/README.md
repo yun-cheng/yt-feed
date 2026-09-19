@@ -609,6 +609,19 @@ thread. The frontend draws that tree as a tree (see `Comments.tsx`), which is
 what YouTube itself does — each level a step further in, with a rule down the
 left saying what answers what.
 
+**Translating one** (`POST /api/feed/comments-translate`, body `{text, target,
+video_id}`). One comment into `en`, `zh-Hant`, `ja` or `ko` — your
+`translate_lang` setting, or the app language when that's `""` (the frontend
+resolves it) — asked for when someone presses Translate under it. It goes to `llm.chat` on the caption
+translator's model and thread pool, with the video's title as context for
+ambiguous words; the prompt keeps timestamps, @mentions, links and emoji as
+written and returns a comment already in the target unchanged (Simplified
+Chinese is converted). Answers are cached in memory by (target, hash of the
+text), capped at 2,000: comments are themselves refetched on a TTL, and a
+translation costs a fraction of a cent, so persisting them would be care spent
+on nothing. An unknown target, an empty comment or one over 10,000 characters
+(YouTube's own cap) is a 400; a model failure is a 502 and isn't cached.
+
 ## Offline downloads (`routers/downloads.py`)
 
 The Downloads library fetches videos to disk with yt-dlp and serves the file
@@ -1768,10 +1781,12 @@ backend checks only the shape (an object of objects, else a 400) and stores the
 object as JSON text. Its `type` is its own name, because the page renders a
 purpose-built editor for it rather than a generic control.
 
-The language settings are three `choice`s, all **`user`**: `app_language`
+The language settings are four `choice`s, all **`user`**: `app_language`
 (`auto`, `en`, `zh-Hant`; `auto` follows the browser), and `caption_lang` /
 `caption_lang2`, the caption languages every video opens with (`""` for the
-video's own track, or no second track). A `choice` serves its `options` in menu
+video's own track, or no second track), and `translate_lang`, what a comment's
+Translate button translates into (`""` follows the app language;
+`languages.TRANSLATE_LANG_OPTIONS`). A `choice` serves its `options` in menu
 order, refuses anything else with a 400, and reads a stored value that is no
 longer an option as the default. The caption options come from
 `languages.CAPTION_LANG_OPTIONS`, the list the caption endpoints use, so a
@@ -1892,6 +1907,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
+| POST | `/api/feed/comments-translate` | one comment translated into `target` (`en` \| `zh-Hant` \| `ja` \| `ko`) → `{text}`; cached in memory |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic, `?q=` by title text; `sort=relevance` keeps Meilisearch's order for a `?q=`). The channel block carries `source` and `scanning` |
 | GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
 | POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |
@@ -1971,7 +1987,7 @@ no per-test decorator). What's covered:
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
-| `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer |
+| `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer; translating one comment (the target in the prompt, the title as context, one model call per text and target, what's refused, a failure not cached) |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |

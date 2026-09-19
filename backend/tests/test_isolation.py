@@ -300,7 +300,8 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
             for s in (await client.get("/api/settings", headers=mine)).json()["settings"]}
     assert spec == {"archive_fill_enabled": "app", "youtube_history_sync": "user",
                     "page_defaults": "user", "app_language": "user",
-                    "caption_lang": "user", "caption_lang2": "user"}
+                    "caption_lang": "user", "caption_lang2": "user",
+                    "translate_lang": "user"}
 
 
 async def test_page_defaults_are_personal(client, pair):
