@@ -410,10 +410,10 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   captions word-by-word (manual subs have one word = the whole line). One yt-dlp
   extraction (`_caption_tracks`, cached) backs both this and the language list.
 - **Caption languages** (`/api/feed/caption-langs/{id}`) — which of English /
-  中文 / 日本語 / 한국어 the video genuinely **provides** (uploaded subs or the
-  original ASR track — *not* YouTube's auto-translations, which would list all four
-  on nearly every video), plus the `native` track code, for the watch page's
-  caption-language switcher. **Persisted** in the `caption_langs` table after the
+  中文 / 日本語 / 한국어 / ไทย / Tiếng Việt the video genuinely **provides**
+  (uploaded subs or the original ASR track — *not* YouTube's auto-translations,
+  which would list all of them on nearly every video), plus the `native` track
+  code, for the watch page's caption-language switcher. **Persisted** in the `caption_langs` table after the
   first extraction: deriving it costs a yt-dlp call the caption menu waits on, and
   a video's languages never change. Stores the derived codes, not the raw track
   info — that blob is ~512KB with ~7h-signed URLs, so it would be both fat and
@@ -610,7 +610,7 @@ what YouTube itself does — each level a step further in, with a rule down the
 left saying what answers what.
 
 **Translating one** (`POST /api/feed/comments-translate`, body `{text, target,
-video_id}`). One comment into `en`, `zh-Hant`, `ja` or `ko` — your
+video_id}`). One comment into `en`, `zh-Hant`, `ja`, `ko`, `th` or `vi` — your
 `translate_lang` setting, or the app language when that's `""` (the frontend
 resolves it) — asked for when someone presses Translate under it. It goes to `llm.chat` on the caption
 translator's model and thread pool, with the video's title as context for
@@ -1782,8 +1782,8 @@ object as JSON text. Its `type` is its own name, because the page renders a
 purpose-built editor for it rather than a generic control.
 
 The language settings are four `choice`s, all **`user`**: `app_language`
-(`auto`, `en`, `zh-Hant`; `auto` follows the browser), and `caption_lang` /
-`caption_lang2`, the caption languages every video opens with (`""` for the
+(`auto`, `en`, `zh-Hant`, `ja`, `ko`, `th`, `vi`; `auto` follows the browser),
+and `caption_lang` / `caption_lang2`, the caption languages every video opens with (`""` for the
 video's own track, or no second track), and `translate_lang`, what a comment's
 Translate button translates into (`""` follows the app language;
 `languages.TRANSLATE_LANG_OPTIONS`). A `choice` serves its `options` in menu
@@ -1899,7 +1899,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed` | ranked feed grouped by category (query: age, sort, tags…) |
 | GET | `/api/feed/storyboard/{id}` | hover-scrubbing storyboard frames |
 | GET | `/api/feed/captions/{id}` | timed caption cues with per-word segments (query: `lang`; rendered by the frontend) |
-| GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어) |
+| GET | `/api/feed/caption-langs/{id}` | caption languages the video offers (English/中文/日本語/한국어/ไทย/Tiếng Việt) |
 | POST | `/api/feed/captions-generate/{id}` | Transcribe a video with no captions locally (Whisper). Idempotent; resumes a job a restart killed. 501 where the model isn't installed |
 | GET | `/api/feed/captions-generate/{id}` | Progress of that job and the cues so far: `{status, covered, duration, lang, cues, supported}` |
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
@@ -1907,7 +1907,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
-| POST | `/api/feed/comments-translate` | one comment translated into `target` (`en` \| `zh-Hant` \| `ja` \| `ko`) → `{text}`; cached in memory |
+| POST | `/api/feed/comments-translate` | one comment translated into `target` (`en` \| `zh-Hant` \| `ja` \| `ko` \| `th` \| `vi`) → `{text}`; cached in memory |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic, `?q=` by title text; `sort=relevance` keeps Meilisearch's order for a `?q=`). The channel block carries `source` and `scanning` |
 | GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
 | POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |

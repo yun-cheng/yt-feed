@@ -1451,6 +1451,8 @@ _COMMENT_TARGETS = {
     ),
     "ja": "Japanese",
     "ko": "Korean",
+    "th": "Thai",
+    "vi": "Vietnamese",
 }
 
 _COMMENT_TRANSLATE_SYSTEM = (

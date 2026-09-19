@@ -70,7 +70,7 @@ SPEC: tuple[Spec, ...] = (
         label="App language",
         description=(
             "The language of menus, buttons and messages. Following the browser "
-            "shows 繁體中文 when your browser prefers Chinese, English otherwise."
+            "picks the first of these your browser prefers, or English."
         ),
         group="Language",
     ),

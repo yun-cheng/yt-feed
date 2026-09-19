@@ -94,9 +94,9 @@ async def test_language_settings_start_on_the_browser_and_the_videos_own(client)
 @pytest.mark.asyncio
 async def test_a_choice_serves_its_options_in_menu_order(client):
     spec = {s["key"]: s for s in (await client.get("/api/settings")).json()["settings"]}
-    assert [o["value"] for o in spec["app_language"]["options"]] == ["auto", "en", "zh-Hant"]
-    assert [o["value"] for o in spec["caption_lang"]["options"]] == ["", "en", "zh", "ja", "ko"]
-    assert [o["value"] for o in spec["translate_lang"]["options"]] == ["", "en", "zh-Hant", "ja", "ko"]
+    assert [o["value"] for o in spec["app_language"]["options"]] == ["auto", "en", "zh-Hant", "ja", "ko", "th", "vi"]
+    assert [o["value"] for o in spec["caption_lang"]["options"]] == ["", "en", "zh", "ja", "ko", "th", "vi"]
+    assert [o["value"] for o in spec["translate_lang"]["options"]] == ["", "en", "zh-Hant", "ja", "ko", "th", "vi"]
     assert "options" not in spec["page_defaults"]
 
 

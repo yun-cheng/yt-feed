@@ -13,6 +13,8 @@ CAPTION_LANG_OPTIONS = [
     ("zh", "中文"),
     ("ja", "日本語"),
     ("ko", "한국어"),
+    ("th", "ไทย"),
+    ("vi", "Tiếng Việt"),
 ]
 
 # The languages a comment can be translated into. "" follows the app language.
@@ -23,6 +25,8 @@ TRANSLATE_LANG_OPTIONS = [
     ("zh-Hant", "繁體中文"),
     ("ja", "日本語"),
     ("ko", "한국어"),
+    ("th", "ไทย"),
+    ("vi", "Tiếng Việt"),
 ]
 
 # The languages the app's own text comes in. "auto" follows the browser.
@@ -30,4 +34,8 @@ APP_LANG_OPTIONS = [
     ("auto", "Follow the browser"),
     ("en", "English"),
     ("zh-Hant", "繁體中文"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+    ("th", "ไทย"),
+    ("vi", "Tiếng Việt"),
 ]

@@ -267,8 +267,8 @@ async def test_the_target_is_the_app_language(client, model):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("target,name", [("ja", "Japanese"), ("ko", "Korean")])
-async def test_it_also_translates_into_japanese_and_korean(client, model, target, name):
+@pytest.mark.parametrize("target,name", [("ja", "Japanese"), ("ko", "Korean"), ("th", "Thai"), ("vi", "Vietnamese")])
+async def test_it_also_translates_into_the_other_languages(client, model, target, name):
     res = await client.post("/api/feed/comments-translate", json={"text": "hi", "target": target})
     assert res.status_code == 200
     assert f"into {name}" in model[0]["system"]
