@@ -46,6 +46,12 @@ describe('timeAgo', () => {
     expect(timeAgo('2026-09-20T09:00:00Z')).toBe('3h ago')
   })
 
+  it('counts minutes inside the first hour', () => {
+    expect(timeAgo('2026-09-20T11:59:30Z')).toBe('Just now')
+    expect(timeAgo('2026-09-20T11:55:00Z')).toBe('5m ago')
+    expect(timeAgo('2026-09-20T11:00:01Z')).toBe('59m ago')
+  })
+
   it('says nothing for a missing or unreadable stamp', () => {
     expect(timeAgo('')).toBe('')
     expect(timeAgo('soon')).toBe('')
