@@ -20,10 +20,10 @@ function Harness({ useVolume }: { useVolume: () => number }) {
 beforeEach(() => { localStorage.clear() })
 
 describe('audioStore', () => {
-  it('starts at full volume when nothing is stored', async () => {
+  it('starts at half volume when nothing is stored', async () => {
     const { useVolume } = await load()
     render(<Harness useVolume={useVolume} />)
-    expect(screen.getByTestId('vol')).toHaveTextContent('100')
+    expect(screen.getByTestId('vol')).toHaveTextContent('50')
   })
 
   it('restores the stored volume', async () => {
@@ -92,12 +92,12 @@ describe('audioStore', () => {
   })
 
   it.each(['not json', '{}', '{"volume":"loud"}', 'null'])(
-    'falls back to full volume on malformed storage (%s)',
+    'falls back to half volume on malformed storage (%s)',
     async (raw) => {
       localStorage.setItem(KEY, raw)
       const { useVolume } = await load()
       render(<Harness useVolume={useVolume} />)
-      expect(screen.getByTestId('vol')).toHaveTextContent('100')
+      expect(screen.getByTestId('vol')).toHaveTextContent('50')
     },
   )
 
@@ -118,6 +118,6 @@ describe('audioStore', () => {
     act(() => {
       window.dispatchEvent(new StorageEvent('storage', { key: 'something-else' }))
     })
-    expect(screen.getByTestId('vol')).toHaveTextContent('100')
+    expect(screen.getByTestId('vol')).toHaveTextContent('50')
   })
 })

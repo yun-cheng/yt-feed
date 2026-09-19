@@ -25,6 +25,9 @@ const KEY = 'yt-feed-audio-v1'
 /** The grain of the volume: the sliders step by it and every set snaps to it. */
 export const VOLUME_STEP = 5
 
+/** Where volume starts before you've set one, and where unmuting at 0 goes. */
+export const DEFAULT_VOLUME = 50
+
 function snap(v: number): number {
   return Math.max(0, Math.min(100, Math.round(v / VOLUME_STEP) * VOLUME_STEP))
 }
@@ -37,7 +40,7 @@ function loadVolume(): number {
       if (typeof p.volume === 'number') return snap(p.volume)
     }
   } catch { /* ignore malformed storage */ }
-  return 100
+  return DEFAULT_VOLUME
 }
 
 let volume = loadVolume()

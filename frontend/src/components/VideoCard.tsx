@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import { timeAgo } from '../lib/time'
 import type { VideoItem, WatchProgress } from '../App'
-import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
+import { useVolume, setAudioVolume, DEFAULT_VOLUME, VOLUME_STEP } from '../hooks/audioStore'
 import { storyboardFrame } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
@@ -476,7 +476,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         if (displayMuted) {
           p.unMute()
           setActualMuted(false)
-          if (volume === 0) { p.setVolume(100); setAudioVolume(100) }
+          if (volume === 0) { p.setVolume(DEFAULT_VOLUME); setAudioVolume(DEFAULT_VOLUME) }
         } else {
           p.mute(); setActualMuted(true)
         }
@@ -597,7 +597,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       p?.unMute()
       setActualMuted(false)
       // Unmuting while the slider sits at 0 would be silent — restore audible volume.
-      if (volume === 0) { p?.setVolume(100); setAudioVolume(100) }
+      if (volume === 0) { p?.setVolume(DEFAULT_VOLUME); setAudioVolume(DEFAULT_VOLUME) }
     } else {
       p?.mute(); setActualMuted(true)
     }
@@ -717,7 +717,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
       if (p && playerReadyRef.current) {
         p.unMute()
         setActualMuted(false)
-        if (volume === 0) { p.setVolume(100); setAudioVolume(100) }
+        if (volume === 0) { p.setVolume(DEFAULT_VOLUME); setAudioVolume(DEFAULT_VOLUME) }
         return
       }
       // Clicked before the preview finished loading. Arm the unmute so it applies
