@@ -102,3 +102,41 @@ export function tn(n: number, one: string, other: string, vars?: Record<string, 
 /** For tests and the catalogue check. */
 export function tableFor(l: Lang): Record<string, string> { return TABLES[l] }
 
+/** A language a comment can be translated into (the `translate_lang` setting). */
+export type TranslateTarget = Lang | 'ja' | 'ko'
+const TRANSLATE_TARGETS: readonly string[] = ['en', 'zh-Hant', 'ja', 'ko']
+
+let translateSetting: TranslateTarget | '' = ''
+
+/** Install the `translate_lang` setting; '' (or anything unknown) follows the app. */
+export function setTranslateSetting(v: unknown) {
+  translateSetting = typeof v === 'string' && TRANSLATE_TARGETS.includes(v) ? v as TranslateTarget : ''
+}
+
+/** What a comment's Translate button translates into. */
+export function translateTarget(): TranslateTarget {
+  return translateSetting || lang
+}
+
+/**
+ * Is `text` already in `target`, near enough that offering to translate it
+ * would be noise? Judged by script, counting a CJK character and a run of any
+ * other letters (a word) as one unit each, so a Chinese comment about an iPhone
+ * is still a Chinese comment: mostly, not entirely. Text with no letters at all
+ * (emoji, a bare timestamp) has nothing to translate. Simplified Chinese counts
+ * as Chinese: it's readable to someone reading 繁體中文, and telling the two
+ * apart would need a dictionary. Japanese shares Chinese's characters, so it
+ * also needs some kana to count — kanji alone reads as Chinese.
+ */
+export function looksWrittenIn(text: string, target: TranslateTarget): boolean {
+  const units = text.match(/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|(?:(?!\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana})\p{L})+/gu) ?? []
+  if (!units.length) return true
+  const share = (re: RegExp) => units.filter((u) => re.test(u)).length / units.length
+  if (target === 'zh-Hant') return share(/\p{Script=Han}/u) >= 0.7
+  if (target === 'ko') return share(/^\p{Script=Hangul}+$/u) >= 0.7
+  if (target === 'ja') {
+    return share(/\p{Script=Hiragana}|\p{Script=Katakana}/u) > 0
+      && share(/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}/u) >= 0.7
+  }
+  return share(/^\p{Script=Latin}+$/u) >= 0.7
+}

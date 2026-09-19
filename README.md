@@ -107,7 +107,8 @@ real video (muted, with custom captions and scrubbing).
   follow your defaults too
 - **English or 繁體中文** — Settings → Language switches the app's own text, and
   follows the browser until you pick. The same section sets the caption language
-  (and an optional second track) every video opens with, saved to your account
+  (and an optional second track) every video opens with, and the language a
+comment's Translate button translates into, all saved to your account
 - **Imported videos** — paste any YouTube link to add a one-off video from a
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)

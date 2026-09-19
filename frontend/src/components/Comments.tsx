@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { formatCount, linkify } from '../lib/richText'
-import { t, tc, tn } from '../lib/i18n'
+import { looksWrittenIn, t, tc, tn, translateTarget } from '../lib/i18n'
 
 export type Comment = {
   id: string
@@ -60,8 +60,43 @@ type Props = {
  * to this many lines with a "Read more" underneath. */
 const CLAMP_LINES = 4
 
-function CommentBody({ text, onSeek }: { text: string; onSeek: (s: number) => void }) {
+/* A comment in another language offers to translate itself — into the app's
+ * language, or the one Settings → Language names for comments — the way
+ * YouTube's own comments do. Asked for per comment, on the press: most of a
+ * section is never read, and translating it up front would pay for all of it.
+ * The press toggles: once translated, it switches back and forth without
+ * asking again. */
+type Translation = { status: 'loading' } | { status: 'error' } | { status: 'done'; text: string }
+
+function CommentBody({ text, onSeek, videoId }: { text: string; onSeek: (s: number) => void; videoId: string }) {
   const [open, setOpen] = useState(false)
+  const [translation, setTranslation] = useState<Translation | null>(null)
+  const [showTranslated, setShowTranslated] = useState(false)
+  const lang = translateTarget()
+  const offerTranslate = !looksWrittenIn(text, lang)
+
+  const toggleTranslate = async () => {
+    if (translation?.status === 'done') { setShowTranslated((v) => !v); return }
+    if (translation?.status === 'loading') return
+    setTranslation({ status: 'loading' })
+    try {
+      const res = await apiFetch('/api/feed/comments-translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, target: lang, video_id: videoId }),
+        // Said under the comment, where it was asked for, rather than as a toast.
+        quiet: true,
+      })
+      if (!res.ok) throw new Error()
+      const d = await res.json()
+      setTranslation({ status: 'done', text: String(d.text ?? '') })
+      setShowTranslated(true)
+    } catch {
+      setTranslation({ status: 'error' })
+    }
+  }
+
+  const shown = showTranslated && translation?.status === 'done' ? translation.text : text
   // A cheap proxy for "will this clamp": measuring the real thing needs a
   // layout pass per comment, and being wrong here costs a "Read more" that
   // reveals nothing rather than anything broken.
@@ -74,15 +109,31 @@ function CommentBody({ text, onSeek }: { text: string; onSeek: (s: number) => vo
           long && !open ? ' line-clamp-4' : ''
         }`}
       >
-        {linkify(text, onSeek)}
+        {linkify(shown, onSeek)}
       </div>
-      {long && (
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="mt-0.5 text-xs font-medium text-[#aaa] hover:text-white"
-        >
-          {open ? t('Show less') : t('Read more')}
-        </button>
+      {(long || offerTranslate) && (
+        <div className="mt-0.5 flex items-center gap-3 text-xs font-medium">
+          {long && (
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="text-[#aaa] hover:text-white"
+            >
+              {open ? t('Show less') : t('Read more')}
+            </button>
+          )}
+          {offerTranslate && (
+            <button
+              onClick={toggleTranslate}
+              disabled={translation?.status === 'loading'}
+              className="text-[#aaa] hover:text-white disabled:cursor-default disabled:hover:text-[#aaa]"
+            >
+              {translation?.status === 'loading' ? t('Translating…')
+                : translation?.status === 'error' ? t('Couldn\'t translate — try again')
+                : showTranslated ? t('Show original')
+                : t('Translate')}
+            </button>
+          )}
+        </div>
       )}
     </>
   )
@@ -100,10 +151,11 @@ function replyCount(comment: Comment): number {
 const MAX_INDENT = 3
 
 function Thread({
-  comment, depth, onSeek, onChannelClick,
+  comment, depth, onSeek, onChannelClick, videoId,
 }: {
   comment: Comment
   depth: number
+  videoId: string
   onSeek: (s: number) => void
   onChannelClick?: (id: string) => void
 }) {
@@ -162,7 +214,7 @@ function Thread({
         </div>
 
         <div className="mt-1">
-          <CommentBody text={comment.text} onSeek={onSeek} />
+          <CommentBody text={comment.text} onSeek={onSeek} videoId={videoId} />
         </div>
 
         <div className="mt-1.5 flex items-center gap-3 text-xs text-[#aaa]">
@@ -202,7 +254,7 @@ function Thread({
           }`}
         >
           {shown.map((r) => (
-            <Thread key={r.id} comment={r} depth={depth + 1} onSeek={onSeek} onChannelClick={onChannelClick} />
+            <Thread key={r.id} comment={r} depth={depth + 1} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} />
           ))}
         </div>
       )}
@@ -370,7 +422,7 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
 
               <div className="space-y-5 px-3">
                 {threads.map((c) => (
-                  <Thread key={c.id} comment={c} depth={0} onSeek={onSeek} onChannelClick={onChannelClick} />
+                  <Thread key={c.id} comment={c} depth={0} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} />
                 ))}
               </div>
 

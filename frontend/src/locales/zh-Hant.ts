@@ -532,5 +532,11 @@ export const zhHant: Record<string, string> = {
   'long|now': '現在',
   'long|all': '全部',
   // Comments
+  'Couldn\'t translate — try again': '翻譯失敗，請再試一次',
+  'Show original': '顯示原文',
+  'Translate': '翻譯',
   // Backend settings spec (arrives over the API)
+  'Translate comments into': '留言翻譯語言',
+  'The language a comment\'s Translate button translates into. A comment already in it offers no button.': '留言的「翻譯」按鈕要翻成的語言。已經是這個語言的留言不會出現按鈕。',
+  'Same as the app': '與 App 相同',
 }

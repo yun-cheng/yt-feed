@@ -1536,6 +1536,22 @@ uses (moved to `lib/richText.tsx` when this arrived, so both can share it).
 "Skip to 12:40" is written on the assumption that whoever reads it is sitting in
 front of the player — here they are.
 
+**Translate.** A comment in another language than the translate target gets a
+**Translate** button beside "Read more", the way YouTube's own comments do.
+The target is the `translate_lang` setting (English, 繁體中文, 日本語 or
+한국어), or the app language while that's left on "Same as the app"
+(`translateTarget()` in `lib/i18n.ts`).
+"Another language" is `looksWrittenIn`: the share of the comment in the
+target's script, counting a CJK character and a word of anything else as one
+unit each, so a Chinese comment about an iPhone is still Chinese. Simplified
+Chinese counts as Chinese; Japanese needs some kana, since kanji alone reads as
+Chinese; a comment with no letters offers nothing. The press posts that one
+comment to `/api/feed/comments-translate` with the target; the
+translation replaces the text in place (timestamps in it still seek), and the
+button becomes **Show original**, which toggles without asking again. A failure
+says so under the comment and the same button tries again. Nothing is
+translated until you press: most of a section is never read.
+
 ### Downloaded videos play from disk
 
 A video with a finished download plays from `/api/downloads/:id/file` instead of

@@ -75,4 +75,7 @@ export const DYNAMIC_MESSAGES: string[] = [
   'long|1y',
   'long|now',
   'long|all',
+  'Translate comments into',
+  'The language a comment\'s Translate button translates into. A comment already in it offers no button.',
+  'Same as the app',
 ]

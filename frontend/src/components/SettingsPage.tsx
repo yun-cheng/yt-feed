@@ -4,7 +4,7 @@ import People from './People'
 import PageDefaultsEditor from './PageDefaultsEditor'
 import type { PageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
-import { setLangSetting, t } from '../lib/i18n'
+import { setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 type SettingSpec = {
   key: string
@@ -182,6 +182,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       // Settings the running app reads outside this page take effect now.
       // The language last: it remounts the app, this page included.
       setCaptionDefaults(next.values)
+      setTranslateSetting(next.values.translate_lang)
       setData(next)
       if (key === 'app_language') setLangSetting(next.values.app_language)
       return true

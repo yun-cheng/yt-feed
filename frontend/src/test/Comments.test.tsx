@@ -8,6 +8,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import Comments from '../components/Comments'
+import { setTranslateSetting } from '../lib/i18n'
 
 function comment(over: Record<string, unknown> = {}) {
   return {
@@ -217,5 +218,81 @@ describe('Comments', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     expect(await screen.findByText(/doesn't page through the rest/i)).toBeInTheDocument()
+  })
+})
+
+describe('translating a comment', () => {
+  // The comments, and a translator that answers — or fails — per request.
+  function serveWithTranslator(text: string, answer: (body: { text: string; target: string; video_id: string }) => Response) {
+    const asked: { text: string; target: string; video_id: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push(url)
+      if (url === '/api/feed/comments-translate') {
+        const body = JSON.parse(String(init?.body))
+        asked.push(body)
+        return answer(body)
+      }
+      return { ok: true, status: 200, json: async () => payload({ threads: [comment({ text })] }) } as Response
+    }))
+    return asked
+  }
+  const ok = (text: string) => ({ ok: true, status: 200, json: async () => ({ text }) }) as Response
+
+  async function open() {
+    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: /comments/i }))
+  }
+
+  it('is not offered on a comment already in the app’s language', async () => {
+    serveWithTranslator('nice one', () => ok(''))
+    await open()
+    await screen.findByText('nice one')
+    expect(screen.queryByRole('button', { name: 'Translate' })).not.toBeInTheDocument()
+  })
+
+  it('translates on the press, into the app’s language, and toggles back', async () => {
+    const asked = serveWithTranslator('這部影片太好看了', () => ok('This video is great'))
+    await open()
+    await screen.findByText('這部影片太好看了')
+    expect(asked).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Translate' }))
+    expect(await screen.findByText('This video is great')).toBeInTheDocument()
+    expect(asked).toEqual([{ text: '這部影片太好看了', target: 'en', video_id: 'v1' }])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show original' }))
+    expect(screen.getByText('這部影片太好看了')).toBeInTheDocument()
+    // Back again without asking twice.
+    fireEvent.click(screen.getByRole('button', { name: 'Translate' }))
+    expect(screen.getByText('This video is great')).toBeInTheDocument()
+    expect(asked).toHaveLength(1)
+  })
+
+  it('says so under the comment when it fails, and can be tried again', async () => {
+    let fail = true
+    serveWithTranslator('とても良い動画', () =>
+      fail ? ({ ok: false, status: 502, json: async () => ({}) }) as Response : ok('A very good video'))
+    await open()
+    await screen.findByText('とても良い動画')
+    fireEvent.click(screen.getByRole('button', { name: 'Translate' }))
+    const retry = await screen.findByRole('button', { name: "Couldn't translate — try again" })
+    fail = false
+    fireEvent.click(retry)
+    expect(await screen.findByText('A very good video')).toBeInTheDocument()
+  })
+
+  it('translates into the language Settings names for comments', async () => {
+    setTranslateSetting('ja')
+    try {
+      const asked = serveWithTranslator('great video', () => ok('素晴らしい動画'))
+      await open()
+      await screen.findByText('great video')
+      fireEvent.click(screen.getByRole('button', { name: 'Translate' }))
+      expect(await screen.findByText('素晴らしい動画')).toBeInTheDocument()
+      expect(asked[0].target).toBe('ja')
+    } finally {
+      setTranslateSetting('')
+    }
   })
 })

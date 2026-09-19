@@ -87,3 +87,53 @@ describe('the 繁體中文 catalogue', () => {
 import { DYNAMIC_MESSAGES } from '../locales/dynamic'
 const EXTRA = new Set(DYNAMIC_MESSAGES)
 
+import { looksWrittenIn, setTranslateSetting, translateTarget } from '../lib/i18n'
+
+describe('looksWrittenIn', () => {
+  it('reads English as English, and Chinese with a brand name in it as Chinese', () => {
+    expect(looksWrittenIn('great video, thanks!', 'en')).toBe(true)
+    expect(looksWrittenIn('這支 iPhone 真的很好用', 'zh-Hant')).toBe(true)
+    expect(looksWrittenIn('这个视频太好了', 'zh-Hant')).toBe(true)
+  })
+
+  it('reads another language as one to translate', () => {
+    expect(looksWrittenIn('這部影片太好看了', 'en')).toBe(false)
+    expect(looksWrittenIn('great video', 'zh-Hant')).toBe(false)
+    expect(looksWrittenIn('とても良い動画です', 'zh-Hant')).toBe(false)
+    expect(looksWrittenIn('très bonne vidéo', 'en')).toBe(true)
+  })
+
+  it('has nothing to translate without letters', () => {
+    expect(looksWrittenIn('😂😂 1:23', 'en')).toBe(true)
+  })
+})
+
+describe('looksWrittenIn, for Japanese and Korean', () => {
+  it('needs kana to call something Japanese', () => {
+    expect(looksWrittenIn('とても良い動画です', 'ja')).toBe(true)
+    expect(looksWrittenIn('這部影片太好看了', 'ja')).toBe(false)
+    expect(looksWrittenIn('great video', 'ja')).toBe(false)
+  })
+
+  it('reads Hangul as Korean', () => {
+    expect(looksWrittenIn('정말 좋은 영상이에요', 'ko')).toBe(true)
+    expect(looksWrittenIn('great video', 'ko')).toBe(false)
+  })
+})
+
+describe('the translate target', () => {
+  afterEach(() => { setTranslateSetting('') })
+
+  it('follows the app language until one is set', () => {
+    expect(translateTarget()).toBe('en')
+    setLangSetting('zh-Hant')
+    expect(translateTarget()).toBe('zh-Hant')
+  })
+
+  it('is the setting once there is one, and ignores what it does not know', () => {
+    setTranslateSetting('ja')
+    expect(translateTarget()).toBe('ja')
+    setTranslateSetting('fr')
+    expect(translateTarget()).toBe('en')
+  })
+})
