@@ -30,14 +30,15 @@ from sqlalchemy import select
 
 from app.config import settings as env_settings
 from app.database import async_session
+from app.languages import APP_LANG_OPTIONS, CAPTION_LANG_OPTIONS
 from app.models import AppSetting, UserSetting
 
 
 @dataclass(frozen=True)
 class Spec:
     key: str
-    # "bool", or "page_defaults" (a JSON object — see that entry). The UI
-    # switches on this to pick the control.
+    # "bool", "choice" (one of `options`), or "page_defaults" (a JSON object —
+    # see that entry). The UI switches on this to pick the control.
     type: str
     default: Callable[[], Any]
     label: str
@@ -54,9 +55,52 @@ class Spec:
     # user should see before deciding can say so without the page learning
     # anything about that particular setting.
     status: str = ""
+    # For "choice": the allowed values, each with the label the menu shows, in
+    # menu order. Anything else is refused on write.
+    options: tuple[tuple[str, str], ...] = ()
 
 
 SPEC: tuple[Spec, ...] = (
+    Spec(
+        key="app_language",
+        type="choice",
+        options=tuple(APP_LANG_OPTIONS),
+        default=lambda: "auto",
+        scope="user",
+        label="App language",
+        description=(
+            "The language of menus, buttons and messages. Following the browser "
+            "shows 繁體中文 when your browser prefers Chinese, English otherwise."
+        ),
+        group="Language",
+    ),
+    Spec(
+        key="caption_lang",
+        type="choice",
+        # "" is no particular language: the video's own track, as before.
+        options=(("", "The video's own language"), *CAPTION_LANG_OPTIONS),
+        default=lambda: "",
+        scope="user",
+        label="Captions open in",
+        description=(
+            "The caption language every video starts with, when the video offers "
+            "it. Switching language on a video lasts for that video."
+        ),
+        group="Language",
+    ),
+    Spec(
+        key="caption_lang2",
+        type="choice",
+        options=(("", "None"), *CAPTION_LANG_OPTIONS),
+        default=lambda: "",
+        scope="user",
+        label="Second caption track",
+        description=(
+            "A second language shown under the first, for following along in "
+            "two at once."
+        ),
+        group="Language",
+    ),
     Spec(
         key="archive_fill_enabled",
         type="bool",
@@ -129,6 +173,9 @@ def _decode(spec: Spec, raw: str) -> Any:
             return json.loads(raw)
         except ValueError:
             return spec.default()
+    if spec.type == "choice" and raw not in {v for v, _ in spec.options}:
+        # An option since retired reads as the default.
+        return spec.default()
     return raw
 
 
@@ -142,6 +189,9 @@ def _encode(spec: Spec, value: Any) -> str:
 
 def _check(spec: Spec, value: Any) -> None:
     """Refuse a value of the wrong shape before it's stored."""
+    if spec.type == "choice":
+        if value not in {v for v, _ in spec.options}:
+            raise ValueError(f"{spec.key} must be one of its options")
     if spec.type == "page_defaults":
         if not isinstance(value, dict) or not all(
             isinstance(v, dict) for v in value.values()
@@ -233,11 +283,13 @@ async def put(updates: dict[str, Any], user_id: int | None = None) -> dict[str, 
     return await all_values(user_id)
 
 
-def described() -> list[dict[str, str]]:
+def described() -> list[dict[str, Any]]:
     """The spec, for a UI that renders itself from it."""
     return [
         {"key": s.key, "type": s.type, "label": s.label,
          "description": s.description, "group": s.group, "status": s.status,
-         "scope": s.scope}
+         "scope": s.scope,
+         **({"options": [{"value": v, "label": l} for v, l in s.options]}
+            if s.type == "choice" else {})}
         for s in SPEC
     ]

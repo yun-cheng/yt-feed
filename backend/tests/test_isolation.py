@@ -299,7 +299,8 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
     spec = {s["key"]: s["scope"]
             for s in (await client.get("/api/settings", headers=mine)).json()["settings"]}
     assert spec == {"archive_fill_enabled": "app", "youtube_history_sync": "user",
-                    "page_defaults": "user"}
+                    "page_defaults": "user", "app_language": "user",
+                    "caption_lang": "user", "caption_lang2": "user"}
 
 
 async def test_page_defaults_are_personal(client, pair):
@@ -534,3 +535,13 @@ async def test_following_nothing_searches_nothing(monkeypatch):
     assert await search_index.search("thing", channel_ids=set()) == {
         "channels": [], "videos": [], "videos_total": 0,
     }
+
+
+async def test_languages_are_personal(client, pair):
+    """One person reading in Chinese doesn't switch the app for the other."""
+    mine, theirs, *_ = pair
+    await client.put("/api/settings", headers=mine,
+                     json={"values": {"app_language": "zh-Hant", "caption_lang": "en"}})
+
+    theirs_now = (await client.get("/api/settings", headers=theirs)).json()["values"]
+    assert (theirs_now["app_language"], theirs_now["caption_lang"]) == ("auto", "")

@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import asr, auth, users
+from app.languages import CAPTION_LANG_OPTIONS
 from app.config import settings
 from app.database import async_session
 from app.models import (
@@ -88,15 +89,6 @@ _ct_inflight: dict[str, "asyncio.Future[Optional[tuple]]"] = {}
 _desc_inflight: dict[str, "asyncio.Future[Optional[str]]"] = {}
 _cm_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 
-# Caption languages we expose in the watch-page switcher, in menu order. A track
-# whose code starts with one of these prefixes (e.g. "zh-Hant" → "zh") counts.
-# YouTube's auto-translate makes most of these available on any captioned video.
-CAPTION_LANG_OPTIONS = [
-    ("en", "English"),
-    ("zh", "中文"),
-    ("ja", "日本語"),
-    ("ko", "한국어"),
-]
 
 _T = TypeVar("_T")
 

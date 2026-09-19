@@ -54,6 +54,7 @@ app/
 
   cron_update.py   run_update(): the actual channel-scan job (Phases 1–5)
   app_settings.py  preferences (DB-backed; per-user or per-deployment by scope)
+  languages.py     the caption languages the watch page offers, and the app's own
   archive.py       deep per-channel history, under a daily quota budget
   channel_lookup.py  a pasted link/@handle/id → a channel (see "Adding a channel by hand")
   quota.py         Data API units spent per quota-day (midnight US/Pacific)
@@ -1754,7 +1755,7 @@ Two config systems, split by who the setting belongs to:
   live in `app_settings`, one row for the machine.
 
 Adding a setting is one entry in `SPEC` (key, type, default, label, description,
-group, scope). `GET /api/settings` serves the spec alongside the values and the page
+group, scope, and `options` for a `choice`). `GET /api/settings` serves the spec alongside the values and the page
 renders its controls from it, so a new setting needs no endpoint, no form field,
 and no frontend change. Defaults are lazy callables, which is what lets an
 `.env` value act as a bootstrap default without becoming a second source of
@@ -1766,6 +1767,17 @@ owns that vocabulary, which pages exist and which sorts each one offers, so the
 backend checks only the shape (an object of objects, else a 400) and stores the
 object as JSON text. Its `type` is its own name, because the page renders a
 purpose-built editor for it rather than a generic control.
+
+The language settings are three `choice`s, all **`user`**: `app_language`
+(`auto`, `en`, `zh-Hant`; `auto` follows the browser), and `caption_lang` /
+`caption_lang2`, the caption languages every video opens with (`""` for the
+video's own track, or no second track). A `choice` serves its `options` in menu
+order, refuses anything else with a 400, and reads a stored value that is no
+longer an option as the default. The caption options come from
+`languages.CAPTION_LANG_OPTIONS`, the list the caption endpoints use, so a
+default can only name a language the watch page's picker knows. Labels and
+descriptions stay English here; the frontend translates them for display (see
+the frontend README, "Language").
 
 The two switches are one of each scope. `archive_fill_enabled` (the nightly
 history fill) is **`app`**: one sweep spends a daily API quota billed to a single
@@ -1939,7 +1951,7 @@ no per-test decorator). What's covered:
 | File | Covers |
 |------|--------|
 | `test_generated_captions.py` | local transcription as a JOB: the ramping windows, the seam taken from Whisper rather than the window we asked for, a silent window still advancing, resuming a job a restart killed, the repetition-loop filter, and that a finished track reaches every reader of captions while a half-finished one reaches none. Plus the line treatment: Simplified converted to Traditional (and idempotent, and a no-op on English), long segments cut at punctuation against the column budget, short ones left exactly as they are, and the fallback that shares a span out by length when there is no word timing |
-| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, and that turning the fill off stops a sweep mid-flight |
+| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, the language `choice`s (options in order, a value outside them a 400, a retired one read as the default), and that turning the fill off stops a sweep mid-flight |
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |

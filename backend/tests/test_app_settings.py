@@ -85,6 +85,48 @@ async def test_page_defaults_of_the_wrong_shape_are_a_400(client, bad):
 
 
 @pytest.mark.asyncio
+async def test_language_settings_start_on_the_browser_and_the_videos_own(client):
+    values = (await client.get("/api/settings")).json()["values"]
+    assert (values["app_language"], values["caption_lang"], values["caption_lang2"]) == ("auto", "", "")
+
+
+@pytest.mark.asyncio
+async def test_a_choice_serves_its_options_in_menu_order(client):
+    spec = {s["key"]: s for s in (await client.get("/api/settings")).json()["settings"]}
+    assert [o["value"] for o in spec["app_language"]["options"]] == ["auto", "en", "zh-Hant"]
+    assert [o["value"] for o in spec["caption_lang"]["options"]] == ["", "en", "zh", "ja", "ko"]
+    assert "options" not in spec["page_defaults"]
+
+
+@pytest.mark.asyncio
+async def test_a_choice_round_trips(client):
+    res = await client.put("/api/settings", json={"values": {"app_language": "zh-Hant", "caption_lang": "ja"}})
+    assert res.status_code == 200
+    values = (await client.get("/api/settings")).json()["values"]
+    assert (values["app_language"], values["caption_lang"]) == ("zh-Hant", "ja")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None)])
+async def test_a_choice_outside_its_options_is_a_400(client, key, bad):
+    res = await client.put("/api/settings", json={"values": {key: bad}})
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_a_stored_option_since_retired_reads_as_the_default(client):
+    from app.database import async_session
+    from app.models import UserSetting
+    from sqlalchemy import select
+    await client.put("/api/settings", json={"values": {"caption_lang": "ja"}})
+    async with async_session() as session:
+        row = (await session.execute(select(UserSetting).where(UserSetting.key == "caption_lang"))).scalar_one()
+        row.value = "fr"
+        await session.commit()
+    assert (await client.get("/api/settings")).json()["values"]["caption_lang"] == ""
+
+
+@pytest.mark.asyncio
 async def test_the_fill_does_nothing_while_the_setting_is_off():
     from app import archive
 
