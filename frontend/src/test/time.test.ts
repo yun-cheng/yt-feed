@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { formatTime } from '../lib/time'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { timeAgo, formatTime } from '../lib/time'
 
 describe('formatTime', () => {
   it('formats under a minute', () => {
@@ -30,5 +30,24 @@ describe('formatTime', () => {
   it('clamps a negative time to zero', () => {
     // currentTime can read fractionally negative right after a seek to 0.
     expect(formatTime(-5)).toBe('0:00')
+  })
+})
+
+describe('timeAgo', () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-20T12:00:00Z')) })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('reads a naive stamp as UTC', () => {
+    expect(timeAgo('2026-09-20T09:00:00.000000')).toBe('3h ago')
+  })
+
+  it('reads a stamp that carries its own offset', () => {
+    expect(timeAgo('2026-04-16T12:00:04+00:00')).toBe('5mo ago')
+    expect(timeAgo('2026-09-20T09:00:00Z')).toBe('3h ago')
+  })
+
+  it('says nothing for a missing or unreadable stamp', () => {
+    expect(timeAgo('')).toBe('')
+    expect(timeAgo('soon')).toBe('')
   })
 })

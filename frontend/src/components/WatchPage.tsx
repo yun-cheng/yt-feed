@@ -6,7 +6,7 @@ import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { useFocusMode } from '../hooks/focusMode'
-import { formatTime } from '../lib/time'
+import { formatTime, timeAgo } from '../lib/time'
 import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalControls'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
@@ -60,18 +60,6 @@ type Props = {
   // Whether hasLocalFile is an answer yet: the downloads list is fetched once at
   // startup, so on a cold load of /watch/:id it can still be in flight here.
   downloadsKnown: boolean
-}
-
-function timeAgo(iso: string): string {
-  const then = new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
-  const hours = Math.floor((Date.now() - then) / 3_600_000)
-  if (hours < 1) return 'Just now'
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months}mo ago`
-  return `${Math.floor(months / 12)}y ago`
 }
 
 // A timed caption cue from /feed/captions. `words` carries per-word timing (for

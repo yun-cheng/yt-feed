@@ -28,7 +28,7 @@ import LocalWatchPage from './components/LocalWatchPage'
 import SettingsPage from './components/SettingsPage'
 import { fetchFolders, fetchFolderVideos } from './lib/local'
 import type { LocalFolder, LocalVideo } from './lib/local'
-import { DEFAULT_RANGE, formatAge, inWindow, parseAge } from './lib/timeWindow'
+import { DEFAULT_RANGE, formatAge, inWindow, parseAge, stampMs } from './lib/timeWindow'
 import { DEFAULT_PAGES, DEFAULT_WATCH_STATUSES, defaultsFor, setPageDefaultOverrides } from './lib/pageDefaults'
 import type { TimeRange } from './lib/timeWindow'
 
@@ -657,8 +657,8 @@ export function sortVideos<T extends VideoItem>(videos: T[], sort: string): T[] 
     const rb = b.view_count > 0 ? b.like_count / b.view_count : 0
     return rb - ra
   })
-  if (sort === 'oldest') return v.sort((a, b) => new Date(a.published_at).getTime() - new Date(b.published_at).getTime())
-  if (sort === 'newest') return v.sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+  if (sort === 'oldest') return v.sort((a, b) => (stampMs(a.published_at) ?? 0) - (stampMs(b.published_at) ?? 0))
+  if (sort === 'newest') return v.sort((a, b) => (stampMs(b.published_at) ?? 0) - (stampMs(a.published_at) ?? 0))
   return v
 }
 

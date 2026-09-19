@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
+import { timeAgo } from '../lib/time'
 import type { VideoItem, WatchProgress } from '../App'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { storyboardFrame } from '../lib/storyboard'
@@ -140,19 +141,6 @@ function formatDuration(s: number): string {
   const sec = s % 60
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
   return `${m}:${String(sec).padStart(2, '0')}`
-}
-
-function timeAgo(iso: string): string {
-  const now = Date.now()
-  const then = new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
-  const hours = Math.floor((now - then) / 3600000)
-  if (hours < 1) return 'Just now'
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  const months = Math.floor(days / 30)
-  if (months < 12) return `${months}mo ago`
-  return `${Math.floor(months / 12)}y ago`
 }
 
 // Scale down frames so preview fits in small cards

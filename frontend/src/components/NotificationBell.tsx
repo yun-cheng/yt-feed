@@ -3,6 +3,7 @@ import {
   useNotifications, markAllRead, dismissNotification, clearNotifications,
 } from '../hooks/notificationStore'
 import type { Notification } from '../hooks/notificationStore'
+import { stampMs } from '../lib/timeWindow'
 
 /**
  * The bell, top right of every page's TopBar.
@@ -13,10 +14,10 @@ import type { Notification } from '../hooks/notificationStore'
  * The rows stay until dismissed, which is the part a toast can't do.
  */
 
-/** Server timestamps are naive UTC; the Z is what stops them reading as local. */
 function ago(iso: string | null): string {
   if (!iso) return ''
-  const then = new Date(iso.endsWith('Z') ? iso : iso + 'Z').getTime()
+  const then = stampMs(iso)
+  if (then === null) return ''
   const mins = Math.max(0, Math.round((Date.now() - then) / 60000))
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins}m ago`

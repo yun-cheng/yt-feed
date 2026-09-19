@@ -570,13 +570,16 @@ The API still serves a playlist item's `added_at` as `created_at` — the same
 name the other library pages use for the same moment — because it's what the
 list's own `Order` depends on, even though nothing windows by it.
 
-Two details in `lib/timeWindow.ts` that only matter here:
+Two details in `lib/timeWindow.ts`:
 
 - `stampMs` assumes **UTC** for a zoneless timestamp. The API writes
   `datetime.utcnow().isoformat()`, and `new Date` reads a zoneless *datetime* as
   local — enough to push something you saved this morning out of a `1d` window.
   A bare date has the opposite rule (already UTC by spec), so only the `T` form
-  is corrected.
+  is corrected. A stamp that carries its own zone (`Z`, `+00:00`) is read as
+  written; some `published_at` values arrive that way. Every place that turns a
+  server stamp into a time goes through it: the window, the Newest/Oldest sort,
+  `timeAgo` and the notification bell.
 - A row with **no** stamp is kept, on every window. Missing means the field
   predates the row, not that the row is infinitely old, and dropping it would
   make it unreachable even at "All time".
@@ -767,7 +770,7 @@ lib/
   quality.ts                      YouTube's quality names → "1080p"
   local.ts                        local-folder types + fetch helpers
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
-  time.ts                         formatTime — the player clock
+  time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   richText.tsx                    YouTube free text (descriptions, comments):
                                   URLs as links, timestamps as seek buttons
   markdown.tsx                    the slice of Markdown a model writes, rendered
