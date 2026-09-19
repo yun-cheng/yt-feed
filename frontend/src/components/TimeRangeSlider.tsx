@@ -1,5 +1,6 @@
 import * as Slider from '@radix-ui/react-slider'
-import { MAX_TICK, TICK_LABELS, clampRange, rangeLabel, type TimeRange } from '../lib/timeWindow'
+import { MAX_TICK, TICK_LABELS, clampRange, rangeLabel, tickLabel, type TimeRange } from '../lib/timeWindow'
+import { tn, t } from '../lib/i18n'
 
 type Props = {
   value: TimeRange
@@ -32,7 +33,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
       <div className="mb-1.5 flex items-baseline gap-2">
         <span className="text-sm font-medium text-white">{rangeLabel(value)}</span>
         {count !== undefined && (
-          <span className="text-xs text-[#888]">{count.toLocaleString()} videos</span>
+          <span className="text-xs text-[#888]">{tn(count, '{n} video', '{n} videos', { n: count.toLocaleString() })}</span>
         )}
       </div>
 
@@ -44,7 +45,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
         max={MAX_TICK}
         step={1}
         minStepsBetweenThumbs={1}
-        aria-label="Time window"
+        aria-label={t('Time window')}
       >
         <Slider.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-[#272727]">
           <Slider.Range className="absolute h-full bg-white" />
@@ -65,13 +66,13 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
         </Slider.Track>
         <Slider.Thumb
           data-testid="time-thumb-lo"
-          aria-label="Newest edge"
+          aria-label={t('Newest edge')}
           aria-valuetext={TICK_LABELS[value.lo]}
           className="block h-3.5 w-3.5 cursor-grab rounded-full bg-white transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 active:cursor-grabbing"
         />
         <Slider.Thumb
           data-testid="time-thumb-hi"
-          aria-label="Oldest edge"
+          aria-label={t('Oldest edge')}
           aria-valuetext={TICK_LABELS[value.hi]}
           className="block h-3.5 w-3.5 cursor-grab rounded-full bg-white transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 active:cursor-grabbing"
         />
@@ -87,20 +88,20 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
             <span
               key={label}
               style={style}
-              className={`absolute text-[11px] ${inRange ? 'text-white' : 'text-[#717171]'}`}
+              className={`absolute whitespace-nowrap text-[11px] ${inRange ? 'text-white' : 'text-[#717171]'}`}
             >
-              {label}
+              {tickLabel(i)}
             </span>
           ) : (
             <button
               key={label}
               onClick={() => pick(i)}
               style={style}
-              className={`absolute cursor-pointer text-[11px] transition-colors hover:text-white ${
+              className={`absolute cursor-pointer whitespace-nowrap text-[11px] transition-colors hover:text-white ${
                 inRange ? 'text-white' : 'text-[#717171]'
               }`}
             >
-              {label}
+              {tickLabel(i)}
             </button>
           )
         })}

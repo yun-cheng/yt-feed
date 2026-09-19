@@ -1,5 +1,6 @@
 import TimeRangeSlider from './TimeRangeSlider'
 import type { TimeRange } from '../lib/timeWindow'
+import { tc } from '../lib/i18n'
 
 // ── Constants ──────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ export default function TimeSortControls({ variant = 'feed', age, onAgeChange, c
                 : 'text-[#888] hover:text-white'
             }`}
           >
-            {opt.label}
+            {tc('sort', opt.label)}
           </button>
         ))}
       </div>

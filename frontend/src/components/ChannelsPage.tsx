@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { apiFetch } from '../lib/api'
 import AddChannelDialog from './AddChannelDialog'
+import { formatCount } from '../lib/richText'
+import { t, tn } from '../lib/i18n'
 
 type ChannelInfo = {
   youtube_id: string
@@ -24,11 +26,6 @@ type Props = {
   onToggleHidden: (channelId: string) => void
 }
 
-function formatSubs(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
 
 const EyeIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -100,14 +97,14 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
       </svg>
-      Add channel
+      {t('Add channel')}
     </button>
   )
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-        Loading channels...
+        {t('Loading channels...')}
       </div>
     )
   }
@@ -116,7 +113,7 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaaaaa]">
         <p className="text-sm">
-          {selectedTags.length > 0 ? 'No channels match the selected tags.' : 'No channels yet.'}
+          {selectedTags.length > 0 ? t('No channels match the selected tags.') : t('No channels yet.')}
         </p>
         {addButton}
         {dialog}
@@ -130,8 +127,8 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
         <p className="text-sm text-[#777]">
-          {channels.length} channels
-          {hiddenCount > 0 && <span className="text-[#666]"> · {hiddenCount} hidden from home</span>}
+          {tn(channels.length, '{n} channel', '{n} channels')}
+          {hiddenCount > 0 && <span className="text-[#666]"> · {t('{n} hidden from home', { n: hiddenCount })}</span>}
         </p>
         {addButton}
       </div>
@@ -152,8 +149,8 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
             {ch.source === 'manual' && (
               <button
                 onClick={(e) => { e.stopPropagation(); setConfirming(confirming === ch.youtube_id ? null : ch.youtube_id) }}
-                title="Remove channel"
-                aria-label="Remove channel"
+                title={t('Remove channel')}
+                aria-label={t('Remove channel')}
                 className="absolute top-2 right-10 z-10 p-1.5 rounded-full text-[#aaa] opacity-0 transition-colors hover:bg-white/10 hover:text-white group-hover:opacity-100"
               >
                 <TrashIcon />
@@ -162,15 +159,15 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
             {/* Hide/show toggle */}
             <button
               onClick={(e) => { e.stopPropagation(); onToggleHidden(ch.youtube_id) }}
-              title={isHidden ? 'Show on home' : 'Hide from home'}
-              aria-label={isHidden ? 'Show on home' : 'Hide from home'}
+              title={isHidden ? t('Show on home') : t('Hide from home')}
+              aria-label={isHidden ? t('Show on home') : t('Hide from home')}
               className={`absolute top-2 right-2 z-10 p-1.5 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors ${isHidden ? '' : 'opacity-0 group-hover:opacity-100'}`}
             >
               {isHidden ? <EyeOffIcon /> : <EyeIcon />}
             </button>
             {isHidden && (
               <span className="absolute top-2.5 left-4 text-[10px] font-medium text-amber-400/80 bg-amber-400/10 px-1.5 py-0.5 rounded">
-                Hidden from home
+                {t('Hidden from home')}
               </span>
             )}
             <div className={`flex items-start gap-3 ${isHidden ? 'mt-5' : ''}`}>
@@ -186,7 +183,7 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
                 </h3>
                 {ch.subscriber_count > 0 && (
                   <p className="text-xs text-[#777] mt-0.5">
-                    {formatSubs(ch.subscriber_count)} subscribers
+                    {t('{count} subscribers', { count: formatCount(ch.subscriber_count) })}
                   </p>
                 )}
               </div>
@@ -216,19 +213,19 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
                 className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-[#2a1a1a] px-3 py-2 ring-1 ring-red-500/30"
                 onClick={(e) => e.stopPropagation()}
               >
-                <span className="text-xs text-[#ccc]">Remove this channel and its videos?</span>
+                <span className="text-xs text-[#ccc]">{t('Remove this channel and its videos?')}</span>
                 <div className="flex flex-shrink-0 gap-1">
                   <button
                     onClick={() => setConfirming(null)}
                     className="rounded-full px-2 py-1 text-xs text-[#aaa] hover:bg-white/10 hover:text-white"
                   >
-                    Cancel
+                    {t('Cancel')}
                   </button>
                   <button
                     onClick={() => removeChannel(ch.youtube_id)}
                     className="rounded-full bg-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/30"
                   >
-                    Remove
+                    {t('Remove')}
                   </button>
                 </div>
               </div>

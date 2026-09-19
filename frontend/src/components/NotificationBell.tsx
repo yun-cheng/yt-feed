@@ -4,6 +4,7 @@ import {
 } from '../hooks/notificationStore'
 import type { Notification } from '../hooks/notificationStore'
 import { stampMs } from '../lib/timeWindow'
+import { t } from '../lib/i18n'
 
 /**
  * The bell, top right of every page's TopBar.
@@ -19,11 +20,11 @@ function ago(iso: string | null): string {
   const then = stampMs(iso)
   if (then === null) return ''
   const mins = Math.max(0, Math.round((Date.now() - then) / 60000))
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t('Just now')
+  if (mins < 60) return t('{n}m ago', { n: mins })
   const hours = Math.round(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
+  if (hours < 24) return t('{n}h ago', { n: hours })
+  return t('{n}d ago', { n: Math.round(hours / 24) })
 }
 
 function iconFor(kind: string) {
@@ -78,8 +79,8 @@ export default function NotificationBell() {
       <button
         onClick={toggle}
         className="relative rounded-full p-2 text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
-        aria-label={unread ? `Notifications (${unread} unread)` : 'Notifications'}
-        title="Notifications"
+        aria-label={unread ? t('Notifications ({n} unread)', { n: unread }) : t('Notifications')}
+        title={t('Notifications')}
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.4-1.4A2 2 0 0118 14.2V11a6 6 0 10-12 0v3.2a2 2 0 01-.6 1.4L4 17h5m6 0a3 3 0 11-6 0m6 0H9" />
@@ -94,7 +95,7 @@ export default function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-full z-50 mt-1 w-[min(92vw,360px)] overflow-hidden rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
-            <span className="text-sm font-medium text-white">Notifications</span>
+            <span className="text-sm font-medium text-white">{t('Notifications')}</span>
             {items.length > 0 && (
               <button
                 onClick={() => clearNotifications()}
@@ -105,7 +106,7 @@ export default function NotificationBell() {
             )}
           </div>
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-[#717171]">Nothing yet.</p>
+            <p className="px-4 py-6 text-center text-xs text-[#717171]">{t('Nothing yet.')}</p>
           ) : (
             <ul className="max-h-[60vh] overflow-y-auto">
               {items.map((n) => (
@@ -136,14 +137,14 @@ export default function NotificationBell() {
                       <span className="mt-0.5">{iconFor(n.kind)}</span>
                     )}
                     <span className="min-w-0">
-                      <span className="block text-sm text-white">{n.title}</span>
+                      <span className="block text-sm text-white">{t(n.title)}</span>
                       <span className="block truncate text-xs text-[#aaa]">{n.body}</span>
                       <span className="block text-[11px] text-[#717171]">{ago(n.created_at)}</span>
                     </span>
                   </button>
                   <button
                     onClick={() => dismissNotification(n.id)}
-                    aria-label="Dismiss notification"
+                    aria-label={t('Dismiss notification')}
                     className="mt-0.5 rounded-full p-1 text-[#717171] opacity-0 transition-opacity hover:bg-white/10 hover:text-white group-hover:opacity-100 focus:opacity-100"
                   >
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

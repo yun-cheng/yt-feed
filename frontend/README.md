@@ -73,6 +73,42 @@ does client-side routing itself:
   High-frequency background calls (hover captions/storyboards, the topic-build
   poll) opt out with `{ quiet: true }`.
 
+### Language (`lib/i18n.ts`, `locales/`)
+
+The app's own text comes in English and 繁體中文 (Taiwan), chosen by the
+`app_language` setting (Settings → Language); `auto` follows the browser.
+
+- **Keyed by the English.** A message is written as `t('Watch later')`, so the
+  source reads as it always did and English needs no table: a string missing
+  from `locales/zh-Hant.ts` shows in English. `{name}` placeholders are filled
+  from the second argument. `tn(n, '{n} video', '{n} videos')` picks a count's
+  form; `tc('sort', 'Watched')` is for English that means two things (a sort
+  order on History, a watch status elsewhere) and looks up `sort|Watched` first.
+- **Module state, and a remount to change it.** `t` is called from plain
+  helpers (`timeAgo`, `rangeLabel`, `formatCount`) as well as components, so
+  the language is a module variable rather than context. `DefaultsLoader` keys
+  the app by it, and saving a new language remounts everything below — the URL
+  brings you back to the same page. The last language used is kept in
+  localStorage, so the sign-in screen and the loading screen are already in it.
+- **Call `t` when rendering, never at module load.** A constant built with `t`
+  at import time is frozen in whatever language was current then. Lists of
+  options (sorts, watch statuses, lengths, page names, tag groups) keep their
+  English labels and are translated where they're drawn; since the catalogue
+  test can't see those keys in a `t('…')` call, `locales/dynamic.ts` lists them,
+  along with the settings spec's labels and descriptions, which arrive from the
+  backend in English.
+- **Numbers and times.** In Chinese, counts use 萬 and 億 (35.6萬) the way
+  YouTube writes them there, "ago" reads 5 分鐘前, and dates format for `zh-TW`
+  (`locale()`). The time slider's ticks use a short form (1月, 半年) to fit
+  their 25px, and its heading the long one (過去 1 個月).
+- **The catalogue test** (`test/i18n.test.ts`) scans the source for every
+  `t('…')` / `tn(…)` and fails on one with no 繁體中文 entry, on an entry nothing
+  uses any more, and on a translation that drops one of its English's
+  placeholders.
+
+What stays English: text the backend writes (error details, the archive
+status line, notification bodies), YouTube's own data, and your tag names.
+
 ### URL state
 
 Pages keep **separate** sort / window / watch-status state — a channel page's
@@ -712,11 +748,15 @@ components/
                                   the button that fetches the rest
   SettingsPage.tsx                renders itself from the spec /api/settings
                                   serves — adding a setting is a backend change.
+                                  A `choice` is a menu; saving a language or a
+                                  caption default applies it at once.
                                   Badges the ones scoped to the whole machine,
                                   and shows the extension's API key to copy
   PageDefaultsEditor.tsx          the `page_defaults` setting's control: each
                                   page's opening window, sort and watch filter
-  DefaultsLoader.tsx              holds the app back until those defaults load
+  DefaultsLoader.tsx              holds the app back until your settings load
+                                  (page defaults, language, caption languages),
+                                  and remounts it when the language changes
   People.tsx                      who shares this app; adds someone and hands
                                   back the login link to send them. Composes the
                                   link from window.location.origin — the API
@@ -771,11 +811,17 @@ lib/
   local.ts                        local-folder types + fetch helpers
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
+  i18n.ts                         t / tn / tc and the current language (see "Language")
+  captionDefaults.ts              the caption languages every video opens with
   richText.tsx                    YouTube free text (descriptions, comments):
-                                  URLs as links, timestamps as seek buttons
+                                  URLs as links, timestamps as seek buttons;
+                                  formatCount (1.2M, or 35.6萬 in Chinese)
   markdown.tsx                    the slice of Markdown a model writes, rendered
                                   — leaves go through richText, so a timestamp
                                   inside a bullet still seeks
+locales/
+  zh-Hant.ts                      繁體中文, keyed by the English it replaces
+  dynamic.ts                      keys that reach t() through a variable
 ```
 
 ---
@@ -1097,8 +1143,13 @@ Other details:
   (the `c` shortcut still hides everything). A saved language is only honoured on a
   video that actually offers it (`effCaptionLang`) — otherwise the backend hands back
   a machine *translation* of another track, which once surfaced as a Japanese
-  transcript on a video with no Japanese captions. The pref is kept for the next
-  video that does have it.
+  transcript on a video with no Japanese captions. The default is kept for the
+  next video that does have it.
+- **Which languages a video opens on**: the `caption_lang` / `caption_lang2`
+  settings (Settings → Language, `lib/captionDefaults.ts`), saved to your
+  account, so they follow you to another browser. A pick made on a video lasts
+  for that video; the next one opens on your defaults again. How captions look —
+  on or off, word-by-word, position, size — is still remembered per browser.
 - **Caption display (position, size, reset)**: a **Display** section under the two
   columns, because it applies to both. **Position** puts the block at the top or the
   bottom of the player — top is for a video whose own subtitles are burned in along

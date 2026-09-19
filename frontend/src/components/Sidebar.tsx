@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { TagInfo, LabelCount } from '../App'
 import { WATCH_STATUSES, VIDEO_LENGTHS, isExcluded, tagName } from '../App'
 import type { Preset } from '../lib/presets'
+import { t } from '../lib/i18n'
 
 type Props = {
   tags: TagInfo[]
@@ -146,7 +147,7 @@ const HamburgerButton = ({ onClick, className = '' }: { onClick: () => void; cla
   <button
     onClick={onClick}
     className={`text-[#aaa] hover:text-white transition-colors flex-shrink-0 ${className}`}
-    aria-label="Toggle sidebar"
+    aria-label={t('Toggle sidebar')}
   >
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -183,7 +184,7 @@ const ContentModeToggle = ({ mode, onChange }: { mode: 'videos' | 'shorts'; onCh
         }`}
       >
         {m === 'videos' ? <VideosIcon /> : <ShortsIcon />}
-        {m === 'videos' ? 'Videos' : 'Shorts'}
+        {m === 'videos' ? t('Videos') : t('Shorts')}
       </button>
     ))}
   </div>
@@ -223,9 +224,9 @@ const WatchStatusSection = ({
         }`}
       >
         <span>👁️</span>
-        <span>Watch status</span>
+        <span>{t('Watch status')}</span>
         <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
-          {allSelected ? 'deselect all' : 'select all'}
+          {allSelected ? t('deselect all') : t('select all')}
         </span>
       </button>
       <div className="flex flex-wrap gap-1.5">
@@ -242,7 +243,7 @@ const WatchStatusSection = ({
               }`}
             >
               <span>{w.icon}</span>
-              <span>{w.label}</span>
+              <span>{t(w.label)}</span>
             </button>
           )
         })}
@@ -276,9 +277,9 @@ const LengthSection = ({
         }`}
       >
         <span>⏳</span>
-        <span>Length</span>
+        <span>{t('Length')}</span>
         <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
-          {allSelected ? 'deselect all' : 'select all'}
+          {allSelected ? t('deselect all') : t('select all')}
         </span>
       </button>
       <div className="flex flex-wrap gap-1.5">
@@ -296,7 +297,7 @@ const LengthSection = ({
               }`}
             >
               <span>{l.icon}</span>
-              <span>{l.label}</span>
+              <span>{t(l.label)}</span>
             </button>
           )
         })}
@@ -320,7 +321,7 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
     <div>
       <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#717171] px-1 -mx-1">
         <span>📝</span>
-        <span>Summary</span>
+        <span>{t('Summary')}</span>
       </div>
       <button
         onClick={onToggle}
@@ -330,7 +331,7 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
         }`}
       >
         <span>📝</span>
-        <span>Summarised</span>
+        <span>{t('Summarised')}</span>
       </button>
     </div>
   )
@@ -379,14 +380,14 @@ const PresetSection = ({
     <div>
       <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#717171] px-1 -mx-1">
         <span>🔖</span>
-        <span>Presets</span>
+        <span>{t('Presets')}</span>
         {onSave && !naming && (
           <button
             onClick={() => { setNaming(true); setArmed(null) }}
-            title="Save the current filters as a preset"
+            title={t('Save the current filters as a preset')}
             className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal hover:opacity-100 transition-opacity cursor-pointer"
           >
-            save current
+            {t('save current')}
           </button>
         )}
       </div>
@@ -401,8 +402,8 @@ const PresetSection = ({
               if (e.key === 'Enter') commit()
               if (e.key === 'Escape') { setName(''); setNaming(false) }
             }}
-            placeholder="Name these filters"
-            aria-label="Preset name"
+            placeholder={t('Name these filters')}
+            aria-label={t('Preset name')}
             maxLength={60}
             className="w-full px-2 py-1 text-sm rounded bg-[#121212] border border-[#3a3a3a] text-[#ddd] placeholder-[#555] focus:outline-none focus:border-[#666]"
           />
@@ -410,7 +411,7 @@ const PresetSection = ({
               here rather than discovered afterwards. */}
           {clash && (
             <div className="mt-1 text-[10px] text-amber-400/80">
-              Replaces the preset you saved under this name
+              {t('Replaces the preset you saved under this name')}
             </div>
           )}
         </div>
@@ -430,7 +431,7 @@ const PresetSection = ({
               <button
                 onClick={() => { setArmed(null); onApply(p) }}
                 data-active={active ? 'on' : 'off'}
-                title={active ? `Clear “${p.name}”` : `Filter by “${p.name}”`}
+                title={active ? t('Clear “{name}”', { name: p.name }) : t('Filter by “{name}”', { name: p.name })}
                 aria-pressed={active}
                 className={`inline-flex items-center gap-1 rounded-l-full py-1 pl-2.5 pr-2 transition-colors ${
                   active ? 'hover:bg-black/10' : 'hover:bg-white/10'
@@ -444,8 +445,8 @@ const PresetSection = ({
                 }}
                 onBlur={() => setArmed(cur => (cur === p.id ? null : cur))}
                 data-armed={arming ? 'on' : 'off'}
-                title={arming ? `Click again to delete “${p.name}”` : `Delete “${p.name}”`}
-                aria-label={arming ? `Confirm deleting ${p.name}` : `Delete ${p.name}`}
+                title={arming ? t('Click again to delete “{name}”', { name: p.name }) : t('Delete “{name}”', { name: p.name })}
+                aria-label={arming ? t('Confirm deleting {name}', { name: p.name }) : t('Delete {name}', { name: p.name })}
                 className={`rounded-r-full border-l px-1.5 py-1 leading-none transition-colors ${
                   arming
                     ? 'border-red-500 bg-red-600 text-white text-[11px]'
@@ -471,7 +472,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
-    const g = tag.group || '其他'
+    const g = tag.group || 'Other'
     if (!grouped.has(g)) grouped.set(g, [])
     grouped.get(g)!.push(tag)
   }
@@ -485,7 +486,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={onHome}
             className="flex items-center justify-center py-1 hover:opacity-80 transition-opacity"
-            aria-label="My Feed"
+            aria-label={t('My Feed')}
           >
             <LogoMark />
           </button>
@@ -494,13 +495,13 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           {showMode && (
             <button
               onClick={() => onContentModeChange!(contentMode === 'shorts' ? 'videos' : 'shorts')}
-              title={contentMode === 'shorts' ? 'Showing Shorts — switch to Videos' : 'Show Shorts'}
+              title={contentMode === 'shorts' ? t('Showing Shorts — switch to Videos') : t('Show Shorts')}
               className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
                 contentMode === 'shorts' ? 'text-white' : 'text-[#717171] hover:text-white'
               }`}
             >
               <ShortsIcon />
-              <span className="text-[10px]">Shorts</span>
+              <span className="text-[10px]">{t('Shorts')}</span>
             </button>
           )}
           <button
@@ -510,7 +511,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <HomeIcon />
-            <span className="text-[10px]">My Feed</span>
+            <span className="text-[10px]">{t('My Feed')}</span>
           </button>
           <button
             onClick={() => onPageChange('channels')}
@@ -519,7 +520,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <ChannelsIcon />
-            <span className="text-[10px]">Channels</span>
+            <span className="text-[10px]">{t('Channels')}</span>
           </button>
           <button
             onClick={() => onPageChange('watchlater')}
@@ -528,7 +529,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <WatchLaterIcon />
-            <span className="text-[10px]">Later</span>
+            <span className="text-[10px]">{t('Later')}</span>
             {!!watchLaterCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {watchLaterCount > 9 ? '9+' : watchLaterCount}
@@ -542,7 +543,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <DownloadsIcon />
-            <span className="text-[10px]">Downloads</span>
+            <span className="text-[10px]">{t('Downloads')}</span>
             {!!downloadsCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {downloadsCount > 9 ? '9+' : downloadsCount}
@@ -556,7 +557,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <PlaylistsIcon />
-            <span className="text-[10px]">Lists</span>
+            <span className="text-[10px]">{t('Lists')}</span>
             {!!playlistsCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {playlistsCount > 9 ? '9+' : playlistsCount}
@@ -570,7 +571,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <ImportedIcon />
-            <span className="text-[10px]">Imported</span>
+            <span className="text-[10px]">{t('Imported')}</span>
             {!!importedCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {importedCount > 9 ? '9+' : importedCount}
@@ -584,7 +585,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <LocalIcon />
-            <span className="text-[10px]">Local</span>
+            <span className="text-[10px]">{t('Local')}</span>
             {!!localFoldersCount && (
               <span className="absolute top-2 right-2.5 text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
                 {localFoldersCount > 9 ? '9+' : localFoldersCount}
@@ -598,18 +599,18 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             }`}
           >
             <HistoryIcon />
-            <span className="text-[10px]">History</span>
+            <span className="text-[10px]">{t('History')}</span>
           </button>
           {showHiddenToggle && (
             <button
               onClick={onToggleShowHidden}
-              title={showHidden ? 'Hiding hidden channels' : 'Show hidden channels'}
+              title={showHidden ? t('Hiding hidden channels') : t('Show hidden channels')}
               className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
                 showHidden ? 'text-white' : 'text-[#717171] hover:text-white'
               }`}
             >
               <EyeIcon />
-              <span className="text-[10px]">Hidden</span>
+              <span className="text-[10px]">{t('Hidden')}</span>
             </button>
           )}
         </nav>
@@ -627,7 +628,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
           <LogoMark />
-          <span className="text-base font-semibold tracking-tight text-white">My Feed</span>
+          <span className="text-base font-semibold tracking-tight text-white">{t('My Feed')}</span>
         </button>
       </div>
 
@@ -650,7 +651,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <HomeIcon />
-          My Feed
+          {t('My Feed')}
         </button>
         <button
           onClick={() => onPageChange('channels')}
@@ -661,7 +662,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <ChannelsIcon />
-          Channels
+          {t('Channels')}
         </button>
         <button
           onClick={() => onPageChange('watchlater')}
@@ -672,7 +673,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <WatchLaterIcon />
-          Watch Later
+          {t('Watch Later')}
           {!!watchLaterCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {watchLaterCount}
@@ -688,7 +689,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <DownloadsIcon />
-          Downloads
+          {t('Downloads')}
           {!!downloadsCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {downloadsCount}
@@ -704,7 +705,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <PlaylistsIcon />
-          Playlists
+          {t('Playlists')}
           {!!playlistsCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {playlistsCount}
@@ -720,7 +721,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <ImportedIcon />
-          Imported
+          {t('Imported')}
           {!!importedCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {importedCount}
@@ -736,7 +737,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <LocalIcon />
-          Local
+          {t('Local')}
           {!!localFoldersCount && (
             <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
               {localFoldersCount}
@@ -752,7 +753,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <HistoryIcon />
-          History
+          {t('History')}
         </button>
         <button
           onClick={() => onPageChange('settings')}
@@ -763,7 +764,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           }`}
         >
           <SettingsIcon />
-          Settings
+          {t('Settings')}
         </button>
       </div>
 
@@ -797,23 +798,23 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <div>
           <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#717171]">
             <span>🏷️</span>
-            <span>Topics</span>
+            <span>{t('Topics')}</span>
             {!!selectedLabel && (
               <button
                 onClick={() => onToggleLabel?.(selectedLabel)}
                 className="ml-auto text-[10px] normal-case tracking-normal font-normal text-[#717171] hover:text-white"
               >
-                clear
+                {t('clear')}
               </button>
             )}
           </div>
           {channelLabels === null || channelLabels === undefined ? (
             <p className="text-xs text-[#555] animate-pulse">
-              {channelLabelsBuilding ? 'Finding topics…' : 'Loading…'}
+              {channelLabelsBuilding ? t('Finding topics…') : t('Loading…')}
             </p>
           ) : channelLabels.length === 0 ? (
             <p className="text-xs text-[#555]">
-              {channelHasTopics ? 'No topics in this time range.' : 'No topics found for this channel.'}
+              {channelHasTopics ? t('No topics in this time range.') : t('No topics found for this channel.')}
             </p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
@@ -849,7 +850,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             className="w-full flex items-center gap-3 pb-4 border-b border-[#272727] text-left text-[#aaa] hover:text-white transition-colors"
           >
             <ToggleSwitch on={!!showHidden} />
-            <span className="text-sm">Show hidden channels</span>
+            <span className="text-sm">{t('Show hidden channels')}</span>
           </button>
         )}
         <PresetSection
@@ -897,9 +898,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                     }`}
                   >
                     <span>{icon}</span>
-                    <span>{key}</span>
+                    <span>{t(key)}</span>
                     <span className="ml-auto text-[10px] opacity-40 normal-case tracking-normal font-normal">
-                      {allSelected ? 'deselect all' : 'select all'}
+                      {allSelected ? t('deselect all') : t('select all')}
                     </span>
                   </button>
                 )
@@ -930,7 +931,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                       <button
                         onClick={() => onToggleTag(tag.name)}
                         data-state={state}
-                        title={active ? `Showing only ${tag.name} — click to clear` : `Show only ${tag.name}`}
+                        title={active ? t('Showing only {name} — click to clear', { name: tag.name }) : t('Show only {name}', { name: tag.name })}
                         className={`inline-flex items-center gap-1 rounded-l-full py-1 pl-2.5 pr-2 transition-colors ${
                           active ? 'hover:bg-black/10' : 'hover:bg-white/10'
                         }`}
@@ -949,8 +950,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                       <button
                         onClick={() => onExcludeTag?.(tag.name)}
                         data-exclude={excluded ? 'on' : 'off'}
-                        title={excluded ? `Hiding ${tag.name} — click to clear` : `Hide ${tag.name}`}
-                        aria-label={excluded ? `Stop hiding ${tag.name}` : `Hide ${tag.name}`}
+                        title={excluded ? t('Hiding {name} — click to clear', { name: tag.name }) : t('Hide {name}', { name: tag.name })}
+                        aria-label={excluded ? t('Stop hiding {name}', { name: tag.name }) : t('Hide {name}', { name: tag.name })}
                         className={`rounded-r-full border-l px-1.5 py-1 leading-none transition-colors ${
                           excluded
                             ? 'border-white/25 text-white hover:bg-white/10'

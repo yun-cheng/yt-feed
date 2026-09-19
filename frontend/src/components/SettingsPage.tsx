@@ -3,6 +3,8 @@ import { apiFetch } from '../lib/api'
 import People from './People'
 import PageDefaultsEditor from './PageDefaultsEditor'
 import type { PageDefaultOverrides } from '../lib/pageDefaults'
+import { setCaptionDefaults } from '../lib/captionDefaults'
+import { setLangSetting, t } from '../lib/i18n'
 
 type SettingSpec = {
   key: string
@@ -14,6 +16,8 @@ type SettingSpec = {
   scope?: string
   /** Optional endpoint returning `{text}` — a live line under the description. */
   status?: string
+  /** For type "choice": the allowed values, in menu order. */
+  options?: { value: string; label: string }[]
 }
 
 /**
@@ -72,16 +76,12 @@ function ExtensionKey() {
   return (
     <section className="mb-8">
       <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
-        Extension
+        {t('Extension')}
       </h3>
       <div className="min-w-0">
-        <label className="text-sm font-medium text-white">Your API key</label>
+        <label className="text-sm font-medium text-white">{t('Your API key')}</label>
         <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
-          The extension picks this up on its own the moment you open the app, so
-          you usually never need it. Paste it into the extension&rsquo;s options
-          only when it can&rsquo;t &mdash; on an app address other than localhost,
-          say. It tells the extension whose history to record into and whose
-          Watch Later to save to, so treat it like a password.
+          {t('The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.')}
         </p>
         <div className="mt-2 flex items-center gap-2">
           <code className="min-w-0 flex-1 truncate rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-[#ddd]">
@@ -95,11 +95,27 @@ function ExtensionKey() {
             }}
             className="flex-shrink-0 cursor-pointer rounded-full bg-white px-4 py-2 text-xs font-medium text-black"
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? t('Copied') : t('Copy')}
           </button>
         </div>
       </div>
     </section>
+  )
+}
+
+/** A setting with a fixed set of answers. Labels arrive in English from the spec. */
+function Choice({ value, options, busy, onChange }: {
+  value: string; options: { value: string; label: string }[]; busy: boolean; onChange: (v: string) => void
+}) {
+  return (
+    <select
+      value={value}
+      disabled={busy}
+      onChange={(e) => onChange(e.target.value)}
+      className="flex-shrink-0 cursor-pointer rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+    >
+      {options.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+    </select>
   )
 }
 
@@ -145,7 +161,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
     apiFetch('/api/settings')
       .then((r) => r.json())
       .then((d: SettingsResponse) => { if (live) setData(d) })
-      .catch(() => { if (live) setError('Could not load settings.') })
+      .catch(() => { if (live) setError(t('Could not load settings.')) })
     return () => { live = false }
   }, [])
 
@@ -162,10 +178,15 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
         body: JSON.stringify({ values: { [key]: value } }),
       })
       if (!res.ok) throw new Error()
-      setData(await res.json())
+      const next: SettingsResponse = await res.json()
+      // Settings the running app reads outside this page take effect now.
+      // The language last: it remounts the app, this page included.
+      setCaptionDefaults(next.values)
+      setData(next)
+      if (key === 'app_language') setLangSetting(next.values.app_language)
       return true
     } catch {
-      setError('Could not save that. Reloading the page will show what stuck.')
+      setError(t('Could not save that. Reloading the page will show what stuck.'))
       return false
     } finally {
       setBusy(null)
@@ -176,14 +197,14 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
     return <div className="px-6 py-8 text-sm text-[#aaa]">{error}</div>
   }
   if (!data) {
-    return <div className="px-6 py-8 text-sm text-[#777]">Loading…</div>
+    return <div className="px-6 py-8 text-sm text-[#777]">{t('Loading…')}</div>
   }
 
   const groups = [...new Set(data.settings.map((s) => s.group))]
 
   return (
     <div className="px-6 py-4 max-w-2xl">
-      <h2 className="text-xl font-bold text-white mb-6">Settings</h2>
+      <h2 className="text-xl font-bold text-white mb-6">{t('Settings')}</h2>
 
       {error && (
         <div className="mb-4 rounded-lg border border-[#5c2b2b] bg-[#2a1a1a] px-3 py-2 text-xs text-[#e0a0a0]">
@@ -194,26 +215,26 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       {groups.map((group) => (
         <section key={group} className="mb-8">
           <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
-            {group}
+            {t(group)}
           </h3>
           <div className="flex flex-col gap-4">
             {data.settings.filter((s) => s.group === group).map((spec) => (
               <div key={spec.key} className="flex items-start gap-4">
                 <div className="min-w-0 flex-1">
                   <label className="text-sm font-medium text-white">
-                    {spec.label}
+                    {t(spec.label)}
                     {spec.scope === 'app' && (
                       // Some switches govern a shared resource — the archive
                       // fill spends one daily API quota for the whole machine —
                       // so changing them changes them for everybody. Worth
                       // saying before the click, not after.
                       <span className="ml-2 rounded-full border border-[#3f3f3f] px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wide text-[#888]">
-                        everyone
+                        {t('everyone')}
                       </span>
                     )}
                   </label>
                   <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
-                    {spec.description}
+                    {t(spec.description)}
                   </p>
                   {spec.status && (
                     <StatusLine path={spec.status} refreshKey={data.values[spec.key]} />
@@ -227,6 +248,14 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
                     />
                   )}
                 </div>
+                {spec.type === 'choice' && spec.options && (
+                  <Choice
+                    value={String(data.values[spec.key] ?? '')}
+                    options={spec.options}
+                    busy={busy === spec.key}
+                    onChange={(v) => update(spec.key, v)}
+                  />
+                )}
                 {spec.type === 'bool' && (
                   <Toggle
                     on={Boolean(data.values[spec.key])}

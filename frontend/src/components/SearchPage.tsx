@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoRow from './VideoRow'
 import type { VideoItem, WatchProgress } from '../App'
+import { t } from '../lib/i18n'
 
 type ChannelHit = {
   youtube_id: string
@@ -80,7 +81,7 @@ export default function SearchPage({
         <svg className="w-10 h-10 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
-        <p className="text-sm">Search for a channel or video</p>
+        <p className="text-sm">{t('Search for a channel or video')}</p>
       </div>
     )
   }
@@ -91,15 +92,15 @@ export default function SearchPage({
     <div className="px-6 py-4">
       {empty ? (
         <div className="flex flex-col items-center justify-center h-64 gap-2 text-[#aaa]">
-          <p className="text-sm">No results for “{trimmed}”</p>
-          <p className="text-xs text-[#717171]">Try fewer or different words.</p>
+          <p className="text-sm">{t('No results for “{q}”', { q: trimmed })}</p>
+          <p className="text-xs text-[#717171]">{t('Try fewer or different words.')}</p>
         </div>
       ) : (
         <>
           {/* Channels section */}
           {channels.length > 0 && (
             <section className="mb-8">
-              <h2 className="text-lg font-semibold text-white mb-3">Channels</h2>
+              <h2 className="text-lg font-semibold text-white mb-3">{t('Channels')}</h2>
               <div className="flex flex-col gap-1">
                 {channels.map((c) => (
                   <button
@@ -123,7 +124,7 @@ export default function SearchPage({
           {videos.length > 0 && (
             <VideoRow
           progressById={progressById}
-              group={{ name: 'Videos', icon: '', sort_order: 0, videos }}
+              group={{ name: t('Videos'), icon: '', sort_order: 0, videos }}
               onChannelClick={onChannelClick}
               sort={sort}
               watchLaterIds={watchLaterIds}

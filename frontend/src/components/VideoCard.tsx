@@ -8,6 +8,8 @@ import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useSummaryStatus, startSummary } from '../hooks/summaryStore'
 import type { SummaryLength } from '../hooks/summaryStore'
+import { formatCount } from '../lib/richText'
+import { t } from '../lib/i18n'
 
 // Minimal YT IFrame API types
 declare global {
@@ -128,11 +130,6 @@ type Props = {
   localOnly?: boolean                            // never fall back to YouTube; wait for localSrc (offline)
 }
 
-function formatViewCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-  return n.toString()
-}
 
 function formatDuration(s: number): string {
   if (!s || s <= 0) return ''
@@ -844,7 +841,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             <button
               className={isWatchLater ? BTN_LIGHT : BTN_DARK}
               onClick={(e) => { e.stopPropagation(); onToggleWatchLater(video) }}
-              title={isWatchLater ? 'Remove from Watch Later' : 'Save to Watch Later'}
+              title={isWatchLater ? t('Remove from Watch Later') : t('Save to Watch Later')}
             >
               {isWatchLater ? (
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -877,12 +874,12 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   value={displayMuted ? 0 : volume}
                   onChange={(e) => handleVolumeChange(Number(e.target.value))}
                   onMouseDown={(e) => e.stopPropagation()}
-                  aria-label="Volume"
+                  aria-label={t('Volume')}
                   className="vol-slider w-20"
                   style={{ background: `linear-gradient(to right, #fff ${displayMuted ? 0 : volume}%, rgba(255,255,255,0.18) ${displayMuted ? 0 : volume}%)` }}
                 />
               </div>
-              <button className="p-2 rounded-full text-white hover:bg-white/15 transition-colors" onClick={handleMuteToggle} title={displayMuted ? 'Unmute' : 'Mute'}>
+              <button className="p-2 rounded-full text-white hover:bg-white/15 transition-colors" onClick={handleMuteToggle} title={displayMuted ? t('Unmute') : t('Mute')}>
                 {displayMuted ? (
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
@@ -908,8 +905,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               onClick={handleCCToggle}
               title={
                 captionsUnavailable
-                  ? 'No captions available'
-                  : showCaptions ? 'Hide captions' : 'Show captions'
+                  ? t('No captions available')
+                  : showCaptions ? t('Hide captions') : t('Show captions')
               }
             >
               {/* When no caption track exists: keep the dark circle visible but gray
@@ -1066,7 +1063,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                Watched
+                {t('Watched')}
               </span>
             )}
             {summary?.status === 'running' && (
@@ -1074,7 +1071,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" d="M12 3a9 9 0 019 9" />
                 </svg>
-                Summarising
+                {t('Summarising')}
               </span>
             )}
             {summary?.status === 'done' && (
@@ -1082,7 +1079,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
                 </svg>
-                Summarised
+                {t('Summarised')}
               </span>
             )}
             {summary?.status === 'error' && (
@@ -1090,7 +1087,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 </svg>
-                Summary failed
+                {t('Summary failed')}
               </span>
             )}
           </div>
@@ -1114,7 +1111,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             href={`/channel/${video.channel_id}`}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChannelClick(video.channel_id) }}
             className="flex-shrink-0 self-start mt-0.5"
-            title={video.channel_name || 'Channel'}
+            title={video.channel_name || t('Channel')}
           >
             <img
               src={video.channel_thumbnail}
@@ -1142,15 +1139,15 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChannelClick(video.channel_id) }}
             className="inline-block text-xs text-[#aaaaaa] mt-0.5 hover:text-blue-400 transition-colors"
           >
-            {video.channel_name || 'Unknown'}
+            {video.channel_name || t('Unknown')}
           </a>
           <p className="text-xs text-[#717171] mt-0.5">
             {(() => {
               const likeRate = video.view_count > 0 ? (video.like_count / video.view_count) * 100 : null
               const stats: { key: string; label: string }[] = [
-                { key: 'views', label: formatViewCount(video.view_count) + ' views' },
+                { key: 'views', label: t('{count} views', { count: formatCount(video.view_count) }) },
                 { key: 'score', label: video.score.toFixed(1) + ' v/h' },
-                { key: 'likes', label: formatViewCount(video.like_count) + ' likes' },
+                { key: 'likes', label: t('{count} likes', { count: formatCount(video.like_count) }) },
                 ...(likeRate !== null ? [{ key: 'like%', label: likeRate.toFixed(1) + '%' }] : []),
                 { key: 'newest', label: timeAgo(video.published_at) },
               ]
@@ -1174,8 +1171,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           <button
             className="p-1.5 -mr-1 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
             onClick={(e) => { e.stopPropagation(); setShowSavePanel(false); setMenuOpen((o) => !o) }}
-            title="More actions"
-            aria-label="More actions"
+            title={t('More actions')}
+            aria-label={t('More actions')}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
@@ -1197,7 +1194,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                 </svg>
-                Save to playlist
+                {t('Save to playlist')}
               </button>
               {/* Named for how much comes back, the only way the two differ —
                   the same naming the Ask panel's openers use. */}
@@ -1224,7 +1221,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                         />
                       )}
                     </svg>
-                    {isThisOne ? 'Summarising…' : len === 'short' ? 'Short summary' : 'Long summary'}
+                    {isThisOne ? t('Summarising…') : len === 'short' ? t('Short summary') : t('Long summary')}
                   </button>
                 )
               })}
@@ -1236,7 +1233,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h11M4 12h11M4 18h7M15 15l6 6m0-6l-6 6" />
                   </svg>
-                  Remove from playlist
+                  {t('Remove from playlist')}
                 </button>
               )}
               {onRemoveHistory && (
@@ -1247,7 +1244,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>
                   </svg>
-                  Remove from history
+                  {t('Remove from history')}
                 </button>
               )}
               {onRemoveImported && (
@@ -1258,7 +1255,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>
                   </svg>
-                  Remove from imported
+                  {t('Remove from imported')}
                 </button>
               )}
               {onRemoveDownload ? (
@@ -1269,7 +1266,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>
                   </svg>
-                  Remove download
+                  {t('Remove download')}
                 </button>
               ) : (
                 <button
@@ -1286,7 +1283,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
                     </svg>
                   )}
-                  {isDownloaded ? 'Downloaded' : 'Download'}
+                  {isDownloaded ? t('Downloaded') : t('Download')}
                 </button>
               )}
               {onHideChannel && (
@@ -1297,7 +1294,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
                   </svg>
-                  Hide channel
+                  {t('Hide channel')}
                 </button>
               )}
               </>

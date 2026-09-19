@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import { t } from '../lib/i18n'
 
 type Person = {
   id: number
@@ -77,8 +78,7 @@ export default function People() {
 
   async function remove(person: Person) {
     const ok = window.confirm(
-      `Remove ${person.name}? Their history, playlists, tags and saved videos go too. ` +
-      `Nothing shared — channels, videos, downloads — is touched.`
+      t('Remove {name}? Their history, playlists, tags and saved videos go too. Nothing shared — channels, videos, downloads — is touched.', { name: person.name })
     )
     if (!ok) return
     const res = await apiFetch(`/api/users/${person.id}`, { method: 'DELETE' })
@@ -93,12 +93,11 @@ export default function People() {
   return (
     <section className="mb-8">
       <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
-        People
+        {t('People')}
       </h3>
 
       <p className="mb-3 text-xs leading-relaxed text-[#777]">
-        Everyone here keeps their own history, playlists, tags and saved videos.
-        Channels and downloads are shared &mdash; one copy, fetched once.
+        {t('Everyone here keeps their own history, playlists, tags and saved videos. Channels and downloads are shared — one copy, fetched once.')}
       </p>
 
       <div className="flex flex-col divide-y divide-[#222] rounded-xl border border-[#2a2a2a]">
@@ -106,9 +105,9 @@ export default function People() {
           <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
             <div className="min-w-0 flex-1">
               <span className="text-sm text-white">{p.name}</span>
-              {p.is_you && <span className="ml-2 text-xs text-[#777]">you</span>}
+              {p.is_you && <span className="ml-2 text-xs text-[#777]">{t('you')}</span>}
               <p className="text-xs text-[#666]">
-                {p.google ? p.email || 'signs in with Google' : 'signs in with a link'}
+                {p.google ? p.email || t('signs in with Google') : t('signs in with a link')}
               </p>
             </div>
             {!p.google && (
@@ -116,7 +115,7 @@ export default function People() {
                 onClick={() => newLink(p.id)}
                 className="flex-shrink-0 cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1 text-xs text-[#ddd] hover:border-[#666]"
               >
-                {link?.id === p.id ? 'New link' : 'Get link'}
+                {link?.id === p.id ? t('New link') : t('Get link')}
               </button>
             )}
             {!p.is_you && (
@@ -124,7 +123,7 @@ export default function People() {
                 onClick={() => remove(p)}
                 className="flex-shrink-0 cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1 text-xs text-[#e0a0a0] hover:border-[#5c2b2b]"
               >
-                Remove
+                {t('Remove')}
               </button>
             )}
           </div>
@@ -134,10 +133,7 @@ export default function People() {
       {link && (
         <div className="mt-3 rounded-xl border border-[#2a2a2a] bg-[#161616] px-3 py-3">
           <p className="text-xs text-[#aaa]">
-            Send them this. Opening it signs them in and keeps them signed in, on
-            as many devices as they like. Anyone with the link is them, so send it
-            the way you&rsquo;d send a password &mdash; and use{' '}
-            <span className="text-[#ddd]">New link</span> if it goes astray.
+            {t('Send them this. Opening it signs them in and keeps them signed in, on as many devices as they like. Anyone with the link is them, so send it the way you’d send a password — and get a new link if it goes astray.')}
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-[#ddd]">
@@ -151,7 +147,7 @@ export default function People() {
               }}
               className="flex-shrink-0 cursor-pointer rounded-full bg-white px-4 py-2 text-xs font-medium text-black"
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('Copied') : t('Copy')}
             </button>
           </div>
         </div>
@@ -162,7 +158,7 @@ export default function People() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') add() }}
-          placeholder="Add someone — their name"
+          placeholder={t('Add someone — their name')}
           className="min-w-0 flex-1 rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 text-sm text-white placeholder:text-[#666] focus:border-[#666] focus:outline-none"
         />
         <button
@@ -170,7 +166,7 @@ export default function People() {
           disabled={!name.trim() || busy}
           className="flex-shrink-0 cursor-pointer rounded-full bg-white px-4 py-2 text-xs font-medium text-black disabled:opacity-40"
         >
-          Add
+          {t('Add')}
         </button>
       </div>
     </section>

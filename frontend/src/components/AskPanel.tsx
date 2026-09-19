@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { renderMarkdown } from '../lib/markdown'
 import { formatTime } from '../lib/time'
+import { t } from '../lib/i18n'
 
 type Msg = { role: 'user' | 'assistant'; content: string }
 
@@ -133,8 +134,8 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
         setMessages((m) => m.slice(0, -1))
         setDraft(q)
         setError(res.status === 422
-          ? "This video has no transcript, so there's nothing to read."
-          : 'That question didn’t get through. Try again.')
+          ? t('This video has no transcript, so there\'s nothing to read.')
+          : t('That question didn’t get through. Try again.'))
         return
       }
 
@@ -158,13 +159,13 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
               answer += payload.delta
               setPending(answer)
             }
-            if (payload.error) setError('The answer stopped early.')
+            if (payload.error) setError(t('The answer stopped early.'))
             if (payload.done && payload.truncated && payload.covered) setCovered(payload.covered)
           }
         }
       }
     } catch {
-      setError('The answer stopped early.')
+      setError(t('The answer stopped early.'))
     } finally {
       // Whatever arrived is kept — the server saved the same partial, so the
       // panel and a reload agree about what was said.
@@ -198,7 +199,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
                 onClick={() => send(o.ask)}
                 className="rounded-full bg-[#272727] px-3 py-1.5 text-xs text-[#ddd] transition-colors hover:bg-white/15 hover:text-white"
               >
-                {o.label}
+                {t(o.label)}
               </button>
             ))}
           </div>
@@ -217,14 +218,13 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
 
         {busy && (
           <div className="text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
-            {pending ? renderMarkdown(pending, onSeek) : <span className="text-[#888]">Reading the transcript…</span>}
+            {pending ? renderMarkdown(pending, onSeek) : <span className="text-[#888]">{t('Reading the transcript…')}</span>}
           </div>
         )}
 
         {covered && (
           <p className="text-xs text-[#888]">
-            This video is too long to read whole — the answer covers{' '}
-            {formatTime(covered[0])}–{formatTime(covered[1])}.
+            {t('This video is too long to read whole — the answer covers {from}–{to}.', { from: formatTime(covered[0]), to: formatTime(covered[1]) })}
           </p>
         )}
         {error && <p className="text-xs text-[#f28b82]">{error}</p>}
@@ -241,13 +241,13 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
             if (e.key === 'Escape') { e.stopPropagation(); e.currentTarget.blur() }
           }}
           rows={1}
-          placeholder="Ask about this video"
+          placeholder={t('Ask about this video')}
           className="max-h-28 min-h-[2.25rem] flex-1 resize-none rounded-2xl bg-[#121212] px-3 py-2 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
         />
         <button
           onClick={() => void send(draft)}
           disabled={busy || !draft.trim()}
-          aria-label="Send question"
+          aria-label={t('Send question')}
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#3ea6ff] text-black transition-colors hover:bg-[#65b8ff] disabled:bg-[#272727] disabled:text-[#666]"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -261,7 +261,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
           onClick={clear}
           className="mt-1.5 self-start px-1 text-xs text-[#888] transition-colors hover:text-white"
         >
-          Clear conversation
+          {t('Clear conversation')}
         </button>
       )}
     </div>

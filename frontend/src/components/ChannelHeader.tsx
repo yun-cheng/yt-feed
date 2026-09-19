@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { formatCount } from '../lib/richText'
+import { t } from '../lib/i18n'
 
 type Channel = {
   youtube_id: string
@@ -20,11 +22,6 @@ type Props = {
   actions?: ReactNode
 }
 
-function formatSubs(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
 
 /**
  * The block at the top of a channel page: avatar, name, subscriber count,
@@ -66,7 +63,7 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
             channel that hides its count, not one nobody watches. */}
         {channel.subscriber_count > 0 && (
           <p className="text-sm text-[#777] mt-1">
-            {formatSubs(channel.subscriber_count)} subscribers
+            {t('{count} subscribers', { count: formatCount(channel.subscriber_count) })}
           </p>
         )}
         {aside}
@@ -83,7 +80,7 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
                 onClick={() => setExpanded((v) => !v)}
                 className="mt-1 text-xs font-medium text-[#777] hover:text-[#aaa]"
               >
-                {expanded ? 'Show less' : 'Show more'}
+                {expanded ? t('Show less') : t('Show more')}
               </button>
             )}
           </div>
@@ -98,7 +95,7 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
           rel="noopener noreferrer"
           className="inline-block mt-2 text-xs text-blue-400 hover:text-blue-300"
         >
-          Open on YouTube →
+          {t('Open on YouTube →')}
         </a>
         {actions && <div className="mt-3 flex items-center gap-3">{actions}</div>}
       </div>

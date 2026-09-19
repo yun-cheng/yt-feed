@@ -4,6 +4,7 @@ import VideoRow from './VideoRow'
 import { filterByTime, filterBySummarised, filterByWatchStatus, filterByLength, filterByText, sortVideos } from '../App'
 import type { VideoItem, WatchProgress } from '../App'
 import type { TimeRange } from '../lib/timeWindow'
+import { t } from '../lib/i18n'
 
 type Props = {
   playlistId: number
@@ -80,11 +81,11 @@ export default function PlaylistPage({
     try {
       const res = await apiFetch(`/api/playlists/${playlistId}/resync`, { method: 'POST' })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) { setSyncNote(body.detail || 'Re-sync failed.'); return }
-      setSyncNote(body.added ? `Added ${body.added}` : 'Already up to date')
+      if (!res.ok) { setSyncNote(body.detail || t('Re-sync failed.')); return }
+      setSyncNote(body.added ? t('Added {n}', { n: body.added }) : t('Already up to date'))
       if (body.added) { await load(); window.dispatchEvent(new Event('playlists-changed')) }
     } catch {
-      setSyncNote('Could not reach the app.')
+      setSyncNote(t('Could not reach the app.'))
     } finally {
       setSyncing(false)
     }
@@ -121,10 +122,10 @@ export default function PlaylistPage({
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-[#aaaaaa]">Loading...</div>
+    return <div className="flex items-center justify-center h-64 text-[#aaaaaa]">{t('Loading...')}</div>
   }
   if (notFound) {
-    return <div className="flex items-center justify-center h-64 text-[#aaaaaa]">Playlist not found.</div>
+    return <div className="flex items-center justify-center h-64 text-[#aaaaaa]">{t('Playlist not found.')}</div>
   }
 
   return (
@@ -138,7 +139,7 @@ export default function PlaylistPage({
               hiding some, so a short list is never mistaken for a short
               playlist. */}
           <p className="text-sm text-[#777] mt-1">
-            {shown.length < videos.length && `${shown.length} of ${videos.length} videos`}
+            {shown.length < videos.length && t('{shown} of {total} videos', { shown: shown.length, total: videos.length })}
             {syncNote && <span className="ml-2 text-[#3ea6ff]">{syncNote}</span>}
           </p>
         </div>
@@ -146,13 +147,13 @@ export default function PlaylistPage({
           <button
             onClick={resync}
             disabled={syncing}
-            title="Pull anything new from the YouTube playlist this came from"
+            title={t('Pull anything new from the YouTube playlist this came from')}
             className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-[#aaa] hover:text-white hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
           >
             <svg className={`w-4 h-4${syncing ? ' animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 11a8 8 0 1 0-.6 4M20 4v6h-6" />
             </svg>
-            {syncing ? 'Syncing…' : 'Re-sync'}
+            {syncing ? t('Syncing…') : t('Re-sync')}
           </button>
         )}
         <button
@@ -162,19 +163,19 @@ export default function PlaylistPage({
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />
           </svg>
-          Delete playlist
+          {t('Delete playlist')}
         </button>
       </div>
 
       {videos.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#aaaaaa] text-sm">
-          This playlist is empty.
+          {t('This playlist is empty.')}
         </div>
       ) : shown.length === 0 ? (
         <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
           {q.trim()
-            ? `Nothing in this playlist matches “${q.trim()}” with the current filters.`
-            : 'No videos in this playlist match the current filters.'}
+            ? t('Nothing in this playlist matches “{q}” with the current filters.', { q: q.trim() })
+            : t('No videos in this playlist match the current filters.')}
         </div>
       ) : (
         <VideoRow

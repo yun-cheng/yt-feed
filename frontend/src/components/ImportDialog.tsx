@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { t, tn } from '../lib/i18n'
 
 export type ImportResult = {
   added: { youtube_id: string; title: string }[]
@@ -48,9 +49,9 @@ export default function ImportDialog({ onClose, onImport }: Props) {
         className="w-full max-w-lg rounded-xl bg-[#212121] p-5 shadow-2xl ring-1 ring-white/10"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-medium text-white">Import videos</h2>
+        <h2 className="text-base font-medium text-white">{t('Import videos')}</h2>
         <p className="mt-1 text-xs text-[#888]">
-          Paste YouTube links — one per line. Works with watch, youtu.be, shorts and live URLs.
+          {t('Paste YouTube links — one per line. Works with watch, youtu.be, shorts and live URLs.')}
         </p>
 
         <textarea
@@ -69,10 +70,10 @@ export default function ImportDialog({ onClose, onImport }: Props) {
         {result && (
           <div className="mt-3 space-y-1 text-xs">
             {result.added.length > 0 && (
-              <p className="text-green-400">Imported {result.added.length} video{result.added.length > 1 ? 's' : ''}.</p>
+              <p className="text-green-400">{tn(result.added.length, 'Imported {n} video.', 'Imported {n} videos.')}</p>
             )}
             {result.skipped.length > 0 && (
-              <p className="text-[#888]">{result.skipped.length} already imported.</p>
+              <p className="text-[#888]">{t('{n} already imported.', { n: result.skipped.length })}</p>
             )}
             {result.failed.map((f) => (
               <p key={f.input} className="text-red-400 break-all">{f.input} — {f.error}</p>
@@ -85,14 +86,14 @@ export default function ImportDialog({ onClose, onImport }: Props) {
             onClick={onClose}
             className="rounded-full px-4 py-1.5 text-sm text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
           >
-            {result && result.failed.length === 0 ? 'Done' : 'Cancel'}
+            {result && result.failed.length === 0 ? t('Done') : t('Cancel')}
           </button>
           <button
             onClick={submit}
             disabled={busy || !text.trim()}
             className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-opacity hover:opacity-80 disabled:opacity-40"
           >
-            {busy ? 'Importing…' : 'Import'}
+            {busy ? t('Importing…') : t('Import')}
           </button>
         </div>
       </div>

@@ -31,6 +31,7 @@ import type { LocalFolder, LocalVideo } from './lib/local'
 import { DEFAULT_RANGE, formatAge, inWindow, parseAge, stampMs } from './lib/timeWindow'
 import { DEFAULT_PAGES, DEFAULT_WATCH_STATUSES, defaultsFor, setPageDefaultOverrides } from './lib/pageDefaults'
 import type { TimeRange } from './lib/timeWindow'
+import { t } from './lib/i18n'
 
 export type DownloadItem = {
   youtube_id: string
@@ -2131,15 +2132,15 @@ export default function App() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A2 2 0 003.53 21h16.94a2 2 0 001.72-2.44l-8.48-14.7a2 2 0 00-3.42 0z"/>
             </svg>
             <span className="flex-1 min-w-0">
-              YouTube API token is expired/revoked — video stats will stop updating.{' '}
+              {t('YouTube API token is expired/revoked — video stats will stop updating.')}{' '}
               <a
                 href="/api/auth/login"
                 target="_blank"
                 rel="noreferrer"
                 className="underline font-semibold text-amber-200 hover:text-amber-100"
               >
-                Re-authenticate
-              </a>{' '}to resume.
+                {t('Re-authenticate')}
+              </a>{' '}{t('to resume.')}
             </span>
             <button
               className="flex-shrink-0 text-amber-300/70 hover:text-amber-200 text-xs px-2 py-0.5"
@@ -2169,7 +2170,7 @@ export default function App() {
           onSearchFocus={onSearchFocus}
           searching={searchingChannel}
           scoped={searchScoped}
-          scopeLabel={scopablePage ? SEARCHABLE_PAGES[scopablePage] : 'In this channel'}
+          scopeLabel={t((scopablePage && SEARCHABLE_PAGES[scopablePage]) || 'In this channel')}
           onScopeToggle={
             // Offered wherever a channel is the thing you're looking at: its own
             // page, and the search you opened from it (selectedChannelId outlives
@@ -2212,7 +2213,7 @@ export default function App() {
                     // clicked to be rid of turning into its own opposite is the
                     // one thing this row must not do.
                     onClick={() => clearTag(tag)}
-                    title={not ? `Stop excluding ${name}` : `Remove the ${name} filter`}
+                    title={not ? t('Stop excluding {name}', { name }) : t('Remove the {name} filter', { name })}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full font-medium hover:opacity-80 transition-opacity ${
                       not ? 'bg-[#5c2626] text-[#ffc9c9]' : 'bg-white text-black'
                     }`}
@@ -2228,7 +2229,7 @@ export default function App() {
               onClick={clearFilter}
               className="ml-1 text-xs text-[#555] hover:text-white transition-colors"
             >
-              Clear
+              {t('Clear')}
             </button>
           </div>
         )}
@@ -2328,8 +2329,8 @@ export default function App() {
                 <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                 </svg>
-                <p className="text-sm">No videos saved yet.</p>
-                <p className="text-xs text-[#555]">Hover a video and click the bookmark icon to save it.</p>
+                <p className="text-sm">{t('No videos saved yet.')}</p>
+                <p className="text-xs text-[#555]">{t('Hover a video and click the bookmark icon to save it.')}</p>
               </div>
             ) : (() => {
               // Windowed by when you saved it, not when it was published.
@@ -2344,12 +2345,12 @@ export default function App() {
               return result.length === 0 ? (
                 <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
                   {wlQuery
-                    ? `Nothing saved matches “${wlQuery}” with the current filters.`
-                    : 'No saved videos match the current filters.'}
+                    ? t('Nothing saved matches “{q}” with the current filters.', { q: wlQuery })
+                    : t('No saved videos match the current filters.')}
                 </div>
               ) : (
                 <VideoRow
-                  group={{ name: 'Watch Later', icon: '', sort_order: 0, videos: result }}
+                  group={{ name: t('Watch Later'), icon: '', sort_order: 0, videos: result }}
                   progressById={progressById}
                   onChannelClick={selectChannel}
                   sort={view.sort}
@@ -2388,11 +2389,11 @@ export default function App() {
             {!feed ? (
               loading ? (
                 <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                  Loading feed...
+                  {t('Loading feed...')}
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-                  No data yet.
+                  {t('No data yet.')}
                 </div>
               )
             ) : (() => {
@@ -2408,10 +2409,10 @@ export default function App() {
                 return (
                   <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
                     {watchStatuses.length > 0 && watchStatuses.length < WATCH_STATUSES.length
-                      ? 'No videos match the watch status filter.'
+                      ? t('No videos match the watch status filter.')
                       : hiddenChannels.size > 0 && !showHidden
-                        ? 'All channels here are hidden from home.'
-                        : 'No videos found.'}
+                        ? t('All channels here are hidden from home.')
+                        : t('No videos found.')}
                   </div>
                 )
               }
@@ -2419,7 +2420,7 @@ export default function App() {
                 <VideoRow
                   key="feed"
                   progressById={progressById}
-                  group={{ name: 'Feed', icon: '', sort_order: 0, videos }}
+                  group={{ name: t('Feed'), icon: '', sort_order: 0, videos }}
                   onChannelClick={selectChannel}
                   sort={view.sort}
                   watchLaterIds={watchLaterIds}
@@ -2447,21 +2448,21 @@ export default function App() {
           className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'feed' ? 'text-white' : 'text-[#717171]'}`}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-          <span className="text-[10px]">My Feed</span>
+          <span className="text-[10px]">{t('My Feed')}</span>
         </button>
         <button
           onClick={() => setPage('channels')}
           className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'channels' ? 'text-white' : 'text-[#717171]'}`}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
-          <span className="text-[10px]">Channels</span>
+          <span className="text-[10px]">{t('Channels')}</span>
         </button>
         <button
           onClick={() => setPage('watchlater')}
           className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${page === 'watchlater' ? 'text-white' : 'text-[#717171]'}`}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
-          <span className="text-[10px]">Watch Later</span>
+          <span className="text-[10px]">{t('Watch Later')}</span>
           {!!watchLater.length && (
             <span className="absolute top-1.5 right-[calc(50%-14px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
               {watchLater.length > 9 ? '9+' : watchLater.length}
@@ -2473,7 +2474,7 @@ export default function App() {
           className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${page === 'downloads' ? 'text-white' : 'text-[#717171]'}`}
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          <span className="text-[10px]">Downloads</span>
+          <span className="text-[10px]">{t('Downloads')}</span>
           {!!downloads.length && (
             <span className="absolute top-1.5 right-[calc(50%-16px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
               {downloads.length > 9 ? '9+' : downloads.length}

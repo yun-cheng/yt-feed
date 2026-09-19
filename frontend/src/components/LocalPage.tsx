@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { apiFetch } from '../lib/api'
 import type { LocalFolder } from '../lib/local'
+import { t, tn } from '../lib/i18n'
 
 type Props = {
   folders: LocalFolder[]
@@ -35,11 +36,9 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
     <div className="px-6 py-4">
       <div className="max-w-[900px]">
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-white">Local folders</h2>
+          <h2 className="text-lg font-semibold text-white">{t('Local folders')}</h2>
           <p className="mt-1 text-sm text-[#717171]">
-            Point this at a directory on the machine running the backend and its videos
-            show up here as a feed. Files are only ever read — removing a folder from
-            this list never touches what's on disk.
+            {t('Point this at a directory on the machine running the backend and its videos show up here as a feed. Files are only ever read — removing a folder from this list never touches what\'s on disk.')}
           </p>
         </div>
 
@@ -57,7 +56,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
             disabled={adding || !path.trim()}
             className="rounded-lg bg-white px-4 py-2 text-sm font-medium text-black transition-opacity hover:opacity-80 disabled:opacity-40"
           >
-            {adding ? 'Scanning…' : 'Add folder'}
+            {adding ? t('Scanning…') : t('Add folder')}
           </button>
         </div>
         {error && <p className="-mt-6 mb-8 text-sm text-red-400">{error}</p>}
@@ -67,7 +66,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
             <svg className="h-12 w-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
-            <p className="text-sm">No local folders yet.</p>
+            <p className="text-sm">{t('No local folders yet.')}</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -85,18 +84,18 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
                     <span className="truncate font-medium text-white">{f.name}</span>
                     {!f.available && (
                       <span className="flex-shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] text-amber-300">
-                        unavailable
+                        {t('unavailable')}
                       </span>
                     )}
                   </div>
                   <div className="truncate text-xs text-[#717171]" title={f.path}>{f.path}</div>
                 </div>
                 <span className="flex-shrink-0 text-sm text-[#aaa]">
-                  {f.video_count} video{f.video_count === 1 ? '' : 's'}
+                  {tn(f.video_count, '{n} video', '{n} videos')}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); onRemove(f.id) }}
-                  title="Remove this folder from the app (the files stay)"
+                  title={t('Remove this folder from the app (the files stay)')}
                   className="flex-shrink-0 rounded p-1.5 text-[#717171] opacity-0 transition-all hover:bg-[#272727] hover:text-white group-hover:opacity-100"
                 >
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -125,8 +124,8 @@ export async function addLocalFolder(path: string): Promise<string | null> {
     })
     if (res.ok) return null
     const data = await res.json().catch(() => null)
-    return data?.detail || `Could not add that folder (${res.status})`
+    return data?.detail || t('Could not add that folder ({status})', { status: res.status })
   } catch {
-    return 'Could not reach the backend'
+    return t('Could not reach the backend')
   }
 }

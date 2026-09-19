@@ -1,6 +1,7 @@
 import VideoRow from './VideoRow'
 import type { HistoryItem, VideoItem, WatchProgress } from '../App'
 import { sortVideos } from '../App'
+import { t } from '../lib/i18n'
 
 type Props = {
   // Already filtered by the time window, the Videos/Shorts toggle and the
@@ -32,8 +33,8 @@ export default function HistoryPage({
         <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p className="text-sm">Nothing watched yet.</p>
-        <p className="text-xs text-[#555]">Videos show up here once you've played more than a few seconds.</p>
+        <p className="text-sm">{t('Nothing watched yet.')}</p>
+        <p className="text-xs text-[#555]">{t('Videos show up here once you\'ve played more than a few seconds.')}</p>
       </div>
     )
   }
@@ -42,8 +43,8 @@ export default function HistoryPage({
     return (
       <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
         {query.trim()
-          ? `Nothing you've watched matches “${query.trim()}” with the current filters.`
-          : 'No watched videos match the current filters.'}
+          ? t('Nothing you\'ve watched matches “{q}” with the current filters.', { q: query.trim() })
+          : t('No watched videos match the current filters.')}
       </div>
     )
   }
@@ -57,7 +58,7 @@ export default function HistoryPage({
     <div className="px-6 py-4">
       <VideoRow
         key="history"
-        group={{ name: 'History', icon: '', sort_order: 0, videos: ordered }}
+        group={{ name: t('History'), icon: '', sort_order: 0, videos: ordered }}
         onChannelClick={onChannelClick}
         sort={sort}
         watchLaterIds={watchLaterIds}

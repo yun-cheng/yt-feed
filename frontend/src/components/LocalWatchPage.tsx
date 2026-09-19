@@ -5,6 +5,7 @@ import { formatSize, watchedRatio } from '../lib/local'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import LocalControls from './LocalControls'
 import type { LocalFolder, LocalVideo } from '../lib/local'
+import { t } from '../lib/i18n'
 
 type Props = {
   video: LocalVideo
@@ -174,7 +175,7 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
         <button
           onClick={onClose}
           className="absolute left-2 top-2 z-30 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
-          title="Back to the folder (Esc)"
+          title={t('Back to the folder (Esc)')}
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -200,7 +201,7 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
 
           {upNext.length > 0 && (
             <div className="w-full lg:w-[400px] lg:flex-shrink-0">
-              <h2 className="mb-2 text-sm font-medium text-white">More in this folder</h2>
+              <h2 className="mb-2 text-sm font-medium text-white">{t('More in this folder')}</h2>
               <div className="flex flex-col gap-2">
                 {upNext.map((s) => (
                   <button

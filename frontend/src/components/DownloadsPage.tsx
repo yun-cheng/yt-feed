@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import VideoCard from './VideoCard'
 import type { DownloadItem, VideoItem } from '../App'
+import { t } from '../lib/i18n'
 
 type Props = {
   // Already windowed and sorted by the page's control bar.
@@ -68,8 +69,8 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
           <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
           </svg>
-          <p className="text-sm">No downloads yet.</p>
-          <p className="text-xs text-[#555]">Open a video's ⋮ menu and choose “下載” to save it here.</p>
+          <p className="text-sm">{t('No downloads yet.')}</p>
+          <p className="text-xs text-[#555]">{t('Open a video\'s ⋮ menu and choose “Download” to save it here.')}</p>
         </div>
       </div>
     )
@@ -80,8 +81,8 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
       <div className="px-6 py-4">
         <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
           {query.trim()
-            ? `No download matches “${query.trim()}” with the current filters.`
-            : 'No downloads match the current filters.'}
+            ? t('No download matches “{q}” with the current filters.', { q: query.trim() })
+            : t('No downloads match the current filters.')}
         </div>
       </div>
     )
@@ -89,7 +90,7 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
 
   return (
     <div className="px-6 py-4">
-      <h1 className="text-xl font-semibold text-white mb-4">Downloads</h1>
+      <h1 className="text-xl font-semibold text-white mb-4">{t('Downloads')}</h1>
       <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))] gap-x-4 gap-y-6">
         {downloads.map((d) =>
           d.status === 'ready' ? (
@@ -116,16 +117,16 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
                 {d.status === 'downloading' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 text-white">
                     <div className="w-8 h-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span className="text-xs">下載中…</span>
+                    <span className="text-xs">{t('Downloading…')}</span>
                   </div>
                 ) : (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
-                    <span className="text-xs text-red-400">下載失敗</span>
+                    <span className="text-xs text-red-400">{t('Download failed')}</span>
                     <button
                       className="text-xs px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 transition-colors"
                       onClick={() => onRetry(d)}
                     >
-                      重試
+                      {t('Retry')}
                     </button>
                   </div>
                 )}
@@ -133,14 +134,14 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
               <div className="flex gap-3 mt-2">
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{d.title}</h3>
-                  <p className="text-xs text-[#aaaaaa] mt-0.5">{d.channel_name || 'Unknown'}</p>
-                  <p className="text-xs text-[#717171] mt-0.5">{d.status === 'downloading' ? '下載中…' : '下載失敗'}</p>
+                  <p className="text-xs text-[#aaaaaa] mt-0.5">{d.channel_name || t('Unknown')}</p>
+                  <p className="text-xs text-[#717171] mt-0.5">{d.status === 'downloading' ? t('Downloading…') : t('Download failed')}</p>
                 </div>
                 <button
                   className="flex-shrink-0 p-1.5 -mr-1 self-start rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
                   onClick={() => onDelete(d.youtube_id)}
-                  title="Remove download"
-                  aria-label="Remove download"
+                  title={t('Remove download')}
+                  aria-label={t('Remove download')}
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7"/>

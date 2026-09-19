@@ -19,9 +19,22 @@
  * translate an index into days have to know about it.
  */
 
+import { t, tc } from './i18n'
+
 export const TICK_DAYS = [0, 1, 3, 7, 14, 30, 90, 180, 365, Infinity]
 export const TICK_LABELS = ['now', '1d', '3d', '1w', '2w', '1m', '3m', '6m', '1y', 'all']
 export const MAX_TICK = TICK_DAYS.length - 1
+
+/**
+ * A tick's label in the app's language. TICK_LABELS stay English: tests and
+ * the wire use them. The ticks sit ~25px apart, so they get the shortest form a
+ * language has; `long` is for a sentence ("Past 3 months" rather than "3m").
+ */
+export function tickLabel(i: number, long = false): string {
+  const en = TICK_LABELS[i]
+  if (long) return tc('long', en)
+  return [t('now'), t('1d'), t('3d'), t('1w'), t('2w'), t('1m'), t('3m'), t('6m'), t('1y'), t('all')][i] ?? en
+}
 
 /** How the unbounded edge spells itself on the wire. */
 export const ALL_TOKEN = 'all'
@@ -83,9 +96,9 @@ export function parseAge(s: string | null | undefined): TimeRange | null {
 
 export function rangeLabel(r: TimeRange): string {
   const unbounded = !Number.isFinite(TICK_DAYS[r.hi])
-  if (r.lo === 0) return unbounded ? 'All time' : `Past ${TICK_LABELS[r.hi]}`
-  if (unbounded) return `Older than ${TICK_LABELS[r.lo]}`
-  return `${TICK_LABELS[r.lo]}–${TICK_LABELS[r.hi]} ago`
+  if (r.lo === 0) return unbounded ? t('All time') : t('Past {span}', { span: tickLabel(r.hi, true) })
+  if (unbounded) return t('Older than {span}', { span: tickLabel(r.lo, true) })
+  return t('{from}–{to} ago', { from: tickLabel(r.lo, true), to: tickLabel(r.hi, true) })
 }
 
 /** Epoch-ms bounds, for the lists that are filtered in the browser. */

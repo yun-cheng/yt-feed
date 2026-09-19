@@ -34,6 +34,7 @@ import type { ReactNode, RefObject } from 'react'
 import { apiFetch } from '../lib/api'
 import { formatTime } from '../lib/time'
 import type { PlayerApi } from './LocalControls'
+import { t } from '../lib/i18n'
 
 export type Bookmark = {
   id: number
@@ -57,7 +58,7 @@ const NO_LOOP: Loop = { a: null, b: null }
 /** How a passage reads in the menu. Unpinned ends say what they resolve to,
  *  because that's what the repeat actually does. */
 export function loopLabel(loop: Loop): string {
-  return `${loop.a === null ? 'start' : formatTime(loop.a)} – ${loop.b === null ? 'end' : formatTime(loop.b)}`
+  return `${loop.a === null ? t('start') : formatTime(loop.a)} – ${loop.b === null ? t('end') : formatTime(loop.b)}`
 }
 
 /**
@@ -324,7 +325,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     if (id < 0) return  // never reached the server; the POST will clean it up
     apiFetch(`/api/bookmarks/${videoId}/loops/id/${id}`, { method: 'DELETE', quiet: true })
       .catch(() => { /* gone from view either way */ })
-    showFlash('loop', 'Passage deleted')
+    showFlash('loop', t('Passage deleted'))
   }, [videoId, writeLoops, showFlash])
 
   /** Stop repeating, keeping the passage. `\\` and the menu's own row.
@@ -335,7 +336,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     const running = loopsRef.current.find((l) => l.active)
     if (!running) return
     editLoop(running.id, { active: false })
-    showFlash('loop', 'Repeat off')
+    showFlash('loop', t('Repeat off'))
   }, [editLoop, showFlash])
 
   // The three things a keypress or a button press can do, in one place so the
@@ -350,10 +351,10 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       .find((bm) => Math.abs(bm.position_seconds - at) <= TOGGLE_TOLERANCE_SEC)
     if (hit) {
       removeBookmark(hit.id)
-      showFlash('bookmark', `Bookmark removed · ${formatTime(hit.position_seconds)}`)
+      showFlash('bookmark', t('Bookmark removed · {time}', { time: formatTime(hit.position_seconds) }))
     } else {
       addBookmark(at)
-      showFlash('bookmark', `Bookmarked · ${formatTime(at)}`)
+      showFlash('bookmark', t('Bookmarked · {time}', { time: formatTime(at) }))
     }
     // Ahead of the poll: a button that stays on "remove" for half a second after
     // it removed something reads as a press that didn't take.
@@ -369,7 +370,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     // one — so `[` on a video you've never looped behaves as it always did.
     if (running) editLoop(running.id, { [end]: at })
     else openLoop(end, at)
-    showFlash('loop', `Loop ${end.toUpperCase()} · ${formatTime(at)}`)
+    showFlash('loop', t('Loop {end} · {time}', { end: end.toUpperCase(), time: formatTime(at) }))
   }, [editLoop, openLoop, showFlash])
 
   // Send the play head back to A each time it reaches B. Runs on its own timer
@@ -452,7 +453,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     const p = playerRef.current
     if (!p) return
     openLoop('a', p.getCurrentTime())
-    showFlash('loop', `New passage · from ${formatTime(p.getCurrentTime())}`)
+    showFlash('loop', t('New passage · from {time}', { time: formatTime(p.getCurrentTime()) }))
   }, [playerRef, openLoop, showFlash])
 
   /** Switch to a saved passage: it starts repeating, and the play head goes to
@@ -465,7 +466,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     editLoop(id, { active: true })
     const p = playerRef.current
     if (p) p.seekTo(target.a ?? 0, true)
-    showFlash('loop', `Repeating · ${loopLabel(target)}`)
+    showFlash('loop', t('Repeating · {range}', { range: loopLabel(target) }))
   }, [editLoop, playerRef, showFlash])
 
   /** Bookmark (or clear) wherever the play head is, for the bar's button — the
@@ -541,8 +542,8 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
       key={key}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => { e.stopPropagation(); onSeek(at) }}
-      title={`${label} — jump to ${formatTime(at)}`}
-      aria-label={`${label} at ${formatTime(at)}`}
+      title={t('{label} — jump to {time}', { label, time: formatTime(at) })}
+      aria-label={t('{label} at {time}', { label, time: formatTime(at) })}
       className="group/mark absolute top-1/2 h-4 w-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
       style={{ left: pct(at) }}
     >
@@ -601,13 +602,13 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
       {showLoop && [loop.a, loop.b].map((end, i) => end === null ? null : hit(
         `loop${i}`,
         end,
-        i === 0 ? 'Loop start (A)' : 'Loop end (B)',
+        i === 0 ? t('Loop start (A)') : t('Loop end (B)'),
         null
       ))}
       {bookmarks.map((b) => hit(
         b.id,
         b.position_seconds,
-        'Bookmark',
+        t('Bookmark'),
         // Grows on approach rather than on a direct hit: by the time the
         // pointer is within the hit area you've already committed to this mark,
         // and a tick that answers is one you can tell you'll actually land.
@@ -673,7 +674,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
       className="absolute bottom-full right-0 z-40 mb-2 min-w-[15rem] overflow-hidden rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10"
     >
       <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">
-        Repeat
+        {t('Repeat')}
       </div>
       {/* The passages. Bounded here rather than on the panel, so the actions
           below stay put however many you've marked. */}
@@ -683,7 +684,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
             <button
               role="menuitem"
               onClick={l.active ? onStop : chose(() => onUse(l.id))}
-              title={l.active ? 'Stop repeating (\\)' : 'Repeat this passage'}
+              title={l.active ? t('Stop repeating (\\)') : t('Repeat this passage')}
               className={row}
             >
               {/* Whether this is the one running. In white, like everything the
@@ -694,13 +695,13 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
                 // Marked but not repeating — an end pinned the wrong side of the
                 // other, or a passage too short to be one. Said plainly, since
                 // the bar can't show a loop that isn't running.
-                <span className="ml-auto pl-2 text-xs text-white/40">not looping</span>
+                <span className="ml-auto pl-2 text-xs text-white/40">{t('not looping')}</span>
               )}
             </button>
             <button
               onClick={() => onDrop(l.id)}
-              title="Delete this passage"
-              aria-label={`Delete passage ${loopLabel(l)}`}
+              title={t('Delete this passage')}
+              aria-label={t('Delete passage {range}', { range: loopLabel(l) })}
               className="mr-1 shrink-0 rounded p-1 text-white/40 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus:opacity-100 group-hover/row:opacity-100"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -710,7 +711,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
           </div>
         ))}
         {!loops.length && (
-          <div className="px-3 py-2 text-sm text-white/45">Nothing marked yet.</div>
+          <div className="px-3 py-2 text-sm text-white/45">{t('Nothing marked yet.')}</div>
         )}
       </div>
       <div className="mt-1 border-t border-white/10 pt-1">
@@ -722,10 +723,10 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
               key={end}
               role="menuitem"
               onClick={() => onPin(end)}
-              title={`Pin the ${end === 'a' ? 'start ([' : 'end (]'}) at the play head`}
+              title={end === 'a' ? t('Pin the start ([) at the play head') : t('Pin the end (]) at the play head')}
               className="flex-1 rounded-lg px-2 py-1.5 text-sm text-white transition-colors hover:bg-white/10"
             >
-              Pin {end === 'a' ? 'start' : 'end'}
+              {end === 'a' ? t('Pin start') : t('Pin end')}
               <span className="ml-1.5 text-white/40">{end === 'a' ? '[' : ']'}</span>
             </button>
           ))}
@@ -734,14 +735,14 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
           <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" d="M12 5v14M5 12h14" />
           </svg>
-          New passage from here
+          {t('New passage from here')}
         </button>
         {stage !== 'idle' && (
           <button role="menuitem" onClick={onStop} className={row}>
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
-            Stop repeating
+            {t('Stop repeating')}
             <span className="ml-auto pl-2 text-white/40">\</span>
           </button>
         )}

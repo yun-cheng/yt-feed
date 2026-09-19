@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import { t } from '../lib/i18n'
 
 export type YouTubePlaylist = {
   youtube_id: string
@@ -55,10 +56,10 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
     try {
       const res = await apiFetch(`/api/playlists/youtube/lookup?ref=${encodeURIComponent(ref.trim())}`)
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) { setError(body.detail || 'Could not look that up.'); return }
+      if (!res.ok) { setError(body.detail || t('Could not look that up.')); return }
       setFound(body)
     } catch {
-      setError('Could not reach the app.')
+      setError(t('Could not reach the app.'))
     } finally {
       setLooking(false)
     }
@@ -78,13 +79,13 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
         if (!alive) return
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
-          setError(body.detail || 'Could not reach YouTube.')
+          setError(body.detail || t('Could not reach YouTube.'))
           setLists([])
           return
         }
         setLists(await res.json())
       } catch {
-        if (alive) { setError('Could not reach the app.'); setLists([]) }
+        if (alive) { setError(t('Could not reach the app.')); setLists([]) }
       }
     })()
     return () => { alive = false }
@@ -101,7 +102,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
         body: JSON.stringify({ youtube_id: p.youtube_id, name: p.title }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) { setError(body.detail || 'Import failed.'); return }
+      if (!res.ok) { setError(body.detail || t('Import failed.')); return }
       // Reflect the new link in place — you may want to import several, and a
       // dialog that closed after each would make that four round trips.
       setLists((cur) => cur?.map((row) =>
@@ -112,7 +113,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
       )
       onImported(body.id)
     } catch {
-      setError('Could not reach the app.')
+      setError(t('Could not reach the app.'))
     } finally {
       setBusy('')
     }
@@ -127,10 +128,9 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
         className="flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl bg-[#212121] p-5 shadow-2xl ring-1 ring-white/10"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-medium text-white">Import from YouTube</h2>
+        <h2 className="text-base font-medium text-white">{t('Import from YouTube')}</h2>
         <p className="mt-1 text-xs text-[#888]">
-          Copies a playlist here and remembers where it came from. Re-syncing only ever adds —
-          nothing you keep here is removed.
+          {t('Copies a playlist here and remembers where it came from. Re-syncing only ever adds — nothing you keep here is removed.')}
         </p>
 
         <div className="mt-3 flex gap-2">
@@ -139,7 +139,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
             value={ref}
             onChange={(e) => { setRef(e.target.value); setFound(null); setError('') }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); look() } }}
-            placeholder="Paste any playlist link — including someone else's"
+            placeholder={t('Paste any playlist link — including someone else\'s')}
             className="min-w-0 flex-1 rounded-lg bg-[#121212] px-3 py-2 text-sm text-white placeholder-[#555] outline-none ring-1 ring-[#303030] focus:ring-[#3ea6ff]"
           />
           <button
@@ -147,7 +147,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
             disabled={!ref.trim() || looking}
             className="flex-shrink-0 rounded-full bg-[#272727] px-4 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a] disabled:opacity-40"
           >
-            {looking ? '…' : 'Look up'}
+            {looking ? '…' : t('Look up')}
           </button>
         </div>
 
@@ -176,18 +176,18 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
                   : 'flex-shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40'
               }
             >
-              {busy === found.youtube_id ? '…' : found.linked_id ? 'Re-sync' : 'Import'}
+              {busy === found.youtube_id ? '…' : found.linked_id ? t('Re-sync') : t('Import')}
             </button>
           </div>
         )}
 
-        <p className="mt-4 text-xs font-medium text-[#888]">Playlists you made</p>
+        <p className="mt-4 text-xs font-medium text-[#888]">{t('Playlists you made')}</p>
 
         <div className="-mx-1 mt-2 min-h-0 flex-1 overflow-y-auto px-1">
           {lists === null ? (
-            <p className="py-6 text-center text-xs text-[#666]">Asking YouTube…</p>
+            <p className="py-6 text-center text-xs text-[#666]">{t('Asking YouTube…')}</p>
           ) : lists.length === 0 ? (
-            !error && <p className="py-6 text-center text-xs text-[#666]">No playlists on that account.</p>
+            !error && <p className="py-6 text-center text-xs text-[#666]">{t('No playlists on that account.')}</p>
           ) : (
             <ul className="space-y-2">
               {lists.map((p) => (
@@ -212,7 +212,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
                         : 'flex-shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40'
                     }
                   >
-                    {busy === p.youtube_id ? '…' : p.linked_id ? 'Re-sync' : 'Import'}
+                    {busy === p.youtube_id ? '…' : p.linked_id ? t('Re-sync') : t('Import')}
                   </button>
                 </li>
               ))}
@@ -221,10 +221,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
         </div>
 
         <p className="mt-4 border-t border-[#303030] pt-3 text-xs leading-relaxed text-[#666]">
-          Only playlists you made can be listed — paste a link for anyone else's. Watch Later,
-          Liked Videos and other people's <em>private</em> playlists can't be read this way at all;
-          open one on youtube.com and use the extension's
-          <span className="text-[#888]"> Import to YT Feed </span> button, which reads the page as you.
+          {t('Only playlists you made can be listed — paste a link for anyone else\'s. Watch Later, Liked Videos and other people\'s private playlists can\'t be read this way at all; open one on youtube.com and use the extension\'s “Import to YT Feed” button, which reads the page as you.')}
         </p>
 
         <div className="mt-3 flex justify-end">
@@ -232,7 +229,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
             onClick={onClose}
             className="rounded-full px-4 py-1.5 text-sm text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
           >
-            Done
+            {t('Done')}
           </button>
         </div>
       </div>

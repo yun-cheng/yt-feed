@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
+import { t } from '../lib/i18n'
 
 type TagMeta = { name: string; group: string; icon: string; channel_count: number }
 
@@ -117,7 +118,7 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
           onClick={() => setPickerOpen((o) => !o)}
           className="px-2 py-0.5 text-[11px] rounded-full text-[#777] hover:text-[#ccc] hover:bg-[#272727] transition-colors"
         >
-          + Add label
+          {t('+ Add label')}
         </button>
 
         {pickerOpen && (
@@ -126,11 +127,11 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search labels…"
+              placeholder={t('Search labels…')}
               className="w-full mb-2 px-2 py-1 text-xs bg-[#272727] text-white rounded-lg outline-none placeholder:text-[#666]"
             />
             {grouped.length === 0 && (
-              <p className="px-1 py-2 text-[11px] text-[#666]">No matching labels.</p>
+              <p className="px-1 py-2 text-[11px] text-[#666]">{t('No matching labels.')}</p>
             )}
             {grouped.map(([group, items]) => (
               <div key={group} className="mb-1.5">

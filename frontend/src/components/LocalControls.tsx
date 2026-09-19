@@ -19,6 +19,7 @@ import type { StoryboardInfo } from '../lib/storyboard'
 import { qualityLabel, heightLabel } from '../lib/quality'
 import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
+import { t } from '../lib/i18n'
 
 /**
  * One control-bar button, sized the way YouTube sizes its own.
@@ -434,7 +435,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         <button
           onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
           className={BAR_BUTTON}
-          title={paused ? 'Play (k)' : 'Pause (k)'}
+          title={paused ? t('Play (k)') : t('Pause (k)')}
         >
           <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             {paused ? <path d="M8 5v14l11-7z" /> : <path d="M6 5h4v14H6zm8 0h4v14h-4z" />}
@@ -448,7 +449,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           <button
             onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
             className={BAR_BUTTON}
-            title={muted ? 'Unmute (m)' : 'Mute (m)'}
+            title={muted ? t('Unmute (m)') : t('Mute (m)')}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               {muted || volume === 0
@@ -469,8 +470,8 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               if (next > 0) api()?.unMute()
               setAudioVolume(next)
             }}
-            title="Volume (↑/↓)"
-            aria-label="Volume"
+            title={t('Volume (↑/↓)')}
+            aria-label={t('Volume')}
             className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-16 group-hover/vol:opacity-100 focus:w-16 focus:opacity-100"
           />
           {/* The number the slider is sitting on. Always shown, unlike the
@@ -494,10 +495,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               onClick={() => setBoost(boost > 1 ? 1 : 2)}
               className={BAR_BUTTON}
               title={boost > 1
-                ? `Boosting this video ${boost}× — click for normal`
-                : 'Boost just this video, past 100%'}
+                ? t('Boosting this video {n}× — click for normal', { n: boost })
+                : t('Boost just this video, past 100%')}
               aria-pressed={boost > 1}
-              aria-label="Boost this video’s volume"
+              aria-label={t('Boost this video’s volume')}
               data-testid="boost-button"
             >
               <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -512,8 +513,8 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               step={BOOST_STEP}
               value={boost}
               onChange={(e) => setBoost(Number(e.target.value))}
-              title="Volume boost, this video only"
-              aria-label="Volume boost"
+              title={t('Volume boost, this video only')}
+              aria-label={t('Volume boost')}
               className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/boost:w-16 group-hover/boost:opacity-100 focus:w-16 focus:opacity-100"
             />
             {/* Shown only while it's doing something. At 1× it would be a
@@ -543,7 +544,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             <span
               data-testid="live-elapsed"
               className="mr-2 text-sm tabular-nums text-white/90"
-              title="How far into the broadcast you are"
+              title={t('How far into the broadcast you are')}
             >
               {formatTime(time)}
             </span>
@@ -560,8 +561,8 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               }}
               disabled={atLive}
               data-testid="live-pill"
-              aria-label={atLive ? 'Watching live' : 'Jump to live'}
-              title={atLive ? 'Watching live' : 'Jump to live'}
+              aria-label={atLive ? t('Watching live') : t('Jump to live')}
+              title={atLive ? t('Watching live') : t('Jump to live')}
               className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-sm font-medium ${
                 atLive ? 'cursor-default text-white' : 'text-white/70 hover:text-white'
               }`}
@@ -570,7 +571,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
                   the same tell YouTube uses, and the reason the word alone
                   isn't enough: "LIVE" is true of the stream either way. */}
               <span className={`h-2 w-2 rounded-full ${atLive ? 'bg-red-600' : 'bg-white/50'}`} />
-              LIVE
+              {t('LIVE')}
             </button>
           </div>
         ) : (
@@ -592,7 +593,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           {resolution && (
             <span
               className="select-none px-2 text-sm tabular-nums text-white/90"
-              title={videoRef ? 'Resolution of the file' : "YouTube's current quality"}
+              title={videoRef ? t('Resolution of the file') : t('YouTube\'s current quality')}
             >
               {resolution}
             </span>
@@ -605,11 +606,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             onClick={() => setFocusMode(!focus)}
             className={`${BAR_BUTTON} ${focus ? '' : 'text-white/60'}`}
             aria-pressed={focus}
-            aria-label="Focus mode"
+            aria-label={t('Focus mode')}
             data-testid="focus-button"
             title={focus
-              ? 'Focus mode on — the bar follows the cursor only'
-              : 'Focus mode — keep the bar down unless the cursor is on the video'}
+              ? t('Focus mode on — the bar follows the cursor only')
+              : t('Focus mode — keep the bar down unless the cursor is on the video')}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               {/* A cursor, because that's the rule: in focus mode the bar
@@ -624,7 +625,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           <button
             onClick={onFullscreen}
             className={BAR_BUTTON}
-            title="Fullscreen (f)"
+            title={t('Fullscreen (f)')}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />

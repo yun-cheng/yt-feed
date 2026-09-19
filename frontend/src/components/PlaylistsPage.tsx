@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ImportPlaylistDialog from './ImportPlaylistDialog'
+import { t, tn } from '../lib/i18n'
 
 export type PlaylistSummary = {
   id: number
@@ -21,7 +22,7 @@ type Props = {
 function linkedBadge() {
   return (
     <span
-      title="Imported from YouTube"
+      title={t('Imported from YouTube')}
       className="inline-flex flex-shrink-0 items-center rounded bg-black/80 px-1 py-0.5 text-[#f00]"
     >
       <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -40,7 +41,7 @@ function importButton(onImport: () => void) {
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v11m0 0-4-4m4 4 4-4M4 19h16" />
       </svg>
-      Import from YouTube
+      {t('Import from YouTube')}
     </button>
   )
 }
@@ -66,8 +67,8 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
         <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h7M15 15l5 3-5 3v-6z" />
         </svg>
-        <p className="text-sm">No playlists yet.</p>
-        <p className="text-xs text-[#555]">Open a video's ⋮ menu → 儲存至播放清單 to create one.</p>
+        <p className="text-sm">{t('No playlists yet.')}</p>
+        <p className="text-xs text-[#555]">{t('Open a video\'s ⋮ menu → Save to playlist to create one.')}</p>
         <div className="mt-1">{importButton(onImport)}</div>
         {dialog}
       </div>
@@ -78,7 +79,7 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
     <div className="p-6">
       {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-[#777]">{playlists.length} playlists</p>
+        <p className="text-sm text-[#777]">{tn(playlists.length, '{n} playlist', '{n} playlists')}</p>
         {importButton(onImport)}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -106,8 +107,8 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
               </h3>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(p.id) }}
-                title="Delete playlist"
-                aria-label="Delete playlist"
+                title={t('Delete playlist')}
+                aria-label={t('Delete playlist')}
                 className="flex-shrink-0 p-1 rounded-full text-[#888] hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

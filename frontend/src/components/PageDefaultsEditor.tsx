@@ -6,6 +6,7 @@ import {
   type PageDefault, type PageDefaultOverrides,
 } from '../lib/pageDefaults'
 import { formatAge, parseAge, DEFAULT_RANGE } from '../lib/timeWindow'
+import { t } from '../lib/i18n'
 
 // In the order the sidebar lists them, named the way it names them.
 const PAGES: { page: string; label: string }[] = [
@@ -89,7 +90,7 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
         return (
           <div key={page} className="flex flex-col gap-3 px-4 py-3" data-testid={`defaults-${page}`}>
             <div className="flex items-baseline gap-2">
-              <span className="text-sm font-medium text-white">{label}</span>
+              <span className="text-sm font-medium text-white">{t(label)}</span>
               {changed && (
                 <button
                   onClick={() => {
@@ -99,7 +100,7 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
                   }}
                   className="ml-auto text-xs text-[#777] hover:text-white"
                 >
-                  Reset
+                  {t('Reset')}
                 </button>
               )}
             </div>
@@ -126,17 +127,17 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
                         on ? 'bg-white text-black' : 'bg-[#1a1a1a] text-[#aaa] hover:text-white'
                       }`}
                     >
-                      {w.icon} {w.label}
+                      {w.icon} {t(w.label)}
                     </button>
                   )
                 })}
                 <span className="ml-1 text-xs text-[#666]">
-                  {d.watch.length === 0 || d.watch.length >= options.length ? 'Shows everything' : ''}
+                  {d.watch.length === 0 || d.watch.length >= options.length ? t('Shows everything') : ''}
                 </span>
               </div>
             )}
             {hasWatch && !ownWatch && (
-              <p className="text-xs text-[#666]">Watch filter follows Home&rsquo;s.</p>
+              <p className="text-xs text-[#666]">{t('Watch filter follows Home’s.')}</p>
             )}
           </div>
         )

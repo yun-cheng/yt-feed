@@ -9,6 +9,7 @@ import type { ChannelLookup } from '../lib/channels'
 import ChannelHeader from './ChannelHeader'
 import ChannelTags from './ChannelTags'
 import ChannelArchive, { useArchiveStatus } from './ChannelArchive'
+import { locale, t, tn } from '../lib/i18n'
 
 type ChannelInfo = {
   youtube_id: string
@@ -272,7 +273,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-        Loading...
+        {t('Loading...')}
       </div>
     )
   }
@@ -283,7 +284,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     if (!unknown) {
       return (
         <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
-          Channel not found.
+          {t('Channel not found.')}
         </div>
       )
     }
@@ -299,14 +300,14 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
               disabled={addingUnknown}
               className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40"
             >
-              {addingUnknown ? 'Adding…' : 'Add to your feed'}
+              {addingUnknown ? t('Adding…') : t('Add to your feed')}
             </button>
           }
         />
         <p className="text-sm text-[#717171]">
           {addingUnknown
-            ? 'Fetching its recent videos…'
-            : "You're not following this channel, so there's nothing of theirs here yet. Adding it fetches their recent uploads and keeps them coming."}
+            ? t('Fetching its recent videos…')
+            : t('You\'re not following this channel, so there\'s nothing of theirs here yet. Adding it fetches their recent uploads and keeps them coming.')}
         </p>
       </div>
     )
@@ -335,11 +336,11 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
       {/* Active label filter indicator */}
       {labelFilter && (
         <div className="flex items-center gap-2 mb-4 text-sm text-[#aaa]">
-          <span>Filtering by</span>
+          <span>{t('Filtering by')}</span>
           <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white text-black font-medium">
             {labelFilter}
           </span>
-          <span className="text-[#555]">· {total} {total === 1 ? 'video' : 'videos'}</span>
+          <span className="text-[#555]">· {tn(total, '{n} video', '{n} videos')}</span>
         </div>
       )}
 
@@ -350,14 +351,14 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
             {ch.scanning
               // Just added: the grid is empty because its videos are still on
               // their way, which is a different thing from an empty window.
-              ? 'Fetching this channel’s recent videos…'
+              ? t('Fetching this channel’s recent videos…')
               : q.trim()
                 // The window is as much a reason for an empty search as the
                 // words are, so say both rather than only "no results".
-                ? `Nothing matching “${q.trim()}” in this time range.`
+                ? t('Nothing matching “{q}” in this time range.', { q: q.trim() })
                 : labelFilter
-                  ? `No "${labelFilter}" videos in this time range.`
-                  : 'No videos in this time range.'}
+                  ? t('No “{label}” videos in this time range.', { label: labelFilter })
+                  : t('No videos in this time range.')}
           </span>
           {/* The moment you want more history is the moment a window comes back
               empty, so the action lives here rather than behind a setting. Only
@@ -366,17 +367,17 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
           {!labelFilter && archive.status && !archive.status.exhausted && (
             <span className="flex items-center gap-2 text-xs text-[#777]">
               {archive.status.oldest_held && (
-                <span>Fetched back to {new Date(archive.status.oldest_held)
-                  .toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}.</span>
+                <span>{t('Fetched back to {date}.', { date: new Date(archive.status.oldest_held)
+                  .toLocaleDateString(locale(), { year: 'numeric', month: 'short' }) })}</span>
               )}
               {archive.status.filling ? (
-                <span className="text-[#aaa]">Fetching more…</span>
+                <span className="text-[#aaa]">{t('Fetching more…')}</span>
               ) : (
                 <button
                   onClick={archive.start}
                   className="cursor-pointer rounded-full border border-[#3f3f3f] px-2.5 py-0.5 text-[#aaa] transition-colors hover:border-[#666] hover:text-white"
                 >
-                  Fetch older videos
+                  {t('Fetch older videos')}
                   {archive.status.remaining ? ` (${archive.status.remaining.toLocaleString()})` : ''}
                 </button>
               )}

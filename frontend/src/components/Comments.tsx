@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { formatCount, linkify } from '../lib/richText'
+import { t, tc, tn } from '../lib/i18n'
 
 export type Comment = {
   id: string
@@ -80,7 +81,7 @@ function CommentBody({ text, onSeek }: { text: string; onSeek: (s: number) => vo
           onClick={() => setOpen((v) => !v)}
           className="mt-0.5 text-xs font-medium text-[#aaa] hover:text-white"
         >
-          {open ? 'Show less' : 'Read more'}
+          {open ? t('Show less') : t('Read more')}
         </button>
       )}
     </>
@@ -136,7 +137,7 @@ function Thread({
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M16 3v2l1 1v4l3 3v2h-6v6l-1 1-1-1v-6H6v-2l3-3V6l1-1V3z" />
             </svg>
-            Pinned by creator
+            {t('Pinned by creator')}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -152,7 +153,7 @@ function Thread({
             {comment.author}
           </button>
           {comment.author_is_verified && (
-            <svg className="h-3.5 w-3.5 text-[#aaa]" viewBox="0 0 24 24" fill="currentColor" aria-label="Verified">
+            <svg className="h-3.5 w-3.5 text-[#aaa]" viewBox="0 0 24 24" fill="currentColor" aria-label={t('Verified')}>
               <path d="M12 2l2.2 2.3 3.2-.4.5 3.2L20.8 9 19 12l1.8 3-2.9 1.9-.5 3.2-3.2-.4L12 22l-2.2-2.3-3.2.4-.5-3.2L3.2 15 5 12 3.2 9l2.9-1.9.5-3.2 3.2.4z" />
               <path d="M10.6 15.4l-2.9-2.9 1.1-1.1 1.8 1.8 4-4 1.1 1.1z" fill="#0f0f0f" />
             </svg>
@@ -174,7 +175,7 @@ function Thread({
             </span>
           )}
           {comment.hearted && (
-            <span title="Hearted by creator" className="text-[#ff4e45]">
+            <span title={t('Hearted by creator')} className="text-[#ff4e45]">
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 21s-7-4.5-9-9a5 5 0 019-3 5 5 0 019 3c-2 4.5-9 9-9 9z" />
               </svg>
@@ -185,7 +186,7 @@ function Thread({
               onClick={() => setOpenReplies((v) => !v)}
               className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]"
             >
-              {openReplies ? 'Hide' : `${total}`} {total === 1 ? 'reply' : 'replies'}
+              {openReplies ? tn(total, 'Hide reply', 'Hide replies') : tn(total, '{n} reply', '{n} replies')}
             </button>
           )}
         </div>
@@ -316,7 +317,7 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
-        Comments
+        {t('Comments')}
         {/* "40+" rather than "top 40": the same cap applies under Newest, where
             nothing about the list is top-anything. */}
         {data && !data.disabled && (
@@ -327,12 +328,12 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
       {open && (
         <div className="mt-3">
           {loading && (
-            <div className="px-3 py-6 text-sm text-[#aaa]">Reading the comments…</div>
+            <div className="px-3 py-6 text-sm text-[#aaa]">{t('Reading the comments…')}</div>
           )}
 
           {!loading && failed && (
             <div className="flex items-center gap-3 px-3 py-4 text-sm text-[#aaa]">
-              Couldn't load the comments.
+              {t('Couldn\'t load the comments.')}
               <button onClick={() => load(sort, false)} className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]">
                 Try again
               </button>
@@ -340,11 +341,11 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
           )}
 
           {!loading && !failed && data?.disabled && (
-            <div className="px-3 py-4 text-sm text-[#aaa]">Comments are turned off for this video.</div>
+            <div className="px-3 py-4 text-sm text-[#aaa]">{t('Comments are turned off for this video.')}</div>
           )}
 
           {!loading && !failed && data && !data.disabled && threads.length === 0 && (
-            <div className="px-3 py-4 text-sm text-[#aaa]">No comments yet.</div>
+            <div className="px-3 py-4 text-sm text-[#aaa]">{t('No comments yet.')}</div>
           )}
 
           {!loading && !failed && threads.length > 0 && (
@@ -358,13 +359,13 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
                       sort === s ? 'bg-white text-black' : 'bg-[#272727] text-[#f1f1f1] hover:bg-[#3f3f3f]'
                     }`}
                   >
-                    {s === 'top' ? 'Top' : 'Newest'}
+                    {s === 'top' ? t('Top') : tc('sort', 'Newest')}
                   </button>
                 ))}
                 {/* Not a button. The replies are already on their way; this
                     only explains why reply counts appear a few seconds after
                     the comments they belong to. */}
-                {deepening && <span className="text-xs text-[#717171]">loading replies…</span>}
+                {deepening && <span className="text-xs text-[#717171]">{t('loading replies…')}</span>}
               </div>
 
               <div className="space-y-5 px-3">
@@ -375,7 +376,7 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
 
               {data?.capped && (
                 <p className="mt-5 px-3 text-xs text-[#717171]">
-                  {sort === 'top' ? `The top ${threads.length}` : `The newest ${threads.length}`} — the app doesn't page through the rest.
+                  {sort === 'top' ? t('The top {n} — the app doesn\'t page through the rest.', { n: threads.length }) : t('The newest {n} — the app doesn\'t page through the rest.', { n: threads.length })}
                 </p>
               )}
             </>

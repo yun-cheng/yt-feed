@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
+import { locale, t, tn } from '../lib/i18n'
 
 export type ArchiveStatus = {
   held: number
@@ -17,7 +18,7 @@ const POLL_MS = 2500
 
 function shortDate(iso: string | null): string {
   if (!iso) return ''
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString(locale(), {
     year: 'numeric', month: 'short', day: 'numeric',
   })
 }
@@ -89,13 +90,13 @@ export default function ChannelArchive({
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
       <span className="text-[#777]">
         {exhausted ? (
-          <>Complete — all {held.toLocaleString()} videos</>
+          <>{t('Complete — all {n} videos', { n: held.toLocaleString() })}</>
         ) : reachable ? (
-          <>{held.toLocaleString()} of {reachable.toLocaleString()} videos</>
+          <>{t('{held} of {reachable} videos', { held: held.toLocaleString(), reachable: reachable.toLocaleString() })}</>
         ) : (
-          <>{held.toLocaleString()} videos</>
+          <>{tn(held, '{n} video', '{n} videos', { n: held.toLocaleString() })}</>
         )}
-        {oldest_held && <span className="text-[#555]"> · back to {shortDate(oldest_held)}</span>}
+        {oldest_held && <span className="text-[#555]"> · {t('back to {date}', { date: shortDate(oldest_held) })}</span>}
       </span>
 
       {!exhausted && reachable != null && (
@@ -105,20 +106,20 @@ export default function ChannelArchive({
       )}
 
       {filling ? (
-        <span className="text-[#aaa]">Fetching…</span>
+        <span className="text-[#aaa]">{t('Fetching…')}</span>
       ) : !exhausted && (remaining == null || remaining > 0) ? (
         <button
           onClick={onStart}
           className="cursor-pointer rounded-full border border-[#3f3f3f] px-2.5 py-0.5 text-[#aaa] transition-colors hover:border-[#666] hover:text-white"
         >
-          Fetch the rest{remaining ? ` (${remaining.toLocaleString()})` : ''}
+          {t('Fetch the rest')}{remaining ? ` (${remaining.toLocaleString()})` : ''}
         </button>
       ) : null}
 
       {/* Said plainly rather than shown as a bar that can never fill: YouTube's
           uploads playlist stops at 20,000 however many videos exist. */}
       {capped_by_api && (
-        <span className="text-[#555]">YouTube only serves the newest 20,000</span>
+        <span className="text-[#555]">{t('YouTube only serves the newest 20,000')}</span>
       )}
     </div>
   )

@@ -15,6 +15,8 @@ import { formatCount, linkify } from '../lib/richText'
 import Comments from './Comments'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
+import { t } from '../lib/i18n'
+import { captionDefaults } from '../lib/captionDefaults'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
 // same one a downloaded file gets.
@@ -131,8 +133,11 @@ const RESUME_CONFIRM_TRIES = 40
 // is a property read on an object we already hold.
 const END_POLL_MS = 500
 
-// Caption preferences persist in localStorage so they carry across videos and
+// How captions look persists in localStorage so it carries across videos and
 // sessions — the watch overlay remounts per video, re-reading these on mount.
+// Which LANGUAGE they're in is not here: every video opens on your default
+// caption languages (the caption_lang settings, lib/captionDefaults), and a
+// language picked on a video lasts for that video.
 const CAPTION_PREFS_KEY = 'ytfeed:caption-prefs'
 // How the caption block is drawn, as opposed to which track it draws. Size is a
 // multiplier on YouTube's own 2.5%-of-player-width, so 1 is "the same size
@@ -149,8 +154,6 @@ const roundSize = (n: number) =>
 const CAPTION_DISPLAY_DEFAULTS = { pos: 'bottom' as const, size: 1 }
 type CaptionPrefs = {
   on: boolean
-  lang: string
-  lang2: string
   mode: 'word' | 'sentence'
   pos: 'top' | 'bottom'
   size: number
@@ -160,11 +163,6 @@ function loadCaptionPrefs(): CaptionPrefs {
     const p = JSON.parse(localStorage.getItem(CAPTION_PREFS_KEY) || '{}')
     return {
       on: p.on === true,
-      // AI translation is never restored in EITHER slot (see the persist effect) —
-      // drop it here too, so a value saved before that rule can't auto-fire a
-      // translation (real tokens, real latency) on every video you open.
-      lang: typeof p.lang === 'string' && p.lang !== AI_ZH ? p.lang : '',
-      lang2: typeof p.lang2 === 'string' && p.lang2 !== AI_ZH ? p.lang2 : '',
       // 'line' is the old name for this mode — keep reading it so a saved
       // preference doesn't silently reset.
       mode: p.mode === 'sentence' || p.mode === 'line' ? 'sentence' : 'word',
@@ -177,7 +175,7 @@ function loadCaptionPrefs(): CaptionPrefs {
         : CAPTION_DISPLAY_DEFAULTS.size,
     }
   } catch {
-    return { on: false, lang: '', lang2: '', mode: 'word', ...CAPTION_DISPLAY_DEFAULTS }
+    return { on: false, mode: 'word', ...CAPTION_DISPLAY_DEFAULTS }
   }
 }
 
@@ -414,7 +412,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // would otherwise wait for a caption track to download before it could tell
   // whether the source is already Chinese (i.e. whether to offer AI translation).
   const [nativeLang, setNativeLang] = useState('')
-  const [captionLang, setCaptionLang] = useState(savedPrefs.lang)
+  const [captionLang, setCaptionLang] = useState(() => captionDefaults().lang)
   const [activeLang, setActiveLang] = useState<string | null>(null)
   // Locally generated captions, for a video YouTube has no track for at all.
   // `null` until we've asked. `supported` is false on a server without the
@@ -424,13 +422,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // Dual subtitles: an optional SECOND track rendered stacked under the main one
   // (e.g. original + translation, for language learning). '' = none.
   const [captions2, setCaptions2] = useState<Cue[] | null>(null)
-  const [captionLang2, setCaptionLang2] = useState(savedPrefs.lang2)
+  const [captionLang2, setCaptionLang2] = useState(() => captionDefaults().lang2)
   const [activeLang2, setActiveLang2] = useState<string | null>(null)
   // A saved pick is only honoured on a video that actually offers that language.
   // Asking the backend for one it doesn't have gets YouTube's machine TRANSLATION
   // of some other track — which is how a video with no Japanese captions ended up
-  // showing a Japanese transcript, carried over from the last video watched. The
-  // pref itself is left alone: it still applies to the next video that has it.
+  // showing a Japanese transcript. The default itself is left alone: it still
+  // applies to the next video that has it.
   const offersLang = (code: string) => captionLangs.some((l) => l.code === code)
   const effCaptionLang = !captionLang || !captionLangs.length || offersLang(captionLang) ? captionLang : ''
   const effCaptionLang2 = !captionLang2 || captionLang2 === AI_ZH || !captionLangs.length || offersLang(captionLang2)
@@ -925,7 +923,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     apiFetch(`/api/feed/captions-generate/${videoId}`, { method: 'POST', quiet: true })
       .then((r) => r.json())
       .then(read)
-      .catch(() => setGen((g) => g && { ...g, status: 'error', error: 'Could not start' }))
+      .catch(() => setGen((g) => g && { ...g, status: 'error', error: t('Could not start') }))
   }, [videoId, followJob])
 
   // Is there anything to offer here? Only asked when the video turned out to
@@ -1039,22 +1037,20 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       })
   }, [captionLang, captionLang2, showCaptions, captions, curTime, aiSents, videoId, effCaptionLang])
 
-  // Persist caption prefs so they carry to the next video and next session — but
-  // never the AI selection. Restoring that would fire a translation (real tokens,
-  // real latency) on every video you open, without you asking for it; it stays an
-  // explicit per-video opt-in.
+  // Persist how captions look so it carries to the next video and next session.
+  // The languages aren't kept here (see CAPTION_PREFS_KEY); nor is the AI
+  // translation anywhere — restoring it would fire a translation (real tokens,
+  // real latency) on every video you open, so it stays a per-video opt-in.
   useEffect(() => {
     try {
       localStorage.setItem(CAPTION_PREFS_KEY, JSON.stringify({
         on: showCaptions,
-        lang: captionLang === AI_ZH ? '' : captionLang,
-        lang2: captionLang2 === AI_ZH ? '' : captionLang2,
         mode: captionMode,
         pos: captionPos,
         size: captionSize,
       }))
     } catch { /* storage disabled — prefs just won't persist */ }
-  }, [showCaptions, captionLang, captionLang2, captionMode, captionPos, captionSize])
+  }, [showCaptions, captionMode, captionPos, captionSize])
 
   // Which of English/Chinese/Japanese/Korean this video offers (native, uploaded,
   // or auto-translated) — populates the caption language switcher.
@@ -1250,8 +1246,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // The track the transcript is actually showing, and its label for the button.
   const transcriptTrackLang = pickedTranscriptLang || activeLang || effCaptionLang
   const transcriptLangLabel = transcriptIsAI
-    ? 'Chinese'
-    : captionLangs.find((l) => l.code === transcriptTrackLang)?.label ?? 'Language'
+    ? t('Chinese')
+    : captionLangs.find((l) => l.code === transcriptTrackLang)?.label ?? t('Language')
 
   const searching = transcriptQuery.trim().length > 0
   const visibleRows = useMemo(() => {
@@ -1684,7 +1680,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             )}
           </svg>
           {volHint.muted ? (
-            <span className="text-sm font-medium">Muted</span>
+            <span className="text-sm font-medium">{t('Muted')}</span>
           ) : (
             <>
               <div className="h-1.5 w-24 overflow-hidden rounded-full bg-white/25">
@@ -1724,8 +1720,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           {captionLangs.length > 0 ? (
           <div className="flex">
             {([
-              { title: 'Main', cur: curMain, pick: pickMain },
-              { title: 'Second', cur: curSecond, pick: pickSecond },
+              { title: t('Main'), cur: curMain, pick: pickMain },
+              { title: t('Second'), cur: curSecond, pick: pickSecond },
             ] as const).map((col, ci) => (
               <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
                 <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
@@ -1745,7 +1741,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                             className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
                           >
                             <span className="w-4 shrink-0">{active && captionMode === mode && '✓'}</span>
-                            {mode === 'word' ? `${l.label} (word-by-word)` : l.label}
+                            {mode === 'word' ? t('{lang} (word-by-word)', { lang: l.label }) : l.label}
                           </button>
                         ))}
                       </Fragment>
@@ -1769,9 +1765,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10"
                   >
                     <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
-                    Chinese
+                    {t('Chinese')}
                     <span className="ml-auto pl-2 text-xs text-[#888]">
-                      {col.cur === AI_ZH && translating ? '翻譯中…' : 'AI'}
+                      {col.cur === AI_ZH && translating ? t('Translating…') : 'AI'}
                     </span>
                   </button>
                 )}
@@ -1784,7 +1780,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                what the work is measured in, and the cues appear as they land. */
             <div className="min-w-[13rem] py-1">
               <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">
-                No captions on this video
+                {t('No captions on this video')}
               </div>
               <button
                 onClick={startGenerating}
@@ -1792,10 +1788,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-white/10 disabled:cursor-default disabled:hover:bg-transparent"
               >
                 <span className="w-4 shrink-0">⚡</span>
-                {gen?.status === 'running' ? 'Transcribing…'
-                  : gen?.status === 'stalled' ? 'Resume transcribing'
-                  : gen?.status === 'error' ? 'Try again'
-                  : 'Generate captions'}
+                {gen?.status === 'running' ? t('Transcribing…')
+                  : gen?.status === 'stalled' ? t('Resume transcribing')
+                  : gen?.status === 'error' ? t('Try again')
+                  : t('Generate captions')}
                 <span className="ml-auto pl-2 text-xs text-[#888]">
                   {gen?.status === 'running' ? `${genPct}%` : 'AI'}
                 </span>
@@ -1818,9 +1814,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               captions are locked to the bottom and to a size chosen for a
               phone. Reset is greyed once there's nothing to undo. */}
           <div className="border-t border-white/10 py-1">
-            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">Display</div>
+            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{t('Display')}</div>
             <div className="flex items-center gap-1.5 px-3 py-1">
-              <span className="mr-auto pr-3 text-[#ccc]">Position</span>
+              <span className="mr-auto pr-3 text-[#ccc]">{t('Position')}</span>
               {(['top', 'bottom'] as const).map((pos) => (
                 <button
                   key={pos}
@@ -1835,13 +1831,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               ))}
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1">
-              <span className="mr-auto pr-3 text-[#ccc]">Size</span>
+              <span className="mr-auto pr-3 text-[#ccc]">{t('Size')}</span>
               <button
                 onClick={() => stepCaptionSize(-1)}
                 disabled={captionSize <= CAPTION_SIZE_MIN}
                 className="h-6 w-6 rounded bg-white/10 leading-none hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
-                title="Smaller"
-                aria-label="Smaller captions"
+                title={t('Smaller')}
+                aria-label={t('Smaller captions')}
               >
                 −
               </button>
@@ -1850,8 +1846,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 onClick={() => stepCaptionSize(1)}
                 disabled={captionSize >= CAPTION_SIZE_MAX}
                 className="h-6 w-6 rounded bg-white/10 leading-none hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"
-                title="Bigger"
-                aria-label="Bigger captions"
+                title={t('Bigger')}
+                aria-label={t('Bigger captions')}
               >
                 +
               </button>
@@ -1878,7 +1874,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         className={ownBar
           ? `group relative ${BAR_BUTTON}`
           : 'group relative flex h-11 w-11 items-center justify-center text-white'}
-        title="Subtitles / captions"
+        title={t('Subtitles / captions')}
         aria-pressed={showCaptions}
       >
         {/* Floating placement only: BAR_BUTTON brings its own hover pill. */}
@@ -1924,8 +1920,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // clicking its tick, which seeks exactly to it — so clearing one is
         // click the tick, press this, and the button has already changed to
         // tell you that's what it will do.
-        title={marks.markHere ? 'Clear this bookmark (b)' : 'Bookmark this moment (b)'}
-        aria-label={marks.markHere ? 'Clear this bookmark' : 'Bookmark this moment'}
+        title={marks.markHere ? t('Clear this bookmark (b)') : t('Bookmark this moment (b)')}
+        aria-label={marks.markHere ? t('Clear this bookmark') : t('Bookmark this moment')}
         aria-pressed={marks.markHere}
       >
         {!ownBar && (
@@ -1954,9 +1950,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // for the same reason; MARK_BUTTON_FLOAT has it built in.)
         className={`relative ${ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT}`}
         title={
-          marks.loopStage === 'idle' ? 'Repeat A–B ([)'
-            : marks.loopStage === 'arming' ? `Repeat A–B: the ${marks.loop.a === null ? 'start ([' : 'end (]'}) is still open`
-              : 'Repeat A–B (\\ stops it)'
+          marks.loopStage === 'idle' ? t('Repeat A–B ([)')
+            : marks.loopStage === 'arming' ? (marks.loop.a === null ? t('Repeat A–B: the start ([) is still open') : t('Repeat A–B: the end (]) is still open'))
+              : t('Repeat A–B (\\ stops it)')
         }
         aria-haspopup="menu"
         aria-expanded={showLoopMenu}
@@ -2010,7 +2006,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       className={ownBar
         ? BAR_BUTTON
         : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
-      title={pinned ? 'Unpin — scroll the whole page (p)' : 'Pin — keep the video in view (p)'}
+      title={pinned ? t('Unpin — scroll the whole page (p)') : t('Pin — keep the video in view (p)')}
       aria-pressed={pinned}
     >
       {pinned ? (
@@ -2064,7 +2060,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         </div>
         <div className="px-2.5 py-2">
           <p className="text-[11px] font-medium uppercase tracking-wide text-[#aaa]">
-            Next from {nextUp.channel_name || meta?.channel_name || 'this channel'}
+            {t('Next from {channel}', { channel: nextUp.channel_name || meta?.channel_name || t('this channel') })}
           </p>
           <p className="mt-0.5 text-sm font-medium leading-snug text-white line-clamp-2">
             {nextUp.title}
@@ -2098,7 +2094,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       className={ownBar
         ? BAR_BUTTON
         : 'absolute bottom-2 right-12 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
-      title="Open on YouTube at this moment"
+      title={t('Open on YouTube at this moment')}
     >
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
         <path d="M23.5 6.2a3 3 0 0 0-2.12-2.12C19.5 3.55 12 3.55 12 3.55s-7.5 0-9.38.53A3 3 0 0 0 .5 6.2C0 8.08 0 12 0 12s0 3.92.5 5.8a3 3 0 0 0 2.12 2.12c1.88.53 9.38.53 9.38.53s7.5 0 9.38-.53a3 3 0 0 0 2.12-2.12C24 15.92 24 12 24 12s0-3.92-.5-5.8zM9.55 15.57V8.43L15.82 12l-6.27 3.57z" />
@@ -2269,7 +2265,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           >
             <div className="w-full max-w-[22rem] text-center">
               <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[#aaa]">
-                Next from {nextUp.channel_name || meta?.channel_name || 'this channel'}
+                {t('Next from {channel}', { channel: nextUp.channel_name || meta?.channel_name || t('this channel') })}
               </p>
               <button
                 type="button"
@@ -2312,7 +2308,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               rel="noreferrer"
               className="rounded-full bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 transition-colors"
             >
-              Open on YouTube
+              {t('Open on YouTube')}
             </a>
           </div>
         )}
@@ -2351,7 +2347,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     href={`/channel/${meta.channel_id}`}
                     onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
                     className="flex-shrink-0"
-                    title={meta.channel_name || 'Channel'}
+                    title={meta.channel_name || t('Channel')}
                   >
                     <img
                       src={meta.channel_thumbnail}
@@ -2365,16 +2361,16 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
                   className="font-medium text-white hover:text-blue-400 transition-colors"
                 >
-                  {meta.channel_name || 'Unknown'}
+                  {meta.channel_name || t('Unknown')}
                 </a>
                 <span className="text-[#444]">·</span>
-                <span>{formatCount(meta.view_count)} views</span>
+                <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
                 <span className="text-[#444]">·</span>
                 <span>{timeAgo(meta.published_at)}</span>
                 {meta.view_count > 0 && (
                   <>
                     <span className="text-[#444]">·</span>
-                    <span>{formatCount(meta.like_count)} likes</span>
+                    <span>{t('{count} likes', { count: formatCount(meta.like_count) })}</span>
                   </>
                 )}
               </>
@@ -2392,7 +2388,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
                 </svg>
-                Save
+                {t('Save')}
               </button>
               {showSavePanel && (
                 <div className="absolute left-0 top-full mt-2 z-40 rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2">
@@ -2406,7 +2402,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             <div className="relative" ref={moreRef}>
               <button
                 onClick={() => setShowMoreMenu((o) => !o)}
-                aria-label="More actions"
+                aria-label={t('More actions')}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-[#272727] text-white transition-colors hover:bg-[#3f3f3f]"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
@@ -2431,7 +2427,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
                       </svg>
                     )}
-                    {isDownloaded ? 'Downloaded' : 'Download'}
+                    {isDownloaded ? t('Downloaded') : t('Download')}
                   </button>
                   {!!captions?.length && (
                     <button
@@ -2441,7 +2437,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
                       </svg>
-                      {showTranscript ? 'Hide transcript' : 'Show transcript'}
+                      {showTranscript ? t('Hide transcript') : t('Show transcript')}
                     </button>
                   )}
                   {/* Same gate as the transcript, and for the same reason: the
@@ -2459,7 +2455,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                         <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
                         <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
                       </svg>
-                      {showAsk ? 'Hide Ask AI' : 'Ask AI'}
+                      {showAsk ? t('Hide Ask AI') : t('Ask AI')}
                     </button>
                   )}
                 </div>
@@ -2506,7 +2502,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 pane is already open, so switching should be one press and should
                 not look like closing and reopening the page. */}
             <div className="mb-2 flex items-center gap-1">
-              {([['transcript', 'Transcript'], ['ask', 'Ask AI']] as const).map(([key, label]) => (
+              {([['transcript', t('Transcript')], ['ask', t('Ask AI')]] as const).map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setSidePanel(key)}
@@ -2520,7 +2516,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               ))}
               <button
                 onClick={() => setSidePanel(null)}
-                aria-label="Close panel"
+                aria-label={t('Close panel')}
                 className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -2536,10 +2532,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 <div className="relative shrink-0" ref={transcriptLangRef}>
                   <button
                     onClick={() => setShowTranscriptLangMenu((o) => !o)}
-                    aria-label="Transcript language"
+                    aria-label={t('Transcript language')}
                     // The current language lives in the menu's tick; the header is
                     // tight, so the button is just the icon, named on hover.
-                    title={`Transcript language: ${transcriptLangLabel}`}
+                    title={t('Transcript language: {lang}', { lang: transcriptLangLabel })}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
                   >
                     <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -2570,7 +2566,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                           className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-[#ccc]'}`}
                         >
                           <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
-                          Chinese
+                          {t('Chinese')}
                           <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#888]">AI</span>
                         </button>
                       )}
@@ -2594,13 +2590,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     if (searching) setTranscriptQuery('')
                     else e.currentTarget.blur()
                   }}
-                  placeholder="Search transcript"
+                  placeholder={t('Search transcript')}
                   className="w-full rounded-full bg-[#121212] py-1.5 pl-9 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
                 />
                 {searching && (
                   <button
                     onClick={() => setTranscriptQuery('')}
-                    aria-label="Clear search"
+                    aria-label={t('Clear search')}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#888] transition-colors hover:bg-white/10 hover:text-white"
                   >
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
@@ -2635,12 +2631,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   </button>
                 ))}
                 {searching && !visibleRows.length && (
-                  <p className="px-2 py-3 text-sm text-[#888]">No lines match “{transcriptQuery.trim()}”.</p>
+                  <p className="px-2 py-3 text-sm text-[#888]">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
                 )}
                 {/* The AI transcript fills in batch by batch, so say so rather than
                     letting a partial read look like the whole thing. */}
                 {aiTranscriptBusy && (
-                  <p className="px-2 py-3 text-sm text-[#888]">翻譯中…</p>
+                  <p className="px-2 py-3 text-sm text-[#888]">{t('Translating…')}</p>
                 )}
               </div>
 
@@ -2657,7 +2653,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     <circle cx="12" cy="12" r="6" />
                     <path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
                   </svg>
-                  Sync to video
+                  {t('Sync to video')}
                 </button>
               )}
             </div>

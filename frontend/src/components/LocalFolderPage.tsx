@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { formatTime } from '../lib/time'
 import { formatSize, watchedRatio } from '../lib/local'
 import type { LocalFolder, LocalVideo } from '../lib/local'
+import { t, tn } from '../lib/i18n'
 
 type Props = {
   folder: LocalFolder | null
@@ -30,28 +31,28 @@ export default function LocalFolderPage({ folder, videos, scanning, loading, onB
         <button
           onClick={onBack}
           className="rounded-full p-1.5 text-[#aaa] transition-colors hover:bg-[#272727] hover:text-white"
-          title="All local folders"
+          title={t('All local folders')}
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold text-white">{folder?.name ?? 'Local folder'}</h2>
+          <h2 className="truncate text-lg font-semibold text-white">{folder?.name ?? t('Local folder')}</h2>
           <p className="truncate text-xs text-[#717171]" title={folder?.path}>{folder?.path}</p>
         </div>
-        <span className="flex-shrink-0 text-xs text-[#717171]">{videos.length} videos</span>
+        <span className="flex-shrink-0 text-xs text-[#717171]">{tn(videos.length, '{n} video', '{n} videos')}</span>
         <button
           onClick={onRescan}
           className="flex-shrink-0 rounded-full border border-[#303030] px-3 py-1.5 text-xs text-[#aaa] transition-colors hover:bg-[#272727] hover:text-white"
         >
-          Rescan
+          {t('Rescan')}
         </button>
       </div>
 
       {folder && !folder.available && (
         <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
-          This folder isn't readable right now — the drive may be disconnected. Its videos are listed from the last scan.
+          {t('This folder isn\'t readable right now — the drive may be disconnected. Its videos are listed from the last scan.')}
         </div>
       )}
       {scanning && (
@@ -60,14 +61,14 @@ export default function LocalFolderPage({ folder, videos, scanning, loading, onB
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
-          Reading durations…
+          {t('Reading durations…')}
         </div>
       )}
 
       {loading && videos.length === 0 ? (
-        <div className="flex h-64 items-center justify-center text-[#aaa]">Scanning folder…</div>
+        <div className="flex h-64 items-center justify-center text-[#aaa]">{t('Scanning folder…')}</div>
       ) : videos.length === 0 ? (
-        <div className="flex h-64 items-center justify-center text-[#aaa]">No videos in this folder.</div>
+        <div className="flex h-64 items-center justify-center text-[#aaa]">{t('No videos in this folder.')}</div>
       ) : (
         <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))]">
           {videos.map((v) => (
@@ -156,7 +157,7 @@ function LocalVideoCard({ video, hovered, onHover, onOpen }: {
         )}
         {video.watched && (
           <span className="absolute left-1.5 top-1.5 rounded bg-black/80 px-1.5 py-0.5 text-[11px] font-medium text-white">
-            Watched
+            {t('Watched')}
           </span>
         )}
         {ratio > 0 && !video.watched && (
@@ -178,7 +179,7 @@ function LocalVideoCard({ video, hovered, onHover, onOpen }: {
             </>
           )}
           <span>{formatSize(video.filesize)}</span>
-          {!video.probed && <span className="text-[#555]">· measuring…</span>}
+          {!video.probed && <span className="text-[#555]">· {t('measuring…')}</span>}
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import TimeSortControls, { sortOptionsFor } from './TimeSortControls'
 import NotificationBell from './NotificationBell'
 import type { TimeRange } from '../lib/timeWindow'
+import { t } from '../lib/i18n'
 
 export type TopBarVariant =
   | 'feed' | 'channels' | 'channel' | 'watchlater' | 'downloads' | 'search'
@@ -32,7 +33,7 @@ type Props = {
   onImport?: () => void
 }
 
-export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, scoped = false, onScopeToggle, scopeLabel = 'In this channel', searching, onImport }: Props) {
+export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort, onSortChange, onToggleCollapse, searchQuery, onSearchChange, onSearchFocus, scoped = false, onScopeToggle, scopeLabel = t('In this channel'), searching, onImport }: Props) {
   // Search, playlists, local folders and settings show no bar at all: their
   // order is the library's own and there's nothing to window. Every other page
   // gets its own sort buttons, and the slider only if a window came with them.
@@ -57,7 +58,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
           <button
             onClick={onToggleCollapse}
             className="text-[#aaa] hover:text-white transition-colors flex-shrink-0"
-            aria-label="Toggle sidebar"
+            aria-label={t('Toggle sidebar')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -73,8 +74,8 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               onChange={(e) => onSearchChange?.(e.target.value)}
               onFocus={() => onSearchFocus?.()}
               onKeyDown={(e) => { if (e.key === 'Escape' && searchQuery) { e.preventDefault(); onSearchChange?.('') } }}
-              placeholder="Search"
-              aria-label="Search"
+              placeholder={t('Search')}
+              aria-label={t('Search')}
               className="flex-1 min-w-0 bg-transparent pl-4 pr-2 py-1.5 text-sm text-white placeholder-[#717171] outline-none"
             />
             {onScopeToggle && (
@@ -84,8 +85,8 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               <button
                 onClick={onScopeToggle}
                 aria-pressed={scoped}
-                aria-label={`Search only ${scopeLabel.replace(/^In /, '')}`}
-                title={`Search only ${scopeLabel.replace(/^In /, '')}`}
+                aria-label={t('Search only {scope}', { scope: scopeLabel.replace(/^In /, '') })}
+                title={t('Search only {scope}', { scope: scopeLabel.replace(/^In /, '') })}
                 className={`flex items-center gap-1 mr-1 pl-1.5 pr-2 py-0.5 rounded-full text-xs transition-colors flex-shrink-0 ${
                   scoped
                     ? 'bg-white text-black font-medium'
@@ -105,7 +106,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
             {searchQuery ? (
               <button
                 onClick={() => onSearchChange?.('')}
-                aria-label="Clear search"
+                aria-label={t('Clear search')}
                 className="px-2 text-[#aaa] hover:text-white"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -134,7 +135,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
               </svg>
-              <span className="hidden sm:inline">Import</span>
+              <span className="hidden sm:inline">{t('Import')}</span>
             </button>
           )}
           <NotificationBell />

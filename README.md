@@ -105,6 +105,9 @@ real video (muted, with custom captions and scrubbing).
   watch filter each page opens on (Home's past-3-days-by-likes, for one), with
   the same slider and sort buttons the page itself shows. Links and reloads
   follow your defaults too
+- **English or 繁體中文** — Settings → Language switches the app's own text, and
+  follows the browser until you pick. The same section sets the caption language
+  (and an optional second track) every video opens with, saved to your account
 - **Imported videos** — paste any YouTube link to add a one-off video from a
   channel you don't follow; it lands on its own page that looks and behaves
   exactly like the home feed (watch, download, playlist, watch later)

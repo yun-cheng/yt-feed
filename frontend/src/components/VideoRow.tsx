@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import VideoCard from './VideoCard'
 import type { FeedGroup, VideoItem, WatchProgress } from '../App'
+import { t, tn } from '../lib/i18n'
 
 const INITIAL_COUNT = 20
 const LOAD_MORE = 20
@@ -82,7 +83,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
         {group.icon && <span className="text-lg">{group.icon}</span>}
         <h2 className="text-lg font-semibold text-white">{group.name}</h2>
         <span className="text-xs text-[#717171] ml-1">
-          {(() => { const n = totalCount ?? group.videos.length; return `${n} ${n === 1 ? 'video' : 'videos'}` })()}
+          {(() => { const n = totalCount ?? group.videos.length; return tn(n, '{n} video', '{n} videos') })()}
         </span>
       </div>
 
@@ -121,7 +122,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
-            Loading more...
+            {t('Loading more...')}
           </div>
         </div>
       )}

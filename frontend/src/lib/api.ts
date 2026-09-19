@@ -12,6 +12,7 @@
  * just be noise and the feature already degrades gracefully.
  */
 import { pushToast } from '../hooks/toastStore'
+import { t } from './i18n'
 
 /**
  * `quietStatuses` silences the toast for statuses the caller EXPECTS and
@@ -57,14 +58,14 @@ export async function apiFetch(input: RequestInfo | URL, init: ApiInit = {}): Pr
   try {
     res = await fetch(input, rest)
   } catch (err) {
-    if (!quiet) pushToast(`${methodOf(input, rest)} ${pathOf(input)} — network error`)
+    if (!quiet) pushToast(t('{where} — network error', { where: `${methodOf(input, rest)} ${pathOf(input)}` }))
     throw err
   }
   if (!res.ok && !quiet && !quietStatuses?.includes(res.status)) {
     // Read the body off a clone so the caller's res.json()/res.text() still works.
     detailOf(res).then((detail) => {
       const where = `${methodOf(input, rest)} ${pathOf(input)}`
-      pushToast(`${where} failed (${res.status})${detail ? `: ${detail}` : ''}`)
+      pushToast(t('{where} failed ({status})', { where, status: res.status }) + (detail ? `: ${detail}` : ''))
     })
   }
   return res

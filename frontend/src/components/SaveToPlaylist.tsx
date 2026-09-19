@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiFetch } from '../lib/api'
 import type { VideoItem } from '../App'
+import { tn, t } from '../lib/i18n'
 
 type Playlist = { id: number; name: string; item_count: number; thumbnail_url: string }
 
@@ -80,20 +81,20 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
     <div className="w-[260px]" onClick={(e) => e.stopPropagation()}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
-        <button onClick={onBack} className="text-[#aaa] hover:text-white p-1 -ml-1" aria-label="Back">
+        <button onClick={onBack} className="text-[#aaa] hover:text-white p-1 -ml-1" aria-label={t('Back')}>
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <span className="text-sm font-semibold text-white">Save to…</span>
+        <span className="text-sm font-semibold text-white">{t('Save to…')}</span>
       </div>
 
       {/* Playlists */}
       <div className="max-h-56 overflow-y-auto">
         {loading ? (
-          <div className="px-4 py-3 text-sm text-[#aaa]">Loading…</div>
+          <div className="px-4 py-3 text-sm text-[#aaa]">{t('Loading…')}</div>
         ) : playlists.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-[#777]">No playlists yet</div>
+          <div className="px-4 py-3 text-sm text-[#777]">{t('No playlists yet')}</div>
         ) : (
           playlists.map((p) => (
             <button
@@ -106,7 +107,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-white truncate">{p.name}</div>
-                <div className="text-[11px] text-[#888]">{p.item_count} videos</div>
+                <div className="text-[11px] text-[#888]">{tn(p.item_count, '{n} video', '{n} videos')}</div>
               </div>
               <BookmarkIcon filled={memberIds.has(p.id)} />
             </button>
@@ -123,12 +124,12 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') createAndAdd() }}
-              placeholder="Playlist name"
+              placeholder={t('Playlist name')}
               className="w-full bg-[#121212] border border-[#3a3a3a] rounded px-2 py-1.5 text-sm text-white outline-none focus:border-[#3ea6ff]"
             />
             <div className="flex justify-end gap-2 text-sm">
               <button onClick={() => { setCreating(false); setNewName('') }} className="px-3 py-1 text-[#aaa] hover:text-white">Cancel</button>
-              <button onClick={createAndAdd} disabled={!newName.trim()} className="px-3 py-1 rounded-full bg-white text-black font-medium disabled:opacity-40">Create</button>
+              <button onClick={createAndAdd} disabled={!newName.trim()} className="px-3 py-1 rounded-full bg-white text-black font-medium disabled:opacity-40">{t('Create')}</button>
             </div>
           </div>
         ) : (
@@ -139,7 +140,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
             <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
-            New playlist
+            {t('New playlist')}
           </button>
         )}
       </div>
