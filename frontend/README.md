@@ -75,12 +75,14 @@ does client-side routing itself:
 
 ### Language (`lib/i18n.ts`, `locales/`)
 
-The app's own text comes in English and 繁體中文 (Taiwan), chosen by the
-`app_language` setting (Settings → Language); `auto` follows the browser.
+The app's own text comes in English, 繁體中文 (Taiwan), 日本語, 한국어, ไทย and
+Tiếng Việt, chosen by the `app_language` setting (Settings → Language); `auto`
+takes the first language the browser lists that the app has (any Chinese reads
+繁體中文), or English.
 
 - **Keyed by the English.** A message is written as `t('Watch later')`, so the
   source reads as it always did and English needs no table: a string missing
-  from `locales/zh-Hant.ts` shows in English. `{name}` placeholders are filled
+  from a table in `locales/` shows in English. `{name}` placeholders are filled
   from the second argument. `tn(n, '{n} video', '{n} videos')` picks a count's
   form; `tc('sort', 'Watched')` is for English that means two things (a sort
   order on History, a watch status elsewhere) and looks up `sort|Watched` first.
@@ -98,13 +100,18 @@ The app's own text comes in English and 繁體中文 (Taiwan), chosen by the
   along with the settings spec's labels and descriptions, which arrive from the
   backend in English.
 - **Numbers and times.** In Chinese, counts use 萬 and 億 (35.6萬) the way
-  YouTube writes them there, "ago" reads 5 分鐘前, and dates format for `zh-TW`
-  (`locale()`). The time slider's ticks use a short form (1月, 半年) to fit
-  their 25px, and its heading the long one (過去 1 個月).
+  YouTube writes them there; the other languages take their short forms from
+  `Intl`'s compact notation (35.6万, 35.6만, 12 Tr). Dates format for the
+  language's locale (`locale()`: `zh-TW`, `ja-JP`…). The time slider's ticks
+  use a short form (1月, 1สป, 1tu) to fit between their neighbours, and its
+  heading the long one (過去 1 個月). A new tick label is worth checking at
+  desktop width: the last tick is right-aligned against a centred one, so a
+  long word for "all" runs into "1y" — Thai says ตลอด and Vietnamese hết there
+  for that reason.
 - **The catalogue test** (`test/i18n.test.ts`) scans the source for every
-  `t('…')` / `tn(…)` and fails on one with no 繁體中文 entry, on an entry nothing
-  uses any more, and on a translation that drops one of its English's
-  placeholders.
+  `t('…')` / `tn(…)` and fails, for each language, on one with no entry, on
+  an entry nothing uses any more, and on a translation that drops one of its
+  English's placeholders.
 
 What stays English: text the backend writes (error details, the archive
 status line, notification bodies), YouTube's own data, and your tag names.
@@ -821,6 +828,7 @@ lib/
                                   inside a bullet still seeks
 locales/
   zh-Hant.ts                      繁體中文, keyed by the English it replaces
+  ja.ts, ko.ts, th.ts, vi.ts      日本語, 한국어, ไทย, Tiếng Việt — the same keys
   dynamic.ts                      keys that reach t() through a variable
 ```
 
@@ -1136,8 +1144,8 @@ Other details:
 - **Caption menu (two columns)**: a CC button sits in the player's bottom-left row,
   as a third button next to the embed's built-in share / watch-later, and opens a
   **two-column** picker — **Main** | **Second**. Each column lists every language
-  this video actually **provides** among English / 中文 / 日本語 / 한국어
-  (`/api/feed/caption-langs`) — uploaded subs or the original ASR track, not
+  this video actually **provides** among English / 中文 / 日本語 / 한국어 / ไทย /
+  Tiếng Việt (`/api/feed/caption-langs`) — uploaded subs or the original ASR track, not
   YouTube's on-the-fly auto-translations — plus the AI translation (below). There's
   no "Off" row: an empty slot **is** off, and clicking the active row toggles it off
   (the `c` shortcut still hides everything). A saved language is only honoured on a
@@ -1538,19 +1546,21 @@ front of the player — here they are.
 
 **Translate.** A comment in another language than the translate target gets a
 **Translate** button beside "Read more", the way YouTube's own comments do.
-The target is the `translate_lang` setting (English, 繁體中文, 日本語 or
-한국어), or the app language while that's left on "Same as the app"
+The target is the `translate_lang` setting (English, 繁體中文, 日本語, 한국어,
+ไทย or Tiếng Việt), or the app language while that's left on "Same as the app"
 (`translateTarget()` in `lib/i18n.ts`).
 "Another language" is `looksWrittenIn`: the share of the comment in the
-target's script, counting a CJK character and a word of anything else as one
-unit each, so a Chinese comment about an iPhone is still Chinese. Simplified
-Chinese counts as Chinese; Japanese needs some kana, since kanji alone reads as
-Chinese; a comment with no letters offers nothing. The press posts that one
-comment to `/api/feed/comments-translate` with the target; the
-translation replaces the text in place (timestamps in it still seek), and the
-button becomes **Show original**, which toggles without asking again. A failure
-says so under the comment and the same button tries again. Nothing is
-translated until you press: most of a section is never read.
+target's script, counting a CJK or Thai character and a word of anything else
+as one unit each, so a Chinese comment about an iPhone is still Chinese.
+Simplified Chinese counts as Chinese; Japanese needs some kana, since kanji
+alone reads as Chinese; Vietnamese is told from English by the letters only it
+has (ơ, ư, đ, ạ…), which turn up in most of its words; a comment with no letters
+offers nothing. The press posts that one comment to
+`/api/feed/comments-translate` with the target; the translation replaces the
+text in place (timestamps in it still seek), and the button becomes **Show
+original**, which toggles without asking again. A failure says so under the
+comment and the same button tries again. Nothing is translated until you press:
+most of a section is never read.
 
 ### Downloaded videos play from disk
 

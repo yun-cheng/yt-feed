@@ -34,7 +34,7 @@ export const zhHant: Record<string, string> = {
   'What each page opens on': '各頁面的預設篩選',
   'The time window, sort and watch filter a page starts with. Changing them on the page itself still lasts only for that visit.': '每個頁面打開時的時間範圍、排序和觀看狀態篩選。在頁面上直接修改，仍然只在那次瀏覽有效。',
   'App language': 'App 語言',
-  'The language of menus, buttons and messages. Following the browser shows 繁體中文 when your browser prefers Chinese, English otherwise.': '選單、按鈕和訊息使用的語言。「跟隨瀏覽器」會在瀏覽器偏好中文時顯示繁體中文，否則顯示英文。',
+  'The language of menus, buttons and messages. Following the browser picks the first of these your browser prefers, or English.': '選單、按鈕和訊息使用的語言。「跟隨瀏覽器」會選用瀏覽器偏好的語言中第一個在這裡有的，都沒有時使用英文。',
   'Follow the browser': '跟隨瀏覽器',
   'Captions open in': '字幕預設語言',
   'The caption language every video starts with, when the video offers it. Switching language on a video lasts for that video.': '每部影片開始時使用的字幕語言（影片有提供時）。在影片上切換語言只對那部影片有效。',

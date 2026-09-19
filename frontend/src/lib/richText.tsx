@@ -8,7 +8,7 @@
  * and here they are: one `onSeek` and the sentence does what it says.
  */
 import type { ReactNode } from 'react'
-import { getLang } from './i18n'
+import { getLang, locale } from './i18n'
 
 // H:MM:SS, MM:SS, or M:SS.
 export const TIMESTAMP_RE = /(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)/g
@@ -59,13 +59,18 @@ export function linkify(text: string, onSeek: (s: number) => void) {
 
 /**
  * Big numbers the way YouTube writes them: 1.2M, 4.5K, 831 — or, in Chinese,
- * in 萬 and 億 (35.6萬, 1.2億), which is how YouTube writes them there.
+ * in 萬 and 億 (35.6萬, 1.2億), which is how YouTube writes them there. The
+ * other languages get their own short forms from Intl (35.6万, 35.6만, 356K…).
  */
 export function formatCount(n: number): string {
-  if (getLang() === 'zh-Hant') {
+  const lang = getLang()
+  if (lang === 'zh-Hant') {
     if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}億`
     if (n >= 10_000) return `${(n / 10_000).toFixed(1)}萬`
     return String(n)
+  }
+  if (lang !== 'en') {
+    return new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(n)
   }
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`

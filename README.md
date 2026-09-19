@@ -41,8 +41,8 @@ real video (muted, with custom captions and scrubbing).
   Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, p, and
   the marks below) and our
   own captions, rendered from the transcript and styled like YouTube's —
-  switchable between English / Chinese / Japanese / Korean when offered, with
-  dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
+  switchable between English / Chinese / Japanese / Korean / Thai / Vietnamese
+  when offered, with dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
   position and font size the embed's own captions would never give you
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click the tick to jump back); `[` and `]` set a loop's ends and `\` stops it,
@@ -105,7 +105,8 @@ real video (muted, with custom captions and scrubbing).
   watch filter each page opens on (Home's past-3-days-by-likes, for one), with
   the same slider and sort buttons the page itself shows. Links and reloads
   follow your defaults too
-- **English or 繁體中文** — Settings → Language switches the app's own text, and
+- **Six languages** — Settings → Language switches the app's own text between
+  English, 繁體中文, 日本語, 한국어, ไทย and Tiếng Việt, and
   follows the browser until you pick. The same section sets the caption language
   (and an optional second track) every video opens with, and the language a
 comment's Translate button translates into, all saved to your account

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { resolveLang, setLangSetting, t, tableFor, tn, getLang } from '../lib/i18n'
+import { LANGS, locale, resolveLang, setLangSetting, t, tableFor, tn, getLang } from '../lib/i18n'
 
 afterEach(() => { setLangSetting('en') })
 
@@ -12,6 +12,10 @@ describe('resolveLang', () => {
   it('follows the first browser language it has', () => {
     expect(resolveLang('auto', ['zh-TW', 'en'])).toBe('zh-Hant')
     expect(resolveLang('auto', ['zh-CN'])).toBe('zh-Hant')
+    expect(resolveLang('auto', ['fr', 'ja-JP', 'en'])).toBe('ja')
+    expect(resolveLang('auto', ['ko-KR'])).toBe('ko')
+    expect(resolveLang('auto', ['th'])).toBe('th')
+    expect(resolveLang('auto', ['vi-VN'])).toBe('vi')
     expect(resolveLang('auto', ['fr', 'en-GB'])).toBe('en')
     expect(resolveLang('auto', ['fr'])).toBe('en')
     expect(resolveLang(undefined, [])).toBe('en')
@@ -40,6 +44,12 @@ describe('t', () => {
     expect(setLangSetting('en')).toBe(false)
     expect(setLangSetting('zh-Hant')).toBe(true)
   })
+
+  it('dates and numbers follow the language', () => {
+    setLangSetting('vi')
+    expect(locale()).toBe('vi-VN')
+    expect(document.documentElement.lang).toBe('vi')
+  })
 })
 
 // Every literal message in the source, as `t('…')` / `tn(n, '…', '…')` write it.
@@ -62,9 +72,9 @@ function sourceMessages(): Set<string> {
   return out
 }
 
-describe('the 繁體中文 catalogue', () => {
+describe.each(LANGS.filter((l) => l !== 'en'))('the %s catalogue', (lang) => {
   const used = sourceMessages()
-  const table = tableFor('zh-Hant')
+  const table = tableFor(lang)
 
   it('has every message the source asks for', () => {
     expect(used.size).toBeGreaterThan(0)
@@ -118,6 +128,22 @@ describe('looksWrittenIn, for Japanese and Korean', () => {
   it('reads Hangul as Korean', () => {
     expect(looksWrittenIn('정말 좋은 영상이에요', 'ko')).toBe(true)
     expect(looksWrittenIn('great video', 'ko')).toBe(false)
+  })
+})
+
+describe('looksWrittenIn, for Thai and Vietnamese', () => {
+  it('reads Thai script as Thai, a brand name in it included', () => {
+    expect(looksWrittenIn('คลิปนี้ดีมากครับ', 'th')).toBe(true)
+    expect(looksWrittenIn('iPhone รุ่นนี้ใช้ดีมาก', 'th')).toBe(true)
+    expect(looksWrittenIn('great video', 'th')).toBe(false)
+    expect(looksWrittenIn('คลิปนี้ดีมากครับ', 'en')).toBe(false)
+  })
+
+  it('tells Vietnamese from English by the letters only Vietnamese has', () => {
+    expect(looksWrittenIn('Cảm ơn bạn rất nhiều, video hay lắm', 'vi')).toBe(true)
+    expect(looksWrittenIn('Cảm ơn bạn rất nhiều, video hay lắm', 'en')).toBe(false)
+    expect(looksWrittenIn('great video, thanks!', 'vi')).toBe(false)
+    expect(looksWrittenIn('très bonne vidéo', 'vi')).toBe(false)
   })
 })
 

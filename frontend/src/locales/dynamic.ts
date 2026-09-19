@@ -14,7 +14,7 @@ export const DYNAMIC_MESSAGES: string[] = [
   'What each page opens on',
   'The time window, sort and watch filter a page starts with. Changing them on the page itself still lasts only for that visit.',
   'App language',
-  'The language of menus, buttons and messages. Following the browser shows 繁體中文 when your browser prefers Chinese, English otherwise.',
+  'The language of menus, buttons and messages. Following the browser picks the first of these your browser prefers, or English.',
   'Follow the browser',
   'Captions open in',
   'The caption language every video starts with, when the video offers it. Switching language on a video lasts for that video.',

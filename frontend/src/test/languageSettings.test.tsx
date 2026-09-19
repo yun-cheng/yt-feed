@@ -30,6 +30,15 @@ describe('in 繁體中文', () => {
     expect(formatCount(123_000_000)).toBe('1.2億')
   })
 
+  it('counts in each language’s own short forms elsewhere', () => {
+    setLangSetting('ja')
+    expect(formatCount(355_780)).toBe('35.6万')
+    setLangSetting('ko')
+    expect(formatCount(355_780)).toBe('35.6만')
+    setLangSetting('vi')
+    expect(formatCount(12_000_000)).toBe('12\u00a0Tr')
+  })
+
   it('counts in K and M in English', () => {
     expect(formatCount(355_780)).toBe('355.8K')
     expect(formatCount(1_200_000)).toBe('1.2M')
