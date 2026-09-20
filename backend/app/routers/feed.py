@@ -10,7 +10,7 @@ import re
 import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -1101,32 +1101,59 @@ async def next_video(
     return None
 
 
+# How long a stored caption-language list is trusted. A creator can add a
+# subtitle track long after publishing, and the list we derived before that would
+# otherwise hide it forever — which is how a video with English subtitles ended
+# up offering only 中文 in the menu. Long enough that revisits are still free.
+_CL_TTL = timedelta(days=14)
+
+
+def _stored_langs(row: "CaptionLangs | None") -> dict | None:
+    """One caption_langs row as the endpoint's answer, or None if it can't be
+    read — a corrupt row is rebuilt rather than served."""
+    if not row:
+        return None
+    try:
+        return {"langs": json.loads(row.langs), "native": row.native_lang or ""}
+    except ValueError:
+        return None
+
+
+def _langs_stale(when: datetime | None) -> bool:
+    """Whether a caption-language row is old enough to re-derive. A row written
+    before the column existed has no timestamp, so it counts as old."""
+    return when is None or datetime.utcnow() - when > _CL_TTL
+
+
 @router.get("/caption-langs/{video_id}")
 async def get_caption_langs(video_id: str, db: AsyncSession = Depends(get_db)):
     """The caption languages this video offers, plus the code of its native track.
 
     Served from SQLite when we've seen the video before: deriving it costs a
     yt-dlp extraction, and the caption menu's "Second subtitles" section waits on
-    this call. A video's caption languages never change, so the row never needs
-    invalidating — and it's derived codes, not the signed URLs, which expire.
+    this call. Rows older than `_CL_TTL` are re-derived, so a track the creator
+    added later shows up; the codes are derived, not the signed URLs, so nothing
+    else about the row goes stale.
     """
     stored = await db.get(CaptionLangs, video_id)
-    if stored:
-        try:
-            return {"langs": json.loads(stored.langs), "native": stored.native_lang or ""}
-        except ValueError:
-            pass  # corrupt row — fall through and rebuild it
+    if stored and not _langs_stale(stored.updated_at):
+        fresh = _stored_langs(stored)
+        if fresh:
+            return fresh
 
     langs = await _available_caption_langs(video_id)
     native = await _native_caption_lang(video_id) if langs else ""
     if langs:  # a failed extraction must not be cached as "no captions"
         try:
             await db.merge(CaptionLangs(
-                video_id=video_id, langs=json.dumps(langs, ensure_ascii=False), native_lang=native,
+                video_id=video_id, langs=json.dumps(langs, ensure_ascii=False),
+                native_lang=native, updated_at=datetime.utcnow(),
             ))
             await db.commit()
         except Exception:
             await db.rollback()
+    else:  # the list we have beats an extraction that just failed
+        return _stored_langs(stored) or {"langs": langs, "native": native}
     return {"langs": langs, "native": native}
 
 

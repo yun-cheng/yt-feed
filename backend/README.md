@@ -414,10 +414,13 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   (uploaded subs or the original ASR track — *not* YouTube's auto-translations,
   which would list all of them on nearly every video), plus the `native` track
   code, for the watch page's caption-language switcher. **Persisted** in the `caption_langs` table after the
-  first extraction: deriving it costs a yt-dlp call the caption menu waits on, and
-  a video's languages never change. Stores the derived codes, not the raw track
-  info — that blob is ~512KB with ~7h-signed URLs, so it would be both fat and
-  stale.
+  first extraction, since deriving it costs a yt-dlp call the caption menu waits
+  on — but only for `_CL_TTL` (14 days): a creator can upload a subtitle track
+  months after publishing, and a row kept forever hid it forever. An older row is
+  derived again on the next visit, and a refresh that fails to extract keeps the
+  list it had rather than emptying the menu. Stores the derived codes, not the raw
+  track info — that blob is ~512KB with ~7h-signed URLs, so it would be both fat
+  and stale.
 - **Generated captions** (`/api/feed/captions-generate/{id}`, POST to start, GET
   for progress) — for the videos YouTube has no track for **at all**, not even its
   own ASR. Whisper runs locally (`app/asr.py`) over audio yt-dlp fetches, and the
@@ -1986,6 +1989,7 @@ no per-test decorator). What's covered:
 
 | File | Covers |
 |------|--------|
+| `test_caption_langs.py` | the stored caption-language list and when it stops being trusted: a fresh row served without an extraction, a row past `_CL_TTL` derived again (the creator added English subtitles after we wrote down "中文 only"), the refreshed row replacing the old one and then being trusted again, an undated row counting as old, and a failed refresh keeping the list we had |
 | `test_generated_captions.py` | local transcription as a JOB: the ramping windows, the seam taken from Whisper rather than the window we asked for, a silent window still advancing, resuming a job a restart killed, the repetition-loop filter, and that a finished track reaches every reader of captions while a half-finished one reaches none. Plus the line treatment: Simplified converted to Traditional (and idempotent, and a no-op on English), long segments cut at punctuation against the column budget, short ones left exactly as they are, and the fallback that shares a span out by length when there is no word timing |
 | `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, the language `choice`s (options in order, a value outside them a 400, a retired one read as the default), and that turning the fill off stops a sweep mid-flight |
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |

@@ -287,12 +287,13 @@ class CaptionLangs(Base):
     Persisted because deriving it costs a yt-dlp extraction (~1s idle, worse when
     the preview pool is busy), and the watch page's caption menu can't render its
     "Second subtitles" section until it lands. The in-memory cache already covers
-    a session; this survives restarts, and a video's caption languages never
-    change, so there's nothing to invalidate.
+    a session; this survives restarts. A creator can add a subtitle track long
+    after publishing, so `updated_at` dates the row and the endpoint re-derives
+    one that has gone stale.
 
     Deliberately NOT the raw track info: that's ~512KB of JSON per video, and
     every URL in it is signed with a ~7h expiry, so it would be both fat and
-    stale. These derived codes are a few dozen bytes and immutable.
+    stale. These derived codes are a few dozen bytes.
     """
     __tablename__ = "caption_langs"
 
