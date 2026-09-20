@@ -117,6 +117,15 @@ describe('apiFetch — a network error', () => {
     await expect(apiFetch('/api/thing', { method: 'DELETE' })).rejects.toThrow('Failed to fetch')
     expect(pushToast).toHaveBeenCalledWith('DELETE /api/thing — network error')
   })
+
+  it('stays silent when the caller aborted, but still rethrows', async () => {
+    // The search page aborts the previous query on every keystroke.
+    const ctrl = new AbortController()
+    ctrl.abort()
+    vi.mocked(fetch).mockRejectedValue(new DOMException('The user aborted a request.', 'AbortError'))
+    await expect(apiFetch('/api/search?q=a', { signal: ctrl.signal })).rejects.toThrow('aborted')
+    expect(pushToast).not.toHaveBeenCalled()
+  })
 })
 
 describe('apiFetch — quiet mode', () => {

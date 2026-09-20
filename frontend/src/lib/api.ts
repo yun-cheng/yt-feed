@@ -58,7 +58,10 @@ export async function apiFetch(input: RequestInfo | URL, init: ApiInit = {}): Pr
   try {
     res = await fetch(input, rest)
   } catch (err) {
-    if (!quiet) pushToast(t('{where} — network error', { where: `${methodOf(input, rest)} ${pathOf(input)}` }))
+    // An abort is the caller cancelling on purpose (a newer search superseding
+    // this one), not a failure worth a toast.
+    const aborted = rest.signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')
+    if (!quiet && !aborted) pushToast(t('{where} — network error', { where: `${methodOf(input, rest)} ${pathOf(input)}` }))
     throw err
   }
   if (!res.ok && !quiet && !quietStatuses?.includes(res.status)) {
