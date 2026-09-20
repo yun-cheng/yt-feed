@@ -4,6 +4,7 @@ import { formatTime } from '../lib/time'
 import { formatSize, watchedRatio } from '../lib/local'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import LocalControls from './LocalControls'
+import { nextSpeed } from '../lib/playbackSpeeds'
 import type { LocalFolder, LocalVideo } from '../lib/local'
 import { t } from '../lib/i18n'
 
@@ -134,6 +135,11 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
         case 'l': case 'L': seek(10); break
         case 'ArrowUp': e.preventDefault(); setAudioVolume(Math.min(100, volumeRef.current + 5)); break
         case 'ArrowDown': e.preventDefault(); setAudioVolume(Math.max(0, volumeRef.current - 5)); break
+        // Playback speed, one step per press, as on the watch page: bare `.`
+        // and `,`, with the shifted pair taken too. The bar's label follows the
+        // element's ratechange, so it says the new speed.
+        case '.': case '>': el.playbackRate = nextSpeed(el.playbackRate, 1); break
+        case ',': case '<': el.playbackRate = nextSpeed(el.playbackRate, -1); break
         case 'Escape': if (!document.fullscreenElement) onClose(); break
       }
     }

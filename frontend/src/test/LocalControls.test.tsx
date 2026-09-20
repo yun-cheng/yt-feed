@@ -8,6 +8,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
 import LocalControls, { localPlayer, playerIsLive, previewLeft } from '../components/LocalControls'
+import { DEFAULT_SPEEDS, setSpeedDefaults } from '../lib/playbackSpeeds'
 import type { PlayerApi } from '../components/LocalControls'
 import type { StoryboardInfo } from '../lib/storyboard'
 import { setFocusMode } from '../hooks/focusMode'
@@ -119,6 +120,84 @@ describe('localPlayer', () => {
     localPlayer(el).seekTo(42, true)
     expect(el.currentTime).toBe(42)
     expect(localPlayer(el).getCurrentTime()).toBe(42)
+  })
+
+  it('sets and reads the playback speed', () => {
+    const el = videoEl()
+    localPlayer(el).setPlaybackRate?.(1.5)
+    expect(el.playbackRate).toBe(1.5)
+    expect(localPlayer(el).getPlaybackRate?.()).toBe(1.5)
+  })
+})
+
+// ── Speed ────────────────────────────────────────────────────────────
+
+describe('LocalControls — the speed menu', () => {
+  it('shows the speed the player is running at', () => {
+    renderOverEmbed({}, { getPlaybackRate: () => 1.5 })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1.5\u00d7')
+  })
+
+  it('offers every speed, and sets the one picked', () => {
+    const setPlaybackRate = vi.fn()
+    renderOverEmbed({}, { getPlaybackRate: () => 1, setPlaybackRate })
+    fireEvent.click(screen.getByTestId('speed-button'))
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(DEFAULT_SPEEDS.length)
+    fireEvent.click(screen.getByRole('menuitemradio', { name: '2\u00d7' }))
+    expect(setPlaybackRate).toHaveBeenCalledWith(2)
+    // The menu closes on a pick, and the label says the new speed at once
+    // rather than a quarter-second later when the poll catches up.
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('2\u00d7')
+  })
+
+  it('ticks the speed in use', () => {
+    renderOverEmbed({}, { getPlaybackRate: () => 0.5 })
+    act(() => { vi.advanceTimersByTime(300) })
+    fireEvent.click(screen.getByTestId('speed-button'))
+    // The ticked row carries the check mark in its accessible name.
+    expect(screen.getByRole('menuitemradio', { name: /0\.5\u00d7/ })).toBeChecked()
+  })
+
+  it('closes on a click elsewhere, choosing nothing', () => {
+    const setPlaybackRate = vi.fn()
+    renderOverEmbed({}, { setPlaybackRate })
+    fireEvent.click(screen.getByTestId('speed-button'))
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    expect(setPlaybackRate).not.toHaveBeenCalled()
+  })
+
+  it('follows a speed changed from outside — the keyboard shortcuts', () => {
+    let rate = 1
+    renderOverEmbed({}, { getPlaybackRate: () => rate })
+    act(() => { vi.advanceTimersByTime(300) })
+    rate = 1.75
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1.75\u00d7')
+  })
+
+  it('follows a <video>’s own ratechange, even while it is paused', () => {
+    const el = withDuration(videoEl(), 600)
+    render(<LocalControls videoRef={{ current: el }} src="/x" hovering onFullscreen={vi.fn()} />)
+    el.playbackRate = 1.25
+    act(() => { fireEvent(el, new Event('ratechange')) })
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1.25\u00d7')
+  })
+
+  it('offers the speeds you chose, not the ones it ships with', () => {
+    setSpeedDefaults([1, 3])
+    renderOverEmbed()
+    fireEvent.click(screen.getByTestId('speed-button'))
+    // The ticked row carries the check mark with it.
+    expect(screen.getAllByRole('menuitemradio').map((b) => b.textContent)).toEqual(['\u27131\u00d7', '3\u00d7'])
+    setSpeedDefaults(undefined)
+  })
+
+  it('is gone on a broadcast, where the edge is where playback is', () => {
+    liveEmbed()
+    expect(screen.queryByTestId('speed-button')).not.toBeInTheDocument()
   })
 })
 

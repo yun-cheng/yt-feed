@@ -1808,6 +1808,14 @@ backend checks only the shape (an object of objects, else a 400) and stores the
 object as JSON text. Its `type` is its own name, because the page renders a
 purpose-built editor for it rather than a generic control.
 
+`playback_speeds` is the player's, **`user`** and JSON: the list its speed menu
+offers *and* the steps the slower/faster keys take — one list, because a menu
+that couldn't reach the speed the keyboard just set would be lying about where
+you are. The bounds are checked here (`MIN_SPEED` 0.1, `MAX_SPEED` 5, at most
+`MAX_SPEEDS` = 12 of them, and 1 must be among them, since that's where every
+video starts and the one rate you must be able to get back to); the frontend
+applies the same rules as you type.
+
 The language settings are four `choice`s, all **`user`**: `app_language`
 (`auto`, `en`, `zh-Hant`, `ja`, `ko`, `th`, `vi`; `auto` follows the browser),
 and `caption_lang` / `caption_lang2`, the caption languages every video opens with (`""` for the
@@ -1996,7 +2004,7 @@ no per-test decorator). What's covered:
 |------|--------|
 | `test_caption_langs.py` | the stored caption-language list and when it stops being trusted: a fresh row served without an extraction, a row past `_CL_TTL` derived again (the creator added English subtitles after we wrote down "中文 only"), the refreshed row replacing the old one and then being trusted again, an undated row counting as old, and a failed refresh keeping the list we had. Plus which track is `native` with nothing asked for: the first uploaded subtitle when YouTube reports no language, the reported language over upload order when it does, a track with no json3 skipped, and English still the guess among auto-captions |
 | `test_generated_captions.py` | local transcription as a JOB: the ramping windows, the seam taken from Whisper rather than the window we asked for, a silent window still advancing, resuming a job a restart killed, the repetition-loop filter, and that a finished track reaches every reader of captions while a half-finished one reaches none. Plus the line treatment: Simplified converted to Traditional (and idempotent, and a no-op on English), long segments cut at punctuation against the column budget, short ones left exactly as they are, and the fallback that shares a span out by length when there is no word timing |
-| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, the language `choice`s (options in order, a value outside them a 400, a retired one read as the default), and that turning the fill off stops a sweep mid-flight |
+| `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, the player's `playback_speeds` (bounds, length, a list with no way back to 1×), the language `choice`s (options in order, a value outside them a 400, a retired one read as the default), and that turning the fill off stops a sweep mid-flight |
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |

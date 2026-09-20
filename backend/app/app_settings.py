@@ -34,6 +34,13 @@ from app.languages import APP_LANG_OPTIONS, CAPTION_LANG_OPTIONS, TRANSLATE_LANG
 from app.models import AppSetting, UserSetting
 
 
+# What a playback-speed list may hold. Mirrored in the frontend's
+# lib/playbackSpeeds.ts, which is where the same rules are applied as you type.
+MIN_SPEED = 0.1
+MAX_SPEED = 5
+MAX_SPEEDS = 12
+
+
 @dataclass(frozen=True)
 class Spec:
     key: str
@@ -153,6 +160,22 @@ SPEC: tuple[Spec, ...] = (
         group="Library",
     ),
     Spec(
+        key="playback_speeds",
+        # A JSON list of numbers: the rates the player's speed menu offers, and
+        # the ones the slower/faster keys step through. One list for both — a
+        # menu that can't reach the speed the keyboard just set would be lying
+        # about where you are.
+        type="speeds",
+        default=lambda: [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
+        scope="user",
+        label="Playback speeds",
+        description=(
+            "The speeds the player's speed menu offers, and the steps the "
+            "slower/faster keys take. Normal speed is always included."
+        ),
+        group="Player",
+    ),
+    Spec(
         key="page_defaults",
         # A JSON object of page -> {age, sort, watch}, holding only what you
         # changed; anything absent follows the built-in table in the frontend's
@@ -171,7 +194,7 @@ SPEC: tuple[Spec, ...] = (
 )
 
 # Types stored as JSON text rather than as a flag.
-_JSON_TYPES = {"page_defaults"}
+_JSON_TYPES = {"page_defaults", "speeds"}
 
 _BY_KEY = {s.key: s for s in SPEC}
 
@@ -210,6 +233,21 @@ def _check(spec: Spec, value: Any) -> None:
             isinstance(v, dict) for v in value.values()
         ):
             raise ValueError(f"{spec.key} must be an object of objects")
+    if spec.type == "speeds":
+        # Bounds rather than a fixed list: what counts as a useful speed is the
+        # point of the setting. The floor is a speed you can still follow, the
+        # ceiling is where the audio stops being speech, and the count is a menu
+        # that still fits over a video. 1 has to be in it — it's where every
+        # video starts and the one rate you must be able to get back to.
+        if (not isinstance(value, list) or not 1 <= len(value) <= MAX_SPEEDS
+                or any(isinstance(v, bool) or not isinstance(v, (int, float))
+                       or not MIN_SPEED <= v <= MAX_SPEED for v in value)):
+            raise ValueError(
+                f"{spec.key} must be up to {MAX_SPEEDS} numbers "
+                f"between {MIN_SPEED} and {MAX_SPEED}"
+            )
+        if 1 not in value:
+            raise ValueError(f"{spec.key} must include normal speed (1)")
 
 
 async def _read(session, spec: Spec, user_id: int | None):

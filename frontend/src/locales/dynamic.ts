@@ -22,6 +22,10 @@ export const DYNAMIC_MESSAGES: string[] = [
   'Second caption track',
   'A second language shown under the first, for following along in two at once.',
   'None',
+  // The speeds the player offers, a setting since it's a matter of taste.
+  'Player',
+  'Playback speeds',
+  'The speeds the player\'s speed menu offers, and the steps the slower/faster keys take. Normal speed is always included.',
   'Home',
   'A channel',
   'Channels',

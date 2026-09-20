@@ -168,3 +168,37 @@ async def test_turning_the_fill_off_stops_a_sweep_already_running(monkeypatch):
     result = await archive.run_archive_fill()
     assert result["stopped"] == "disabled"
     assert len(walked) == 1  # it stopped instead of working through b and c
+
+
+# ── The speeds the player offers ─────────────────────────────────────
+#
+# Which speeds are useful is the person's business, so what's tested here is
+# the shape and the bounds — the parts a bad list could break the menu with.
+
+
+@pytest.mark.asyncio
+async def test_the_speeds_ship_as_youtubes_own_list():
+    assert await app_settings.get("playback_speeds") == [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
+
+
+@pytest.mark.asyncio
+async def test_a_speed_list_is_stored_as_given(client):
+    res = await client.put("/api/settings", json={"values": {"playback_speeds": [0.5, 1, 2, 3]}})
+    assert res.status_code == 200
+    assert res.json()["values"]["playback_speeds"] == [0.5, 1, 2, 3]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [
+    [1, 9],                       # past the ceiling
+    [1, 0.01],                    # below the floor
+    [0.5, 2],                     # no way back to normal speed
+    [1, "fast"],                  # not a number
+    [1, True],                    # a bool is not a speed, whatever Python says
+    list(range(1, 20)),           # a menu longer than the video is tall
+    [],                           # an empty menu
+    {"1": 1},                     # not a list at all
+])
+async def test_a_speed_list_that_would_break_the_menu_is_refused(client, bad):
+    res = await client.put("/api/settings", json={"values": {"playback_speeds": bad}})
+    assert res.status_code == 400

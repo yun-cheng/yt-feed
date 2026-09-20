@@ -20,6 +20,7 @@ import { qualityLabel, heightLabel } from '../lib/quality'
 import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
 import { t } from '../lib/i18n'
+import { playbackSpeeds } from '../lib/playbackSpeeds'
 
 /**
  * One control-bar button, sized the way YouTube sizes its own.
@@ -98,6 +99,12 @@ export type PlayerApi = {
   // field read here is `isLive` — the only straight answer anyone gives about a
   // broadcast (see playerIsLive).
   getVideoData?: () => { isLive?: boolean } | undefined
+  // Playback speed. Both sources have it — the embed natively, a <video> through
+  // its `playbackRate` (see localPlayer) — but optional all the same, because a
+  // player can be handed to us before the IFrame API has finished wiring it up
+  // and the bar reads the rate on every poll.
+  getPlaybackRate?: () => number
+  setPlaybackRate?: (rate: number) => void
 }
 
 /** Wrap a <video> element in the PlayerApi, matching YouTube's conventions:
@@ -120,6 +127,8 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
     // an endless one is. (getDuration above hides that from callers who want a
     // number; this is the one place it means something.)
     getVideoData: () => ({ isLive: el.duration === Infinity }),
+    getPlaybackRate: () => el.playbackRate,
+    setPlaybackRate: (rate) => { el.playbackRate = rate },
   }
 }
 
@@ -199,6 +208,12 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // counting down to one (see the LIVE pill below).
   const [live, setLive] = useState(false)
   const [resolution, setResolution] = useState<string | null>(null)
+  // Playback speed, read off the player rather than held here: the keyboard
+  // shortcuts change it on the player directly (see WatchPage), and a second
+  // copy in this component would be the one that goes stale.
+  const [rate, setRate] = useState(1)
+  const [rateMenu, setRateMenu] = useState(false)
+  const rateRef = useRef<HTMLDivElement>(null)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
   // The slider reads and writes the SHARED volume (the same store the previews
   // and the embed use), so a level set here follows you to the next video.
@@ -248,6 +263,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
       // stream can end while you're watching it, which turns it into an
       // ordinary recording under the same bar.
       setLive(playerIsLive(p))
+      // Polled like the rest: a keyboard shortcut, or a player rebuilt under us
+      // (which starts over at 1×), both change this without telling the bar.
+      setRate(p.getPlaybackRate?.() ?? 1)
       // What's actually on screen. A file knows its own height; the embed only
       // has YouTube's name for the quality it settled on, which drifts on its
       // own while it's on auto — so this is polled with everything else rather
@@ -257,7 +275,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
     }
     sync()
     const el = videoRef?.current
-    const events = ['timeupdate', 'play', 'pause', 'seeked', 'durationchange', 'volumechange', 'loadedmetadata']
+    const events = ['timeupdate', 'play', 'pause', 'seeked', 'durationchange', 'volumechange', 'loadedmetadata', 'ratechange']
     if (el) events.forEach((e) => el.addEventListener(e, sync))
     const id = el ? undefined : window.setInterval(sync, 250)
     return () => {
@@ -266,6 +284,17 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef, player])
+
+  // The speed menu closes on the next click anywhere else — including on the
+  // video, which is how you dismiss it without choosing.
+  useEffect(() => {
+    if (!rateMenu) return
+    const onDown = (e: MouseEvent) => {
+      if (rateRef.current && !rateRef.current.contains(e.target as Node)) setRateMenu(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [rateMenu])
 
   const hoverTime = hoverRatio !== null && duration ? hoverRatio * duration : null
   useEffect(() => {
@@ -302,7 +331,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // back over the picture. There, moving the cursor onto the video is the whole
   // way in — and it's how you get back to this button to turn it off.
   const focus = useFocusMode()
-  const show = focus ? hovering : hovering || paused
+  // An open menu keeps the bar up in either mode: it's a menu you opened, and
+  // fading it out from under the cursor would be the bar cancelling a choice.
+  const show = (focus ? hovering : hovering || paused) || rateMenu
   // On a broadcast the "duration" is how long it has been running, and the play
   // head can sit a hair past it (the two are measured a moment apart), so the
   // ratio needs a ceiling it never needed on a file.
@@ -526,6 +557,53 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               >
                 {boost}×
               </span>
+            )}
+          </div>
+        )}
+        {/* Playback speed. A menu rather than a click-through cycle: eight rates
+            are too many to step past one at a time, and the label has to say
+            where you are anyway. Left group, with the other things that belong
+            to this video rather than to the player's chrome.
+            Hidden on a broadcast — the edge is where playback is, so there's
+            nothing to speed up; slowing one down only walks you backwards off
+            the live edge. */}
+        {!live && (
+          <div ref={rateRef} className="relative">
+            <button
+              onClick={() => setRateMenu((v) => !v)}
+              className={`${BAR_BUTTON} text-sm tabular-nums`}
+              aria-haspopup="menu"
+              aria-expanded={rateMenu}
+              aria-label={t('Playback speed')}
+              title={t('Playback speed (, and .)')}
+              data-testid="speed-button"
+            >
+              {rate}×
+            </button>
+            {rateMenu && (
+              // Same panel as the caption menu — dark sheet, check in a fixed
+              // gutter so the numbers line up whichever row is ticked.
+              <div
+                role="menu"
+                className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-[#282828] py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
+              >
+                {playbackSpeeds().map((r) => (
+                  <button
+                    key={r}
+                    role="menuitemradio"
+                    aria-checked={r === rate}
+                    onClick={() => {
+                      api()?.setPlaybackRate?.(r)
+                      setRate(r)  // the poll would catch up, a quarter-second late
+                      setRateMenu(false)
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left tabular-nums hover:bg-white/10"
+                  >
+                    <span className="w-4 shrink-0">{r === rate && '✓'}</span>
+                    {r}×
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}

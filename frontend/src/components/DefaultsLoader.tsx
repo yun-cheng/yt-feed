@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { setPageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
+import { setSpeedDefaults } from '../lib/playbackSpeeds'
 import { getLang, onLangChange, setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 /**
@@ -33,6 +34,7 @@ export default function DefaultsLoader({ children }: { children: React.ReactNode
         if (!d) return
         setPageDefaultOverrides(d.values?.page_defaults)
         setCaptionDefaults(d.values)
+        setSpeedDefaults(d.values?.playback_speeds)
         setTranslateSetting(d.values?.translate_lang)
         setLangSetting(d.values?.app_language)
       })

@@ -766,8 +766,9 @@ components/
                                   the button that fetches the rest
   SettingsPage.tsx                renders itself from the spec /api/settings
                                   serves — adding a setting is a backend change.
-                                  A `choice` is a menu; saving a language or a
-                                  caption default applies it at once.
+                                  A `choice` is a menu; saving a language, a
+                                  caption default or the playback speeds applies
+                                  it at once.
                                   Badges the ones scoped to the whole machine,
                                   and shows the extension's API key to copy
   PageDefaultsEditor.tsx          the `page_defaults` setting's control: each
@@ -795,6 +796,7 @@ components/
   LocalControls.tsx               our control bar + the <video>→PlayerApi adapter.
                                   Drives a file on disk, and the embed too when
                                   the clean-embed extension is installed
+  SpeedsEditor.tsx                the playback-speed list, on the settings page
   PlayerMarks.tsx                 bookmarks (`b`) and a video's saved A–B loops
                                   (`[`, `]`, `\`): state, shortcuts, the actions
                                   behind the bar's two buttons, and the marks
@@ -940,7 +942,8 @@ Other details:
   IFrame API, so shortcuts work wherever focus is on the page — not only while
   the iframe holds focus. `space`/`k` play-pause, `m` mute, `f` fullscreen (of
   our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
-  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `p` pin, and
+  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `p` pin,
+  `,`/`.` playback speed (YouTube's two keys, without the shift it asks for), and
   the marks below (`b`, `[`, `]`, `\`). We focus our
   box, not the iframe, and pull focus back whenever a click lands in the video —
   a cross-origin iframe otherwise swallows its own keys. A brief volume HUD shows
@@ -1606,9 +1609,10 @@ never revisited:
 scrub preview. It carries play/pause, mute + a volume slider with the level beside it as a
 percentage (the shared, persisted store, so a level set here follows you to the
 next video; the slider stays collapsed until hovered, but the percentage is
-always on the bar), a **boost** group beside it (below), the clock,
+always on the bar), a **boost** group beside it (below), a **speed** menu
+(below), the clock,
 the CC button, pin and fullscreen — everything with a keyboard equivalent
-(`k`, `m`, `c`, `p`, `f`). It shows while the pointer is over the player or while paused,
+(`k`, `m`, `c`, `p`, `f`, `,`/`.`). It shows while the pointer is over the player or while paused,
 and mirrors the element's own events rather than polling, so a keyboard seek or
 the resume jump moves it too.
 
@@ -1662,6 +1666,36 @@ never moves next to one that does.
   near WebAudio.
 - **The graph belongs to the element, not the video.** Moving to the next video
   reuses it (an element can only be tapped once) and just sets the gain back to 1.
+
+**Playback speed** is the last of the per-video controls in that row, and the one
+thing `controls=0` takes away from the embed that we hand straight back. It ships
+with YouTube's own eight rates (0.25× to 2× in quarter steps) and is a **setting**
+(`playback_speeds`, `lib/playbackSpeeds.ts`) — someone who wants 0.1 steps wants
+them here. A menu rather than a click-through cycle: too many to step past one at
+a time, and the button has to say which one you're on anyway.
+
+- **One list does both jobs** — the menu and the keyboard's step. A menu that
+  couldn't reach the speed the keys just set would be lying about where you are.
+  Normal speed is forced into any list you save: it's where every video starts
+  and the one rate you must be able to get back to.
+- **The player is the source of truth**, not this component. The slower/faster
+  keys change the rate on the player directly — from `WatchPage`'s handler over the embed, from
+  `LocalWatchPage`'s on a local file — and the bar reads it back on the same poll
+  that carries the clock, so the label follows a speed it never set. A second
+  copy of the number here is the one that would go stale.
+- **It resets with the player**, since nothing persists it: a new video plays at
+  1×, which is what a speed chosen for one video's narrator should do.
+- **Not on a broadcast.** Live playback is the edge, so there is nothing to speed
+  up, and slowing it down only walks you backwards off it. The button is absent
+  there rather than present and inert.
+- **Bare keys, unlike YouTube's.** It puts speed on shift+`,` and shift+`.`;
+  nothing else here is a chord, and holding shift to nudge the speed is a key too
+  many. `<`/`>` still work — it's the same key, and arriving on it with shift
+  still down after a capital is a slip rather than a different intention.
+- `nextSpeed()` steps from the *nearest* offered speed rather than from an index
+  — a `<video>` takes any number at all, and the list can change under a video
+  that's already playing — and stops at both ends instead of wrapping, because a
+  keypress that drops 2× to 0.25× is never what was meant.
 
 The **scrub preview** is a second, hidden `<video>` of the same file seeked to the
 hovered time — the trick `VideoCard` already uses for download cards. The file is
@@ -1790,6 +1824,8 @@ two shims Radix's slider needs to mount at all (below).
 | `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing |
 | `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range; plus the length buckets going to the server, this list being paged |
+| `playbackSpeeds.test.ts` | the speed list: what a stored value is tidied into (sorted, de-duplicated, normal speed forced in, capped in length), what the settings field accepts and what it refuses outright, and `nextSpeed` stepping through *your* list from the nearest speed and stopping at both ends |
+| `playerSettings.test.tsx` | the speeds editor: a tidied list saved on blur and on Enter, text that isn't speeds refused instead of salvaged, and Escape putting the field back |
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off |
 | `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |

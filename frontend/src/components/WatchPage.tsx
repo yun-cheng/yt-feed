@@ -8,6 +8,7 @@ import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { useFocusMode } from '../hooks/focusMode'
 import { formatTime, timeAgo } from '../lib/time'
 import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalControls'
+import { nextSpeed } from '../lib/playbackSpeeds'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
@@ -1603,6 +1604,18 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // exactly when the mouse is nowhere near the player — so it earns a key.
         e.preventDefault()
         setPinned((v) => !v)
+      } else if (k === '.' || k === ',' || k === '>' || k === '<') {
+        // Playback speed, one step along the speeds you chose (the
+        // `playback_speeds` setting). On the same two keys YouTube uses but
+        // WITHOUT the shift it asks for — nothing else here is a chord, and
+        // holding shift to nudge the speed is a key too many. The shifted pair
+        // is taken as well: it's the same key, and hitting it with shift still
+        // down after a capital is a slip, not a different intention.
+        //
+        // Set on the player directly; the bar's label reads the rate back off
+        // it, so it shows the new speed without this knowing the bar exists.
+        e.preventDefault()
+        p.setPlaybackRate?.(nextSpeed(p.getPlaybackRate?.() ?? 1, k === '.' || k === '>' ? 1 : -1))
       } else if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'j' || k === 'l') {
         e.preventDefault()
         const step = (k === 'j' || k === 'l' ? 10 : 5) * (k === 'ArrowLeft' || k === 'j' ? -1 : 1)
