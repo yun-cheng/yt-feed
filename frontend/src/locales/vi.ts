@@ -418,6 +418,7 @@ export const vi: Record<string, string> = {
   'Open on YouTube at this moment': 'Mở trên YouTube tại thời điểm này',
   'Open on YouTube': 'Mở trên YouTube',
   'Save': 'Lưu',
+  'Saved': 'Đã lưu',
   'Hide transcript': 'Ẩn bản ghi',
   'Show transcript': 'Hiện bản ghi',
   'Hide Ask AI': 'Ẩn Hỏi AI',

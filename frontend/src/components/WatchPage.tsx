@@ -384,6 +384,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [description, setDescription] = useState('')
   const [embedError, setEmbedError] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
+  // Whether this video sits in any playlist, so the Save pill can say so.
+  const [saved, setSaved] = useState(false)
   const saveRef = useRef<HTMLDivElement>(null)
   // Pinned (default): the player holds its place and only the details below
   // scroll. Unpinned: the whole page scrolls, so a tall video can move away.
@@ -619,6 +621,22 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [showMoreMenu])
+
+  // Is the video in a playlist? Re-asked whenever one changes, which covers
+  // the popover's own toggles as well as edits made on the Playlists page.
+  useEffect(() => {
+    if (!videoId) return
+    let alive = true
+    const ask = () => {
+      apiFetch(`/api/playlists/containing/${videoId}`)
+        .then((r) => (r.ok ? r.json() : []))
+        .then((ids: number[]) => { if (alive) setSaved(ids.length > 0) })
+        .catch(() => { /* the pill just stays as it is */ })
+    }
+    ask()
+    window.addEventListener('playlists-changed', ask)
+    return () => { alive = false; window.removeEventListener('playlists-changed', ask) }
+  }, [videoId])
 
   // Close the save-to-playlist popover on an outside click.
   useEffect(() => {
@@ -2385,10 +2403,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 onClick={() => setShowSavePanel((o) => !o)}
                 className="flex items-center gap-2 rounded-full bg-[#272727] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f3f3f] transition-colors"
               >
-                <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <svg className="h-6 w-6" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
                 </svg>
-                {t('Save')}
+                {saved ? t('Saved') : t('Save')}
               </button>
               {showSavePanel && (
                 <div className="absolute left-0 top-full mt-2 z-40 rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2">

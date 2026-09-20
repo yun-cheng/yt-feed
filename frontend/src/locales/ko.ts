@@ -418,6 +418,7 @@ export const ko: Record<string, string> = {
   'Open on YouTube at this moment': 'YouTube에서 이 순간부터 열기',
   'Open on YouTube': 'YouTube에서 열기',
   'Save': '저장',
+  'Saved': '저장됨',
   'Hide transcript': '스크립트 숨기기',
   'Show transcript': '스크립트 표시',
   'Hide Ask AI': 'AI 질문 숨기기',

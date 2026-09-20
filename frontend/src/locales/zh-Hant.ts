@@ -419,6 +419,7 @@ export const zhHant: Record<string, string> = {
   'Open on YouTube at this moment': '在 YouTube 上從這一刻開啟',
   'Open on YouTube': '在 YouTube 上開啟',
   'Save': '儲存',
+  'Saved': '已儲存',
   'Hide transcript': '隱藏逐字稿',
   'Show transcript': '顯示逐字稿',
   'Hide Ask AI': '隱藏 AI 問答',

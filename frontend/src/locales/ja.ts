@@ -418,6 +418,7 @@ export const ja: Record<string, string> = {
   'Open on YouTube at this moment': 'この瞬間から YouTube で開く',
   'Open on YouTube': 'YouTube で開く',
   'Save': '保存',
+  'Saved': '保存済み',
   'Hide transcript': '文字起こしを非表示',
   'Show transcript': '文字起こしを表示',
   'Hide Ask AI': 'AI に質問を非表示',

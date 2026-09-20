@@ -418,6 +418,7 @@ export const th: Record<string, string> = {
   'Open on YouTube at this moment': 'เปิดใน YouTube ที่ช่วงเวลานี้',
   'Open on YouTube': 'เปิดใน YouTube',
   'Save': 'บันทึก',
+  'Saved': 'บันทึกแล้ว',
   'Hide transcript': 'ซ่อนบทถอดเสียง',
   'Show transcript': 'แสดงบทถอดเสียง',
   'Hide Ask AI': 'ซ่อน AI ถามตอบ',
