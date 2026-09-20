@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { apiFetch } from '../lib/api'
 import AddChannelDialog from './AddChannelDialog'
 import { formatCount } from '../lib/richText'
@@ -19,6 +19,10 @@ type ChannelInfo = {
 
 type Props = {
   selectedTags: string[]
+  /** The search box's text while it is scoped to this page; '' when it isn't.
+   *  The list is refetched for it, so the match is the server's — typo-tolerant
+   *  by name, and by topic. */
+  query: string
   onSelectChannel: (channelId: string) => void
   sort: string
   onSortChange: (s: string) => void
@@ -46,9 +50,14 @@ const TrashIcon = () => (
   </svg>
 )
 
-export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hiddenChannels, onToggleHidden }: Props) {
+export default function ChannelsPage({ selectedTags, query, onSelectChannel, sort, hiddenChannels, onToggleHidden }: Props) {
   const [channels, setChannels] = useState<ChannelInfo[]>([])
+  // Only the first fetch blanks the page. Typing refetches too, and replacing
+  // the grid with "Loading…" on every keystroke would be the page flashing at
+  // someone who is still typing — the list they can see stays until the next
+  // one arrives.
   const [loading, setLoading] = useState(true)
+  const loaded = useRef(false)
   const [adding, setAdding] = useState(false)
   // The hand-added channel whose delete button has been pressed once. Removing
   // a channel deletes its videos, so it asks — in place, on the card, because
@@ -57,18 +66,20 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
 
   useEffect(() => {
     fetchChannels()
-  }, [selectedTags, sort])
+  }, [selectedTags, sort, query])
 
   async function fetchChannels() {
-    setLoading(true)
+    setLoading(!loaded.current)
     try {
       const params = new URLSearchParams({ sort })
+      if (query.trim()) params.set('q', query.trim())
       if (selectedTags.length > 0) params.set('tags', selectedTags.join(','))
       const res = await apiFetch(`/api/channels?${params}`)
       setChannels(await res.json())
     } catch (e) {
       console.error('Failed to fetch channels:', e)
     }
+    loaded.current = true
     setLoading(false)
   }
 
@@ -109,11 +120,15 @@ export default function ChannelsPage({ selectedTags, onSelectChannel, sort, hidd
     )
   }
 
+  const trimmed = query.trim()
+
   if (channels.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaaaaa]">
         <p className="text-sm">
-          {selectedTags.length > 0 ? t('No channels match the selected tags.') : t('No channels yet.')}
+          {trimmed ? t('No channels for “{q}”', { q: trimmed })
+            : selectedTags.length > 0 ? t('No channels match the selected tags.')
+            : t('No channels yet.')}
         </p>
         {addButton}
         {dialog}

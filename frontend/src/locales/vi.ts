@@ -123,6 +123,7 @@ export const vi: Record<string, string> = {
   // Channels page
   'Loading channels...': 'Đang tải kênh...',
   'No channels match the selected tags.': 'Không có kênh nào khớp với thẻ đã chọn.',
+  'No channels for “{q}”': 'Không có kênh nào cho “{q}”',
   'No channels yet.': 'Chưa có kênh nào.',
   'Remove channel': 'Xóa kênh',
   'Hide from home': 'Ẩn khỏi trang chủ',
@@ -372,6 +373,7 @@ export const vi: Record<string, string> = {
   '10–20 min': '10–20 phút',
   'Over 20 min': 'Trên 20 phút',
   // Search scopes (App SEARCHABLE_PAGES)
+  'In channels': 'Trong kênh',
   'In history': 'Trong lịch sử',
   'In Watch Later': 'Trong Xem sau',
   'In downloads': 'Trong tải xuống',

@@ -124,6 +124,7 @@ export const zhHant: Record<string, string> = {
   // Channels page
   'Loading channels...': '正在載入頻道…',
   'No channels match the selected tags.': '沒有符合所選標籤的頻道。',
+  'No channels for “{q}”': '找不到「{q}」的頻道',
   'No channels yet.': '還沒有頻道。',
   'Remove channel': '移除頻道',
   'Hide from home': '不在首頁顯示',
@@ -373,6 +374,7 @@ export const zhHant: Record<string, string> = {
   '10–20 min': '10–20 分鐘',
   'Over 20 min': '超過 20 分鐘',
   // Search scopes (App SEARCHABLE_PAGES)
+  'In channels': '頻道',
   'In history': '觀看紀錄',
   'In Watch Later': '稍後觀看',
   'In downloads': '下載',

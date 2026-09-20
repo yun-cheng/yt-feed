@@ -153,13 +153,16 @@ sort}`), rather than a `useState` per page per control. The bar reads
 more pieces of state and two more branches in the ternary that used to pick
 between them. A channel page grows one more pill, **Relevance**, while a search
 is narrowing it — Meilisearch's own order for the hits, which means nothing
-without a query, so it appears and disappears with one.
+without a query, so it appears and disappears with one. The Channels page grows
+the same pill while its own filter is on; its relevance is worked out on the
+server (`match_channels`), and `sort=relevance` is what asks for that order.
 
-A search **borrows** that bar: starting one switches to Relevance (a search is a
-question about words, and answering it in like-count order buries the video you
-typed the words for), and ending one puts back the sort that was in force
-before. Only the two edges act, so a sort picked mid-search stands, and a link
-that arrives carrying its own `sort` is left exactly as it came.
+A search **borrows** that bar (`useSearchSort`, one hook for both pages):
+starting one switches to Relevance (a search is a question about words, and
+answering it in like-count order buries the video you typed the words for), and
+ending one puts back the sort that was in force before. Only the two edges act,
+so a sort picked mid-search stands, and a link that arrives carrying its own
+`sort` is left exactly as it came.
 
 `TimeSortControls` holds the matching sort table (`PAGE_SORTS`)
 and renders the slider only when a window is passed to it — a page absent from
@@ -202,13 +205,19 @@ panel is empty.
   scope is on — rather than a control that renames itself to the channel: the
   name is already on the page, and a button whose words change is a different
   button.
-- The library pages — History, Watch Later, Downloads, Imported and a
+- The library pages — Channels, History, Watch Later, Downloads, Imported and a
   playlist (`SEARCHABLE_PAGES`, which also holds each button's words: "In
   history", "In this playlist", …) — have the same scope, and `?q=` on one of
   them is it. They filter on the client (`filterByText`: every word, anywhere
   in the title or channel name, case- and width-folded), since each already
   holds its whole list; a channel page is paged, so its search runs on the
-  server. A search begun on one of them remembers where it came from
+  server — and so does the Channels page, which filters channels instead of
+  videos: `?q=` goes to `/api/channels`, which matches the name (typos and
+  Chinese segmentation included, via Meilisearch) and the topics. It is the one
+  page that takes the scope automatically: a list of channels is all the box
+  there could mean, so typing filters from the first keystroke — after the same
+  `scopedQuery` pause a channel page takes — and the button is for widening back
+  out. A search begun on one of them remembers where it came from
   (`searchFrom`), so the results page still offers to confine it back. The
   scope (`searchPage`) drops the moment you leave that page — an effect on
   `[page]`, which is safe here because a cold load of `/history?q=` *is* that
@@ -746,7 +755,9 @@ components/
                                   ChannelPage takes a `q`: a search confined to
                                   this channel filters the page in place, so the
                                   window, sort, topics and watch statuses go on
-                                  applying to what it finds
+                                  applying to what it finds. ChannelsPage takes
+                                  one too and refetches the grid for it; the
+                                  matching and ranking are the server's
   ChannelHeader.tsx               avatar/name/subs/description/YouTube link —
                                   shared by the held and not-yet-added pages
   AddChannelDialog.tsx            paste a link or @handle, preview, add

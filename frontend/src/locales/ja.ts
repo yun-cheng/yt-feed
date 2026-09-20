@@ -123,6 +123,7 @@ export const ja: Record<string, string> = {
   // Channels page
   'Loading channels...': 'チャンネルを読み込み中…',
   'No channels match the selected tags.': '選択したタグに一致するチャンネルがありません。',
+  'No channels for “{q}”': '「{q}」に一致するチャンネルはありません',
   'No channels yet.': 'まだチャンネルがありません。',
   'Remove channel': 'チャンネルを削除',
   'Hide from home': 'ホームに表示しない',
@@ -372,6 +373,7 @@ export const ja: Record<string, string> = {
   '10–20 min': '10〜20分',
   'Over 20 min': '20分以上',
   // Search scopes (App SEARCHABLE_PAGES)
+  'In channels': 'チャンネル内',
   'In history': '再生履歴内',
   'In Watch Later': '後で見る内',
   'In downloads': 'ダウンロード内',

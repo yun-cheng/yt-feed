@@ -60,6 +60,7 @@ export const DYNAMIC_MESSAGES: string[] = [
   '5–10 min',
   '10–20 min',
   'Over 20 min',
+  'In channels',
   'In history',
   'In Watch Later',
   'In downloads',

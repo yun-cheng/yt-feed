@@ -98,7 +98,10 @@ real video (muted, with custom captions and scrubbing).
 - **Search in a list** — on History, Watch Later, Downloads, Imported or a
   playlist, the search box's "In history" / "In this playlist" / … button turns
   it into a filter for that page, by title or channel name, alongside the page's
-  window, sort and sidebar filters, the way "In this channel" works on a channel page
+  window, sort and sidebar filters, the way "In this channel" works on a channel
+  page. The Channels page filters as you type, by channel name or topic, with no
+  button to press first — typo-tolerant like the rest, and sorted by how well the
+  name answers what you typed
 - **Watch status filter** — a sidebar section for unwatched / in progress / watched;
   the home feed excludes watched by default, so it's about what you haven't seen
 - **Your own page defaults** — Settings → Pages sets the time window, sort and

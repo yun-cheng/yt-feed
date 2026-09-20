@@ -123,6 +123,7 @@ export const th: Record<string, string> = {
   // Channels page
   'Loading channels...': 'กำลังโหลดช่อง...',
   'No channels match the selected tags.': 'ไม่มีช่องที่ตรงกับแท็กที่เลือก',
+  'No channels for “{q}”': 'ไม่มีช่องสำหรับ “{q}”',
   'No channels yet.': 'ยังไม่มีช่อง',
   'Remove channel': 'ลบช่อง',
   'Hide from home': 'ซ่อนจากหน้าแรก',
@@ -372,6 +373,7 @@ export const th: Record<string, string> = {
   '10–20 min': '10–20 นาที',
   'Over 20 min': 'มากกว่า 20 นาที',
   // Search scopes (App SEARCHABLE_PAGES)
+  'In channels': 'ในช่อง',
   'In history': 'ในประวัติการรับชม',
   'In Watch Later': 'ในดูภายหลัง',
   'In downloads': 'ในดาวน์โหลด',

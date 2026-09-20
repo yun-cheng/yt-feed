@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { apiFetch } from './lib/api'
 import { captureFilters, forPage, hasAnyFilter, isActive, listPresets, savePreset, deletePreset } from './lib/presets'
 import type { Preset } from './lib/presets'
@@ -319,6 +320,7 @@ const USES_LENGTH = new Set(['feed', 'channel', 'watchlater', 'history', 'import
  * (A channel is scoped too, but it searches on the server; see searchChannel.)
  */
 export const SEARCHABLE_PAGES: Partial<Record<Page, string>> = {
+  channels: 'In channels',
   history: 'In history',
   watchlater: 'In Watch Later',
   downloads: 'In downloads',
@@ -450,6 +452,41 @@ export function buildPath(s: UrlState): string {
 // "past 3 days, by likes" and Watch Later's "all time, by when I saved it" are
 // both live at once, each where it belongs.
 export type PageView = { age: TimeRange; sort: string }
+
+/**
+ * A search picks the order up, and hands it back.
+ *
+ * Starting one switches the page to Relevance — a search is a question about
+ * words, and answering it in like-count order buries the video you typed the
+ * words for. Ending one puts back the sort that was in force before, so the
+ * search borrows the bar rather than resetting it.
+ *
+ * Only the two EDGES do anything: pick another sort mid-search and it stands,
+ * and a link that arrives with its own `sort` is left exactly as it came.
+ * Writes the page's view directly rather than through `setSort`, which would
+ * aim at whatever page is showing when a search ends elsewhere.
+ */
+function useSearchSort(
+  searching: boolean,
+  page: Page,
+  sort: string,
+  setViews: Dispatch<SetStateAction<Record<string, PageView>>>,
+) {
+  const wasSearching = useRef(searching)
+  const sortBefore = useRef<string | null>(null)
+  useEffect(() => {
+    const was = wasSearching.current
+    wasSearching.current = searching
+    if (was === searching) return
+    const setSort = (s: string) => setViews(v => ({ ...v, [page]: { ...v[page], sort: s } }))
+    if (searching) {
+      sortBefore.current = sort
+      if (sort !== 'relevance') setSort('relevance')
+    } else if (sort === 'relevance') {
+      setSort(sortBefore.current ?? defaultsFor(page).sort)
+    }
+  }, [searching, page, sort, setViews])
+}
 
 /** Every page at its own opening settings. */
 function defaultViews(): Record<string, PageView> {
@@ -1774,6 +1811,13 @@ export default function App() {
     setSearchPage(sp => (sp && sp !== page ? null : sp))
   }, [page])
 
+  // The Channels page is a list of channels and nothing else, so the box there
+  // filters it by name from the first keystroke — no chip to press first. The
+  // chip is still there to widen back out to a search across everything.
+  useEffect(() => {
+    if (page === 'channels') setSearchPage('channels')
+  }, [page])
+
   // The library page a scope would confine to: the one on screen, or the one a
   // results page was reached from by typing there. A playlist needs its id to
   // still be in hand to go back to.
@@ -1789,34 +1833,13 @@ export default function App() {
     && searchChannel === selectedChannelId
     && scopedQuery.trim().length > 0
 
-  /**
-   * A search picks the order up, and hands it back.
-   *
-   * Starting one switches the channel to Relevance — a search is a question
-   * about words, and answering it in like-count order buries the video you
-   * typed the words for. Ending one puts back the sort that was in force
-   * before, so the search borrows the bar rather than resetting it.
-   *
-   * Only the two EDGES do anything: pick another sort mid-search and it stands,
-   * and a link that arrives with its own `sort` is left exactly as it came.
-   * Writes `views.channel` directly rather than through `setSort`, which would
-   * aim at whatever page is showing when a search ends elsewhere.
-   */
-  const wasSearchingRef = useRef(searchingChannel)
-  const sortBeforeSearchRef = useRef<string | null>(null)
-  useEffect(() => {
-    const was = wasSearchingRef.current
-    wasSearchingRef.current = searchingChannel
-    if (was === searchingChannel) return
-    const setChannelSort = (sort: string) =>
-      setViews(v => ({ ...v, channel: { ...v.channel, sort } }))
-    if (searchingChannel) {
-      sortBeforeSearchRef.current = views.channel.sort
-      if (views.channel.sort !== 'relevance') setChannelSort('relevance')
-    } else if (views.channel.sort === 'relevance') {
-      setChannelSort(sortBeforeSearchRef.current ?? defaultsFor('channel').sort)
-    }
-  }, [searchingChannel, views.channel.sort])
+  // The same question for the Channels page, whose relevance is its own (see
+  // match_channels on the server): how well a channel's name answers what you
+  // typed.
+  const searchingChannels = page === 'channels' && searchInput.trim().length > 0
+
+  useSearchSort(searchingChannel, 'channel', views.channel.sort, setViews)
+  useSearchSort(searchingChannels, 'channels', views.channels.sort, setViews)
 
   function toggleTag(tag: string) {
     setSelectedTags(prev => setTagState(prev, tag, false))
@@ -2168,7 +2191,7 @@ export default function App() {
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}
-          searching={searchingChannel}
+          searching={searchingChannel || searchingChannels}
           scoped={searchScoped}
           scopeLabel={t((scopablePage && SEARCHABLE_PAGES[scopablePage]) || 'In this channel')}
           onScopeToggle={
@@ -2436,7 +2459,7 @@ export default function App() {
             })()}
           </div>
         ) : (
-          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={view.sort} onSortChange={setSort} hiddenChannels={hiddenChannels} onToggleHidden={toggleHiddenChannel} />
+          <ChannelsPage selectedTags={selectedTags} onSelectChannel={selectChannel} sort={view.sort} onSortChange={setSort} hiddenChannels={hiddenChannels} onToggleHidden={toggleHiddenChannel} query={searchPage === 'channels' ? scopedQuery : ''} />
         )}
       </main>
       </div>

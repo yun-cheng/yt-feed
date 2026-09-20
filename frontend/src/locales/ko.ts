@@ -123,6 +123,7 @@ export const ko: Record<string, string> = {
   // Channels page
   'Loading channels...': '채널 로드 중...',
   'No channels match the selected tags.': '선택한 태그와 일치하는 채널이 없습니다.',
+  'No channels for “{q}”': '“{q}”에 해당하는 채널이 없습니다',
   'No channels yet.': '아직 채널이 없습니다.',
   'Remove channel': '채널 삭제',
   'Hide from home': '홈에서 숨기기',
@@ -372,6 +373,7 @@ export const ko: Record<string, string> = {
   '10–20 min': '10~20분',
   'Over 20 min': '20분 이상',
   // Search scopes (App SEARCHABLE_PAGES)
+  'In channels': '채널에서',
   'In history': '시청 기록에서',
   'In Watch Later': '나중에 볼 동영상에서',
   'In downloads': '다운로드에서',
