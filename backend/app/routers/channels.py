@@ -4,6 +4,7 @@ Channel management endpoints — list channels with tags, manage groups.
 
 import asyncio
 import json
+import unicodedata
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -44,16 +45,69 @@ def _labels_json(raw: str | None) -> list[str] | None:
         return None
 
 
+def _fold(text: str) -> str:
+    """Case- and width-folded, so a full-width or capitalised query still matches."""
+    return unicodedata.normalize("NFKC", text).casefold()
+
+
+def match_channels(
+    rows: list[dict], q: str, fuzzy_order: list[str] | None
+) -> list[dict]:
+    """Narrow and rank a page of channels by what was typed.
+
+    Two things are being answered at once. The NAME is matched here, plainly:
+    starts with the query, holds it whole, or holds every word of it — three
+    ranks, in that order, because a channel called what you typed is the one you
+    meant. Topics are matched here too, last, since "piano" is as likely to be
+    how you think of a channel as its name is.
+
+    `fuzzy_order` is Meilisearch's answer to the same query (see
+    `search_index.matching_channel_ids`) and is what makes the search
+    typo-tolerant and segment-aware — it lands between the two, above topics and
+    below any plain name match, keeping Meili's own order among its hits. `None`
+    means the index couldn't answer, and the plain matching above stands alone.
+
+    Ties keep the order they arrived in, which is the page's sort — so within a
+    rank the bigger channel still leads.
+    """
+    query = _fold(q.strip())
+    if not query:
+        return rows
+    words = query.split()
+    fuzzy = {cid: i for i, cid in enumerate(fuzzy_order or [])}
+    ranked = []
+    for i, ch in enumerate(rows):
+        name = _fold(ch["title"])
+        if name.startswith(query):
+            rank = 0
+        elif query in name:
+            rank = 1
+        elif all(w in name for w in words):
+            rank = 2
+        elif ch["youtube_id"] in fuzzy:
+            rank = 3
+        elif all(w in _fold(" ".join(ch["tags"])) for w in words):
+            rank = 4
+        else:
+            continue
+        ranked.append(((rank, fuzzy.get(ch["youtube_id"], 0) if rank == 3 else 0, i), ch))
+    ranked.sort(key=lambda pair: pair[0])
+    return [ch for _, ch in ranked]
+
+
 @router.get("")
 async def list_channels(
     tags: str = Query(default="", description="Comma-separated tag filter (AND logic)"),
-    sort: str = Query(default="subs", description="subs | alpha"),
+    sort: str = Query(default="subs", description="subs | alpha | relevance"),
+    q: str = Query(default="", description="Filter by channel name or topic"),
     user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
     """List the channels YOU follow, with tags and subscriber info.
 
     When `tags` is provided, only returns channels that have ALL specified tags.
+    `q` filters by name or topic (see match_channels), and `sort=relevance`
+    keeps that filter's own order instead of the page's.
 
     Bounded by `user_channels` rather than by the `channels` table, which holds
     everyone's — the catalog is shared so a channel two people follow costs one
@@ -109,7 +163,7 @@ async def list_channels(
     for ct in tag_result.scalars().all():
         tags_map.setdefault(ct.channel_id, []).append(ct.tag_name)
 
-    return [
+    rows = [
         {
             "youtube_id": ch.youtube_id,
             "title": ch.title,
@@ -122,6 +176,17 @@ async def list_channels(
         }
         for ch in channels
     ]
+    if not q.strip():
+        return rows
+    matched = match_channels(
+        rows, q, await search_index.matching_channel_ids(q, held)
+    )
+    # Relevance is the filter's own order; every other sort is the page's, so
+    # the matches go back into the order they came out of the database in.
+    if sort == "relevance":
+        return matched
+    keep = {ch["youtube_id"] for ch in matched}
+    return [ch for ch in rows if ch["youtube_id"] in keep]
 
 
 # ── Adding a channel by hand ──────────────────────────────────

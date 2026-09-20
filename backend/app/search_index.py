@@ -264,6 +264,32 @@ async def search(
         return {"channels": [], "videos": [], "videos_total": 0}
 
 
+async def matching_channel_ids(
+    q: str, channel_ids: set[str], cap: int = 500
+) -> list[str] | None:
+    """Which of the channels someone follows match `q` — ids, in Meili's order.
+
+    The Channels page holds its whole list and does its own tag matching and
+    ranking, so it asks Meilisearch for the one thing only it can answer: which
+    names match once typos and Chinese segmentation are allowed for.
+
+    `None` means the index could not answer at all, which is different from "no
+    channel matches": the caller falls back to plain substring matching rather
+    than showing an empty page because a companion service is down.
+    """
+    q = (q or "").strip()
+    if not q or not channel_ids:
+        return []
+    try:
+        res = await _search_raw(
+            CHANNELS_INDEX, q, cap, 0, _in_filter("youtube_id", channel_ids)
+        )
+        return [h["youtube_id"] for h in res.get("hits", []) if h.get("youtube_id")]
+    except Exception as e:
+        print(f"[search] channel-name query failed: {e}")
+        return None
+
+
 async def matching_video_ids(q: str, channel_id: str, cap: int = 500) -> list[str]:
     """Which of one channel's videos match `q` — ids only, best-effort.
 

@@ -1278,6 +1278,25 @@ Two consequences worth stating:
   won't appear until you widen it. The empty state says "in this time range" for
   that reason.
 
+### Searching the Channels page
+
+The same shape, one level up: `GET /api/channels` takes a `q`, and what comes
+back is the page filtered. The list is small enough to hold whole, so
+`match_channels` does the matching in Python and ranks it — a name that STARTS
+with the query, then one that HOLDS it, then one holding all its words, then
+Meilisearch's hits (`search_index.matching_channel_ids`, which is what makes it
+typo-tolerant and segment-aware), and last the channels a TOPIC matched, since
+"piano" is as likely to be how you think of a channel as its name is. Ties keep
+the order the rows arrived in, so the bigger channel still leads inside a rank,
+and `sort=relevance` is what asks to keep this order at all — any other sort
+just drops the rows that didn't match.
+
+Unlike the channel page above, a Meilisearch that isn't running does **not**
+empty this list: `matching_channel_ids` answers `None` for "couldn't ask", as
+against `[]` for "nothing matched", and the plain substring matching stands on
+its own. The difference is what the query is for — there, one search among a
+channel's thousands of videos; here, the only way to find one of 150 channels.
+
 `GET /api/search` is untouched by this: it stays the library-wide search across
 every channel you follow.
 
@@ -1908,6 +1927,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
 | POST | `/api/feed/comments-translate` | one comment translated into `target` (`en` \| `zh-Hant` \| `ja` \| `ko` \| `th` \| `vi`) → `{text}`; cached in memory |
+| GET | `/api/channels` | the channels you follow, with their topics (`?tags=` filters, `-tag` excludes; `?q=` filters by name — typo-tolerant, via Meilisearch — or by topic, and `sort=relevance` keeps that match's order) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic, `?q=` by title text; `sort=relevance` keeps Meilisearch's order for a `?q=`). The channel block carries `source` and `scanning` |
 | GET | `/api/channels/lookup?q=` | resolve a channel URL / `@handle` / id and say whether we already hold it. Writes nothing |
 | POST | `/api/channels/add` | add that channel by hand, marked `source="manual"` so resync won't prune it. Returns `scanning: true` while its first batch of videos is fetched |
@@ -1983,6 +2003,7 @@ no per-test decorator). What's covered:
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_video_length.py` | the runtime buckets: each boundary second belonging to the longer one, an unprobed duration belonging to none, both ways of meaning "any length", an unknown name dropped rather than refused, `total` counting what you'll be shown, and a channel page filtering the same way |
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
+| `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
