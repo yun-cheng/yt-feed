@@ -301,7 +301,8 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
     assert spec == {"archive_fill_enabled": "app", "youtube_history_sync": "user",
                     "page_defaults": "user", "app_language": "user",
                     "caption_lang": "user", "caption_lang2": "user",
-                    "translate_lang": "user", "playback_speeds": "user"}
+                    "translate_lang": "user", "playback_speeds": "user",
+                    "shortcuts": "user"}
 
 
 async def test_page_defaults_are_personal(client, pair):

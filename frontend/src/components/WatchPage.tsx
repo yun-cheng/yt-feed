@@ -9,6 +9,7 @@ import { useFocusMode } from '../hooks/focusMode'
 import { formatTime, timeAgo } from '../lib/time'
 import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalControls'
 import { nextSpeed } from '../lib/playbackSpeeds'
+import { actionFor, shortcutLabel } from '../lib/shortcuts'
 import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
@@ -27,7 +28,8 @@ import { captionDefaults } from '../lib/captionDefaults'
 // controls that no longer exist, and the sheet that watches for mouse movement
 // can stay put instead of dodging YouTube's buttons.
 //
-// What it costs: YouTube's quality / speed / subtitle menus go with them.
+// What it costs: YouTube's quality and subtitle menus go with them. (Speed is
+// not among them any more — our bar has its own, see LocalControls.)
 //
 // Gated on the extension because `controls=0` alone isn't enough: it takes away
 // the control BAR and leaves the title, avatar, centre play button and share row
@@ -1567,16 +1569,21 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       // keypress directly — the volume HUD, the bookmark flash — are separate
       // and still show; it's the bar that stays down.
       if (!focusModeRef.current) wakeChrome()
-      const k = e.key
-      if (e.code === 'Space' || k === 'k') {
+      // What the key means, not which key it is: the binding is a setting
+      // (lib/shortcuts.ts), so this handler asks the table rather than
+      // comparing letters. `space` is the one key not in it — every player
+      // plays and pauses on it whatever `playPause` is bound to.
+      const action = e.code === 'Space' ? 'playPause' : actionFor(e.key)
+      if (!action) return
+      if (action === 'playPause') {
         e.preventDefault()
         if (p.getPlayerState() === 1) p.pauseVideo(); else p.playVideo()
-      } else if (k === 'm') {
+      } else if (action === 'mute') {
         e.preventDefault()
         const willMute = !p.isMuted()
         if (willMute) p.mute(); else p.unMute()
         showVolHint(volumeRef.current, willMute)
-      } else if (k === 'f') {
+      } else if (action === 'fullscreen') {
         e.preventDefault()
         // Fullscreen OUR box, not the iframe. A fullscreen cross-origin iframe
         // traps keyboard focus (our shortcuts die, YouTube's native ones take
@@ -1585,41 +1592,37 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // pause UI showing the control bar. (Safe to call the render-scope
         // closure from this once-bound listener: it only reads refs.)
         toggleFullscreen()
-      } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+      } else if (action === 'volumeUp' || action === 'volumeDown') {
         e.preventDefault()
-        const next = Math.max(0, Math.min(100, Math.round(volumeRef.current + (k === 'ArrowUp' ? 5 : -5))))
-        if (k === 'ArrowUp' && p.isMuted()) p.unMute()  // raising volume unmutes, like YouTube
+        const up = action === 'volumeUp'
+        const next = Math.max(0, Math.min(100, Math.round(volumeRef.current + (up ? 5 : -5))))
+        if (up && p.isMuted()) p.unMute()  // raising volume unmutes, like YouTube
         volumeRef.current = next  // update now so key-repeat bursts accumulate (ref lags a render)
         setAudioVolume(next)  // shared store → applies to the player and previews
-        showVolHint(next, k !== 'ArrowUp' && p.isMuted())
-      } else if (k === 'c') {
+        showVolHint(next, !up && p.isMuted())
+      } else if (action === 'captions') {
         // Toggle OUR caption overlay (rendered from the transcript). YouTube's
         // native `c` only works while the iframe is focused, which we avoid.
         e.preventDefault()
         setShowCaptions((v) => !v)
-      } else if (k === 'p') {
+      } else if (action === 'pin') {
         // The same toggle the pin button makes: whether the player holds its
         // place while the details scroll, or the whole page scrolls together.
         // Deciding that is a thing you do WHILE reading the comments, which is
         // exactly when the mouse is nowhere near the player — so it earns a key.
         e.preventDefault()
         setPinned((v) => !v)
-      } else if (k === '.' || k === ',' || k === '>' || k === '<') {
-        // Playback speed, one step along the speeds you chose (the
-        // `playback_speeds` setting). On the same two keys YouTube uses but
-        // WITHOUT the shift it asks for — nothing else here is a chord, and
-        // holding shift to nudge the speed is a key too many. The shifted pair
-        // is taken as well: it's the same key, and hitting it with shift still
-        // down after a capital is a slip, not a different intention.
-        //
-        // Set on the player directly; the bar's label reads the rate back off
+      } else if (action === 'speedUp' || action === 'speedDown') {
+        // One step along the speeds you chose (the `playback_speeds` setting),
+        // set on the player directly — the bar's label reads the rate back off
         // it, so it shows the new speed without this knowing the bar exists.
         e.preventDefault()
-        p.setPlaybackRate?.(nextSpeed(p.getPlaybackRate?.() ?? 1, k === '.' || k === '>' ? 1 : -1))
-      } else if (k === 'ArrowLeft' || k === 'ArrowRight' || k === 'j' || k === 'l') {
+        p.setPlaybackRate?.(nextSpeed(p.getPlaybackRate?.() ?? 1, action === 'speedUp' ? 1 : -1))
+      } else if (action === 'back5' || action === 'forward5' || action === 'back10' || action === 'forward10') {
         e.preventDefault()
-        const step = (k === 'j' || k === 'l' ? 10 : 5) * (k === 'ArrowLeft' || k === 'j' ? -1 : 1)
-        p.seekTo(Math.max(0, p.getCurrentTime() + step), true)
+        const ten = action === 'back10' || action === 'forward10'
+        const back = action === 'back5' || action === 'back10'
+        p.seekTo(Math.max(0, p.getCurrentTime() + (ten ? 10 : 5) * (back ? -1 : 1)), true)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -1951,7 +1954,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // clicking its tick, which seeks exactly to it — so clearing one is
         // click the tick, press this, and the button has already changed to
         // tell you that's what it will do.
-        title={marks.markHere ? t('Clear this bookmark (b)') : t('Bookmark this moment (b)')}
+        title={marks.markHere
+          ? t('Clear this bookmark ({key})', { key: shortcutLabel('bookmark') })
+          : t('Bookmark this moment ({key})', { key: shortcutLabel('bookmark') })}
         aria-label={marks.markHere ? t('Clear this bookmark') : t('Bookmark this moment')}
         aria-pressed={marks.markHere}
       >
@@ -2037,7 +2042,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       className={ownBar
         ? BAR_BUTTON
         : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
-      title={pinned ? t('Unpin — scroll the whole page (p)') : t('Pin — keep the video in view (p)')}
+      title={pinned
+        ? t('Unpin — scroll the whole page ({key})', { key: shortcutLabel('pin') })
+        : t('Pin — keep the video in view ({key})', { key: shortcutLabel('pin') })}
       aria-pressed={pinned}
     >
       {pinned ? (

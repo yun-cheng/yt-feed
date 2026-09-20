@@ -170,10 +170,11 @@ async def test_turning_the_fill_off_stops_a_sweep_already_running(monkeypatch):
     assert len(walked) == 1  # it stopped instead of working through b and c
 
 
-# ── The speeds the player offers ─────────────────────────────────────
+# ── The player's own two settings ────────────────────────────────────
 #
-# Which speeds are useful is the person's business, so what's tested here is
-# the shape and the bounds — the parts a bad list could break the menu with.
+# Both hold a shape the frontend owns the vocabulary of (which speeds are
+# useful, which actions exist), so what's tested here is the shape and the
+# bounds — the parts a bad write could break the player with.
 
 
 @pytest.mark.asyncio
@@ -201,4 +202,40 @@ async def test_a_speed_list_is_stored_as_given(client):
 ])
 async def test_a_speed_list_that_would_break_the_menu_is_refused(client, bad):
     res = await client.put("/api/settings", json={"values": {"playback_speeds": bad}})
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_shortcuts_ship_unbound_so_the_apps_own_defaults_stand():
+    """Only what you rebound is stored — a default that moves later moves for
+    everyone who never touched it."""
+    assert await app_settings.get("shortcuts") == {}
+
+
+@pytest.mark.asyncio
+async def test_a_rebound_key_is_stored(client):
+    res = await client.put("/api/settings", json={"values": {"shortcuts": {"mute": "x"}}})
+    assert res.status_code == 200
+    assert res.json()["values"]["shortcuts"] == {"mute": "x"}
+
+
+@pytest.mark.asyncio
+async def test_an_action_can_be_left_with_no_key(client):
+    """Taking a shortcut away is a third answer, and not the same as putting it
+    back on its default — so "" is storable, and several may hold it."""
+    res = await client.put(
+        "/api/settings", json={"values": {"shortcuts": {"mute": "", "pin": ""}}}
+    )
+    assert res.status_code == 200
+    assert res.json()["values"]["shortcuts"] == {"mute": "", "pin": ""}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [
+    {"mute": 7},                         # not a key at all
+    {"mute": "x", "pin": "x"},           # one key, two actions
+    ["mute", "x"],                       # not an object
+])
+async def test_shortcuts_of_the_wrong_shape_are_refused(client, bad):
+    res = await client.put("/api/settings", json={"values": {"shortcuts": bad}})
     assert res.status_code == 400

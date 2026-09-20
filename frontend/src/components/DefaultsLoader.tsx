@@ -3,6 +3,7 @@ import { apiFetch } from '../lib/api'
 import { setPageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
+import { setShortcutOverrides } from '../lib/shortcuts'
 import { getLang, onLangChange, setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 /**
@@ -35,6 +36,7 @@ export default function DefaultsLoader({ children }: { children: React.ReactNode
         setPageDefaultOverrides(d.values?.page_defaults)
         setCaptionDefaults(d.values)
         setSpeedDefaults(d.values?.playback_speeds)
+        setShortcutOverrides(d.values?.shortcuts)
         setTranslateSetting(d.values?.translate_lang)
         setLangSetting(d.values?.app_language)
       })

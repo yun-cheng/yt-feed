@@ -3,9 +3,11 @@ import { apiFetch } from '../lib/api'
 import People from './People'
 import PageDefaultsEditor from './PageDefaultsEditor'
 import SpeedsEditor from './SpeedsEditor'
+import ShortcutsEditor from './ShortcutsEditor'
 import type { PageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
+import { setShortcutOverrides } from '../lib/shortcuts'
 import { setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 type SettingSpec = {
@@ -185,6 +187,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       // The language last: it remounts the app, this page included.
       setCaptionDefaults(next.values)
       setSpeedDefaults(next.values.playback_speeds)
+      setShortcutOverrides(next.values.shortcuts)
       setTranslateSetting(next.values.translate_lang)
       setData(next)
       if (key === 'app_language') setLangSetting(next.values.app_language)
@@ -246,6 +249,12 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
                   {spec.type === 'speeds' && (
                     <SpeedsEditor
                       value={data.values[spec.key]}
+                      onChange={(next) => update(spec.key, next)}
+                    />
+                  )}
+                  {spec.type === 'shortcuts' && (
+                    <ShortcutsEditor
+                      value={(data.values[spec.key] ?? {}) as Record<string, string>}
                       onChange={(next) => update(spec.key, next)}
                     />
                   )}

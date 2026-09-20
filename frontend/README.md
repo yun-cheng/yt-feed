@@ -767,8 +767,8 @@ components/
   SettingsPage.tsx                renders itself from the spec /api/settings
                                   serves — adding a setting is a backend change.
                                   A `choice` is a menu; saving a language, a
-                                  caption default or the playback speeds applies
-                                  it at once.
+                                  caption default, the playback speeds or a
+                                  shortcut applies it at once.
                                   Badges the ones scoped to the whole machine,
                                   and shows the extension's API key to copy
   PageDefaultsEditor.tsx          the `page_defaults` setting's control: each
@@ -797,6 +797,8 @@ components/
                                   Drives a file on disk, and the embed too when
                                   the clean-embed extension is installed
   SpeedsEditor.tsx                the playback-speed list, on the settings page
+  ShortcutsEditor.tsx             every shortcut and the key it's on; rebinds by
+                                  listening for the key you press
   PlayerMarks.tsx                 bookmarks (`b`) and a video's saved A–B loops
                                   (`[`, `]`, `\`): state, shortcuts, the actions
                                   behind the bar's two buttons, and the marks
@@ -944,7 +946,10 @@ Other details:
   our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
   `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `p` pin,
   `,`/`.` playback speed (YouTube's two keys, without the shift it asks for), and
-  the marks below (`b`, `[`, `]`, `\`). We focus our
+  the marks below (`b`, `[`, `]`, `\`). **Every one of those is a default, not a
+  wire**: the handler asks `lib/shortcuts.ts` what a key *means* and the answer
+  comes from the `shortcuts` setting, so a rebound key moves in all three
+  handlers at once (see "Shortcuts are a setting" below). We focus our
   box, not the iframe, and pull focus back whenever a click lands in the video —
   a cross-origin iframe otherwise swallows its own keys. A brief volume HUD shows
   while adjusting.
@@ -1697,6 +1702,37 @@ a time, and the button has to say which one you're on anyway.
   that's already playing — and stops at both ends instead of wrapping, because a
   keypress that drops 2× to 0.25× is never what was meant.
 
+**Shortcuts are a setting** (`shortcuts`, `lib/shortcuts.ts`). `ACTIONS` is the
+one table of what the player can be told to do, the key each ships on and the
+label the settings page shows; `WatchPage`, `LocalWatchPage` and `PlayerMarks`
+all ask `actionFor(e.key)` rather than comparing letters, so rebinding a key is
+a stored override instead of an edit in three files.
+
+- **Only what you moved is stored**, like `page_defaults` — put a row back and it
+  follows the built-in default again, including if that default moves later.
+- **A key can be taken away entirely** (`''`), which is a third state and stored
+  as its own: a shortcut you kept hitting by accident is one you want gone, and
+  "off" is not the answer "back on its default" gives. An unbound action answers
+  to nothing, takes no key from anyone (so several may have none), and shows a
+  dash where a tooltip would name its key — `Mute (—)` rather than `Mute ()`.
+  Its button still works; only the key is gone.
+- **`space` and `Escape` are not in the table.** Every player on earth plays and
+  pauses on space (the handlers take it by `e.code`, so it works whatever
+  `playPause` is bound to), and Escape closes what's open. The editor refuses to
+  record either.
+- **A shifted key is the key under it.** `K` is `k`, and `<`/`>`/`{`/`}`/`|` are
+  `,`/`.`/`[`/`]`/`\` — you arrive there having just typed a capital, which is a
+  slip rather than a different intention. Normalised on the way *in* as well, so
+  a shortcut can only ever be stored unshifted.
+- **The editor rebinds by listening, not by typing a key's name** — nobody knows
+  whether it's `ArrowUp`, `Up` or `↑`. It listens in the **capture** phase so the
+  key it's recording doesn't also do its job on the way past, and it refuses a
+  key another action is on rather than stealing it silently, naming the action
+  that has it.
+- **Tooltips read the binding**, not a hard-coded letter: `Play ({key})` and the
+  rest interpolate `shortcutLabel(id)`, so a rebound key can't leave the bar
+  telling you to press the old one.
+
 The **scrub preview** is a second, hidden `<video>` of the same file seeked to the
 hovered time — the trick `VideoCard` already uses for download cards. The file is
 local and served with range support, so the exact frame paints instantly and no
@@ -1824,8 +1860,9 @@ two shims Radix's slider needs to mount at all (below).
 | `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing |
 | `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range; plus the length buckets going to the server, this list being paged |
+| `shortcuts.test.ts` | the key table: what a keypress means, a capital and a shifted punctuation key reading as the key under it, an override answering on the new key and no longer the old one, a stored value it can't use dropped rather than shadowing a default, and the conflict the editor asks about — against the draft being edited, not the keys in force |
 | `playbackSpeeds.test.ts` | the speed list: what a stored value is tidied into (sorted, de-duplicated, normal speed forced in, capped in length), what the settings field accepts and what it refuses outright, and `nextSpeed` stepping through *your* list from the nearest speed and stopping at both ends |
-| `playerSettings.test.tsx` | the speeds editor: a tidied list saved on blur and on Enter, text that isn't speeds refused instead of salvaged, and Escape putting the field back |
+| `playerSettings.test.tsx` | the two editors: a tidied list saved on blur and on Enter, text that isn't speeds refused instead of salvaged, Escape putting the field back — and, for shortcuts, a key recorded by being pressed, a taken key refused by name, a row put back on its default stored as nothing at all, and space declined |
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off |
 | `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |

@@ -176,6 +176,24 @@ SPEC: tuple[Spec, ...] = (
         group="Player",
     ),
     Spec(
+        key="shortcuts",
+        # A JSON object of action -> key, holding only what you REBOUND. The
+        # frontend owns the vocabulary (which actions exist, what each ships on
+        # — see lib/shortcuts.ts), so this side checks the shape and stores it,
+        # exactly as page_defaults does. Keeping only the changes means a
+        # default that moves later moves for everyone who never touched it.
+        type="shortcuts",
+        default=lambda: {},
+        scope="user",
+        label="Keyboard shortcuts",
+        description=(
+            "The keys the player answers to. Click a key to put that action "
+            "somewhere else, or ✕ to leave it with no key at all; space and "
+            "Esc are fixed."
+        ),
+        group="Player",
+    ),
+    Spec(
         key="page_defaults",
         # A JSON object of page -> {age, sort, watch}, holding only what you
         # changed; anything absent follows the built-in table in the frontend's
@@ -194,7 +212,7 @@ SPEC: tuple[Spec, ...] = (
 )
 
 # Types stored as JSON text rather than as a flag.
-_JSON_TYPES = {"page_defaults", "speeds"}
+_JSON_TYPES = {"page_defaults", "speeds", "shortcuts"}
 
 _BY_KEY = {s.key: s for s in SPEC}
 
@@ -248,6 +266,21 @@ def _check(spec: Spec, value: Any) -> None:
             )
         if 1 not in value:
             raise ValueError(f"{spec.key} must include normal speed (1)")
+    if spec.type == "shortcuts":
+        # Which actions exist is the frontend's vocabulary, so an id it doesn't
+        # know is its problem to ignore (it does); what's checked here is that
+        # this is a map of names to single keys, and that no two actions were
+        # sent on the same one.
+        if not isinstance(value, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) and len(v) <= 20
+            for k, v in value.items()
+        ):
+            raise ValueError(f"{spec.key} must be an object of action -> key")
+        # "" is an action with NO key — a shortcut taken away rather than moved
+        # — so any number of actions may hold it. Every real key is one action's.
+        bound = [v for v in value.values() if v]
+        if len(set(bound)) != len(bound):
+            raise ValueError(f"{spec.key} has two actions on one key")
 
 
 async def _read(session, spec: Spec, user_id: int | None):

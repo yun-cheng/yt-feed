@@ -35,6 +35,7 @@ import { apiFetch } from '../lib/api'
 import { formatTime } from '../lib/time'
 import type { PlayerApi } from './LocalControls'
 import { t } from '../lib/i18n'
+import { actionFor, shortcutLabel } from '../lib/shortcuts'
 
 export type Bookmark = {
   id: number
@@ -409,14 +410,16 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       if (e.metaKey || e.ctrlKey || e.altKey) return
       const p = playerRef.current
       if (!p) return
-      const k = e.key
-      if (k === 'b') {
+      // Which action, not which key — the bindings are a setting; see
+      // lib/shortcuts.ts.
+      const action = actionFor(e.key)
+      if (action === 'bookmark') {
         e.preventDefault()
         toggleBookmarkAt(p.getCurrentTime())
-      } else if (k === '[' || k === ']') {
+      } else if (action === 'loopStart' || action === 'loopEnd') {
         e.preventDefault()
-        setLoopEnd(k === '[' ? 'a' : 'b', p.getCurrentTime())
-      } else if (k === '\\') {
+        setLoopEnd(action === 'loopStart' ? 'a' : 'b', p.getCurrentTime())
+      } else if (action === 'loopClear') {
         e.preventDefault()
         clearLoop()
       }
@@ -684,7 +687,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
             <button
               role="menuitem"
               onClick={l.active ? onStop : chose(() => onUse(l.id))}
-              title={l.active ? t('Stop repeating (\\)') : t('Repeat this passage')}
+              title={l.active ? t('Stop repeating ({key})', { key: shortcutLabel('loopClear') }) : t('Repeat this passage')}
               className={row}
             >
               {/* Whether this is the one running. In white, like everything the
@@ -723,7 +726,9 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
               key={end}
               role="menuitem"
               onClick={() => onPin(end)}
-              title={end === 'a' ? t('Pin the start ([) at the play head') : t('Pin the end (]) at the play head')}
+              title={end === 'a'
+                ? t('Pin the start ({key}) at the play head', { key: shortcutLabel('loopStart') })
+                : t('Pin the end ({key}) at the play head', { key: shortcutLabel('loopEnd') })}
               className="flex-1 rounded-lg px-2 py-1.5 text-sm text-white transition-colors hover:bg-white/10"
             >
               {end === 'a' ? t('Pin start') : t('Pin end')}

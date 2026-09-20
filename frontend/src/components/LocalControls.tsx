@@ -21,6 +21,7 @@ import { MarkTrack } from './PlayerMarks'
 import type { Bookmark, Loop } from './PlayerMarks'
 import { t } from '../lib/i18n'
 import { playbackSpeeds } from '../lib/playbackSpeeds'
+import { shortcutLabel } from '../lib/shortcuts'
 
 /**
  * One control-bar button, sized the way YouTube sizes its own.
@@ -466,7 +467,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         <button
           onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
           className={BAR_BUTTON}
-          title={paused ? t('Play (k)') : t('Pause (k)')}
+          title={paused ? t('Play ({key})', { key: shortcutLabel('playPause') }) : t('Pause ({key})', { key: shortcutLabel('playPause') })}
         >
           <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
             {paused ? <path d="M8 5v14l11-7z" /> : <path d="M6 5h4v14H6zm8 0h4v14h-4z" />}
@@ -480,7 +481,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           <button
             onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
             className={BAR_BUTTON}
-            title={muted ? t('Unmute (m)') : t('Mute (m)')}
+            title={muted ? t('Unmute ({key})', { key: shortcutLabel('mute') }) : t('Mute ({key})', { key: shortcutLabel('mute') })}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               {muted || volume === 0
@@ -501,7 +502,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               if (next > 0) api()?.unMute()
               setAudioVolume(next)
             }}
-            title={t('Volume (↑/↓)')}
+            title={t('Volume ({up}/{down})', { up: shortcutLabel('volumeUp'), down: shortcutLabel('volumeDown') })}
             aria-label={t('Volume')}
             className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-16 group-hover/vol:opacity-100 focus:w-16 focus:opacity-100"
           />
@@ -575,7 +576,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               aria-haspopup="menu"
               aria-expanded={rateMenu}
               aria-label={t('Playback speed')}
-              title={t('Playback speed (, and .)')}
+              title={t('Playback speed ({slower} and {faster})', { slower: shortcutLabel('speedDown'), faster: shortcutLabel('speedUp') })}
               data-testid="speed-button"
             >
               {rate}×
@@ -703,7 +704,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           <button
             onClick={onFullscreen}
             className={BAR_BUTTON}
-            title={t('Fullscreen (f)')}
+            title={t('Fullscreen ({key})', { key: shortcutLabel('fullscreen') })}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
               <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />

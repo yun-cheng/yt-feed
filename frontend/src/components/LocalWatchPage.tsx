@@ -5,6 +5,7 @@ import { formatSize, watchedRatio } from '../lib/local'
 import { useVolume, setAudioVolume } from '../hooks/audioStore'
 import LocalControls from './LocalControls'
 import { nextSpeed } from '../lib/playbackSpeeds'
+import { actionFor } from '../lib/shortcuts'
 import type { LocalFolder, LocalVideo } from '../lib/local'
 import { t } from '../lib/i18n'
 
@@ -121,26 +122,39 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
       if (!el) return
       const target = e.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      // A shortcut is a BARE key, as everywhere else: chords belong to the
+      // browser and the OS, and matching on `e.key` alone reads ⌘F as `f`.
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       const seek = (delta: number) => { el.currentTime = Math.max(0, el.currentTime + delta) }
-      switch (e.key) {
-        case ' ': case 'k': case 'K':
+      // Which action, not which key: the bindings are a setting shared with the
+      // watch page (lib/shortcuts.ts). `space` and `Escape` aren't in the table
+      // — one plays, the other closes, whatever else is bound where.
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault()
+        if (el.paused) void el.play().catch(() => {}); else el.pause()
+        return
+      }
+      if (e.key === 'Escape') {
+        if (!document.fullscreenElement) onClose()
+        return
+      }
+      switch (actionFor(e.key)) {
+        case 'playPause':
           e.preventDefault()
           if (el.paused) void el.play().catch(() => {}); else el.pause()
           break
-        case 'm': case 'M': el.muted = !el.muted; break
-        case 'f': case 'F': toggleFullscreen(); break
-        case 'ArrowLeft': e.preventDefault(); seek(-5); break
-        case 'ArrowRight': e.preventDefault(); seek(5); break
-        case 'j': case 'J': seek(-10); break
-        case 'l': case 'L': seek(10); break
-        case 'ArrowUp': e.preventDefault(); setAudioVolume(Math.min(100, volumeRef.current + 5)); break
-        case 'ArrowDown': e.preventDefault(); setAudioVolume(Math.max(0, volumeRef.current - 5)); break
-        // Playback speed, one step per press, as on the watch page: bare `.`
-        // and `,`, with the shifted pair taken too. The bar's label follows the
-        // element's ratechange, so it says the new speed.
-        case '.': case '>': el.playbackRate = nextSpeed(el.playbackRate, 1); break
-        case ',': case '<': el.playbackRate = nextSpeed(el.playbackRate, -1); break
-        case 'Escape': if (!document.fullscreenElement) onClose(); break
+        case 'mute': el.muted = !el.muted; break
+        case 'fullscreen': toggleFullscreen(); break
+        case 'back5': e.preventDefault(); seek(-5); break
+        case 'forward5': e.preventDefault(); seek(5); break
+        case 'back10': seek(-10); break
+        case 'forward10': seek(10); break
+        case 'volumeUp': e.preventDefault(); setAudioVolume(Math.min(100, volumeRef.current + 5)); break
+        case 'volumeDown': e.preventDefault(); setAudioVolume(Math.max(0, volumeRef.current - 5)); break
+        // Playback speed, one step along the speeds you chose. The bar's label
+        // follows the element's ratechange, so it says the new speed.
+        case 'speedUp': el.playbackRate = nextSpeed(el.playbackRate, 1); break
+        case 'speedDown': el.playbackRate = nextSpeed(el.playbackRate, -1); break
       }
     }
     window.addEventListener('keydown', onKey)

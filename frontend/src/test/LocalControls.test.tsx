@@ -276,7 +276,7 @@ describe('LocalControls — play and pause', () => {
   it('plays a paused video', () => {
     const { player } = renderOverEmbed()
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Play (k)'))
+    fireEvent.click(screen.getByTitle('Play (K)'))
     expect(player.playVideo).toHaveBeenCalled()
   })
 
@@ -284,7 +284,7 @@ describe('LocalControls — play and pause', () => {
     const { player } = renderOverEmbed()
     act(() => { player._state(1) })
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Pause (k)'))
+    fireEvent.click(screen.getByTitle('Pause (K)'))
     expect(player.pauseVideo).toHaveBeenCalled()
   })
 
@@ -292,7 +292,7 @@ describe('LocalControls — play and pause', () => {
     const { player } = renderOverEmbed()
     act(() => { player._state(3) })
     act(() => { vi.advanceTimersByTime(300) })
-    expect(screen.getByTitle('Pause (k)')).toBeInTheDocument()
+    expect(screen.getByTitle('Pause (K)')).toBeInTheDocument()
   })
 })
 
@@ -312,10 +312,10 @@ describe('LocalControls — the volume group', () => {
   it('mutes and unmutes', () => {
     const { player } = renderOverEmbed()
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Mute (m)'))
+    fireEvent.click(screen.getByTitle('Mute (M)'))
     expect(player.mute).toHaveBeenCalled()
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Unmute (m)'))
+    fireEvent.click(screen.getByTitle('Unmute (M)'))
     expect(player.unMute).toHaveBeenCalled()
   })
 
@@ -328,7 +328,7 @@ describe('LocalControls — the volume group', () => {
   it('dragging off zero unmutes, so the slider is never moving in silence', () => {
     const { player } = renderOverEmbed()
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Mute (m)'))
+    fireEvent.click(screen.getByTitle('Mute (M)'))
     fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '30' } })
     expect(player.unMute).toHaveBeenCalled()
   })
@@ -349,7 +349,7 @@ describe('LocalControls — the volume group', () => {
     renderOverEmbed()
     fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '80' } })
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Mute (m)'))
+    fireEvent.click(screen.getByTitle('Mute (M)'))
     act(() => { vi.advanceTimersByTime(300) })
     expect(screen.getByTestId('volume-readout')).toHaveTextContent('0%')
   })
@@ -365,7 +365,7 @@ describe('LocalControls — the volume group', () => {
     const { player } = renderOverEmbed()
     fireEvent.change(screen.getByLabelText('Volume'), { target: { value: '80' } })
     act(() => { vi.advanceTimersByTime(300) })
-    fireEvent.click(screen.getByTitle('Mute (m)'))
+    fireEvent.click(screen.getByTitle('Mute (M)'))
     act(() => { vi.advanceTimersByTime(300) })
     expect(screen.getByLabelText('Volume')).toHaveValue('0')
   })
@@ -824,7 +824,7 @@ describe('LocalControls — visibility and extras', () => {
   it('calls back for fullscreen', () => {
     const onFullscreen = vi.fn()
     renderOverEmbed({ onFullscreen })
-    fireEvent.click(screen.getByTitle('Fullscreen (f)'))
+    fireEvent.click(screen.getByTitle('Fullscreen (F)'))
     expect(onFullscreen).toHaveBeenCalled()
   })
 
@@ -861,7 +861,7 @@ describe('LocalControls — driving a <video> instead', () => {
   it('plays the element', () => {
     const el = withDuration(videoEl(), 600)
     render(<LocalControls videoRef={{ current: el }} src="/x" hovering onFullscreen={vi.fn()} />)
-    fireEvent.click(screen.getByTitle('Play (k)'))
+    fireEvent.click(screen.getByTitle('Play (K)'))
     expect(el.play).toHaveBeenCalled()
   })
 })

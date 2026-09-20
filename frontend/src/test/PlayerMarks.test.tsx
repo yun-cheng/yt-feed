@@ -897,9 +897,18 @@ describe('usePlayerMarks — when the shortcuts must not fire', () => {
   it('ignores keys it does not own', async () => {
     const p = fakePlayer()
     await renderMarks(p)
-    act(() => { key('a'); key('B'); key('k'); key(' ') })
+    act(() => { key('a'); key('z'); key('k'); key(' ') })
     expect(screen.getByTestId('marks')).toBeEmptyDOMElement()
     expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
+  })
+
+  it('takes a capital as the key under it', async () => {
+    // Shift-B is still B: you get here by having just typed a capital, which
+    // is a slip rather than a different intention.
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { key('B') })
+    expect(screen.getByTestId('marks')).not.toBeEmptyDOMElement()
   })
 
   it('leaves ⌘/Ctrl/Alt chords to the browser', async () => {
