@@ -402,7 +402,12 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   frontend renders itself (the hover preview and the watch page both style their
   own captions). With no `lang`, `_fetch_captions` serves the video's **native
   language**: it prefers human-uploaded subtitles, then the original ASR track,
-  and skips machine-*translated* tracks (which carry `tlang=` in their URL). Pass
+  and skips machine-*translated* tracks (which carry `tlang=` in their URL).
+  Which uploaded subtitle is "native" is the video's own language when YouTube
+  reports one, and otherwise the **first track the creator uploaded** — English
+  is only the guess among auto-captions, where ASR is all there is. Guessing it
+  over uploaded subs opened Chinese videos in English on the strength of their
+  carrying an English translation too. Pass
   `?lang=en|zh|ja|ko` and it honors that choice instead — uploaded sub → original
   ASR → auto-*translated* track — and reports the resolved base code back as
   `lang`. Each cue returns the joined `text` plus a `words` array — per-segment
@@ -1989,7 +1994,7 @@ no per-test decorator). What's covered:
 
 | File | Covers |
 |------|--------|
-| `test_caption_langs.py` | the stored caption-language list and when it stops being trusted: a fresh row served without an extraction, a row past `_CL_TTL` derived again (the creator added English subtitles after we wrote down "中文 only"), the refreshed row replacing the old one and then being trusted again, an undated row counting as old, and a failed refresh keeping the list we had |
+| `test_caption_langs.py` | the stored caption-language list and when it stops being trusted: a fresh row served without an extraction, a row past `_CL_TTL` derived again (the creator added English subtitles after we wrote down "中文 only"), the refreshed row replacing the old one and then being trusted again, an undated row counting as old, and a failed refresh keeping the list we had. Plus which track is `native` with nothing asked for: the first uploaded subtitle when YouTube reports no language, the reported language over upload order when it does, a track with no json3 skipped, and English still the guess among auto-captions |
 | `test_generated_captions.py` | local transcription as a JOB: the ramping windows, the seam taken from Whisper rather than the window we asked for, a silent window still advancing, resuming a job a restart killed, the repetition-loop filter, and that a finished track reaches every reader of captions while a half-finished one reaches none. Plus the line treatment: Simplified converted to Traditional (and idempotent, and a no-op on English), long segments cut at punctuation against the column budget, short ones left exactly as they are, and the fallback that shares a span out by length when there is no word timing |
 | `test_app_settings.py` | the settings store: bootstrap defaults, unknown keys, `page_defaults` round-tripping as an object and refusing the wrong shape, the language `choice`s (options in order, a value outside them a 400, a retired one read as the default), and that turning the fill off stops a sweep mid-flight |
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |

@@ -398,9 +398,7 @@ def _pick_track(subs: dict, auto: dict, source_lang: str | None, lang: str):
             return hit
         # Requested language unavailable → fall through to the native default.
 
-    prefs = [p for p in (source_lang, "en") if p]
-
-    def pick_lang(source: dict) -> tuple[list, str] | None:
+    def pick_lang(source: dict, prefs: list[str]) -> tuple[list, str] | None:
         for p in prefs:
             if p in source:
                 return source[p], p
@@ -411,19 +409,26 @@ def _pick_track(subs: dict, auto: dict, source_lang: str | None, lang: str):
                     return tracks, key
         return None
 
-    # 1. Human-uploaded subtitles are cleanest — prefer native, else whatever the
-    #    creator uploaded (usually the native one).
+    # 1. Human-uploaded subtitles are cleanest — prefer the video's own language,
+    #    else the FIRST track the creator uploaded, which on a video whose
+    #    language YouTube doesn't report is the closest thing to an intent. Not
+    #    English by default: a Chinese video that also carries English subtitles
+    #    would open in English on the strength of having translated itself.
     if subs:
-        picked = pick_lang(subs)
-        key = picked[1] if picked else next(iter(subs))
-        tracks = picked[0] if picked else subs[key]
-        t = _json3(tracks)
-        if t:
-            return t, key
-    # 2. Otherwise auto-captions: preferred language, else the ORIGINAL ASR track
-    #    (no `tlang=`) rather than a machine translation.
+        picked = pick_lang(subs, [source_lang] if source_lang else [])
+        if picked:
+            t = _json3(picked[0])
+            if t:
+                return t, picked[1]
+        for key, tracks in subs.items():
+            t = _json3(tracks)
+            if t:
+                return t, key
+    # 2. Otherwise auto-captions: the video's own language (or English, the one
+    #    guess worth making where ASR is all there is), else the ORIGINAL ASR
+    #    track (no `tlang=`) rather than a machine translation.
     if auto:
-        picked = pick_lang(auto)
+        picked = pick_lang(auto, [p for p in (source_lang, "en") if p])
         if picked:
             t = _json3(picked[0])
             if t:

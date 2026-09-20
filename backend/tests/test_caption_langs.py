@@ -1,10 +1,15 @@
-"""The stored list of a video's caption languages, and when we stop trusting it.
+"""The caption menu's two facts: which languages a video offers, and which track
+it opens with.
 
 Deriving the list costs a yt-dlp extraction, so it is kept in SQLite. It used to
 be kept forever, on the theory that a video's captions are fixed — but a creator
 can upload a subtitle track months after publishing, and a row written before
 that hid the new track for good. So the row is dated, and an old one is derived
 again.
+
+The second half is `_pick_track` with nothing asked for — the `native` track. A
+creator's own upload order decides it, because YouTube often reports no language
+at all for a video and guessing English there opened Chinese videos in English.
 """
 
 import json
@@ -107,3 +112,35 @@ async def test_a_failed_refresh_keeps_the_list_we_had(client, db, monkeypatch):
     db.expire_all()
     row = await db.get(CaptionLangs, "vid1")
     assert json.loads(row.langs) == [{"code": "en", "label": "English"}]
+
+
+def json3_track(url="u"):
+    return {"ext": "json3", "url": url}
+
+
+async def test_the_first_uploaded_subtitle_is_the_native_one():
+    """No language reported — which is the common case — so the creator's own
+    order decides. This video is Chinese with an English subtitle alongside; it
+    opens in Chinese."""
+    subs = {"zh-CN": json3(), "en": json3()}
+    assert feed._pick_track(subs, {}, None, "") == (json3_track(), "zh-CN")
+
+
+async def test_the_videos_own_language_still_wins():
+    """When YouTube does report one, upload order does not get a say."""
+    subs = {"en": json3(), "ja": json3()}
+    assert feed._pick_track(subs, {}, "ja", "")[1] == "ja"
+
+
+async def test_a_subtitle_we_cannot_read_is_skipped():
+    """A track with no json3 is not a track we can render, so the next one is
+    the first — rather than falling through to the auto-captions."""
+    subs = {"zh-CN": [{"ext": "vtt", "url": "u"}], "en": json3()}
+    assert feed._pick_track(subs, {}, None, "")[1] == "en"
+
+
+async def test_english_is_still_the_guess_among_auto_captions():
+    """Where ASR is all there is, an unlabelled video is likelier English than
+    whatever key the dict happens to start with."""
+    auto = {"de": json3(), "en": json3()}
+    assert feed._pick_track({}, auto, None, "")[1] == "en"
