@@ -2089,6 +2089,24 @@ change rather than a surprise — `test_a_mixed_script_japanese_name_is_currentl
 `test_the_two_rules_cross_over_at_ten_minutes` (whose comment in `history.py`
 has the two rules backwards).
 
+**What isn't covered, on purpose.** `coverage` is in `requirements-dev.txt`:
+
+```bash
+python -m coverage run --source=app -m pytest
+python -m coverage report --skip-covered --sort=miss
+```
+
+That reports about 71% of `app/` by line, and the missing third is mostly one
+thing: the HTTP boundary. `youtube_api.py`, `fetcher.py`, `llm.py` and
+`auth_google.py` are wrappers around somebody else's API, and a test of one is a
+test of the mock — so what's pinned instead is the pure part inside them
+(`test_youtube_parsing.py`), and the callers, which are stubbed at the seam and
+tested for how they degrade. `cron_update.py` is the same shape one level up:
+the scan is orchestration over those wrappers.
+
+So the number is a map of where the network is, not a to-do list. Read it that
+way — a module dropping from covered to uncovered is the signal, not the total.
+
 `scripts/` holds one-off maintenance scripts (stat backfills, date/count fixes,
 subscription import) — run ad hoc, not part of the app. Two of them repair rows
 written before the fix that made them unnecessary, and both take `--dry-run`:

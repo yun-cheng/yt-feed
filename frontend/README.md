@@ -1942,6 +1942,22 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 (`npm test`). `src/test/setup.ts` wires up `@testing-library/jest-dom`, plus the
 two shims Radix's slider needs to mount at all (below).
 
+`npm run test:coverage` reports about 43% of `src/` by line, and the shape of
+that number matters more than the number. `lib/` is at **98%** and `hooks/` at
+**95%** — the window, the sorts, the URL round-trip, the shortcut table, the
+stores, undo — because anything worth pinning has been lifted out of a component
+in order to pin it. What's left uncovered is mostly `App.tsx` and `WatchPage.tsx`
+*minus* their exports: JSX, and the embed wiring that only a real player
+exercises.
+
+So a fall in `lib/` or `hooks/` is a regression worth chasing; the total is
+closer to a measure of how much markup the app has.
+
+`@vitest/coverage-v8` is pinned to an exact version rather than a range, because
+it has to match `vitest` build for build — a minor drift between them fails with
+`coverageFilesDirectory is required`, which does not sound like a version
+problem.
+
 | File | Covers |
 |------|--------|
 | `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
@@ -1980,7 +1996,7 @@ no `ResizeObserver` (Radix's slider tracks the track's width with one, and throw
 on mount without it), and every element measures zero, so the progress bar is
 given a rect.
 
-A fourth can't be stubbed, only worked around: **jsdom discards `clamp()`**. Set
+A fifth can't be stubbed, only worked around: **jsdom discards `clamp()`**. Set
 one and the property reads back `''` with the style attribute `null`. So nothing
 positioned that way can be asserted through the DOM — a test that seems to pass
 is measuring something else. That's why `previewLeft` is exported from

@@ -5,3 +5,9 @@
 # the tests reuse it as the ASGI client — so there's nothing to add for that.
 pytest>=8.0
 pytest-asyncio>=1.0
+
+# Coverage, for answering "what isn't tested?" with a number rather than a
+# guess: `python -m coverage run --source=app -m pytest && python -m coverage
+# report --skip-covered --sort=miss`. Most of what it reports missing here is
+# the HTTP boundary (youtube_api, fetcher, llm) — see README.
+coverage>=7.6
