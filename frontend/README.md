@@ -1969,6 +1969,7 @@ two shims Radix's slider needs to mount at all (below).
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off; and that the sidebar offers all nine destinations at every width, since the phone's bottom bar only holds four |
 | `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |
+| `backend/tests/test_api_contract.py` | not in this directory, but about it: every `/api/…` literal in `src/` has to resolve to a route the backend serves. These tests stub `fetch`, so they answer whatever URL they're handed and a renamed route breaks nothing here — it breaks in the browser |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a
 behaviour change: `isContentEditable` is not implemented (so the shortcut guard's
