@@ -1877,6 +1877,26 @@ from one definition (`captionControl` / `marksControls` / `youtubeButton` /
 
 ---
 
+## Phone and tablet
+
+The app is built for a desktop with a keyboard, and it stays that way — the
+shortcuts are the point of it. What follows is the smaller promise: that
+nothing is *unreachable* without a pointer.
+
+**Navigation.** Below `md` the sidebar becomes a drawer over the page
+(`mobileMenuOpen` in `App.tsx`) and a fixed bottom bar appears with the four
+most-used destinations. The drawer's own nav list carries all nine, because the
+bar can't: Playlists, Imported, Local, History and Settings have no other door.
+Picking anything from the drawer closes it; a filter click inside it does not.
+`Sidebar.test.tsx` holds that line.
+
+**Leaving a video.** The watch overlay is `z-[60]` — above the sidebar, above
+the bottom bar — so a back button in the player's top-left corner is the only
+way out that isn't the browser's own (`onClose`, which calls `history.back()`).
+`LocalWatchPage` has always had one in the same corner; `WatchPage` now matches
+it. It never fades with the rest of the chrome: the way out of a page can't be
+something you have to wake the player to find.
+
 ## Tests
 
 Component/behavior tests live in `src/test/` and run under Vitest + jsdom
@@ -1907,7 +1927,7 @@ two shims Radix's slider needs to mount at all (below).
 | `playbackSpeeds.test.ts` | the speed list: what a stored value is tidied into (sorted, de-duplicated, normal speed forced in, capped in length), what the settings field accepts and what it refuses outright, and `nextSpeed` stepping through *your* list from the nearest speed and stopping at both ends |
 | `playerSettings.test.tsx` | the two editors: a tidied list saved on blur and on Enter, text that isn't speeds refused instead of salvaged, Escape putting the field back — and, for shortcuts, a key recorded by being pressed, a taken key refused by name, a row put back on its default stored as nothing at all, and space declined |
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
-| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off |
+| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off; and that the sidebar offers all nine destinations at every width, since the phone's bottom bar only holds four |
 | `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a

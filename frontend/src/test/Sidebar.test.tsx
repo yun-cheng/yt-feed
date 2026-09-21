@@ -32,6 +32,18 @@ describe('Sidebar — expanded', () => {
     expect(screen.getByRole('button', { name: /Channels/i })).toBeInTheDocument()
   })
 
+  it('offers every destination at every width', () => {
+    // The bottom bar on a phone holds four of these; the other five have no
+    // other door, so this list must not be hidden below `md` the way it once
+    // was — Playlists, Imported, Local, History and Settings were reachable
+    // only by typing a URL.
+    render(<Sidebar {...defaultProps} />)
+    for (const name of ['Playlists', 'Imported', 'Local', 'History', 'Settings']) {
+      const item = screen.getByRole('button', { name: new RegExp(name, 'i') })
+      expect(item.closest('.hidden')).toBeNull()
+    }
+  })
+
   it('renders tag groups', () => {
     render(<Sidebar {...defaultProps} />)
     expect(screen.getByText('Tech')).toBeInTheDocument()

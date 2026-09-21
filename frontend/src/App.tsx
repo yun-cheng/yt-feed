@@ -1959,6 +1959,7 @@ export default function App() {
     resetView('feed')
     mainRef.current?.scrollTo({ top: 0 })
     setTopbarPinned(true)
+    setMobileMenuOpen(false)
   }
 
   function clearFilter() {
@@ -2103,7 +2104,11 @@ export default function App() {
           onExcludeTag={excludeTag}
           onSetTags={setSelectedTags}
           page={page}
-          onPageChange={setPage}
+          // Going somewhere closes the drawer, including to the feed you were
+          // already on — setPage keeps that one open (a filter click shouldn't
+          // dismiss the panel you're filtering from), but a nav button is the
+          // one thing in here that means "I'm done with this panel".
+          onPageChange={(p) => { setPage(p); setMobileMenuOpen(false) }}
           onHome={goHome}
           onToggleCollapse={() => {
             if (matchMedia('(max-width: 767px)').matches) {
@@ -2522,6 +2527,7 @@ export default function App() {
             startAt={startAt}
             initialPanel={watchPanel}
             onChannelClick={selectChannelFromWatch}
+            onClose={() => history.back()}
             onDownload={startDownload}
             isDownloaded={downloadIds.has(selectedVideoId)}
             hasLocalFile={readyDownloadIds.has(selectedVideoId)}

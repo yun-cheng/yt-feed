@@ -640,8 +640,10 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
         </div>
       )}
 
-      {/* Nav: Feed, Channels — hidden on mobile (bottom bar handles navigation) */}
-      <div className="py-2 hidden md:block">
+      {/* Nav. The bottom bar carries the four most-used destinations on a phone;
+          this list is the only way to reach the other five, so it shows at every
+          width rather than deferring to a bar that can't hold them all. */}
+      <div className="py-2">
         <button
           onClick={() => onPageChange('feed')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
@@ -768,7 +770,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
         </button>
       </div>
 
-      <div className="border-t border-[#272727] mx-4 hidden md:block" />
+      <div className="border-t border-[#272727] mx-4" />
 
       {/* Channel page: this channel's own topic labels (drawn from video titles),
           replacing the global taxonomy, which is meaningless when already scoped

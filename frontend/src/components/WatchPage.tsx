@@ -57,6 +57,11 @@ type Props = {
   // something in particular — a summary notification opens Ask on its answer.
   initialPanel?: 'transcript' | 'ask' | null
   onChannelClick: (channelId: string) => void
+  // Leave the video and go back to the list underneath. The overlay covers the
+  // sidebar and the phone's bottom bar, so without this button the only way out
+  // is the browser's own Back — which a phone hides behind a gesture and an
+  // installed PWA doesn't have at all.
+  onClose: () => void
   onDownload: (video: VideoItem) => void
   isDownloaded: boolean
   // A finished download exists on disk, so we play that file instead of the
@@ -380,7 +385,7 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
   )
 }
 
-export default function WatchPage({ videoId, video, nextFilter = '', startAt, initialPanel, onChannelClick, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
+export default function WatchPage({ videoId, video, nextFilter = '', startAt, initialPanel, onChannelClick, onClose, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
@@ -2234,6 +2239,20 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             onDoubleClick={EMBED_OWN_CONTROLS ? toggleFullscreen : undefined}
           />
         )}
+
+        {/* Back. Never fades with the rest of the chrome: the way out of a page
+            can't be something you have to wake the player to find. Matches the
+            local player's own back button, which sits in the same corner. */}
+        <button
+          onClick={onClose}
+          className="absolute left-2 top-2 z-30 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
+          aria-label={t('Back')}
+          title={t('Back')}
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
 
         {/* Caption + volume-HUD overlays (defined above). They stay inside the
             box, which is also the fullscreen target, so they show in fullscreen. */}
