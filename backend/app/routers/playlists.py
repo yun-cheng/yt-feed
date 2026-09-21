@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import auth, quota, users, youtube_api
+from app import auth, quota, receipts, users, youtube_api
 from app.database import async_session
 from app.models import Playlist, PlaylistItem, User, Video
 # See watch_later.py — the module, not the function, so a monkeypatch reaches it.
@@ -34,6 +34,10 @@ class PlaylistRename(BaseModel):
 
 class VideoPayload(BaseModel):
     youtube_id: str
+    # When it joined the list. Sent back by an undo (see remove_item's receipt)
+    # so a restored video returns to its place in a list ordered by this, rather
+    # than to the top of it. Absent on an ordinary add, which joins now.
+    created_at: str | None = None
     title: str = ""
     channel_id: str = ""
     channel_name: str = ""
@@ -682,7 +686,9 @@ async def add_item(
         )
     )).scalar_one_or_none()
     if exists is None:
-        item = PlaylistItem(playlist_id=playlist_id, added_at=datetime.utcnow(), **video.model_dump())
+        fields = video.model_dump()
+        joined = receipts.stamp_or_now(fields.pop("created_at"))
+        item = PlaylistItem(playlist_id=playlist_id, added_at=joined, **fields)
         db.add(item)
         await imported.fill_channel_avatars([item], db)
         await db.commit()
@@ -731,11 +737,11 @@ async def add_item_by_id(
     payload = VideoPayload(youtube_id=video_id, **{
         field: meta[field]
         for field in VideoPayload.model_fields
-        if field != "youtube_id" and meta.get(field) is not None
+        if field not in ("youtube_id", "created_at") and meta.get(field) is not None
     })
-    item = PlaylistItem(
-        playlist_id=playlist_id, added_at=datetime.utcnow(), **payload.model_dump()
-    )
+    fields = payload.model_dump()
+    fields.pop("created_at")
+    item = PlaylistItem(playlist_id=playlist_id, added_at=datetime.utcnow(), **fields)
     db.add(item)
     await imported.fill_channel_avatars([item], db)
     await db.commit()
@@ -749,10 +755,25 @@ async def remove_item(
     user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
+    """Take a video off the list, and hand back the row that left it.
+
+    `removed` is the same shape `GET /{playlist_id}` puts in `videos`, so posting
+    it to `POST /{playlist_id}/items` is the undo — `created_at` and all, which
+    is what puts it back where it was rather than at the top.
+    """
     await _owned(db, user, playlist_id)
+    item = (await db.execute(
+        select(PlaylistItem).where(
+            PlaylistItem.playlist_id == playlist_id,
+            PlaylistItem.youtube_id == youtube_id,
+        )
+    )).scalar_one_or_none()
+    if item is None:
+        return {"status": "ok", "removed": None}
+    receipt = _video_dict(item)
     await db.execute(delete(PlaylistItem).where(
         PlaylistItem.playlist_id == playlist_id,
         PlaylistItem.youtube_id == youtube_id,
     ))
     await db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "removed": receipt}

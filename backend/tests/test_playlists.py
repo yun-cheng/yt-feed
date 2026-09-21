@@ -242,3 +242,54 @@ async def test_adding_by_id_to_someone_elses_playlist_is_404(
         f"/api/playlists/{theirs.id}/items/by-id/openedAAAAA", headers=mine
     )
     assert r.status_code == 404
+
+
+# ── Undo: a removal hands back what it removed ───────────────────────
+
+
+async def test_removing_an_item_hands_back_the_row(client):
+    pid = await make(client)
+    await add(client, pid, "vid1", title="A Video")
+
+    removed = (await client.delete(f"/api/playlists/{pid}/items/vid1")).json()["removed"]
+    assert removed["youtube_id"] == "vid1"
+    assert removed["title"] == "A Video"
+    assert removed["created_at"]
+
+
+async def test_removing_an_item_that_is_not_there_hands_back_nothing(client):
+    pid = await make(client)
+    assert (await client.delete(f"/api/playlists/{pid}/items/vid1")).json()["removed"] is None
+
+
+async def test_a_restored_item_goes_back_where_it_was(client):
+    """Adding it afresh would put it on top, which is not what undo means."""
+    pid = await make(client)
+    for vid in ("first", "second", "third"):
+        await add(client, pid, vid)
+
+    removed = (await client.delete(f"/api/playlists/{pid}/items/second")).json()["removed"]
+    await client.post(f"/api/playlists/{pid}/items", json=removed)
+
+    ids = [v["youtube_id"] for v in (await client.get(f"/api/playlists/{pid}")).json()["videos"]]
+    assert ids == ["third", "second", "first"]
+
+
+async def test_an_ordinary_add_joins_now(client):
+    """The timestamp is only honoured when one is sent — a save from a card has
+    none and belongs at the top."""
+    pid = await make(client)
+    await add(client, pid, "first")
+    await add(client, pid, "second")
+    ids = [v["youtube_id"] for v in (await client.get(f"/api/playlists/{pid}")).json()["videos"]]
+    assert ids == ["second", "first"]
+
+
+async def test_a_restore_with_an_unreadable_timestamp_still_lands(client):
+    """Better at the top of the list than not back at all."""
+    pid = await make(client)
+    await add(client, pid, "vid1")
+    removed = (await client.delete(f"/api/playlists/{pid}/items/vid1")).json()["removed"]
+    removed["created_at"] = "the other day"
+    await client.post(f"/api/playlists/{pid}/items", json=removed)
+    assert len((await client.get(f"/api/playlists/{pid}")).json()["videos"]) == 1

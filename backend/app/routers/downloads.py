@@ -154,7 +154,15 @@ async def get_download_file(video_id: str):
 
 @router.delete("/{video_id}")
 async def delete_download(video_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete the file and forget it.
+
+    `removed` is the receipt: the row as the Downloads page saw it, which is
+    everything `POST /api/downloads` needs. So undoing this is a re-download —
+    the file itself is gone from disk and no bookkeeping can bring it back, but
+    the click that fetches it again costs you nothing to find.
+    """
     rec = await db.get(Download, video_id)
+    receipt = _serialize(rec) if rec else None
     if rec:
         await db.delete(rec)
         await db.commit()
@@ -164,4 +172,4 @@ async def delete_download(video_id: str, db: AsyncSession = Depends(get_db)):
             os.remove(path)
         except OSError:
             pass
-    return {"ok": True}
+    return {"ok": True, "removed": receipt}

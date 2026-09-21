@@ -67,6 +67,7 @@ app/
   search_index.py  Meilisearch push + query (best-effort)
   auth_google.py   Google sign-in: the OAuth flow, /auth/me, /auth/logout
   auth.py          reading the caller back: session cookie or extension API key
+  receipts.py      what a deletion hands back, so the UI can offer an Undo
     routers/people.py  the household: adding people, and the links that let them in
   users.py         accounts: seeding, the channel backfill, adoption (see "Accounts")
 
@@ -702,6 +703,30 @@ is `watched`: at the live edge the play head is at the "end" by definition, so t
 client decides that flag, because it can see the player and because liveness is a
 property of the moment rather than of the video; once the stream has aired, the
 same id reports without it and `watched` is decided normally.
+
+### Removing one, and taking it back
+
+`DELETE /api/history/{id}` answers with the row it deleted, under `removed` —
+the whole row, in the shape the History page was already rendering. That receipt
+is what the UI's Undo toast holds (see the frontend's `lib/undo.ts`), and
+`POST /api/history/restore` takes it back.
+
+A restore is **verbatim**, and none of `report_progress`'s judgement applies to
+it: no `MIN_POSITION_SECONDS` floor (the row cleared it once already), `watched`
+taken rather than recomputed, and `updated_at` set from the receipt so the row
+returns to its place in the list instead of to the top of it. That's the reason
+restore exists at all rather than Undo simply re-reporting the position — a
+position doesn't imply the badge, and a video finished when its duration was
+unknown would come back unfinished.
+
+The one thing it won't do is overwrite. If the row exists again — you opened the
+video in the seconds between the removal and the undo — the newer position is
+the true one, and the restore answers `restored: false` rather than rewinding
+you. The same shape covers the other three undoable removals: a playlist item
+(`removed` carries its `created_at`, which `POST /api/playlists/{id}/items`
+honours, so it goes back to its place), an imported video
+(`POST /api/imported/restore`), and a deleted download, whose receipt is
+everything `POST /api/downloads` needs to fetch the file again.
 
 ### Reporting with nothing but an id
 
@@ -1973,8 +1998,10 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/playlists/import-external` | take a playlist the browser read for us — the whole list travels in the body, so no YouTube token is involved. What the extension posts, and the only route to Watch Later, private playlists, and playlists you follow but didn't make |
 | POST | `/api/watch-later/by-id/{id}` | save a video we're given nothing but the id of — the extension's button. Metadata is resolved here |
 | POST | `/api/playlists/{id}/items/by-id/{video_id}` | add a video to a playlist given nothing but the id — the extension's save-to-playlist menu. Metadata is resolved here; someone else's playlist is a 404 |
-| GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one |
-| GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup |
+| GET/POST/DELETE | `/api/imported` | imported videos: list / import a paste of links / remove one. The removal answers with a `removed` receipt |
+| POST | `/api/imported/restore` | take a removal back, keeping the moment you first kept it — so the page doesn't reshuffle. Never fetches the video; the snapshot outlived the removal or there is nothing to restore |
+| GET/POST/DELETE | `/api/history` | watch history: list / report a position / forget one. `GET /api/history/{id}` is the resume lookup. The removal answers with a `removed` receipt |
+| POST | `/api/history/restore` | put a removed row back verbatim — its position, its `watched` flag and its place in the list. A row that exists again is left alone: where you are now is the truth |
 | POST | `/api/history/by-id/{id}` | report a position for a video we're given nothing but the id of — what the extension posts while you watch on youtube.com. Metadata is resolved here |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | GET/POST/DELETE | `/api/presets` | saved filter presets: list / save (re-using a name overwrites) / `DELETE /api/presets/{id}` |
@@ -2016,11 +2043,12 @@ no per-test decorator). What's covered:
 | `test_archive.py` | the archive fill: queue order, cursor resumption, budget stops, the 20k ceiling |
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |
-| `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, and reporting from an id alone: resolved once rather than every ten seconds, and one row shared with the app |
+| `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, reporting from an id alone (resolved once rather than every ten seconds, one row shared with the app), and undo: the receipt a removal hands back, a restore that is verbatim and keeps its place, and one that leaves a row you have since watched alone |
 | `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup — and saved loops: several per video, only one active at a time, a half-set one kept as it is, stopping keeping the passage where deleting drops it |
 | `test_next_video.py` | the up-next walk: the immediate successor rather than the newest, nothing ahead of the channel's latest, shorts and long-form as separate sequences, videos sharing a timestamp staying reachable — and the channel page's filters narrowing which videos are eligible without touching the order |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
-| `test_playlists.py` | counts, covers, item ordering, cascade on delete, adding by id alone (the extension's menu) |
+| `test_playlists.py` | counts, covers, item ordering, cascade on delete, adding by id alone (the extension's menu), and a removed item restored to its position rather than to the top |
+| `test_downloads.py` | what a deletion hands back — enough to fetch the file again, since undoing one is a re-download |
 | `test_playlist_import.py` | the link that makes re-importing a re-sync, playlist order surviving the copy, add-only merge (a video pulled on YouTube stays in your copy), the owner-only guard, every shape `playlist_ref` accepts and rejects, looking up a playlist someone else owns, nothing written before YouTube answers (the write-lock deadlock), and the extension's path: no token, right owner, gaps filled without clobbering what the page already read |
 | `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp, the avatar filled in on save |
 | `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
@@ -2035,7 +2063,7 @@ no per-test decorator). What's covered:
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer; translating one comment (the target in the prompt, the title as context, one model call per text and target, what's refused, a failure not cached) |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
-| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup |
+| `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup, and a restore that keeps its place on the page and never fetches |
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |
 | `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, the whole sign-in end to end against a stubbed Google, and a saved YouTube token keeping the scopes it was granted rather than today's wider list (plus no token file being nobody, not a crash) |
 | `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |

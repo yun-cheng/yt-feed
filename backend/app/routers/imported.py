@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import auth, quota
+from app import auth, quota, receipts
 from app.database import async_session
 from app.models import Channel, ImportedVideo, User, UserImport
 from app.ranking import score_video
@@ -320,11 +320,51 @@ async def remove_imported(
     The snapshot stays. It's a cache — the watch page and history still read it
     for a title, somebody else may have imported the same video, and re-pasting
     the link costs no fetch. What goes is your claim on it.
+
+    `removed` is the receipt `POST /restore` takes back: the claim, and the
+    moment you made it. Re-pasting the link would also bring the video back, but
+    stamped now — which shuffles it to the top of a page ordered by when you
+    kept things. An undo shouldn't reorder the page it's undoing on.
     """
     from sqlalchemy import delete as sa_delete
 
+    mine = await db.get(UserImport, (user.id, video_id))
+    if mine is None:
+        return {"status": "ok", "removed": None}
+    receipt = {
+        "youtube_id": video_id,
+        "created_at": mine.created_at.isoformat() if mine.created_at else None,
+    }
     await db.execute(sa_delete(UserImport).where(
         UserImport.user_id == user.id, UserImport.youtube_id == video_id
     ))
     await db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "removed": receipt}
+
+
+class ImportRestore(BaseModel):
+    youtube_id: str
+    created_at: str | None = None
+
+
+@router.post("/restore")
+async def restore_imported(
+    body: ImportRestore,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Take a removal back — the undo of `remove_imported`.
+
+    Only ever re-makes the claim, never the snapshot: the snapshot was left
+    standing by the removal, so if it has since gone (nobody holds it and it was
+    swept) there is nothing to put back and this says so rather than fetching
+    the video again behind an Undo click.
+    """
+    if await db.get(ImportedVideo, body.youtube_id) is None:
+        return {"status": "ok", "restored": False}
+    if await db.get(UserImport, (user.id, body.youtube_id)) is not None:
+        return {"status": "ok", "restored": False}
+    kept_at = receipts.stamp_or_now(body.created_at)
+    db.add(UserImport(user_id=user.id, youtube_id=body.youtube_id, created_at=kept_at))
+    await db.commit()
+    return {"status": "ok", "restored": True}

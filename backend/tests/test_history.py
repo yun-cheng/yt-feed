@@ -351,3 +351,72 @@ async def test_watching_on_youtube_and_in_the_app_is_one_row(client, monkeypatch
     await report(client, youtube_id="openedAAAAA", position=400.0, title="A Video")
     assert len((await client.get("/api/history")).json()) == 1
     assert (await client.get("/api/history/openedAAAAA")).json()["position_seconds"] == 400.0
+
+
+# ── Undo: a removal hands back what it removed ───────────────────────
+
+
+async def test_removing_hands_back_the_row_it_removed(client):
+    """The receipt the Undo toast holds (see frontend lib/undo.ts)."""
+    await report(client, position=412.5, duration=600, title="A Video")
+
+    removed = (await client.delete("/api/history/vid1")).json()["removed"]
+    assert removed["position_seconds"] == 412.5
+    assert removed["title"] == "A Video"
+    assert (await client.get("/api/history")).json() == []
+
+
+async def test_removing_what_was_never_there_hands_back_nothing(client):
+    """So the UI knows there is no undo to offer, rather than offering a
+    button that would put a blank row on the page."""
+    r = await client.delete("/api/history/vid1")
+    assert r.json() == {"status": "ok", "removed": None}
+
+
+async def test_restoring_puts_the_row_back_as_it_was(client):
+    """Verbatim — which is the reason restore exists rather than the Undo
+    button simply re-reporting the position."""
+    await report(client, position=580.0, duration=600, title="A Video")
+    before = (await client.get("/api/history/vid1")).json()
+    assert before["watched"] is True
+
+    removed = (await client.delete("/api/history/vid1")).json()["removed"]
+    assert (await client.post("/api/history/restore", json=removed)).json()["restored"] is True
+
+    after = (await client.get("/api/history/vid1")).json()
+    assert after == before
+
+
+async def test_a_restored_row_keeps_its_place_in_the_list(client):
+    """An undo that shuffled History would be its own small mess to clean up."""
+    await report(client, youtube_id="older", position=100.0, title="Older")
+    await report(client, youtube_id="newer", position=100.0, title="Newer")
+
+    removed = (await client.delete("/api/history/older")).json()["removed"]
+    await client.post("/api/history/restore", json=removed)
+
+    order = [h["youtube_id"] for h in (await client.get("/api/history")).json()]
+    assert order == ["newer", "older"]
+
+
+async def test_a_restore_is_not_judged_the_way_a_report_is(client):
+    """`watched` is taken from the receipt, not recomputed: a video finished at
+    a position that no longer implies it (the duration was never known) still
+    comes back finished."""
+    row = {
+        "youtube_id": "vid1", "position_seconds": 30.0, "duration_seconds": 0,
+        "watched": True, "watched_at": "2026-09-01T10:00:00", "title": "A Video",
+    }
+    await client.post("/api/history/restore", json=row)
+    assert (await client.get("/api/history/vid1")).json()["watched"] is True
+
+
+async def test_restoring_leaves_a_row_you_have_since_watched_alone(client):
+    """Between the removal and the Undo you can have opened the video, and
+    where you are now is the truth. Undo should not rewind it."""
+    await report(client, position=100.0, title="A Video")
+    removed = (await client.delete("/api/history/vid1")).json()["removed"]
+    await report(client, position=300.0, title="A Video")
+
+    assert (await client.post("/api/history/restore", json=removed)).json()["restored"] is False
+    assert (await client.get("/api/history/vid1")).json()["position_seconds"] == 300.0

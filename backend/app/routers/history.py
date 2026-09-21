@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import app_settings, auth
+from app import app_settings, auth, receipts
 from app.database import async_session
 from app.models import User, WatchHistory
 
@@ -233,8 +233,75 @@ async def remove_history(
     user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
+    """Forget a video, and hand back what was forgotten.
+
+    The `removed` row is a RECEIPT: it's the whole row as the History page saw
+    it, and `POST /restore` takes it back. That's what lets the UI offer Undo
+    without holding a shadow copy of the row it just deleted — and it's why the
+    resume point and the "Watched" badge survive a misclick, which re-reporting
+    progress could never restore (a 30-second position doesn't imply a video you
+    had already finished).
+    """
+    h = await db.get(WatchHistory, (user.id, video_id))
+    if h is None:
+        return {"status": "ok", "removed": None}
+    receipt = _serialize(h)
     await db.execute(delete(WatchHistory).where(
         WatchHistory.user_id == user.id, WatchHistory.youtube_id == video_id
     ))
     await db.commit()
-    return {"status": "ok"}
+    return {"status": "ok", "removed": receipt}
+
+
+class HistoryRestore(ProgressUpdate):
+    """A removal's receipt, back again. `ProgressUpdate` plus the two fields
+    that are read off the row rather than reported by a player."""
+
+    watched: bool = False
+    # When it was last watched, so an undone removal goes back to its place in
+    # the list instead of to the top of it.
+    watched_at: str = ""
+
+
+@router.post("/restore")
+async def restore_history(
+    p: HistoryRestore,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Put a removed row back exactly as it was — the undo of remove_history.
+
+    Verbatim, and none of `report_progress`'s judgement: no MIN_POSITION floor
+    (the row cleared it once already), and `watched` is taken rather than
+    recomputed.
+
+    A row that exists again is left alone. Between the removal and the undo you
+    can have opened the video, and that newer position is the true one — there
+    is no sense in which undoing a delete should rewind where you are now.
+    """
+    if await db.get(WatchHistory, (user.id, p.youtube_id)) is not None:
+        return {"status": "ok", "restored": False}
+
+    watched_at = receipts.stamp_or_now(p.watched_at)
+    h = WatchHistory(
+        user_id=user.id,
+        youtube_id=p.youtube_id,
+        position_seconds=p.position_seconds,
+        duration_seconds=p.duration_seconds,
+        watched=p.watched,
+        title=p.title,
+        channel_id=p.channel_id,
+        channel_name=p.channel_name,
+        channel_thumbnail=p.channel_thumbnail,
+        thumbnail_url=p.thumbnail_url,
+        published_at=p.published_at,
+        view_count=p.view_count,
+        like_count=p.like_count,
+        is_short=p.is_short,
+        score=p.score,
+        created_at=watched_at,
+        updated_at=watched_at,
+    )
+    db.add(h)
+    await db.commit()
+    return {"status": "ok", "restored": True}

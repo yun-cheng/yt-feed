@@ -364,3 +364,67 @@ async def test_a_video_opened_from_youtube_arrives_with_its_avatar(client, db, m
 
     body = (await client.get("/api/feed/video/never-seen")).json()
     assert body["channel_thumbnail"] == "https://example.test/a.jpg"
+
+
+# ── Undo: taking a removal back ──────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_removing_hands_back_the_claim_it_dropped(client, db):
+    db.add(_to_record("keptAAAAAAA", info()))
+    await db.commit()
+    await client.post("/api/imported", json={"urls": "https://youtu.be/keptAAAAAAA"})
+
+    removed = (await client.delete("/api/imported/keptAAAAAAA")).json()["removed"]
+    assert removed["youtube_id"] == "keptAAAAAAA"
+    assert removed["created_at"]
+    assert (await client.get("/api/imported")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_removing_something_you_never_kept_hands_back_nothing(client):
+    assert (await client.delete("/api/imported/keptAAAAAAA")).json()["removed"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_restored_video_keeps_its_place_on_the_page(client, db):
+    """Re-pasting the link would bring it back stamped now, at the top of a page
+    ordered by when you kept things. An undo shouldn't reorder the page."""
+    for vid in ("firstAAAAAA", "secondAAAAA"):
+        db.add(_to_record(vid, info()))
+    await db.commit()
+    await client.post("/api/imported", json={"urls": "https://youtu.be/firstAAAAAA"})
+    await client.post("/api/imported", json={"urls": "https://youtu.be/secondAAAAA"})
+
+    removed = (await client.delete("/api/imported/firstAAAAAA")).json()["removed"]
+    assert (await client.post("/api/imported/restore", json=removed)).json()["restored"] is True
+
+    listed = [v["youtube_id"] for v in (await client.get("/api/imported")).json()]
+    assert listed == ["secondAAAAA", "firstAAAAAA"]
+
+
+@pytest.mark.asyncio
+async def test_a_restore_never_fetches_the_video_again(client, monkeypatch):
+    """The snapshot outlives the removal, so there is nothing to fetch. If it
+    has gone, the undo says so rather than reaching for the network behind a
+    click that asked for a row back."""
+    from app.routers import imported as imported_mod
+
+    def boom(vid):
+        raise AssertionError("a restore must not extract")
+
+    monkeypatch.setattr(imported_mod, "_extract", boom)
+    r = await client.post(
+        "/api/imported/restore", json={"youtube_id": "goneAAAAAAA", "created_at": None})
+    assert r.json() == {"status": "ok", "restored": False}
+
+
+@pytest.mark.asyncio
+async def test_restoring_what_you_already_hold_changes_nothing(client, db):
+    db.add(_to_record("keptAAAAAAA", info()))
+    await db.commit()
+    await client.post("/api/imported", json={"urls": "https://youtu.be/keptAAAAAAA"})
+
+    r = await client.post("/api/imported/restore", json={"youtube_id": "keptAAAAAAA"})
+    assert r.json()["restored"] is False
+    assert len((await client.get("/api/imported")).json()) == 1
