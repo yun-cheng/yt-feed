@@ -116,7 +116,7 @@ function Choice({ value, options, busy, onChange }: {
       value={value}
       disabled={busy}
       onChange={(e) => onChange(e.target.value)}
-      className="flex-shrink-0 cursor-pointer rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-1.5 text-sm text-white disabled:opacity-50"
+      className="w-full cursor-pointer rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-1.5 text-sm text-white disabled:opacity-50 sm:w-auto sm:flex-shrink-0"
     >
       {options.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
     </select>
@@ -226,8 +226,14 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
           </h3>
           <div className="flex flex-col gap-4">
             {data.settings.filter((s) => s.group === group).map((spec) => (
-              <div key={spec.key} className="flex items-start gap-4">
-                <div className="min-w-0 flex-1">
+              // Label and control side by side once there's room for both; on a
+              // phone the control goes under its label instead. Side by side at
+              // 375px, a wide menu ("The video's own language") leaves the text
+              // column ~130px and every description wraps to six lines.
+              <div key={spec.key} className="flex flex-col items-start gap-2 sm:flex-row sm:gap-4">
+                {/* w-full because the stacked row aligns to `items-start`, which
+                    would otherwise shrink this block to its longest line. */}
+                <div className="w-full min-w-0 sm:flex-1">
                   <label className="text-sm font-medium text-white">
                     {t(spec.label)}
                     {spec.scope === 'app' && (

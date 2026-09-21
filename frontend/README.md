@@ -1917,6 +1917,25 @@ nothing for one assembled at runtime). Three reveals are deliberately
 left alone — the preview's volume slider and scrubber knob, and the up-next
 peek — because they live inside a hover preview a phone never opens.
 
+**The viewport.** The shell is `h-dvh`, not `h-screen`: iOS reports `100vh` as
+the screen *without* its toolbars, which pushes a fixed bottom bar behind them.
+The bar pads itself past the home indicator with
+`pb-[env(safe-area-inset-bottom)]`, and `<main>` reserves that padded height.
+
+**The tablet seam.** `md` (768px) is where the sidebar comes back, which leaves
+a 768px-wide tablet with ~528px of page. The time window and the sort row
+therefore split at `lg`, not `md`: side by side at 768 the slider is narrow
+enough that its twelve labels — absolutely positioned by percentage, so they
+overlap rather than wrap — run together into a smear. Settings rows stack below
+`sm` for the same reason: beside a wide menu, a 375px screen leaves the
+description ~130px and six lines tall.
+
+What is *not* fixed, and is the real fork: over the YouTube embed our overlays
+wake on pointer movement, so with the extension installed (`controls: 0`, our
+bar is the only one) a tap both raises the chrome and toggles play. Answering
+that means designing a touch state machine for the player, which is the whole
+couch-and-phone question rather than a patch.
+
 ## Tests
 
 Component/behavior tests live in `src/test/` and run under Vitest + jsdom

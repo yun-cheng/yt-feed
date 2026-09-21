@@ -2086,7 +2086,7 @@ export default function App() {
   }, [page])
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       {/* Mobile backdrop */}
       {mobileMenuOpen && (
         <div
@@ -2181,7 +2181,7 @@ export default function App() {
             </button>
           </div>
         )}
-      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-14 md:mb-0 [overflow-anchor:none] [scrollbar-gutter:stable]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
+      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-[calc(3.5rem+env(safe-area-inset-bottom))] md:mb-0 [overflow-anchor:none] [scrollbar-gutter:stable]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
         {/* TopBar lives INSIDE the scroll container so scrolling works natively
             even when the cursor rests on it. Desktop: sticky at the top. Mobile:
             fixed (out of flow) and slides up/down on scroll — main's paddingTop
@@ -2473,7 +2473,10 @@ export default function App() {
       </div>
 
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#0f0f0f] border-t border-[#272727] flex">
+      {/* The home indicator sits over the bottom of the screen on a modern
+          phone, so the bar pads itself out of its way — and <main> below
+          reserves the bar's full height, padding included. */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#0f0f0f] border-t border-[#272727] flex pb-[env(safe-area-inset-bottom)]">
         <button
           onClick={goHome}
           className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'feed' ? 'text-white' : 'text-[#717171]'}`}

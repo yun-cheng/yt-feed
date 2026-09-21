@@ -29,7 +29,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
   const pick = (i: number) => onChange(clampRange({ lo: i > value.lo ? value.lo : 0, hi: i }))
 
   return (
-    <div className="w-full min-w-0 md:max-w-xs">
+    <div className="w-full min-w-0 lg:max-w-xs">
       <div className="mb-1.5 flex items-baseline gap-2">
         <span className="text-sm font-medium text-white">{rangeLabel(value)}</span>
         {count !== undefined && (

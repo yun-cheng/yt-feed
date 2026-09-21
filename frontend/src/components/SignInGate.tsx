@@ -34,12 +34,12 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
   }, [])
 
   if (me === null) {
-    return <div className="flex h-screen items-center justify-center text-sm text-[#777]">{t('Loading…')}</div>
+    return <div className="flex h-dvh items-center justify-center text-sm text-[#777]">{t('Loading…')}</div>
   }
   if (me.resolved) return <>{children}</>
 
   return (
-    <div className="flex h-screen items-center justify-center bg-[#0f0f0f] px-6">
+    <div className="flex h-dvh items-center justify-center bg-[#0f0f0f] px-6">
       <div className="w-full max-w-sm text-center">
         <h1 className="text-2xl font-bold text-white">YT Feed</h1>
         <p className="mt-2 text-sm leading-relaxed text-[#aaa]">

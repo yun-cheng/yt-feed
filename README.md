@@ -98,6 +98,12 @@ real video (muted, with custom captions and scrubbing).
   row keeps its resume point and its "Watched" badge, and a playlist item goes
   back to its place in the list rather than to the top. A deleted download is
   the one exception — the file is gone, so undoing fetches it again
+- **Reachable on a phone** — the app is built for a desktop and a keyboard, and
+  that hasn't changed; what's promised on a small screen is only that nothing is
+  *unreachable*. Below 768px the sidebar becomes a drawer carrying every
+  destination, a bottom bar holds the four you use most, the player gets a back
+  button, and a control that only appeared on hover now stays put where there is
+  no pointer to hover with
 - **Watch history** — every video remembers where you stopped: revisiting resumes
   from that timestamp, cards show a red progress bar before you hover, and finished
   videos get a "Watched" badge. All of it on its own History page

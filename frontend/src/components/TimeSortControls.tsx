@@ -80,12 +80,16 @@ export default function TimeSortControls({ variant = 'feed', age, onAgeChange, c
   const slider = age && onAgeChange
 
   return (
-    <div className={stacked ? 'flex flex-col items-start gap-3' : slider ? 'flex flex-col gap-3 md:flex-row md:items-center md:gap-6' : 'flex justify-end'}>
-      {/* Row 1 on mobile / left on desktop: the time window */}
+    <div className={stacked ? 'flex flex-col items-start gap-3' : slider ? 'flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-6' : 'flex justify-end'}>
+      {/* Row 1 on its own / left on a wide page: the time window.
+          Side by side only from `lg`, not `md`: at 768 the sidebar is back and
+          the sort row is ~330px, which leaves the slider too narrow to hold its
+          twelve labels. They're absolutely positioned by percentage, so they
+          don't wrap when squeezed — they overlap into a smear. */}
       {slider && <TimeRangeSlider value={age} onChange={onAgeChange} count={count} />}
 
       {/* Row 2 on mobile / right on desktop: sort buttons */}
-      <div className={`flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 overflow-x-auto no-scrollbar max-w-full ${stacked ? '' : 'md:ml-auto md:flex-shrink-0'}`}>
+      <div className={`flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 overflow-x-auto no-scrollbar max-w-full ${stacked ? '' : 'lg:ml-auto lg:flex-shrink-0'}`}>
         {options.map((opt) => (
           <button
             key={opt.value}

@@ -46,7 +46,7 @@ export default function DefaultsLoader({ children }: { children: React.ReactNode
   }, [])
 
   if (!ready) {
-    return <div className="flex h-screen items-center justify-center text-sm text-[#777]">{t('Loading…')}</div>
+    return <div className="flex h-dvh items-center justify-center text-sm text-[#777]">{t('Loading…')}</div>
   }
   return <Fragment key={lang}>{children}</Fragment>
 }
