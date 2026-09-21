@@ -5,6 +5,7 @@ import { filterByTime, filterBySummarised, filterByWatchStatus, filterByLength, 
 import type { VideoItem, WatchProgress } from '../App'
 import type { TimeRange } from '../lib/timeWindow'
 import { t } from '../lib/i18n'
+import { removePlaylistItem } from '../lib/undo'
 
 type Props = {
   playlistId: number
@@ -113,12 +114,20 @@ export default function PlaylistPage({
     return sortVideos(result, sort)
   }, [videos, age, sort, watchStatuses, progressById, summarisedOnly, summarisedIds, lengths, q])
 
+  const changed = () => window.dispatchEvent(new Event('playlists-changed'))
+
   const removeFromPlaylist = async (video: VideoItem) => {
     setVideos((prev) => prev.filter((v) => v.youtube_id !== video.youtube_id))  // optimistic
-    try {
-      await apiFetch(`/api/playlists/${playlistId}/items/${video.youtube_id}`, { method: 'DELETE' })
-    } catch { /* ignore */ }
-    window.dispatchEvent(new Event('playlists-changed'))
+    // Undoable (lib/undo.ts): the server hands back the row it removed, and
+    // putting that row back keeps the video's place in the list rather than
+    // moving it to the top the way a fresh add would.
+    await removePlaylistItem(playlistId, video.youtube_id, () => {
+      setVideos((prev) => (
+        prev.some((v) => v.youtube_id === video.youtube_id) ? prev : [...prev, video]
+      ))
+      changed()
+    })
+    changed()
   }
 
   if (loading) {

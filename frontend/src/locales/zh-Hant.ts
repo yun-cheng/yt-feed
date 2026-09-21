@@ -556,6 +556,11 @@ export const zhHant: Record<string, string> = {
   'Oldest edge': '較舊的一端',
   // Toasts
   'Dismiss': '關閉',
+  'Undo': '復原',
+  'Removed from history': '已從觀看紀錄移除',
+  'Removed from the playlist': '已從播放清單移除',
+  'Removed from imported': '已從匯入的影片移除',
+  'Download deleted': '已刪除下載的影片',
   // Time window, in a sentence
   'long|1d': '1 天',
   'long|3d': '3 天',

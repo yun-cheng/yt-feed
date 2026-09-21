@@ -1,6 +1,6 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { pushToast, dismissToast, useToasts } from '../hooks/toastStore'
+import { pushToast, pushUndo, dismissToast, runUndo, useToasts, UNDO_MS } from '../hooks/toastStore'
 import Toaster from '../components/Toaster'
 
 function Harness() {
@@ -88,5 +88,60 @@ describe('Toaster', () => {
     act(() => { pushToast('boom') })
     fireEvent.click(screen.getByRole('button'))
     expect(screen.queryByText('boom')).not.toBeInTheDocument()
+  })
+})
+
+describe('an undo toast', () => {
+  it('says what happened and offers to take it back', () => {
+    const undo = vi.fn()
+    render(<Toaster />)
+    act(() => { pushUndo('Removed from history', undo) })
+    expect(screen.getByText('Removed from history')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Undo'))
+    expect(undo).toHaveBeenCalledTimes(1)
+  })
+
+  it('is gone once taken back, so it can’t be pressed twice', () => {
+    const undo = vi.fn()
+    render(<Toaster />)
+    act(() => { pushUndo('Removed from history', undo) })
+    fireEvent.click(screen.getByText('Undo'))
+    expect(screen.queryByText('Removed from history')).not.toBeInTheDocument()
+    expect(undo).toHaveBeenCalledTimes(1)
+  })
+
+  it('can be waved away without undoing anything', () => {
+    const undo = vi.fn()
+    render(<Toaster />)
+    act(() => { pushUndo('Removed from history', undo) })
+    fireEvent.click(screen.getByLabelText('Dismiss'))
+    expect(screen.queryByText('Removed from history')).not.toBeInTheDocument()
+    expect(undo).not.toHaveBeenCalled()
+  })
+
+  it('expires sooner than an error does — the offer belongs to the action', () => {
+    render(<Harness />)
+    act(() => { pushUndo('Removed from history', vi.fn()) })
+    act(() => { vi.advanceTimersByTime(UNDO_MS - 1_000) })
+    expect(screen.getByTestId('count')).toHaveTextContent('1')
+    act(() => { vi.advanceTimersByTime(2_000) })
+    expect(screen.getByTestId('count')).toHaveTextContent('0')
+  })
+
+  it('does nothing when the offer has already gone', () => {
+    // The auto-dismiss fired while the pointer was on its way.
+    const undo = vi.fn()
+    let id = 0
+    act(() => { id = pushUndo('Removed from history', undo) })
+    act(() => { dismissToast(id) })
+    act(() => { runUndo(id) })
+    expect(undo).not.toHaveBeenCalled()
+  })
+
+  it('reads as an offer rather than as an error', () => {
+    render(<Toaster />)
+    act(() => { pushToast('GET /api/thing failed (500)'); pushUndo('Removed from history', vi.fn()) })
+    expect(screen.getByText(/failed/).closest('button')?.textContent).toContain('⚠️')
+    expect(screen.getByText('Removed from history').textContent).not.toContain('⚠️')
   })
 })

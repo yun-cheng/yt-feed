@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { apiFetch } from './lib/api'
+import * as undoable from './lib/undo'
 import { captureFilters, forPage, hasAnyFilter, isActive, listPresets, savePreset, deletePreset } from './lib/presets'
 import type { Preset } from './lib/presets'
 import Toaster from './components/Toaster'
@@ -987,10 +988,12 @@ export default function App() {
     fetchDownloads()
   }, [fetchDownloads])
 
+  // Optimistic, then undoable: the row leaves at once and the toast offers it
+  // back (lib/undo.ts), which for a download means fetching the file again.
   const deleteDownload = useCallback(async (videoId: string) => {
     setDownloads(prev => prev.filter(d => d.youtube_id !== videoId))
-    try { await apiFetch(`/api/downloads/${videoId}`, { method: 'DELETE' }) } catch { /* ignore */ }
-  }, [])
+    await undoable.deleteDownload(videoId, fetchDownloads)
+  }, [fetchDownloads])
 
   // ── Imported videos ───────────────────────────────────
   // Videos added by pasting a link, from channels you don't follow. They live in
@@ -1021,8 +1024,8 @@ export default function App() {
 
   const removeImported = useCallback(async (video: VideoItem) => {
     setImported(prev => prev.filter(v => v.youtube_id !== video.youtube_id))
-    try { await apiFetch(`/api/imported/${video.youtube_id}`, { method: 'DELETE' }) } catch { /* ignore */ }
-  }, [])
+    await undoable.removeImported(video.youtube_id, fetchImported)
+  }, [fetchImported])
 
   // ── Local folders ─────────────────────────────────────
   // A directory on the backend's machine, listed as a feed. The folder's videos
@@ -1117,8 +1120,8 @@ export default function App() {
 
   const removeHistory = useCallback(async (video: VideoItem) => {
     setWatchHistory(prev => prev.filter(v => v.youtube_id !== video.youtube_id))
-    try { await apiFetch(`/api/history/${video.youtube_id}`, { method: 'DELETE' }) } catch { /* ignore */ }
-  }, [])
+    await undoable.removeHistory(video.youtube_id, fetchHistory)
+  }, [fetchHistory])
 
   // ── YouTube API token health (reminder to re-auth) ────
   const [tokenBad, setTokenBad] = useState(false)

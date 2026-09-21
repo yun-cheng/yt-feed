@@ -555,6 +555,11 @@ export const vi: Record<string, string> = {
   'Oldest edge': 'Mốc cũ nhất',
   // Toasts
   'Dismiss': 'Đóng',
+  'Undo': 'Hoàn tác',
+  'Removed from history': 'Đã xoá khỏi nhật ký xem',
+  'Removed from the playlist': 'Đã xoá khỏi danh sách phát',
+  'Removed from imported': 'Đã xoá khỏi mục đã nhập',
+  'Download deleted': 'Đã xoá bản tải xuống',
   // Time window, in a sentence
   'long|1d': '1 ngày',
   'long|3d': '3 ngày',

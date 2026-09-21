@@ -92,6 +92,12 @@ real video (muted, with custom captions and scrubbing).
   *enumerate*. The extension's button on any playlist page reaches what's left:
   Watch Later, Liked Videos and private playlists, for everyone in the household,
   connected account or not
+- **Undo a removal** — taking a video off History, a playlist or Imported, or
+  deleting a download, says so in the corner and offers to take it back for ten
+  seconds. What comes back is the row itself, not a fresh copy of it: a history
+  row keeps its resume point and its "Watched" badge, and a playlist item goes
+  back to its place in the list rather than to the top. A deleted download is
+  the one exception — the file is gone, so undoing fetches it again
 - **Watch history** — every video remembers where you stopped: revisiting resumes
   from that timestamp, cards show a red progress bar before you hover, and finished
   videos get a "Watched" badge. All of it on its own History page

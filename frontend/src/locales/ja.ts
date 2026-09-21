@@ -555,6 +555,11 @@ export const ja: Record<string, string> = {
   'Oldest edge': '古い方の端',
   // Toasts
   'Dismiss': '閉じる',
+  'Undo': '元に戻す',
+  'Removed from history': '履歴から削除しました',
+  'Removed from the playlist': '再生リストから削除しました',
+  'Removed from imported': 'インポートから削除しました',
+  'Download deleted': 'ダウンロードを削除しました',
   // Time window, in a sentence
   'long|1d': '1日',
   'long|3d': '3日',

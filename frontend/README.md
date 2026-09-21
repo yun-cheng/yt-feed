@@ -815,18 +815,22 @@ components/
                                   panel with the transcript, one tab each
   Comments.tsx                    the comment section under the description —
                                   closed until asked for, and fetched only then
-  Toaster.tsx                     the app's single error-toast surface
+  Toaster.tsx                     the app's single toast surface: errors, and
+                                  the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
                                   you were on another page
 hooks/
   audioStore.ts                   shared, persisted preview VOLUME
-  toastStore.ts                   tiny global toast store (API errors)
+  toastStore.ts                   tiny global toast store: API errors, and
+                                  undo offers (pushUndo)
   notificationStore.ts            the bell's rows + unread count, slowly polled
   summaryStore.ts                 which videos have a long summary, and which
                                   are having one written — polled only while
                                   something is running
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
+  undo.ts                         the removals you can take back: delete, then
+                                  offer the server's receipt back
   presets.ts                      saved sidebar filter sets: the model + its calls
   ext.ts                          is the clean-embed extension installed?
   quality.ts                      YouTube's quality names → "1080p"
@@ -1520,6 +1524,44 @@ failed** — and the bell says when it landed.
   overlay that has only an id (`WatchPage` fetches the rest, exactly as on a cold
   load) and the one that opens a side panel that isn't closed.
 
+## Undo (`lib/undo.ts`, `hooks/toastStore.ts`)
+
+Removing a video from History, from a playlist, from Imported, or deleting a
+download used to be one click and gone. Each is still one click — and then a
+toast says what happened and offers to take it back.
+
+- **Do it, then offer to undo it** — rather than pausing before doing it. A
+  pause would have to survive closing the tab, and it would make every
+  deliberate deletion feel slow in order to spare the occasional accidental one.
+  So the row really is deleted when the toast appears, and Undo is a second
+  action that reverses the first.
+- **The server hands back a receipt.** Each `DELETE` answers with `removed` —
+  the row exactly as the page was rendering it — and undoing posts that receipt
+  to a restore. That's what makes the row come back *identical*: a history row
+  keeps its resume point, its "Watched" badge and its place in the list, and a
+  playlist item goes back to its position rather than to the top. Re-reporting
+  progress or re-adding the video would produce something subtly different
+  every time, which is the kind of undo that costs more trust than it earns.
+- **No receipt, no offer.** Removing something that wasn't there answers
+  `removed: null`, and nothing is pushed — an Undo button that would put a blank
+  row on the page is worse than no button.
+- **The offer expires in ten seconds**, sooner than an error toast's fifteen: an
+  undo you come back to a minute later is an undo for a screen you have left.
+  It survives navigating within the app, because the restore is a call rather
+  than a piece of page state.
+- **The one that isn't a restore** is a deleted download: the file is off the
+  disk, so taking it back fetches it again. Worth offering anyway — what the
+  click saves is finding the video again, and the card says *Downloading* so
+  nobody is misled about what's happening.
+- **Undo has its own button.** Clicking the message dismisses the toast, and a
+  misclick that threw the undo away would be a poor thing to do with a toast
+  that exists to catch misclicks.
+
+What is deliberately *not* undoable: hiding a channel (already reversible, and
+visibly — the sidebar has a switch for it) and deleting a channel or a playlist,
+which take their videos with them and want a confirmation rather than a
+ten-second window.
+
 ### Comments (`Comments.tsx`)
 
 Under the description, in the **left** column — so an open transcript is still
@@ -1850,7 +1892,8 @@ two shims Radix's slider needs to mount at all (below).
 | `NotificationBell.test.tsx` | the badge and its cap, opening the bell clearing it, the cover and its icon fallback, a summary row opening the video on its Ask panel while a failure row has nowhere to send you, and dismissing one row without touching the rest |
 | `summaryStore.test.tsx` | the length reaching the server, the label appearing on the click rather than the round trip, coming back off when the request is refused, and holding its last known value when the server can't be reached — plus the filter's half of the store: the finished ids only, one landing mid-session, and the snapshot identity `useSyncExternalStore` would otherwise re-render forever on |
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
-| `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync |
+| `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync and the undo toast: one press only, dismissing without undoing, and expiring sooner than an error |
+| `undo.test.tsx` | the four undoable removals: that the server's receipt is what goes back, that a playlist item keeps its place, that a deleted download is fetched again, and that nothing is offered when nothing was removed |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |

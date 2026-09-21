@@ -555,6 +555,11 @@ export const th: Record<string, string> = {
   'Oldest edge': 'ขอบเก่าสุด',
   // Toasts
   'Dismiss': 'ปิด',
+  'Undo': 'เลิกทำ',
+  'Removed from history': 'ลบออกจากประวัติแล้ว',
+  'Removed from the playlist': 'ลบออกจากเพลย์ลิสต์แล้ว',
+  'Removed from imported': 'ลบออกจากรายการที่นำเข้าแล้ว',
+  'Download deleted': 'ลบไฟล์ที่ดาวน์โหลดแล้ว',
   // Time window, in a sentence
   'long|1d': '1 วัน',
   'long|3d': '3 วัน',

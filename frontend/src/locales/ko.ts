@@ -555,6 +555,11 @@ export const ko: Record<string, string> = {
   'Oldest edge': '오래된 끝',
   // Toasts
   'Dismiss': '닫기',
+  'Undo': '실행 취소',
+  'Removed from history': '시청 기록에서 삭제했습니다',
+  'Removed from the playlist': '재생목록에서 삭제했습니다',
+  'Removed from imported': '가져온 항목에서 삭제했습니다',
+  'Download deleted': '다운로드를 삭제했습니다',
   // Time window, in a sentence
   'long|1d': '1일',
   'long|3d': '3일',
