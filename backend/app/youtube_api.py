@@ -106,15 +106,24 @@ def _get_creds() -> Credentials:
 
 
 def _parse_iso8601_duration(duration_str: str) -> int:
-    """Convert ISO 8601 duration (PT1H2M3S) to seconds."""
+    """Convert ISO 8601 duration (PT1H2M3S) to seconds.
+
+    The day component is part of the format and YouTube does use it: anything
+    at or past 24 hours comes back as `P1DT2H30M`, which a time-only pattern
+    matches as far as the `P` and then reads as zero. A multi-day stream
+    archive filed as 0 seconds isn't merely mislabelled — `duration_seconds`
+    is what the length filter buckets on, so it lands in "under 5 minutes".
+    """
     if not duration_str:
         return 0
     import re
-    match = re.match(r"PT?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
+    match = re.fullmatch(
+        r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?", duration_str
+    )
     if not match:
         return 0
-    h, m, s = [int(g) if g else 0 for g in match.groups()]
-    return h * 3600 + m * 60 + s
+    d, h, m, s = [float(g) if g else 0 for g in match.groups()]
+    return int(d * 86400 + h * 3600 + m * 60 + s)
 
 
 def batch_fetch_video_stats(video_ids: list[str]) -> dict[str, dict[str, Any]]:
