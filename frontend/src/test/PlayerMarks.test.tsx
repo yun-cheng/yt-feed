@@ -131,6 +131,23 @@ async function renderMarks(player: PlayerApi, videoId = 'vid1') {
   return out
 }
 
+/** Bookmark `at`, and wait for the SAVED row — id and all — to come back.
+ *
+ * Anything that presses `b` a second time has to go through this, because the
+ * two presses mean different things depending on whether the first one's POST
+ * has landed: a saved mark is deleted on the server, while one still carrying
+ * its temporary negative id is only dropped from view (its own test is below —
+ * "does not try to delete a mark that never reached the server").
+ *
+ * Waiting on `posted` doesn't tell those apart. The mock records it inside the
+ * call, so it's already true before the id exists, and the test then turns on
+ * whether the microtask queue happened to drain first — which under load it
+ * didn't, about one run in three. */
+async function markAt(p: { _set: (t: number) => void }, at: number) {
+  act(() => { p._set(at) })
+  await act(async () => { key('b') })
+}
+
 let posted: Array<Record<string, unknown>>
 let deleted: string[]
 /** The server's saved passages, by video — many per video, at most one active. */
@@ -228,9 +245,7 @@ describe('usePlayerMarks — bookmarks', () => {
   it('pressing b again at the same moment removes the mark', async () => {
     const p = fakePlayer()
     await renderMarks(p)
-    act(() => { p._set(42) })
-    act(() => key('b'))
-    await waitFor(() => expect(posted.length).toBe(1))
+    await markAt(p, 42)
     act(() => key('b'))
     expect(screen.getByTestId('marks')).toBeEmptyDOMElement()
     await waitFor(() => expect(deleted).toEqual(['/api/bookmarks/id/1']))
@@ -239,17 +254,19 @@ describe('usePlayerMarks — bookmarks', () => {
   it('removes a mark a second or two away, since you cannot press it precisely', async () => {
     const p = fakePlayer()
     await renderMarks(p)
-    act(() => { p._set(42) }); act(() => key('b'))
-    await waitFor(() => expect(posted.length).toBe(1))
+    await markAt(p, 42)
     act(() => { p._set(43.5) }); act(() => key('b'))
     expect(screen.getByTestId('marks')).toBeEmptyDOMElement()
+    // The DELETE as well as the disappearance: clearing a mark that never
+    // reached the server empties the list too, so the list alone doesn't say
+    // which of the two happened.
+    await waitFor(() => expect(deleted).toEqual(['/api/bookmarks/id/1']))
   })
 
   it('adds rather than removes once you are clear of the tolerance', async () => {
     const p = fakePlayer()
     await renderMarks(p)
-    act(() => { p._set(42) }); act(() => key('b'))
-    await waitFor(() => expect(posted.length).toBe(1))
+    await markAt(p, 42)
     act(() => { p._set(50) }); act(() => key('b'))
     await waitFor(() => expect(screen.getByTestId('marks')).toHaveTextContent('42,50'))
   })
@@ -259,13 +276,13 @@ describe('usePlayerMarks — bookmarks', () => {
     await renderMarks(p)
     // Just over the tolerance apart, so the second press adds rather than
     // removing the first — the start and end of a short phrase.
-    act(() => { p._set(40) }); act(() => key('b'))
-    await waitFor(() => expect(posted.length).toBe(1))
-    act(() => { p._set(43) }); act(() => key('b'))
-    await waitFor(() => expect(posted.length).toBe(2))
+    await markAt(p, 40)
+    await markAt(p, 43)
     // 41.6 is inside the tolerance of both; the 43 one is nearer.
     act(() => { p._set(41.6) }); act(() => key('b'))
     await waitFor(() => expect(screen.getByTestId('marks')).toHaveTextContent('40'))
+    // And it's the 43 one the server was told about, not the 40.
+    expect(deleted).toEqual(['/api/bookmarks/id/2'])
   })
 
   it('rolls the mark back when the save fails', async () => {
@@ -292,10 +309,8 @@ describe('usePlayerMarks — bookmarks', () => {
   it('confirms each press on screen', async () => {
     const p = fakePlayer()
     await renderMarks(p)
-    act(() => { p._set(65) })
-    act(() => key('b'))
+    await markAt(p, 65)
     expect(screen.getByTestId('flash')).toHaveTextContent('Bookmarked · 1:05')
-    await waitFor(() => expect(posted.length).toBe(1))
     act(() => key('b'))
     expect(screen.getByTestId('flash')).toHaveTextContent('Bookmark removed · 1:05')
   })

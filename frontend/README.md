@@ -1990,3 +1990,21 @@ early return doesn't `stopPropagation` and the click still reaches the card
 wrapper. `PlayerMarks.test.tsx` pins another: a `b` pressed before the bookmark
 list finishes loading is wiped from view by the load handler, though the POST
 still saves it.
+
+### Waiting for the right thing
+
+`PlayerMarks.test.tsx` presses `b` twice in several tests, and what the second
+press does depends on whether the first one's POST has come *back*: a saved mark
+is deleted on the server, while one still carrying its temporary negative id is
+only dropped from view. Both are real behaviours, each with its own test.
+
+Waiting on the request going *out* — `await waitFor(() => expect(posted.length)
+.toBe(1))` — doesn't tell them apart. The mock records `posted` inside the call,
+so that condition is already true before the id exists; the test then turned on
+whether the microtask queue happened to drain first, which under load it didn't,
+about one run in three. `markAt()` awaits the save itself, and is what anything
+pressing twice should use.
+
+The general form: **wait for the state the next step depends on, not for the
+request that will eventually produce it.** A test that waits on the wrong signal
+doesn't fail — it quietly tests the other path, and reports that as a pass.
