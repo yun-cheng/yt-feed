@@ -1,6 +1,22 @@
-import { describe, it, expect } from 'vitest'
-import { captureFilters, forPage, hasAnyFilter, isActive, NO_FILTERS } from '../lib/presets'
-import type { FilterSections, LiveFilters } from '../lib/presets'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  captureFilters, deletePreset, forPage, hasAnyFilter, isActive, listPresets,
+  NO_FILTERS, savePreset,
+} from '../lib/presets'
+import type { FilterSections, LiveFilters, Preset } from '../lib/presets'
+import * as toastStore from '../hooks/toastStore'
+
+/** A Response carrying `payload`, or refusing with the given status. */
+function ok(payload: unknown = {}, over: Partial<Response> = {}) {
+  return {
+    ok: true,
+    status: 200,
+    clone: () => ({ text: async () => JSON.stringify(payload) }),
+    json: async () => payload,
+    text: async () => JSON.stringify(payload),
+    ...over,
+  } as unknown as Response
+}
 
 const ALL: FilterSections = {
   watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true, length: true,
@@ -156,5 +172,58 @@ describe('forPage', () => {
   it('leaves a preset the page can wear whole exactly as it was', () => {
     const p = { ...NO_FILTERS, watch: ['watched'] }
     expect(forPage(p, OFFERED)).toEqual(p)
+  })
+})
+
+// ── The three calls behind the sidebar's preset row ──────────────────
+//
+// Thin wrappers, but each carries a decision about what a failure looks like:
+// the sidebar draws whatever `listPresets` returns, so a dead server has to
+// come back as "no presets" rather than as a crash or a half-object.
+
+describe('the preset API calls', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => ok()))
+    vi.spyOn(toastStore, 'pushToast').mockReturnValue(1)
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('lists what the server holds', async () => {
+    const rows = [{ id: 1, name: 'Music', filters: NO_FILTERS }]
+    vi.mocked(fetch).mockResolvedValueOnce(ok(rows))
+    expect(await listPresets()).toEqual(rows)
+  })
+
+  it('reads an unreachable server as no presets, not as a broken row', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(ok(null, { ok: false, status: 500 }))
+    expect(await listPresets()).toEqual([])
+  })
+
+  it('sends the name and the filters together', async () => {
+    const filters = { ...NO_FILTERS, tags: ['music'] }
+    await savePreset('Music', filters)
+    expect(fetch).toHaveBeenCalledWith('/api/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Music', filters }),
+    })
+  })
+
+  it('is null when the save is refused, so nothing is added to the row', async () => {
+    // A name the server rejects (blank, or too long) must not leave a preset
+    // on screen that isn't stored anywhere.
+    vi.mocked(fetch).mockResolvedValueOnce(ok(null, { ok: false, status: 400 }))
+    expect(await savePreset('', NO_FILTERS)).toBeNull()
+  })
+
+  it('reports whether the delete actually happened', async () => {
+    expect(await deletePreset(7)).toBe(true)
+    expect(fetch).toHaveBeenCalledWith('/api/presets/7', { method: 'DELETE' })
+
+    vi.mocked(fetch).mockResolvedValueOnce(ok(null, { ok: false, status: 404 }))
+    expect(await deletePreset(7)).toBe(false)
   })
 })
