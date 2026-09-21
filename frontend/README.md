@@ -1897,6 +1897,26 @@ way out that isn't the browser's own (`onClose`, which calls `history.back()`).
 it. It never fades with the rest of the chrome: the way out of a page can't be
 something you have to wake the player to find.
 
+**Hover is not a thing a phone has.** Tailwind gates `hover:` — and so
+`group-hover:` — behind `@media (hover: hover)`, which makes
+`opacity-0 group-hover:opacity-100` a control that is permanently invisible
+where there is no pointer. `index.css` declares a `hoverable` variant for the
+other half of that pair: `hoverable:opacity-0` hides a control only where
+hovering can bring it back, and it simply stays visible everywhere else. The
+reveal has to be prefixed too (`hoverable:group-hover:opacity-100`) — a custom
+variant is emitted after the built-in ones, so an unprefixed reveal would lose
+to the rule that hides it, at equal specificity, on a desktop as well.
+`touchReveal.test.ts` enforces both halves across every component.
+
+What that covers today: deleting a playlist, deleting a mark, dismissing a
+summary notification, removing a local folder, hiding a channel, and the volume
+and audio-boost sliders in our own control bar (`REVEALING_SLIDER`, which is
+the shared half of those two — each site still spells out its own group's
+reveal, because Tailwind reads the source for literal class names and generates
+nothing for one assembled at runtime). Three reveals are deliberately
+left alone — the preview's volume slider and scrubber knob, and the up-next
+peek — because they live inside a hover preview a phone never opens.
+
 ## Tests
 
 Component/behavior tests live in `src/test/` and run under Vitest + jsdom
@@ -1914,6 +1934,7 @@ two shims Radix's slider needs to mount at all (below).
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync and the undo toast: one press only, dismissing without undoing, and expiring sooner than an error |
 | `undo.test.tsx` | the four undoable removals: that the server's receipt is what goes back, that a playlist item keeps its place, that a deleted download is fetched again, and that nothing is offered when nothing was removed |
+| `touchReveal.test.ts` | that no control is hidden behind a hover a phone can't perform — and that the reveal which brings it back is prefixed to outrank the rule that hides it |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |

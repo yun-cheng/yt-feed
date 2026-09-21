@@ -109,7 +109,7 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
                 onClick={(e) => { e.stopPropagation(); onDelete(p.id) }}
                 title={t('Delete playlist')}
                 aria-label={t('Delete playlist')}
-                className="flex-shrink-0 p-1 rounded-full text-[#888] hover:text-white hover:bg-white/10 opacity-0 group-hover:opacity-100 transition"
+                className="flex-shrink-0 p-1 rounded-full text-[#888] hover:text-white hover:bg-white/10 hoverable:opacity-0 hoverable:group-hover:opacity-100 transition"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />

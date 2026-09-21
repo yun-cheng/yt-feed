@@ -705,7 +705,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
               onClick={() => onDrop(l.id)}
               title={t('Delete this passage')}
               aria-label={t('Delete passage {range}', { range: loopLabel(l) })}
-              className="mr-1 shrink-0 rounded p-1 text-white/40 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus:opacity-100 group-hover/row:opacity-100"
+              className="mr-1 shrink-0 rounded p-1 text-white/40 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />

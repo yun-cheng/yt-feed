@@ -96,7 +96,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
                 <button
                   onClick={(e) => { e.stopPropagation(); onRemove(f.id) }}
                   title={t('Remove this folder from the app (the files stay)')}
-                  className="flex-shrink-0 rounded p-1.5 text-[#717171] opacity-0 transition-all hover:bg-[#272727] hover:text-white group-hover:opacity-100"
+                  className="flex-shrink-0 rounded p-1.5 text-[#717171] hoverable:opacity-0 transition-all hover:bg-[#272727] hover:text-white hoverable:group-hover:opacity-100"
                 >
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

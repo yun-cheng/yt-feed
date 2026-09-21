@@ -166,7 +166,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
                 onClick={(e) => { e.stopPropagation(); setConfirming(confirming === ch.youtube_id ? null : ch.youtube_id) }}
                 title={t('Remove channel')}
                 aria-label={t('Remove channel')}
-                className="absolute top-2 right-10 z-10 p-1.5 rounded-full text-[#aaa] opacity-0 transition-colors hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                className="absolute top-2 right-10 z-10 p-1.5 rounded-full text-[#aaa] hoverable:opacity-0 transition-colors hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100"
               >
                 <TrashIcon />
               </button>
@@ -176,7 +176,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
               onClick={(e) => { e.stopPropagation(); onToggleHidden(ch.youtube_id) }}
               title={isHidden ? t('Show on home') : t('Hide from home')}
               aria-label={isHidden ? t('Show on home') : t('Hide from home')}
-              className={`absolute top-2 right-2 z-10 p-1.5 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors ${isHidden ? '' : 'opacity-0 group-hover:opacity-100'}`}
+              className={`absolute top-2 right-2 z-10 p-1.5 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors ${isHidden ? '' : 'hoverable:opacity-0 hoverable:group-hover:opacity-100'}`}
             >
               {isHidden ? <EyeOffIcon /> : <EyeIcon />}
             </button>

@@ -46,6 +46,20 @@ import { shortcutLabel } from '../lib/shortcuts'
 export const BAR_BUTTON =
   'flex h-10 w-12 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10'
 
+// A slider that unrolls out of the button beside it — volume, and boost. Each
+// site adds its own group's reveal, which has to be written out rather than
+// interpolated: Tailwind reads the source for literal class names and would
+// generate nothing for a name assembled at runtime.
+//
+// Collapsed only where there's a pointer to unroll it with (`hoverable`, see
+// index.css), and open by default everywhere else — a slider you can only
+// reach by hovering is one a phone can't reach at all. The reveals carry the
+// same prefix for a duller reason: a custom variant is emitted after the
+// built-in ones, so an unprefixed `group-hover:` would come first and lose to
+// `hoverable:w-0` at equal specificity, shutting the slider on a desktop too.
+const REVEALING_SLIDER =
+  'ml-1 h-1 w-16 cursor-pointer accent-white transition-all duration-150 hoverable:w-0 hoverable:opacity-0 hoverable:focus:w-16 hoverable:focus:opacity-100'
+
 // The scrub popup's size. Both sources render into it: the local <video>, and a
 // storyboard frame scaled to match (see `sbFrame` below).
 //
@@ -504,7 +518,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             }}
             title={t('Volume ({up}/{down})', { up: shortcutLabel('volumeUp'), down: shortcutLabel('volumeDown') })}
             aria-label={t('Volume')}
-            className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/vol:w-16 group-hover/vol:opacity-100 focus:w-16 focus:opacity-100"
+            className={`${REVEALING_SLIDER} hoverable:group-hover/vol:w-16 hoverable:group-hover/vol:opacity-100`}
           />
           {/* The number the slider is sitting on. Always shown, unlike the
               slider it labels: the level is worth knowing without having to go
@@ -547,7 +561,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               onChange={(e) => setBoost(Number(e.target.value))}
               title={t('Volume boost, this video only')}
               aria-label={t('Volume boost')}
-              className="ml-1 h-1 w-0 cursor-pointer accent-white opacity-0 transition-all duration-150 group-hover/boost:w-16 group-hover/boost:opacity-100 focus:w-16 focus:opacity-100"
+              className={`${REVEALING_SLIDER} hoverable:group-hover/boost:w-16 hoverable:group-hover/boost:opacity-100`}
             />
             {/* Shown only while it's doing something. At 1× it would be a
                 number that never moves, next to one that does. */}

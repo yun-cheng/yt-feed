@@ -145,7 +145,7 @@ export default function NotificationBell() {
                   <button
                     onClick={() => dismissNotification(n.id)}
                     aria-label={t('Dismiss notification')}
-                    className="mt-0.5 rounded-full p-1 text-[#717171] opacity-0 transition-opacity hover:bg-white/10 hover:text-white group-hover:opacity-100 focus:opacity-100"
+                    className="mt-0.5 rounded-full p-1 text-[#717171] hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100 hoverable:focus:opacity-100"
                   >
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

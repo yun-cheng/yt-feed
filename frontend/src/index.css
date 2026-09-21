@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* A control that only appears on hover is a control that doesn't exist on a
+   phone: Tailwind gates `hover:` behind `@media (hover: hover)`, so a
+   `group-hover:opacity-100` reveal never fires where there is no pointer.
+
+   This marks the HIDING half instead — `hoverable:opacity-0` — so a control is
+   hidden only where hovering can bring it back, and simply stays visible
+   everywhere else. Its reveal must carry the prefix too
+   (`hoverable:group-hover:opacity-100`): a custom variant is emitted after the
+   built-in ones, so an unprefixed reveal would come first in the sheet and lose
+   to the rule hiding it at equal specificity — leaving the control invisible on
+   a desktop as well, which is the opposite of the bug being fixed. Both halves,
+   or neither; `test/touchReveal.test.ts` enforces that across the components. */
+@custom-variant hoverable (@media (hover: hover));
+
 * {
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a transparent;
