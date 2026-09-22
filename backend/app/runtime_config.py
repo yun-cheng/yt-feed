@@ -13,8 +13,8 @@ That precedence is already the pattern here: `archive_fill_enabled` has used its
 is the same idea for the values that are secrets.
 
 **Why it reads SQLite directly, and synchronously.** Every caller is sync —
-`llm.chat` posts with httpx.post and `search_index._headers` builds a dict —
-and neither of them can await. An
+`llm.chat` posts with httpx.post, `search_index._headers` builds a dict,
+`ytdl.opts` is called from a worker thread — and none of them can await. An
 `asyncio.run` from inside the request loop would raise, and a cache that had to
 be primed by the lifespan would be empty in the test suite (which doesn't run
 one) and in the scan thread (which has its own loop). One read-only sqlite3
@@ -29,12 +29,16 @@ from pathlib import Path
 
 from app.config import settings as env_settings
 
-# The keys this module answers for, and the `.env` field each falls back to.
+# The keys this module answers for, and where each one comes from if nothing is
+# stored. A key absent from `_ENV_FIELD` has no environment twin on purpose:
+# a cookie jar is thousands of characters of someone's session, which is not
+# something to put in an environment variable or a compose file.
 _ENV_FIELD = {
     "openrouter_api_key": "openrouter_api_key",
     "google_client_id": "google_client_id",
     "google_client_secret": "google_client_secret",
     "meili_master_key": "meili_master_key",
+    "youtube_proxy": "youtube_proxy",
 }
 
 _stored: dict[str, str] | None = None
@@ -113,3 +117,43 @@ def google_client_secret() -> str:
 
 def meili_master_key() -> str:
     return get("meili_master_key")
+
+
+def youtube_proxy() -> str:
+    return get("youtube_proxy")
+
+
+def youtube_cookies_file() -> str:
+    """Path to the yt-dlp cookie jar, or "" if there is nothing to read.
+
+    yt-dlp takes a path, so the value stored in the database is materialised to
+    `settings.cookies_path` by `write_cookies_file` when it changes. A file put
+    there by hand works too, and is the way to use cookies without pasting them
+    into a web form — nothing here overwrites it unless the setting is written.
+    """
+    stored = get("youtube_cookies")
+    path = Path(env_settings.cookies_path)
+    if stored and not path.is_file():
+        # The setting outlived its file: a volume restored without config/, say.
+        write_cookies_file(stored)
+    return str(path) if path.is_file() else ""
+
+
+def write_cookies_file(contents: str) -> None:
+    """Put the cookie jar on disk, or take it away.
+
+    Written 0600 and under `config_dir` beside the OAuth token, which is the
+    other live credential this app keeps as a file. Empty contents delete it
+    rather than leaving an empty jar, because yt-dlp treats an empty cookie file
+    as a valid one and would stop telling us it has no cookies.
+    """
+    path = Path(env_settings.cookies_path)
+    if not contents.strip():
+        path.unlink(missing_ok=True)
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents if contents.endswith("\n") else contents + "\n")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass

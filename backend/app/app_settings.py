@@ -138,6 +138,48 @@ SPEC: tuple[Spec, ...] = (
         group="Connections",
     ),
     Spec(
+        key="youtube_cookies",
+        type="secret",
+        multiline=True,
+        default=lambda: "",
+        scope="app",
+        # Reuses the generic live-status line the settings page already renders,
+        # so the one thing you want to know after pasting these — is extraction
+        # working now? — is answered in place.
+        status="/api/youtube/extraction-status",
+        placeholder="# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\t…",
+        label="YouTube cookies",
+        description=(
+            "For a server YouTube won't serve. Hosted away from home, requests "
+            "often come back asking you to confirm you're not a bot, and cookies "
+            "from a signed-in browser are what answers that. Export them with a "
+            "cookies.txt extension and paste the file here. "
+            "⚠ These are a full session for that Google account — far more than "
+            "signing in grants — and replaying them from a datacenter address is "
+            "a known way to get an account flagged. Use a throwaway account, "
+            "never your main one."
+        ),
+        group="Connections",
+    ),
+    Spec(
+        key="youtube_proxy",
+        # A secret rather than plain text, because a residential proxy URL
+        # routinely carries its credentials in it (http://user:pass@host:port) —
+        # so this field is a password that happens to look like an address.
+        type="secret",
+        default=lambda: "",
+        scope="app",
+        placeholder="http://user:pass@host:port",
+        label="YouTube proxy",
+        description=(
+            "The other answer to the same problem: send yt-dlp's requests from "
+            "somewhere else. A residential proxy is what usually works where a "
+            "datacenter address doesn't. Applies to metadata, captions and "
+            "downloads alike."
+        ),
+        group="Connections",
+    ),
+    Spec(
         key="meili_master_key",
         type="secret",
         default=lambda: "",
@@ -525,11 +567,14 @@ def _after_write(updates: dict[str, Any]) -> None:
     """Make the change visible to the code that reads these values.
 
     `runtime_config` caches, because its callers are sync and can't await a
-    query — so a write has to say so.
+    query — so a write has to say so. And the cookie jar has to reach the disk,
+    because yt-dlp is given a path rather than a string.
     """
     from app import runtime_config
 
     runtime_config.invalidate()
+    if "youtube_cookies" in updates:
+        runtime_config.write_cookies_file(str(updates["youtube_cookies"]))
 
 
 def described() -> list[dict[str, Any]]:

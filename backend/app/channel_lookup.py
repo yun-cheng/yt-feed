@@ -19,7 +19,7 @@ import re
 from functools import partial
 from typing import Any
 
-from app import quota
+from app import quota, ytdl
 from app.youtube_api import QuotaExceeded, fetch_channel_details, take_quota_delta
 
 # A channel id is exactly "UC" plus 22 URL-safe characters. Worth matching
@@ -97,13 +97,11 @@ def _extract_channel(url: str) -> dict[str, Any] | None:
     """
     import yt_dlp
 
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "extract_flat": "in_playlist",
-        "playlist_items": "1",
-    }
+    opts = ytdl.opts(
+        skip_download=True,
+        extract_flat="in_playlist",
+        playlist_items="1",
+    )
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)

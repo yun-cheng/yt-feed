@@ -597,4 +597,8 @@ export const ko: Record<string, string> = {
   'The secret from the same OAuth client as the ID above.': '위 ID와 같은 OAuth 클라이언트의 보안 비밀입니다.',
   'Meilisearch key': 'Meilisearch 키',
   'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': 'MEILI_URL이 키를 요구하는 Meilisearch를 가리킬 때만 필요합니다. 함께 제공되는 compose 파일의 것은 필요 없으며 외부에서 접근할 수 없습니다. 검색은 언제나 선택 사항입니다: 없으면 검색 결과가 비고 나머지는 영향받지 않습니다.',
+  'YouTube cookies': 'YouTube 쿠키',
+  'For a server YouTube won\'t serve. Hosted away from home, requests often come back asking you to confirm you\'re not a bot, and cookies from a signed-in browser are what answers that. Export them with a cookies.txt extension and paste the file here. ⚠ These are a full session for that Google account — far more than signing in grants — and replaying them from a datacenter address is a known way to get an account flagged. Use a throwaway account, never your main one.': 'YouTube가 응답하지 않는 서버를 위한 것입니다. 집 밖에 호스팅하면 로봇이 아님을 확인하라는 응답이 자주 오고, 로그인된 브라우저의 쿠키가 그 답입니다. cookies.txt 확장으로 내보내 여기에 붙여넣으세요. ⚠ 이것은 해당 Google 계정의 전체 세션으로, 로그인이 허용하는 범위보다 훨씬 넓으며, 데이터센터 주소에서 재사용하면 계정이 표시되는 알려진 원인입니다. 주 계정이 아닌 임시 계정을 사용하세요.',
+  'YouTube proxy': 'YouTube 프록시',
+  'The other answer to the same problem: send yt-dlp\'s requests from somewhere else. A residential proxy is what usually works where a datacenter address doesn\'t. Applies to metadata, captions and downloads alike.': '같은 문제에 대한 다른 답입니다: yt-dlp의 요청을 다른 곳에서 보냅니다. 데이터센터 주소가 막힐 때는 보통 가정용 프록시가 통합니다. 메타데이터, 자막, 다운로드에 모두 적용됩니다.',
 }

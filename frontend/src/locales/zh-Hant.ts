@@ -598,4 +598,8 @@ export const zhHant: Record<string, string> = {
   'The secret from the same OAuth client as the ID above.': '與上面 ID 同一組 OAuth 用戶端的密鑰。',
   'Meilisearch key': 'Meilisearch 金鑰',
   'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': '只有在 MEILI_URL 指向需要金鑰的 Meilisearch 時才需要。內附 compose 檔裡的那個不需要——它無法從外部連上。搜尋一直是選用的：沒有它時搜尋沒有結果，其他功能不受影響。',
+  'YouTube cookies': 'YouTube cookies',
+  'For a server YouTube won\'t serve. Hosted away from home, requests often come back asking you to confirm you\'re not a bot, and cookies from a signed-in browser are what answers that. Export them with a cookies.txt extension and paste the file here. ⚠ These are a full session for that Google account — far more than signing in grants — and replaying them from a datacenter address is a known way to get an account flagged. Use a throwaway account, never your main one.': '給 YouTube 不願服務的伺服器用。部署在自家網路之外時，請求常會被要求「確認你不是機器人」，而已登入瀏覽器的 cookies 就是答案。用 cookies.txt 擴充功能匯出後貼在這裡。⚠ 這是該 Google 帳號的完整工作階段——比登入授權的範圍大得多——而且從機房位址重放這些 cookies 是帳號被標記的已知原因。請用備用帳號，絕對不要用主帳號。',
+  'YouTube proxy': 'YouTube 代理伺服器',
+  'The other answer to the same problem: send yt-dlp\'s requests from somewhere else. A residential proxy is what usually works where a datacenter address doesn\'t. Applies to metadata, captions and downloads alike.': '同一個問題的另一種答案：讓 yt-dlp 的請求從別的地方發出。機房位址行不通時，通常住宅代理可以。中介資料、字幕與下載都會透過它。',
 }

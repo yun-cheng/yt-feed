@@ -268,6 +268,20 @@ async def youtube_token_status(force: bool = False):
     return youtube_credentials_status(force=force)
 
 
+@app.get("/api/youtube/extraction-status")
+async def extraction_status():
+    """Whether yt-dlp is getting through, in a sentence.
+
+    A different question from `/api/youtube-token` above, which is about the OAuth
+    token and the Data API. This one is about scraping youtube.com, which is what
+    the scan, captions, previews and downloads all go through — and which is what
+    a hosted deployment gets refused for. Rendered as the live status line under
+    the YouTube cookies setting, hence the `text` key (see `app_settings.Spec`).
+    """
+    from app import ytdl
+    return ytdl.status()
+
+
 _refreshing = False
 
 

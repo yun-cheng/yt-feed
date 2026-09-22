@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import ytdl
 from app.config import settings
 from app.database import async_session
 from app.models import Download
@@ -69,18 +70,16 @@ def _download_file(video_id: str) -> int:
     import yt_dlp
 
     os.makedirs(settings.downloads_dir, exist_ok=True)
-    opts = {
+    opts = ytdl.opts(
         # Prefer mp4/m4a (h264+aac) so the browser <video> can play it; ffmpeg
         # merges the separate streams into a single .mp4 (higher quality than the
         # progressive-only formats a stdout stream would be limited to).
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-        "merge_output_format": "mp4",
-        "outtmpl": os.path.join(settings.downloads_dir, "%(id)s.%(ext)s"),
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "overwrites": True,
-    }
+        format="bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        merge_output_format="mp4",
+        outtmpl=os.path.join(settings.downloads_dir, "%(id)s.%(ext)s"),
+        noplaylist=True,
+        overwrites=True,
+    )
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
     path = _file_path(video_id)

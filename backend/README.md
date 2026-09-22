@@ -53,6 +53,7 @@ app/
   bootstrap.py     what has to be true before serving: the data dir, and the
                    one-time copy forward from backend/config/
   runtime_config.py  keys as the code reads them: stored value, else .env
+  ytdl.py          the shared yt-dlp options (cookies, proxy) + extraction health
   database.py      Async engine + session factory, schema create, tiny migrations
   models.py        SQLAlchemy tables (see "Data model")
 
@@ -92,7 +93,7 @@ app/
 
 $DATA_DIR/         everything the app WRITES, under one directory:
                    youtube_feed.db, config/ (oauth token, subscriptions.yaml,
-                   categories.yaml), downloads/, local_thumbs/
+                   categories.yaml, youtube_cookies.txt), downloads/, local_thumbs/
 .env               deployment wiring: ports, paths, service addresses. API keys
                    may be here too, but only as bootstrap defaults — the live
                    values are stored settings (app_settings.py, runtime_config.py)
@@ -1936,6 +1937,28 @@ derived default, so a test run copied the developer's live OAuth token into itse
 and began making real YouTube API calls with it. An explicit flag, and
 `tests/test_bootstrap.py` pins it.
 
+### When YouTube refuses (`ytdl.py`)
+
+yt-dlp is reached from nine places, and none of them is the right place to decide
+how to get past a bot check. `ytdl.opts(**extra)` is the shared floor — `quiet`,
+`no_warnings`, a logger, and the cookie jar and proxy when they're set — with each
+call site's own options layered on top. Deliberately NOT a unification of those
+nine dicts: the scan's retry caps exist because of a socket leak that once
+exhausted the machine's ephemeral ports, and the comments call has its own
+`extractor_args` a shared one would clobber. Only the floor is shared, and
+`tests/test_ytdl_opts.py` reads the app to check that nobody builds their own.
+
+The logger is why failures are recorded without nine call sites remembering to.
+`status()` reports them, and singles out *"Sign in to confirm you're not a bot"* by
+its wording — the one failure with a known remedy, which reported as "extraction
+failed" sends people to look at their network, their disk, anywhere but the
+setting that fixes it. It is served at `/api/youtube/extraction-status` and
+rendered by the generic `StatusLine` the settings page already had, wired up by
+one `status=` on the cookies `Spec`. Success is recorded **only** by the scan: it
+runs unattended every 15 minutes across every channel, so "the last scan worked"
+says something about the deployment, where "a hover preview worked" is one video
+one person pointed at.
+
 ---
 
 ## Concurrency notes (the non-obvious bits)
@@ -2145,6 +2168,8 @@ no per-test decorator). What's covered:
 | `test_spa_fallback.py` | serving the built frontend from this process without swallowing the API: a client-side route answered with the app, and an unknown `/api` path still a 404 — which is what keeps `test_api_contract.py` above meaning anything, since a catch-all that answered it would make every call site match |
 
 | `test_settings_secrets.py` | that a key never comes back out of the API it went in through, for every secret and not just the one; the tail-shaped hint; a stored value beating `.env` while an emptied field *removes* the row so the environment shows through again rather than the feature going quiet; a trailing newline stripped but a newline in the middle of a one-line credential refused; and the cookie jar reaching disk as a file yt-dlp can be handed |
+
+| `test_ytdl_opts.py` | the shared yt-dlp floor: cookies and proxy passed only when set, a call site's own options surviving the merge — and, read across `app/`, that no call site builds its own option dict, because one that did would ignore both and fail while everything around it worked. Plus the extraction status: a bot check reported as itself rather than as "extraction failed", recorded by the logger without nine call sites remembering to |
 
 `conftest.py` redirects `DATA_DIR`, `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import

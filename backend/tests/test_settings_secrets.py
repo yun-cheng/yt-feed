@@ -21,7 +21,7 @@ from app import app_settings, runtime_config
 from app.config import settings as env_settings
 
 SECRETS = ("openrouter_api_key", "google_client_id", "google_client_secret",
-           "meili_master_key")
+           "youtube_cookies", "meili_master_key")
 
 
 # ── Never readable ───────────────────────────────────────────────────
@@ -70,9 +70,9 @@ async def test_the_test_endpoint_reports_without_echoing(client):
 
 
 async def test_a_setting_that_cannot_be_tested_says_so(client):
-    """Rather than reporting a cheerful nothing. The Google client can only be
-    checked by completing a consent flow, which is its own answer."""
-    assert (await client.post("/api/settings/test/google_client_id")).status_code == 404
+    """Rather than reporting a cheerful nothing. Cookies aren't testable by a
+    round trip — extraction is what tests them, which the status line reports."""
+    assert (await client.post("/api/settings/test/youtube_cookies")).status_code == 404
 
 
 # ── Precedence ───────────────────────────────────────────────────────
@@ -166,10 +166,52 @@ async def test_an_over_long_value_is_refused(client):
     assert "characters" in r.text
 
 
+async def test_the_cookie_jar_may_be_long_and_multiline(client):
+    """It's a file, and a real one runs to tens of kilobytes."""
+    jar = "# Netscape HTTP Cookie File\n" + "\n".join(
+        f".youtube.com\tTRUE\t/\tTRUE\t0\tCOOKIE{i}\tvalue{i}" for i in range(500)
+    )
+
+    r = await client.put("/api/settings", json={"values": {"youtube_cookies": jar}})
+
+    assert r.status_code == 200, r.text
+
+
 async def test_a_non_string_is_refused(client):
     r = await client.put("/api/settings", json={"values": {"openrouter_api_key": 42}})
 
     assert r.status_code == 400
+
+
+# ── The cookie jar reaches the disk ──────────────────────────────────
+
+
+async def test_pasted_cookies_become_a_file_yt_dlp_can_be_given(client):
+    """yt-dlp takes a path, not a string, so the value has to be materialised."""
+    from pathlib import Path
+
+    await client.put("/api/settings", json={"values": {
+        "youtube_cookies": "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tA\tb",
+    }})
+
+    path = runtime_config.youtube_cookies_file()
+    assert path and Path(path).is_file()
+    assert "youtube.com" in Path(path).read_text()
+
+
+async def test_clearing_cookies_removes_the_file(client):
+    """Not an empty one: yt-dlp treats an empty cookie file as a valid one, and
+    would stop telling us it has no cookies."""
+    from pathlib import Path
+
+    await client.put("/api/settings", json={"values": {"youtube_cookies": "x\ty"}})
+    path = Path(env_settings.cookies_path)
+    assert path.is_file()
+
+    await client.put("/api/settings", json={"values": {"youtube_cookies": ""}})
+
+    assert not path.exists()
+    assert runtime_config.youtube_cookies_file() == ""
 
 
 # ── The spec the page renders from ───────────────────────────────────
@@ -178,11 +220,13 @@ async def test_a_non_string_is_refused(client):
 def test_the_connections_group_carries_what_a_control_needs():
     spec = {s["key"]: s for s in app_settings.described()}
 
+    cookies = spec["youtube_cookies"]
+    assert cookies["multiline"] is True
+    assert cookies["placeholder"]
+    # Its live status line, which is where "is extraction working" is answered.
+    assert cookies["status"] == "/api/youtube/extraction-status"
     assert spec["openrouter_api_key"]["testable"] is True
-    assert spec["openrouter_api_key"]["placeholder"]
-    assert spec["openrouter_api_key"]["multiline"] is False
-    # Only what a round trip can check: the Google client needs a consent flow.
-    assert spec["google_client_id"]["testable"] is False
+    assert spec["youtube_cookies"]["testable"] is False
 
 
 def test_every_connection_setting_is_the_deployments_not_a_persons():

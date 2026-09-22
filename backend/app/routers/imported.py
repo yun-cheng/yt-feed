@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import auth, quota, receipts
+from app import auth, quota, receipts, ytdl
 from app.database import async_session
 from app.models import Channel, ImportedVideo, User, UserImport
 from app.ranking import score_video
@@ -82,12 +82,7 @@ def _extract(video_id: str) -> dict:
     """Blocking yt-dlp metadata extraction for one video. Runs in `_import_pool`."""
     import yt_dlp
 
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "noplaylist": True,
-    }
+    opts = ytdl.opts(skip_download=True, noplaylist=True)
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 

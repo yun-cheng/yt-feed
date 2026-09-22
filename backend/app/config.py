@@ -42,6 +42,14 @@ class Settings(BaseSettings):
     # served from. Also what CORS allows.
     app_origin: str = "http://localhost:5173"
 
+    # --- YouTube extraction (yt-dlp) ---
+    # Route yt-dlp's requests through a proxy, for a host whose address YouTube
+    # refuses. Bootstrap default; normally set from Settings → Connections. Kept
+    # as env too because it is the one value you may want in place BEFORE first
+    # boot: the first scan starts 30 seconds in, and on a blocked address that is
+    # a scan that fetches nothing.
+    youtube_proxy: str = ""
+
     # --- Search (Meilisearch companion service) ---
     meili_url: str = "http://127.0.0.1:7700"
     # Bootstrap default; the live value lives in the database. Empty = dev mode
@@ -101,6 +109,16 @@ class Settings(BaseSettings):
         if not self.config_dir:
             self.config_dir = str(Path(self.data_dir) / "config")
         return self
+
+    @property
+    def cookies_path(self) -> str:
+        """The yt-dlp cookie jar, written from the stored setting.
+
+        yt-dlp takes a path, not a string, so the value pasted into Settings has
+        to land on disk somewhere. Under `config_dir` with the OAuth token, which
+        is the other credential this app keeps as a file.
+        """
+        return str(Path(self.config_dir) / "youtube_cookies.txt")
 
     @property
     def downloads_dir(self) -> str:

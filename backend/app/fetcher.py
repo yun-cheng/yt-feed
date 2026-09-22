@@ -12,27 +12,27 @@ from typing import Any
 
 import yt_dlp
 
+from app import ytdl
+
 
 def _run_ytdlp(url: str, **extra_opts) -> list[dict[str, Any]]:
     """Run yt-dlp and return parsed JSON output."""
-    opts = {
-        "quiet": True,
-        "skip_download": True,
-        "dump_single_json": False,
-        "ignoreerrors": True,
-        "no_warnings": True,
+    opts = ytdl.opts(
+        skip_download=True,
+        dump_single_json=False,
+        ignoreerrors=True,
         # Fail fast. yt-dlp defaults to ~10 retries per URL; scanning 130+
         # channels with that fan-out opens thousands of sockets on a flaky
         # fetch and exhausts the process's file descriptors. A failing channel
         # should give up quickly and let the run move on.
-        "socket_timeout": 10,
-        "retries": 1,
-        "extractor_retries": 1,
-        "fragment_retries": 0,
-        "extractor_args": {"youtube": {"skip": ["dash", "hls"]}},
-        "http_headers": {"Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5"},
-    }
-    opts.update(extra_opts)
+        socket_timeout=10,
+        retries=1,
+        extractor_retries=1,
+        fragment_retries=0,
+        extractor_args={"youtube": {"skip": ["dash", "hls"]}},
+        http_headers={"Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5"},
+        **extra_opts,
+    )
 
     # As a context manager, so closing it returns its connections. Every OTHER
     # yt-dlp call site is request-scoped and dies with the request; this one runs
@@ -47,6 +47,13 @@ def _run_ytdlp(url: str, **extra_opts) -> list[dict[str, Any]]:
         info = ydl.extract_info(url, download=False)
     if info is None:
         return []
+
+    # The app's heartbeat against YouTube. Recorded here and nowhere else: the
+    # scan runs unattended every 15 minutes and walks every channel, so "the last
+    # scan worked" is a real statement about whether this deployment can reach
+    # YouTube at all — where "a hover preview worked" is one video one person
+    # happened to point at. `ytdl.status()` reports it under the cookies setting.
+    ytdl.note_success()
 
     # yt-dlp returns a playlist-like dict for channel URLs
     if "entries" in info:
@@ -179,13 +186,11 @@ def fetch_video_details(video_ids: list[str]) -> list[dict[str, Any]]:
     try:
         # Context-managed for the same reason as _run_ytdlp above: this is on the
         # scan path, and one that isn't closed never gives its sockets back.
-        with yt_dlp.YoutubeDL({
-            "quiet": True,
-            "extract_flat": False,
-            "skip_download": True,
-            "ignoreerrors": True,
-            "no_warnings": True,
-        }) as ydl:
+        with yt_dlp.YoutubeDL(ytdl.opts(
+            extract_flat=False,
+            skip_download=True,
+            ignoreerrors=True,
+        )) as ydl:
             info = ydl.extract_info(urls[0], download=False)
             results = []
             entries = [info] if isinstance(info, dict) else (info or [])

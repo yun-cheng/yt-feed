@@ -18,7 +18,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import asr, auth, users
+from app import asr, auth, users, ytdl
 from app.languages import CAPTION_LANG_OPTIONS
 from app.config import settings
 from app.database import async_session
@@ -153,12 +153,7 @@ def _storyboard_from_info(info: dict) -> dict | None:
 def _extract_info(video_id: str) -> dict:
     """Blocking full yt-dlp extraction for one video. Runs in `_preview_pool`."""
     import yt_dlp
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "extract_flat": False,
-    }
+    ydl_opts = ytdl.opts(skip_download=True, extract_flat=False)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 
@@ -228,19 +223,17 @@ def _extract_comments(video_id: str, sort: str, replies: bool) -> dict:
 
     per_thread = COMMENT_REPLIES_PER_THREAD if replies else 0
     total = COMMENT_PARENTS * (1 + per_thread)
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "noplaylist": True,
-        "getcomments": True,
-        "extractor_args": {"youtube": {
+    opts = ytdl.opts(
+        skip_download=True,
+        noplaylist=True,
+        getcomments=True,
+        extractor_args={"youtube": {
             "comment_sort": [sort],
             # total, top-level, replies, replies-per-thread
             "max_comments": [str(total), str(COMMENT_PARENTS),
                              str(total), str(per_thread)],
         }},
-    }
+    )
     with yt_dlp.YoutubeDL(opts) as ydl:
         return ydl.extract_info(
             f"https://www.youtube.com/watch?v={video_id}", download=False
@@ -336,13 +329,11 @@ def _extract_caption_tracks(video_id: str) -> tuple[dict, dict, str | None]:
     """
     import yt_dlp
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "writesubtitles": True,
-        "writeautomaticsub": True,
-    }
+    ydl_opts = ytdl.opts(
+        skip_download=True,
+        writesubtitles=True,
+        writeautomaticsub=True,
+    )
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(
             f"https://www.youtube.com/watch?v={video_id}", download=False
@@ -1287,14 +1278,12 @@ def _asr_fetch_audio(video_id: str) -> str:
     out = _asr_audio_path(video_id)
     if os.path.exists(out):
         return out
-    opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio",
-        "outtmpl": out,
-        "quiet": True,
-        "no_warnings": True,
-        "noplaylist": True,
-        "overwrites": True,
-    }
+    opts = ytdl.opts(
+        format="bestaudio[ext=m4a]/bestaudio",
+        outtmpl=out,
+        noplaylist=True,
+        overwrites=True,
+    )
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
     return out

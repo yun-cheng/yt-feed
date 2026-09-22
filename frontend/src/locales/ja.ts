@@ -597,4 +597,8 @@ export const ja: Record<string, string> = {
   'The secret from the same OAuth client as the ID above.': '上の ID と同じ OAuth クライアントのシークレットです。',
   'Meilisearch key': 'Meilisearch キー',
   'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': 'MEILI_URL がキーを必要とする Meilisearch を指している場合のみ必要です。付属の compose ファイルのものには不要で、外部からは接続できません。検索は常に任意です: なくても検索結果が空になるだけで、他は影響を受けません。',
+  'YouTube cookies': 'YouTube の cookie',
+  'For a server YouTube won\'t serve. Hosted away from home, requests often come back asking you to confirm you\'re not a bot, and cookies from a signed-in browser are what answers that. Export them with a cookies.txt extension and paste the file here. ⚠ These are a full session for that Google account — far more than signing in grants — and replaying them from a datacenter address is a known way to get an account flagged. Use a throwaway account, never your main one.': 'YouTube が応じてくれないサーバー向け。自宅以外にホストすると「ロボットではないことを確認」を求められることが多く、サインイン済みブラウザの cookie がその答えになります。cookies.txt 拡張機能で書き出して、ここに貼り付けてください。⚠ これはその Google アカウントの完全なセッションで、サインインで許可する範囲よりはるかに広く、データセンターのアドレスから使い回すとアカウントがフラグされる既知の原因になります。メインではなく使い捨てのアカウントを使ってください。',
+  'YouTube proxy': 'YouTube プロキシ',
+  'The other answer to the same problem: send yt-dlp\'s requests from somewhere else. A residential proxy is what usually works where a datacenter address doesn\'t. Applies to metadata, captions and downloads alike.': '同じ問題へのもう一つの答え: yt-dlp のリクエストを別の場所から送ります。データセンターのアドレスが通らないときは、住宅用プロキシなら通ることが多いです。メタデータ、字幕、ダウンロードすべてに適用されます。',
 }

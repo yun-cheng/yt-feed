@@ -307,7 +307,8 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
             for s in (await client.get("/api/settings", headers=mine)).json()["settings"]}
     assert spec == {# The deployment's: keys, credentials and a shared quota.
                     "openrouter_api_key": "app", "google_client_id": "app",
-                    "google_client_secret": "app", "meili_master_key": "app",
+                    "google_client_secret": "app", "youtube_cookies": "app",
+                    "youtube_proxy": "app", "meili_master_key": "app",
                     "archive_fill_enabled": "app",
                     # Everything a person can have an opinion about.
                     "youtube_history_sync": "user",
