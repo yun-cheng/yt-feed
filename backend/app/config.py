@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 from pathlib import Path
 
@@ -5,8 +6,19 @@ from pathlib import Path
 class Settings(BaseSettings):
     # --- Paths ---
     project_root: str = str(Path(__file__).resolve().parent.parent.parent)
-    db_path: str = str(Path(project_root) / "data" / "youtube_feed.db")
-    config_dir: str = str(Path(project_root) / "backend" / "config")
+
+    # Everything this app writes, under one directory — the database, the
+    # downloads, the OAuth token, the generated session key. One directory
+    # because a container needs exactly one mounted volume to survive a rebuild,
+    # and because "what do I back up" should have a one-line answer.
+    #
+    # `DATA_DIR` moves the whole lot. `DB_PATH` and `CONFIG_DIR` still override
+    # individually (the test harness sets both), which is why those two are
+    # filled in below rather than defaulted here: a default computed in the class
+    # body would be frozen against the DEFAULT data_dir and would ignore the env.
+    data_dir: str = str(Path(project_root) / "data")
+    db_path: str = ""
+    config_dir: str = ""
 
     # --- OAuth (optional, only for initial subscription import) ---
     google_client_id: str = ""
@@ -67,8 +79,29 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
+    @model_validator(mode="after")
+    def _derive_paths(self):
+        """Fill the paths that follow `data_dir`, unless they were set outright.
+
+        After validation rather than as class-body defaults, because a default is
+        evaluated once when the class is built — against the DEFAULT `data_dir` —
+        so `DATA_DIR=/data` would move the directory and leave the database
+        behind in it. Here both env vars work, and `DB_PATH` / `CONFIG_DIR` keep
+        winning individually, which is what the test harness relies on.
+        """
+        if not self.db_path:
+            self.db_path = str(Path(self.data_dir) / "youtube_feed.db")
+        if not self.config_dir:
+            self.config_dir = str(Path(self.data_dir) / "config")
+        return self
+
     @property
     def downloads_dir(self) -> str:
+        # These three follow the DATABASE rather than `data_dir`. The same
+        # directory in every real deployment, and deliberately so where it isn't:
+        # `DB_PATH` alone is enough to move a whole feed somewhere else, media
+        # included, which is what makes it a usable escape hatch rather than one
+        # setting out of four.
         return str(Path(self.db_path).parent / "downloads")
 
     @property

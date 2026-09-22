@@ -30,8 +30,8 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-The DB and downloads live under `../data/` (created on first run). Search is
-optional — if Meilisearch isn't running, search just returns nothing and the
+The DB and downloads live under `../data/` (created on first run — see
+`bootstrap.py`, and `DATA_DIR` to move it). Search is optional — if Meilisearch isn't running, search just returns nothing and the
 rest of the app is unaffected. To enable it:
 
 ```bash
@@ -49,6 +49,8 @@ All three services (frontend, backend, meilisearch) are also defined in
 app/
   main.py          FastAPI app, lifespan, the scan SCHEDULER, /api/refresh
   config.py        Settings (paths, OAuth, Meili, OpenRouter) via pydantic-settings
+  bootstrap.py     what has to be true before serving: the data dir, and the
+                   one-time copy forward from backend/config/
   database.py      Async engine + session factory, schema create, tiny migrations
   models.py        SQLAlchemy tables (see "Data model")
 
@@ -86,7 +88,9 @@ app/
     presets.py     named sidebar filter selections, saved and re-applied
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
-config/            categories.yaml, subscriptions.yaml, oauth token
+$DATA_DIR/         everything the app WRITES, under one directory:
+                   youtube_feed.db, config/ (oauth token, subscriptions.yaml,
+                   categories.yaml), downloads/, local_thumbs/
 .env               secrets + deployment wiring (OPENROUTER_API_KEY); gitignored
                    — user-facing preferences live in app_settings.py instead
 scripts/           one-off maintenance scripts (backfills, fixes)
@@ -1774,7 +1778,7 @@ are added by the tiny additive-migration list in `database.py`.
 
 ---
 
-## Config (`config/`)
+## Config (`$DATA_DIR/config/`)
 
 - **`subscriptions.yaml`** — a written-only mirror of what you follow.
   `user_channels` is the list itself (see "Accounts"); this is kept because it's
@@ -1869,6 +1873,28 @@ everybody's allowance. `youtube_history_sync` (whether the extension records wha
 you watch on youtube.com) is **`user`** — one person turning it off must not turn
 off another's — and has no `.env` twin, since it governs an optional browser
 extension that's nothing to do with how the server is deployed.
+
+---
+
+## Deploying it
+
+Three things a deployment needs that a checkout didn't.
+
+**One writable directory** (`bootstrap.py`). `DATA_DIR` holds the database,
+`config/`, the downloads, the generated session key and the setup token — one
+directory, because a container needs exactly one volume to survive a rebuild and
+"what do I back up" should have a one-line answer. `prepare()` runs at *import*
+time from `main.py`, because the session middleware is built at import and needs
+the key. Config that still lives in `backend/config/` is **copied** forward once,
+never moved, so an older build still starts and this step can't be the one that
+loses a subscription list.
+
+`SKIP_CONFIG_ADOPTION` exists because the first version of that guard inferred
+whether to adopt, and inferred wrong in the worst available way: the test harness
+sets both `DATA_DIR` and `CONFIG_DIR`, which made its temp directory look like the
+derived default, so a test run copied the developer's live OAuth token into itself
+and began making real YouTube API calls with it. An explicit flag, and
+`tests/test_bootstrap.py` pins it.
 
 ---
 
@@ -2074,7 +2100,9 @@ no per-test decorator). What's covered:
 | `test_youtube_parsing.py` | the pure transforms on the ingest boundary, where a wrong answer is stored as fact rather than raised: ISO 8601 durations including the **day** component (`P1DT2H` — anything past 24 hours, which a time-only pattern read as zero and so filed under "under 5 minutes"), unparseable input costing one video its length instead of the batch, the thumbnail ladder, telling a spent quota from a dead token across a 403, and a yt-dlp entry with no date reading as now rather than 1970 |
 | `test_api_contract.py` | that every `/api/…` the frontend calls is a route this app serves. The two suites meet nowhere — the frontend stubs `fetch`, so it answers whatever URL it's handed — and a renamed route leaves both green while the feature is dead in the browser. Reads the call sites out of `frontend/src` and resolves each against the real route table |
 
-`conftest.py` redirects `DB_PATH` and `CONFIG_DIR` at a temp directory **before
+| `test_bootstrap.py` | the first boot on an empty volume: the directories made, a session key generated (and stable across restarts, and different between two deployments, and left alone when one is configured), the setup token written and read back — and that `SKIP_CONFIG_ADOPTION` stops a test run inheriting the developer's live OAuth token, which is not hypothetical: the guard it replaced inferred wrong and a suite ran against real credentials |
+
+`conftest.py` redirects `DATA_DIR`, `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import
 time, so a fixture would be too late and the suite would run against the real
 feed. Each test gets an empty schema; the app is driven through httpx's

@@ -19,3 +19,8 @@ backend/config/subscriptions.yaml
 # Coverage output (vitest --coverage, python -m coverage)
 frontend/coverage/
 backend/.coverage
+
+# Runtime config, now on the data volume rather than inside the repo. `data/` is
+# untracked today, but this must never become trackable: it holds the OAuth
+# token.
+data/config/

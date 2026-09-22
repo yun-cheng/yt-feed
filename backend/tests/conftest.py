@@ -1,6 +1,6 @@
 """Test harness for the backend.
 
-Two things have to happen before anything under `app` is imported, which is why
+Three things have to happen before anything under `app` is imported, which is why
 they sit at module level rather than in a fixture:
 
   1. `app.database` builds its engine at import time from `settings.db_path`, so
@@ -8,6 +8,15 @@ they sit at module level rather than in a fixture:
   2. `app.config` reads config_dir at import time too, and `categorizer` WRITES
      categories.yaml into it on first read — pointing it at a temp dir keeps the
      user's taxonomy file out of the tests' way.
+  3. `app.bootstrap.prepare()` runs when `app.main` is imported and CREATES
+     directories and files under `data_dir` — the generated session key, the
+     setup token, the media directories. Redirecting `DATA_DIR` is what keeps a
+     test run from writing into the real one.
+
+All three, not just `DATA_DIR`, because the first two are individual overrides
+and one of them needs to keep working: `CONFIG_DIR` pointed away from `data_dir`
+is also the signal `bootstrap` reads as "this config directory was chosen", which
+is what stops a test run adopting the real feed's OAuth token.
 
 pytest imports conftest before any test module, so this runs first.
 """
@@ -17,8 +26,14 @@ import tempfile
 from pathlib import Path
 
 _TMP = Path(tempfile.mkdtemp(prefix="yt-feed-tests-"))
+os.environ["DATA_DIR"] = str(_TMP)
 os.environ["DB_PATH"] = str(_TMP / "test.db")
 os.environ["CONFIG_DIR"] = str(_TMP / "config")
+# Never inherit the real deployment's config. `bootstrap.prepare()` runs when
+# `app.main` is imported and otherwise copies `backend/config/` forward — which
+# includes a live OAuth token, so a test run would hold real credentials and make
+# real YouTube API calls with them. It did, before this line existed.
+os.environ["SKIP_CONFIG_ADOPTION"] = "1"
 # Never let a test reach the network. `llm.chat_json` raises without a key, and
 # every caller of it is written to degrade rather than fail — so an accidentally
 # un-stubbed call surfaces as a degraded result, not a live request.

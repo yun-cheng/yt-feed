@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import users
+from app import bootstrap, users
 from app.config import settings
 from app.database import async_session, init_db
 from app.models import User
@@ -43,6 +43,7 @@ RESYNC_MAX_PRUNE = int(os.environ.get("RESYNC_MAX_PRUNE", 5))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print(bootstrap.data_dir_note(), flush=True)
     await init_db()
     # Build the search index in the background — never block or break startup on it.
     async def _init_search():
@@ -198,6 +199,11 @@ async def _run_resync(user_id: int) -> bool:
 
 app = FastAPI(title="Personal YouTube Feed", lifespan=lifespan)
 
+# The data directory has to be usable before anything serves. Here rather than at
+# the top of the module only so the imports stay imports; nothing above this line
+# touches the disk.
+bootstrap.prepare()
+
 # Deliberately still just this machine. A household reaches the app through the
 # Vite dev server, which listens on every interface (`host: true`) and proxies
 # `/api` to this process over loopback — so a browser at 192.168.1.50:5173 is
@@ -305,3 +311,4 @@ async def trigger_refresh():
 @app.get("/api/refresh/status")
 async def refresh_status():
     return {"running": _refreshing}
+
