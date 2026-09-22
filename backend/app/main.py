@@ -4,9 +4,11 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -312,3 +314,67 @@ async def trigger_refresh():
 async def refresh_status():
     return {"running": _refreshing}
 
+# --- The built frontend ------------------------------------------------------
+#
+# A container serves the SPA from this process, which makes the app one origin:
+# no CORS, no second port to publish, and — the reason it matters most — the
+# Google OAuth callback lands on the address people actually typed, so the one
+# redirect URI you register in the Cloud console is the one that gets used.
+#
+# In development none of this is mounted. `frontend/dist` doesn't exist until
+# someone runs `npm run build`, and the Vite dev server is the thing serving the
+# app and proxying /api here. The existence check is what keeps one file serving
+# both arrangements.
+SPA_DIR = Path(os.environ.get("SPA_DIR") or Path(settings.project_root) / "frontend" / "dist")
+
+
+def _spa_file(rel: str) -> Path | None:
+    """The built file this request is for, if it is one.
+
+    Resolved and then checked for containment, because `rel` is whatever was in
+    the URL: without it, `../../etc/passwd` is a static file request this would
+    happily answer.
+    """
+    if not rel:
+        return None
+    try:
+        candidate = (SPA_DIR / rel).resolve()
+    except OSError:
+        return None
+    root = SPA_DIR.resolve()
+    if candidate != root and root not in candidate.parents:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def spa(full_path: str):
+    """A built asset if there is one, `index.html` otherwise.
+
+    The fallback is what makes client-side routes work: the frontend routes on
+    `location.pathname` (see the frontend README on History-API routing), so a
+    reload on `/watch/abc` arrives here as a request for a file that was never
+    built, and has to be answered with the app rather than a 404.
+
+    **A 404 under /api stays a 404.** This route is registered last, so every
+    real endpoint above it matches first — but an URL that merely LOOKS like an
+    endpoint would otherwise be answered with a page of HTML, and a frontend
+    calling a path the backend doesn't serve would read as a JSON parse error
+    somewhere far away instead of as the 404 it is. That is exactly what
+    `tests/test_api_contract.py` exists to catch, so this must not hide it.
+
+    `include_in_schema=False` for the same reason: this pattern matches
+    everything, and in `app.openapi()['paths']` it would make that test's route
+    table match every call site no matter how wrong.
+
+    Registered whether or not a build exists, and answering 404 when it doesn't —
+    which is what a stray URL gets today. Deciding at request time rather than at
+    import keeps development (no `dist`, Vite serving the app) and a container
+    (a `dist` baked in) on the same code path.
+    """
+    if full_path.startswith("api/"):
+        raise HTTPException(404, "Not Found")
+    index = SPA_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(404, "Not Found")
+    return FileResponse(_spa_file(full_path) or index)

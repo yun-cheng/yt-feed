@@ -47,7 +47,8 @@ All three services (frontend, backend, meilisearch) are also defined in
 
 ```
 app/
-  main.py          FastAPI app, lifespan, the scan SCHEDULER, /api/refresh
+  main.py          FastAPI app, lifespan, the scan SCHEDULER, /api/refresh,
+                   and the static mount that serves the built frontend
   config.py        Settings (paths, OAuth, Meili, OpenRouter) via pydantic-settings
   bootstrap.py     what has to be true before serving: the data dir, and the
                    one-time copy forward from backend/config/
@@ -2101,6 +2102,8 @@ no per-test decorator). What's covered:
 | `test_api_contract.py` | that every `/api/…` the frontend calls is a route this app serves. The two suites meet nowhere — the frontend stubs `fetch`, so it answers whatever URL it's handed — and a renamed route leaves both green while the feature is dead in the browser. Reads the call sites out of `frontend/src` and resolves each against the real route table |
 
 | `test_bootstrap.py` | the first boot on an empty volume: the directories made, a session key generated (and stable across restarts, and different between two deployments, and left alone when one is configured), the setup token written and read back — and that `SKIP_CONFIG_ADOPTION` stops a test run inheriting the developer's live OAuth token, which is not hypothetical: the guard it replaced inferred wrong and a suite ran against real credentials |
+
+| `test_spa_fallback.py` | serving the built frontend from this process without swallowing the API: a client-side route answered with the app, and an unknown `/api` path still a 404 — which is what keeps `test_api_contract.py` above meaning anything, since a catch-all that answered it would make every call site match |
 
 `conftest.py` redirects `DATA_DIR`, `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import
