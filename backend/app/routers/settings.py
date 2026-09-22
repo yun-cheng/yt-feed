@@ -1,7 +1,7 @@
 """App settings — the preferences that live in the app rather than in .env."""
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app import app_settings, auth, runtime_config
@@ -32,10 +32,21 @@ async def read_settings(user: User | None = Depends(auth.user_or_sole)):
 
 @router.put("")
 async def write_settings(
-    body: SettingsUpdate, user: User | None = Depends(auth.user_or_sole)
+    body: SettingsUpdate,
+    request: Request,
+    user: User | None = Depends(auth.user_or_sole),
 ):
     """Partial update. An unknown key or a malformed value is a 400, not a
-    silent no-op."""
+    silent no-op.
+
+    `authorize_write` is what stands between a fresh deployment and whoever
+    reaches its URL first. Before accounts exist `user` is None here, and this
+    endpoint now writes API keys — so "nobody is signed in" had to stop meaning
+    "go ahead". See app/routers/setup.py.
+    """
+    from app.routers.setup import authorize_write
+
+    await authorize_write(request, user)
     try:
         values = await app_settings.put(body.values, user.id if user else None)
     except (KeyError, ValueError) as e:

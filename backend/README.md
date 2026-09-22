@@ -50,8 +50,8 @@ app/
   main.py          FastAPI app, lifespan, the scan SCHEDULER, /api/refresh,
                    and the static mount that serves the built frontend
   config.py        Settings (paths, OAuth, Meili, OpenRouter) via pydantic-settings
-  bootstrap.py     what has to be true before serving: the data dir, and the
-                   one-time copy forward from backend/config/
+  bootstrap.py     what has to be true before serving: the data dir, the generated
+                   session key, the setup token (see "Deploying it")
   runtime_config.py  keys as the code reads them: stored value, else .env
   ytdl.py          the shared yt-dlp options (cookies, proxy) + extraction health
   database.py      Async engine + session factory, schema create, tiny migrations
@@ -89,11 +89,13 @@ app/
     summaries.py   the same answer, written in the background from a card
     notifications.py  the bell: what finished while you were on another page
     presets.py     named sidebar filter selections, saved and re-applied
+    setup.py       claiming a deployment nobody owns yet
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
 $DATA_DIR/         everything the app WRITES, under one directory:
                    youtube_feed.db, config/ (oauth token, subscriptions.yaml,
-                   categories.yaml, youtube_cookies.txt), downloads/, local_thumbs/
+                   categories.yaml, youtube_cookies.txt),
+                   downloads/, local_thumbs/, secret_key, setup-token
 .env               deployment wiring: ports, paths, service addresses. API keys
                    may be here too, but only as bootstrap defaults — the live
                    values are stored settings (app_settings.py, runtime_config.py)
@@ -1937,6 +1939,33 @@ derived default, so a test run copied the developer's live OAuth token into itse
 and began making real YouTube API calls with it. An explicit flag, and
 `tests/test_bootstrap.py` pins it.
 
+**Nobody owns a fresh deployment** (`routers/setup.py`). An empty database means
+`auth.user_or_sole` resolves nobody, and "nobody" used to mean "go ahead" — so
+before this, whoever loaded a new deployment's URL first could write every key it
+has and then sign in as its owner. Now `PUT /api/settings` requires a signed-in
+user **or** the setup token, which `bootstrap` writes to the volume and prints to
+the log: the log reaches the person who ran the container and the open port reaches
+everybody. Claiming creates the owner row — `users.ensure_local_user`, the same row
+the migration made — and signs that browser in, with no Google involved; a later
+Google sign-in ADOPTS it, which is precisely the case `adopt_or_create` exists
+for. The token stops being accepted the moment an account exists, so a long-lived
+file is not a long-lived way in.
+
+**Admission closed by default** (`auth.may_sign_in`). It used to admit anyone,
+on the reasoning that *the network is the perimeter* — sound for a box on a home
+LAN, where an email allowlist protects nothing a private address doesn't and only
+stands between a family member and the app they were told to use. That reasoning
+holds exactly as far as the perimeter does. `OPEN_SIGNUP=true` restores it for
+that case; `ALLOWED_EMAILS` names people outright; otherwise new people arrive
+through the invite links `routers/people.py` already had. One carve-out keeps it
+survivable: a Google sign-in from a browser **already holding an account** is
+linking, not joining, which is how the owner connects Google after claiming.
+
+And `SECRET_KEY` no longer has a default value. A published default signs
+forgeable cookies — anyone who read the source could mint a session saying "I am
+user 1" — so it is generated into the volume on first boot and kept, which also
+means a rebuild doesn't sign everybody out.
+
 ### When YouTube refuses (`ytdl.py`)
 
 yt-dlp is reached from nine places, and none of them is the right place to decide
@@ -2154,7 +2183,7 @@ no per-test decorator). What's covered:
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup, and a restore that keeps its place on the page and never fetches |
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |
-| `test_auth.py` | who `ALLOWED_EMAILS` admits (and who the empty-list fallback does), reading the caller from a cookie or an API key, the whole sign-in end to end against a stubbed Google, and a saved YouTube token keeping the scopes it was granted rather than today's wider list (plus no token file being nobody, not a crash) |
+| `test_auth.py` | who is admitted: closed by default, `OPEN_SIGNUP` putting the LAN behaviour back, the allowlist as the whole answer where it's set, an account surviving being trimmed off that list, and the owner linking Google to the row they claimed with. Plus reading the caller from a cookie or an API key, the whole sign-in end to end against a stubbed Google, and a saved YouTube token keeping the scopes it was granted rather than today's wider list (plus no token file being nobody, not a crash) |
 | `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
 | `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account, and the three guards around the single YouTube token |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
@@ -2170,6 +2199,8 @@ no per-test decorator). What's covered:
 | `test_settings_secrets.py` | that a key never comes back out of the API it went in through, for every secret and not just the one; the tail-shaped hint; a stored value beating `.env` while an emptied field *removes* the row so the environment shows through again rather than the feature going quiet; a trailing newline stripped but a newline in the middle of a one-line credential refused; and the cookie jar reaching disk as a file yt-dlp can be handed |
 
 | `test_ytdl_opts.py` | the shared yt-dlp floor: cookies and proxy passed only when set, a call site's own options surviving the merge — and, read across `app/`, that no call site builds its own option dict, because one that did would ignore both and fail while everything around it worked. Plus the extraction status: a bot check reported as itself rather than as "extraction failed", recorded by the logger without nine call sites remembering to |
+
+| `test_setup.py` | claiming a deployment nobody owns, which is mostly refusals: a stranger can't configure an unclaimed one (before this, an empty database meant nobody was signed in and nobody was turned away), a wrong token is refused, a claimed one asks you to sign in instead, and the second claim is a 409 — the token stays on disk, but the window it opens shuts the first time anybody walks through it |
 
 `conftest.py` redirects `DATA_DIR`, `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import

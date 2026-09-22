@@ -50,35 +50,68 @@ def allowlist() -> set[str]:
     return {e.strip().lower() for e in settings.allowed_emails.split(",") if e.strip()}
 
 
-async def may_sign_in(db: AsyncSession, google_sub: str, email: str) -> bool:
-    """Whether this Google account is welcome on this machine.
+async def may_sign_in(
+    db: AsyncSession, google_sub: str, email: str, current: User | None = None
+) -> bool:
+    """Whether this Google account is welcome on this deployment.
 
-    **The network is the perimeter.** This app is for a few trusted people
-    sharing one box on a home network, so by default anyone who can reach it may
-    have an account. A list of permitted emails wouldn't be protecting anything
-    a LAN-only bind doesn't already cover — it would just be a list to maintain,
-    standing between a family member and the app they were told to use.
+    Five answers, in the order they're checked.
 
-    `ALLOWED_EMAILS` stays as an opt-in override, for a deployment reachable more
-    widely than its owner would like. Set it and it becomes the answer; leave it
-    empty and admission is open.
+    **`current` is already in.** That's the account this browser is signed into
+    already, and a Google sign-in from there is *linking* rather than joining —
+    most importantly the owner, who claimed the deployment with the setup token
+    and is now connecting Google so their subscriptions can be imported. Checked
+    first because every rule below is about admitting a stranger, and this isn't
+    one: whoever it is was let in before Google was involved.
+
+    **`ALLOWED_EMAILS` is the whole answer where it's set.** An explicit list
+    means somebody decided; nothing below overrides it.
+
+    **`OPEN_SIGNUP` reopens the door to anyone who can reach the server.** That
+    used to be the default, on the reasoning that *the network is the perimeter*:
+    for a few trusted people sharing one box at home, a list of emails protects
+    nothing a private address doesn't, and it would stand between a family member
+    and the app they were told to use. That reasoning holds — but only while the
+    perimeter is real. The same default on a deployment with a public URL hands
+    the app to whoever finds it, and this app is now meant to be deployable that
+    way. So it became a flag instead of an assumption.
+
+    **Somebody who already has an account keeps it.** Whatever the rules say now,
+    and however they change later: trimming a list shouldn't lock people out
+    mid-session with nothing to tell them why.
+
+    **Otherwise, no.** New people arrive by invitation — the owner adds them under
+    Settings → People, which mints a link (`/api/people/join/{token}`) that signs
+    them in and creates their account. That path is unchanged and is the reason
+    closing this one costs nothing: there was already a way in that doesn't
+    involve guessing who should be allowed.
 
     Note what this does NOT decide: which row the account lands on. Adoption of
     the pre-accounts data has its own narrow condition in `users.adopt_or_create`,
-    so opening signup doesn't open a door onto somebody else's watch history.
+    so admitting somebody doesn't open a door onto somebody else's watch history.
     """
+    if current is not None:
+        return True
+
     allowed = allowlist()
-    if not allowed:
+    if allowed:
+        if email.lower() in allowed:
+            return True
+    elif settings.open_signup:
         return True
-    if email.lower() in allowed:
-        return True
-    # Someone who already has an account here keeps it even if they later fall
-    # off the list — otherwise trimming the list locks people out mid-session
-    # with nothing to tell them why.
+
     known = (await db.execute(
         select(User).where(User.google_sub == google_sub, User.google_sub != "")
     )).scalar_one_or_none()
-    return known is not None
+    if known is not None:
+        return True
+
+    # The first account is not made here. A fresh deployment is claimed with the
+    # setup token (see routers/setup.py), which creates the owner row; a Google
+    # sign-in then ADOPTS it. Admitting the first Google account unconditionally
+    # instead would make the claim pointless — whoever signed in first would own
+    # the deployment.
+    return False
 
 
 async def _by_api_key(db: AsyncSession, header: str) -> User | None:

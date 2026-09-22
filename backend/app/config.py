@@ -30,17 +30,35 @@ class Settings(BaseSettings):
     # --- Session ---
     # Signs the sign-in cookie. Changing it signs everybody out, which is also
     # the only revocation this app has — deliberately, at this scale.
-    secret_key: str = "change-me-in-production"
+    #
+    # No default value, and that is the point: a published default is a key
+    # everybody has, and a cookie signed with it can be forged by anyone who has
+    # read this file. Left empty, `bootstrap.prepare` writes a random one into
+    # the data directory on first boot, so no deployment can ship with a key its
+    # author already knows.
+    secret_key: str = ""
 
     # Who may sign in, as a comma-separated list of Google account emails.
-    # Empty (the default) means anyone who can reach the server — which on a
-    # LAN-only bind is the household. Set it only if the app is reachable more
-    # widely than you'd like. See `may_sign_in` in auth.py.
+    # An explicit override. Left empty, admission depends on whether this app has
+    # an owner yet and on `open_signup` below — see `may_sign_in` in auth.py.
     allowed_emails: str = ""
+
+    # Reopen admission to anyone who can reach the server, which is what a
+    # LAN-only bind already means: the network is the perimeter, and a list of
+    # emails protects nothing a private address doesn't. Off by default, because
+    # the same default on a public URL hands the app to whoever finds it.
+    open_signup: bool = False
 
     # Where the browser should land after signing in, and the origin the app is
     # served from. Also what CORS allows.
     app_origin: str = "http://localhost:5173"
+
+    # Where this deployment answers from, as people outside it type it — the one
+    # value a deployer has to set. It decides whether the session cookie is
+    # marked `Secure` (see main.py): https means the cookie must never travel in
+    # clear, and http on a real hostname means it would be dropped if it were.
+    # Empty falls back to `app_origin`.
+    public_url: str = ""
 
     # --- YouTube extraction (yt-dlp) ---
     # Route yt-dlp's requests through a proxy, for a host whose address YouTube
@@ -53,7 +71,8 @@ class Settings(BaseSettings):
     # --- Search (Meilisearch companion service) ---
     meili_url: str = "http://127.0.0.1:7700"
     # Bootstrap default; the live value lives in the database. Empty = dev mode
-    # (no auth), which is fine for a Meilisearch only this machine can reach.
+    # (no auth), which is what the bundled compose runs — Meili is reachable
+    # only from inside the compose network there.
     meili_master_key: str = ""
 
     # --- LLM (OpenRouter — shared by AI features like channel tagging) ---
@@ -109,6 +128,16 @@ class Settings(BaseSettings):
         if not self.config_dir:
             self.config_dir = str(Path(self.data_dir) / "config")
         return self
+
+    @property
+    def secret_key_path(self) -> str:
+        """Where the generated session key is kept when none was configured."""
+        return str(Path(self.data_dir) / "secret_key")
+
+    @property
+    def setup_token_path(self) -> str:
+        """The one-time token that claims an unclaimed deployment."""
+        return str(Path(self.data_dir) / "setup-token")
 
     @property
     def cookies_path(self) -> str:

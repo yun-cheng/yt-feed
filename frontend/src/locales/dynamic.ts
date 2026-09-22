@@ -112,10 +112,10 @@ export const DYNAMIC_MESSAGES: string[] = [
   'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.',
   'Google OAuth client secret',
   'The secret from the same OAuth client as the ID above.',
-  'Meilisearch key',
-  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.',
   'YouTube cookies',
   'For a server YouTube won\'t serve. Hosted away from home, requests often come back asking you to confirm you\'re not a bot, and cookies from a signed-in browser are what answers that. Export them with a cookies.txt extension and paste the file here. ⚠ These are a full session for that Google account — far more than signing in grants — and replaying them from a datacenter address is a known way to get an account flagged. Use a throwaway account, never your main one.',
   'YouTube proxy',
   'The other answer to the same problem: send yt-dlp\'s requests from somewhere else. A residential proxy is what usually works where a datacenter address doesn\'t. Applies to metadata, captions and downloads alike.',
+  'Meilisearch key',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.',
 ]

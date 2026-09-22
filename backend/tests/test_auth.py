@@ -25,12 +25,48 @@ def allowed(monkeypatch):
     return apply
 
 
-async def test_admission_is_open_by_default(db, allowed):
-    """The network is the perimeter. On a LAN-only bind, anyone who can reach
-    the app is already in the household — a list of emails would be a chore to
-    maintain rather than a lock."""
+@pytest.fixture
+def open_signup(monkeypatch):
+    """Admit anyone who can reach the server, as a LAN deployment does."""
+    monkeypatch.setattr(settings, "open_signup", True)
+
+
+async def test_admission_is_closed_by_default(db, allowed):
+    """A stranger who finds the URL doesn't get an account.
+
+    This used to be open, on the reasoning that the network is the perimeter —
+    true of a box on a home LAN, where a list of emails is a chore rather than a
+    lock. It stopped being true when this app became something you can deploy to a
+    public address, where the same default hands it to whoever finds it first.
+    """
+    allowed("")
+    assert await auth.may_sign_in(db, "sub-1", "anyone@example.test") is False
+
+
+async def test_open_signup_puts_the_lan_behaviour_back(db, allowed, open_signup):
+    """The flag exists because the old default was RIGHT in its setting, and
+    that setting is still the common one — one box, one household."""
     allowed("")
     assert await auth.may_sign_in(db, "sub-1", "anyone@example.test") is True
+
+
+async def test_the_owner_can_link_google_to_the_account_they_claimed(db, allowed):
+    """The case that makes closed-by-default survivable.
+
+    A fresh deployment is claimed with the setup token, which creates an account
+    holding no Google identity. The owner then signs in with Google to import
+    their subscriptions — and every rule above is about admitting a STRANGER,
+    which they are not: they were let in before Google was involved. Without
+    this, closing admission locks out the one person who owns the place.
+    """
+    allowed("")
+    owner = await users.ensure_local_user(db)
+    await db.commit()
+
+    assert await auth.may_sign_in(db, "sub-1", "me@example.test") is False
+    assert await auth.may_sign_in(
+        db, "sub-1", "me@example.test", current=owner
+    ) is True
 
 
 async def test_the_allowlist_is_the_whole_answer_when_set(db, allowed):
@@ -58,7 +94,7 @@ async def test_an_account_already_here_survives_being_trimmed_off_the_list(db, a
     assert await auth.may_sign_in(db, "sub-9", "nobody@example.test") is False
 
 
-async def test_open_admission_still_does_not_hand_over_the_seat(db, allowed):
+async def test_open_admission_still_does_not_hand_over_the_seat(db, allowed, open_signup):
     """Being let in and inheriting the pre-accounts data are separate questions.
     Admission is open; adoption keeps its own narrow condition."""
     allowed("")
@@ -152,14 +188,14 @@ def google(monkeypatch):
     return info
 
 
-async def test_signing_in_lands_back_in_the_app(client, google, allowed):
+async def test_signing_in_lands_back_in_the_app(client, google, allowed, open_signup):
     allowed("")
     r = await client.get("/api/auth/callback", params={"code": "x"})
     assert r.status_code in (302, 307)
     assert r.headers["location"] == settings.app_origin
 
 
-async def test_signing_in_leaves_you_signed_in(client, google, allowed):
+async def test_signing_in_leaves_you_signed_in(client, google, allowed, open_signup):
     allowed("")
     await client.get("/api/auth/callback", params={"code": "x"})
 
@@ -169,7 +205,9 @@ async def test_signing_in_leaves_you_signed_in(client, google, allowed):
     assert me["name"] == "Me"
 
 
-async def test_signing_in_claims_the_seat_the_migration_seeded(client, db, google, allowed):
+async def test_signing_in_claims_the_seat_the_migration_seeded(
+    client, db, google, allowed, open_signup
+):
     """The point of the whole exercise: your history is where you left it."""
     allowed("")
     seeded = await users.ensure_local_user(db)
@@ -180,11 +218,24 @@ async def test_signing_in_claims_the_seat_the_migration_seeded(client, db, googl
 
     assert (await client.get("/api/auth/me")).json()["id"] == seeded_id
     assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 1
+    # This session created the row and still holds it in its identity map, with
+    # the values it had before the callback's own session wrote to it. Without
+    # expiring, `db.get` answers from memory and reports the row as it was.
+    db.expire_all()
+    seat = await db.get(User, seeded_id)
     # The key is already pasted into the extension by now.
-    assert (await db.get(User, seeded_id)).api_key == seeded_key
+    assert seat.api_key == seeded_key
+    # That the sign-in ACTUALLY landed on that row, rather than being refused and
+    # leaving `/api/auth/me` to answer from the sole-account fallback — which
+    # reads identically from every assertion above. It did once: this test went on
+    # passing when admission was closed and the callback refused outright.
+    assert seat.google_sub == "sub-1"
+    assert seat.email == "me@example.test"
 
 
-async def test_signing_in_keeps_the_refresh_token(client, db, google, allowed):
+async def test_signing_in_keeps_the_refresh_token(
+    client, db, google, allowed, open_signup
+):
     allowed("")
     await client.get("/api/auth/callback", params={"code": "x"})
     user = (await db.execute(select(User))).scalars().first()
@@ -192,16 +243,37 @@ async def test_signing_in_keeps_the_refresh_token(client, db, google, allowed):
 
 
 async def test_a_refused_account_is_told_why_and_gets_no_row(client, db, google, allowed):
+    """Refused on an unclaimed deployment, so the message points at /setup — the
+    only thing that can help when there is no owner to ask for an invite."""
     allowed("someone-else@example.test")
     r = await client.get("/api/auth/callback", params={"code": "x"})
 
     assert r.status_code == 400
-    assert "ALLOWED_EMAILS" in r.text
+    assert "/setup" in r.text
     assert (await db.execute(select(func.count()).select_from(User))).scalar_one() == 0
-    assert (await client.get("/api/auth/me")).json() == {"signed_in": False, "resolved": False}
+    assert (await client.get("/api/auth/me")).json() == {
+        "signed_in": False, "resolved": False,
+    }
 
 
-async def test_logging_out_ends_the_session(client, google, allowed):
+async def test_a_refusal_on_a_claimed_deployment_points_at_the_owner(
+    client, db, google, allowed
+):
+    """The other half of the same message. Here there IS somebody to ask, and
+    telling a family member to go and claim the deployment would be wrong — the
+    seat is taken and the claim would be refused anyway."""
+    allowed("someone-else@example.test")
+    await users.ensure_local_user(db)   # somebody owns this one
+    await db.commit()
+
+    r = await client.get("/api/auth/callback", params={"code": "x"})
+
+    assert r.status_code == 400
+    assert "invite link" in r.text
+    assert "/setup" not in r.text
+
+
+async def test_logging_out_ends_the_session(client, google, allowed, open_signup):
     allowed("")
     await client.get("/api/auth/callback", params={"code": "x"})
     assert (await client.post("/api/auth/logout")).json() == {"signed_in": False}
@@ -209,7 +281,9 @@ async def test_logging_out_ends_the_session(client, google, allowed):
     assert (await client.get("/api/auth/me")).json()["signed_in"] is False
 
 
-async def test_logging_out_leaves_the_api_key_working(client, db, google, allowed):
+async def test_logging_out_leaves_the_api_key_working(
+    client, db, google, allowed, open_signup
+):
     """Signing out of the browser shouldn't stop the extension recording what
     you watch — they're separate credentials for separate callers."""
     allowed("")

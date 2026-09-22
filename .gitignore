@@ -20,7 +20,9 @@ backend/config/subscriptions.yaml
 frontend/coverage/
 backend/.coverage
 
-# Runtime config, now on the data volume rather than inside the repo. `data/` is
-# untracked today, but this must never become trackable: it holds the OAuth
-# token.
+# Generated per-deployment secrets and adopted runtime config, on the data
+# volume. `data/` is untracked today, but these must never become trackable:
+# secret_key forges session cookies and the token files are live credentials.
+data/secret_key
+data/setup-token
 data/config/

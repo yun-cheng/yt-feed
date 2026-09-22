@@ -19,6 +19,7 @@ from app.models import User
 from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local, bookmarks, people, ask, summaries, notifications, presets
 from app.routers import search as search_router
 from app.routers import settings as settings_router
+from app.routers import setup as setup_router
 from app.routers import watch_later as watch_later_router
 from app.routers import playlists as playlists_router
 from app.auth_google import router as auth_router
@@ -47,6 +48,9 @@ RESYNC_MAX_PRUNE = int(os.environ.get("RESYNC_MAX_PRUNE", 5))
 async def lifespan(app: FastAPI):
     print(bootstrap.data_dir_note(), flush=True)
     await init_db()
+    # After the schema exists, because it asks the database whether anybody owns
+    # this deployment yet. Nothing else waits on it.
+    await bootstrap.announce_setup()
     # Build the search index in the background — never block or break startup on it.
     async def _init_search():
         from app import search_index
@@ -201,20 +205,34 @@ async def _run_resync(user_id: int) -> bool:
 
 app = FastAPI(title="Personal YouTube Feed", lifespan=lifespan)
 
-# The data directory has to be usable before anything serves. Here rather than at
-# the top of the module only so the imports stay imports; nothing above this line
-# touches the disk.
-bootstrap.prepare()
+# The data directory has to be usable before anything serves, and the session
+# middleware below needs a key. Here rather than at the top of the module only so
+# the imports stay imports; nothing above this line touches the disk.
+SECRET_KEY = bootstrap.prepare()
 
-# Deliberately still just this machine. A household reaches the app through the
-# Vite dev server, which listens on every interface (`host: true`) and proxies
-# `/api` to this process over loopback — so a browser at 192.168.1.50:5173 is
-# making SAME-ORIGIN requests and CORS never enters into it. Widening this list
-# to the private ranges would only matter if the API were exposed directly,
-# which is the arrangement the proxy exists to avoid.
+# Whether the session cookie is marked `Secure`. Derived rather than configured,
+# because both wrong answers are silent: `Secure` on plain http means the browser
+# never stores the cookie and sign-in appears to do nothing, and NOT setting it
+# behind https means the cookie is allowed to travel in clear. The scheme of the
+# URL people actually use is exactly the thing that decides it.
+HTTPS_ONLY = (settings.public_url or settings.app_origin).startswith("https://")
+
+# Narrow on purpose, and in both deployments it barely comes up. In development a
+# household reaches the app through the Vite dev server, which listens on every
+# interface (`host: true`) and proxies `/api` to this process over loopback — so
+# a browser at 192.168.1.50:5173 is making SAME-ORIGIN requests and CORS never
+# enters into it. In a container this process serves the built SPA itself (see
+# the static mount at the foot of this file), which is same-origin again.
+# `public_url` is here for the arrangement in between: a reverse proxy that
+# serves the app from one name and forwards /api to this one.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.app_origin, "http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        o for o in (
+            settings.app_origin, settings.public_url,
+            "http://localhost:5173", "http://localhost:3000",
+        ) if o
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -226,11 +244,10 @@ app.add_middleware(
 # The extension doesn't use this cookie at all; it carries an API key instead.
 app.add_middleware(
     SessionMiddleware,
-    secret_key=settings.secret_key,
+    secret_key=SECRET_KEY,
     session_cookie="ytfeed_session",
     same_site="lax",
-    # Served over http://localhost, where a Secure cookie would never be stored.
-    https_only=False,
+    https_only=HTTPS_ONLY,
     max_age=60 * 60 * 24 * 30,
 )
 
@@ -252,6 +269,7 @@ app.include_router(summaries.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(presets.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
+app.include_router(setup_router.router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(tags_router, prefix="/api")
 
@@ -327,6 +345,7 @@ async def trigger_refresh():
 @app.get("/api/refresh/status")
 async def refresh_status():
     return {"running": _refreshing}
+
 
 # --- The built frontend ------------------------------------------------------
 #

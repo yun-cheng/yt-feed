@@ -786,9 +786,15 @@ components/
                                   back the login link to send them. Composes the
                                   link from window.location.origin — the API
                                   can't, see its comment
-  SignInGate.tsx                  wraps the app: shows it, or the way in. Gates
-                                  on /api/auth/me's `resolved`, so a one-account
-                                  machine never sees it
+  SignInGate.tsx                  wraps the app: shows it, the way in, or —
+                                  when nobody owns this deployment yet — the way
+                                  to claim it. Gates on /api/auth/me's
+                                  `resolved`, so a one-account machine never
+                                  sees it
+  SetupPage.tsx                   the first screen of a fresh deployment: the
+                                  token from the server's log, and optionally a
+                                  Google OAuth client. Claiming creates the
+                                  owner and signs this browser in
   PlaylistPage.tsx / PlaylistsPage.tsx / SaveToPlaylist.tsx
   DownloadsPage.tsx               the offline library — cards open the watch
                                   overlay, which plays the file from disk
@@ -1992,6 +1998,7 @@ problem.
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
 | `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off; and that the sidebar offers all nine destinations at every width, since the phone's bottom bar only holds four |
 | `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |
+| `deploySetup.test.tsx` | deploying it yourself, from the browser's side. `SecretField` works with information the server won't give it: it starts empty however set the key is, so "set" has to be said another way — which is also why an empty field can't mean "clear this" and Clear is its own button. Plus `SignInGate`'s third state: an unclaimed deployment offers the claim screen rather than telling you to open a link nobody has sent you, and a server it can't ask is treated as claimed |
 | `backend/tests/test_api_contract.py` | not in this directory, but about it: every `/api/…` literal in `src/` has to resolve to a route the backend serves. These tests stub `fetch`, so they answer whatever URL they're handed and a renamed route breaks nothing here — it breaks in the browser |
 
 Four jsdom gaps have to be papered over, and each is a stub rather than a

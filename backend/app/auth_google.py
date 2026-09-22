@@ -284,18 +284,31 @@ async def callback(code: str, request: Request, state: str | None = None):
         return _error_page("Google didn't say which account that was.")
 
     async with async_session() as db:
-        if not await auth.may_sign_in(db, google_sub, email):
-            return _error_page(
-                f"{email or 'That account'} isn't allowed to use this app. "
-                "Add it to ALLOWED_EMAILS in the backend's .env and try again."
-            )
-
         # Who the browser already said it was. A session naming a row that has
         # no Google identity yet is that row claiming this one — see
         # `adopt_or_create`, which without it would strand the owner's data the
         # moment a second account existed.
+        #
+        # Read BEFORE the admission check, which needs it: signing in from an
+        # account you already hold is linking Google to it, not joining. The owner
+        # of a fresh deployment is exactly that case — they claimed it with the
+        # setup token, so they have an account and no Google identity yet, and
+        # `may_sign_in` would otherwise refuse the person who owns the place.
         session_id = (request.scope.get("session") or {}).get(auth.SESSION_USER_KEY)
         current = await db.get(User, session_id) if session_id else None
+
+        if not await auth.may_sign_in(db, google_sub, email, current=current):
+            owner_exists = await users.owner_id(db) is not None
+            return _error_page(
+                f"{email or 'That account'} can't sign in here. "
+                + (
+                    "Ask whoever runs this app for an invite link "
+                    "(Settings → People), or have them add you to ALLOWED_EMAILS."
+                    if owner_exists else
+                    "Nobody owns this deployment yet — claim it at /setup with the "
+                    "token from the server log first."
+                )
+            )
 
         owner = await users.owner_id(db)
         user = await users.adopt_or_create(
