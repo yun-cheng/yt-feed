@@ -61,9 +61,16 @@ async def fresh_db():
     open their own sessions through `async_session` (they don't take an injected
     one), so there is no outer transaction for a test to own.
     """
+    from app import runtime_config
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+    # `runtime_config` caches the app_settings table because its callers are sync
+    # and can't await a query; it invalidates itself when the app writes a
+    # setting, but dropping the table underneath it isn't a write it can see. So
+    # a key stored by one test would still answer for the next.
+    runtime_config.invalidate()
     yield
 
 

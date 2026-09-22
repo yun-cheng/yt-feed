@@ -295,10 +295,22 @@ async def test_a_shared_setting_is_shared(client, pair):
 
 
 async def test_the_page_is_told_which_switches_are_everyones(client, pair):
+    """Every setting, by name, and whose it is.
+
+    Exhaustive rather than a spot check, and worth the maintenance: a preference
+    that should be personal but was declared `scope="app"` is a bug nothing else
+    would catch — the app would work, and one person's choice would silently
+    become everybody's. Adding a setting means adding it here and deciding.
+    """
     mine, *_ = pair
     spec = {s["key"]: s["scope"]
             for s in (await client.get("/api/settings", headers=mine)).json()["settings"]}
-    assert spec == {"archive_fill_enabled": "app", "youtube_history_sync": "user",
+    assert spec == {# The deployment's: keys, credentials and a shared quota.
+                    "openrouter_api_key": "app", "google_client_id": "app",
+                    "google_client_secret": "app", "meili_master_key": "app",
+                    "archive_fill_enabled": "app",
+                    # Everything a person can have an opinion about.
+                    "youtube_history_sync": "user",
                     "page_defaults": "user", "app_language": "user",
                     "caption_lang": "user", "caption_lang2": "user",
                     "translate_lang": "user", "playback_speeds": "user",

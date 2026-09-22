@@ -1,13 +1,22 @@
 """
 App settings: the switches that belong to *you*, not to the deployment.
 
-`config.py` (`.env`) is for secrets and environment wiring — API keys, ports,
-paths. Those are properties of where the app runs. This module is for the other
-kind: preferences about how the app behaves, which should be changeable from the
-app itself rather than by editing a file and restarting a server. A switch that
-governs an unattended background job especially: turning it *on* deserves to be
-deliberate, but turning it *off* has to be immediate, and "edit .env, restart
-uvicorn" is the wrong shape for a kill switch.
+`config.py` (`.env`) is for environment wiring — ports, paths, the addresses of
+companion services. Those are properties of where the app runs. This module is
+for the other kind: preferences about how the app behaves, which should be
+changeable from the app itself rather than by editing a file and restarting a
+server. A switch that governs an unattended background job especially: turning it
+*on* deserves to be deliberate, but turning it *off* has to be immediate, and
+"edit .env, restart uvicorn" is the wrong shape for a kill switch.
+
+**API keys live here too** (the `Connections` group, `type="secret"`), which is
+the one place that division moved. A key is a property of the deployment rather
+than a preference — but requiring a file before the app will start is the step a
+person deploying this gets wrong, and it is a bad step to get wrong: the app
+comes up, and the half of it that needs the key is quietly missing. Better to
+come up and ask. The `.env` variables still work and act as bootstrap defaults;
+`app/runtime_config.py` is what decides between the two, and is what the code
+using a key actually reads. A secret is never read back out — see `all_values`.
 
 Adding a setting is one entry in SPEC. The API serves the spec alongside the
 values and the settings page renders itself from it, so nothing else has to
@@ -44,8 +53,9 @@ MAX_SPEEDS = 12
 @dataclass(frozen=True)
 class Spec:
     key: str
-    # "bool", "choice" (one of `options`), or "page_defaults" (a JSON object —
-    # see that entry). The UI switches on this to pick the control.
+    # "bool", "choice" (one of `options`), "secret", or one of the JSON shapes
+    # below ("page_defaults", "speeds", "shortcuts"). The UI switches on this to
+    # pick the control.
     type: str
     default: Callable[[], Any]
     label: str
@@ -65,9 +75,84 @@ class Spec:
     # For "choice": the allowed values, each with the label the menu shows, in
     # menu order. Anything else is refused on write.
     options: tuple[tuple[str, str], ...] = ()
+    # For "secret": render a textarea rather than a one-line input. A cookie jar
+    # is thousands of characters and a key is forty.
+    multiline: bool = False
+    # For "secret": what an empty field means, shown in the control. Usually where
+    # the value comes from instead — an env var, or a default.
+    placeholder: str = ""
+    # Whether `POST /api/settings/test/{key}` can check this one against the
+    # service it configures. See `routers/settings.py`.
+    testable: bool = False
 
 
 SPEC: tuple[Spec, ...] = (
+    # --- Connections -------------------------------------------------------
+    # The keys and credentials a deployment needs, so that deploying this app is
+    # `docker compose up` and then filling in a form — rather than creating a
+    # file the app won't start without. All `scope="app"`: they are properties of
+    # the deployment, and a per-person copy of an API key would mean whoever
+    # saved last decides whose account gets billed.
+    #
+    # Each has an `.env` twin that acts as a bootstrap default, and a stored
+    # value wins over it. See app/runtime_config.py, which is what the code that
+    # uses these actually reads.
+    Spec(
+        key="openrouter_api_key",
+        type="secret",
+        default=lambda: "",
+        scope="app",
+        testable=True,
+        placeholder="sk-or-v1-…",
+        label="OpenRouter API key",
+        description=(
+            "Turns on the AI features: channel and video tagging, caption "
+            "translation, video summaries and Ask. Without it the rest of the app "
+            "works and channels are tagged by language alone. "
+            "Get one at openrouter.ai."
+        ),
+        group="Connections",
+    ),
+    Spec(
+        key="google_client_id",
+        type="secret",
+        default=lambda: "",
+        scope="app",
+        label="Google OAuth client ID",
+        description=(
+            "Lets you sign in with Google and import your YouTube subscriptions. "
+            "Create an OAuth client (type: Web application) in the Google Cloud "
+            "console with the YouTube Data API enabled, and register this app's "
+            "address + /api/auth/callback as a redirect URI. Without it, channels "
+            "are added by hand."
+        ),
+        group="Connections",
+    ),
+    Spec(
+        key="google_client_secret",
+        type="secret",
+        default=lambda: "",
+        scope="app",
+        label="Google OAuth client secret",
+        description="The secret from the same OAuth client as the ID above.",
+        group="Connections",
+    ),
+    Spec(
+        key="meili_master_key",
+        type="secret",
+        default=lambda: "",
+        scope="app",
+        testable=True,
+        placeholder="not needed for the bundled Meilisearch",
+        label="Meilisearch key",
+        description=(
+            "Only for pointing MEILI_URL at a Meilisearch that requires a key. "
+            "The one in the bundled compose file needs none — it isn't reachable "
+            "from outside. Search is optional throughout: without it, search "
+            "returns nothing and everything else is unaffected."
+        ),
+        group="Connections",
+    ),
     Spec(
         key="app_language",
         type="choice",
@@ -214,6 +299,19 @@ SPEC: tuple[Spec, ...] = (
 # Types stored as JSON text rather than as a flag.
 _JSON_TYPES = {"page_defaults", "speeds", "shortcuts"}
 
+# Types whose value is a string the user typed. One member today, and named for
+# the shape rather than for that one member: what these share is the validation
+# (a length cap, and single-line unless `multiline`) and the write semantics (an
+# emptied field removes the row). A non-secret free-text setting would join it and
+# would differ only in being readable back — see `all_values`.
+_STRING_TYPES = {"secret"}
+
+# Longest value accepted, by shape. The multiline limit is sized for a
+# cookies.txt (tens of KB in practice); the other is sized for an API key, and
+# stops a paste into the wrong field becoming a row nothing will ever read.
+_MAX_LEN = 500
+_MAX_LEN_MULTILINE = 200_000
+
 _BY_KEY = {s.key: s for s in SPEC}
 
 
@@ -238,11 +336,31 @@ def _encode(spec: Spec, value: Any) -> str:
         return "1" if value else "0"
     if spec.type in _JSON_TYPES:
         return json.dumps(value, separators=(",", ":"))
+    if spec.type in _STRING_TYPES:
+        # Stripped, because a key pasted out of a web page arrives with a newline
+        # on it more often than not, and a newline inside an Authorization header
+        # is a request httpx refuses to send at all — a failure that looks like a
+        # rejected key rather than like whitespace.
+        return str(value).strip()
     return str(value)
 
 
 def _check(spec: Spec, value: Any) -> None:
     """Refuse a value of the wrong shape before it's stored."""
+    if spec.type in _STRING_TYPES:
+        if not isinstance(value, str):
+            raise ValueError(f"{spec.key} must be a string")
+        cap = _MAX_LEN_MULTILINE if spec.multiline else _MAX_LEN
+        if len(value) > cap:
+            raise ValueError(f"{spec.key} must be at most {cap} characters")
+        # Checked on the STRIPPED value, because the two cases look alike and
+        # deserve opposite answers: a key copied out of a web page arrives with a
+        # trailing newline almost every time and is perfectly good, while a break
+        # in the MIDDLE of a one-line credential is a paste that went wrong and
+        # would authenticate as nothing. So strip the first, refuse the second.
+        inner = value.strip()
+        if not spec.multiline and ("\n" in inner or "\r" in inner):
+            raise ValueError(f"{spec.key} must be a single line")
     if spec.type == "choice":
         if value not in {v for v, _ in spec.options}:
             raise ValueError(f"{spec.key} must be one of its options")
@@ -330,9 +448,35 @@ async def all_values(user_id: int | None = None) -> dict[str, Any]:
 
     out = {}
     for s in SPEC:
+        if s.type == "secret":
+            out[s.key] = _secret_view(s.key, stored_here=bool(app_stored.get(s.key)))
+            continue
         stored = app_stored if s.scope == "app" else user_stored
         out[s.key] = _decode(s, stored[s.key]) if s.key in stored else s.default()
     return out
+
+
+def _secret_view(key: str, *, stored_here: bool) -> dict[str, Any]:
+    """What a secret looks like from outside: whether it is set, and a hint.
+
+    **Never the value.** A settings page needs to show that a key is in place and
+    which one it is; it never needs to show the key. An endpoint that returned it
+    would put every stored credential one stray `GET` away — read by anything
+    holding a session, logged by a proxy, pasted into an issue along with the
+    rest of a settings dump.
+
+    `from_env` is the other half of being honest. These values fall back to the
+    environment (see runtime_config), so a key set in `.env` must not read as
+    "not set": the page would offer to fill in a field that is already answered,
+    and clearing it would appear to do nothing.
+    """
+    from app import runtime_config
+
+    return {
+        "set": runtime_config.is_set(key),
+        "hint": runtime_config.hint(key),
+        "from_env": runtime_config.is_set(key) and not stored_here,
+    }
 
 
 async def put(updates: dict[str, Any], user_id: int | None = None) -> dict[str, Any]:
@@ -355,16 +499,37 @@ async def put(updates: dict[str, Any], user_id: int | None = None) -> dict[str, 
         for key, value in updates.items():
             spec = _BY_KEY[key]
             row = await _read(session, spec, user_id)
+            encoded = _encode(spec, value)
+            if spec.type in _STRING_TYPES and not encoded:
+                # An emptied field is a value REMOVED, not a value of "". The
+                # difference shows twice: a row holding "" would report itself as
+                # "set here" on the settings page, and it would shadow the
+                # environment variable this key falls back to — so clearing a key
+                # in the UI would disable a feature `.env` still configures.
+                if row is not None:
+                    await session.delete(row)
+                continue
             if row is not None:
-                row.value = _encode(spec, value)
+                row.value = encoded
             elif spec.scope == "app":
-                session.add(AppSetting(key=key, value=_encode(spec, value)))
+                session.add(AppSetting(key=key, value=encoded))
             else:
-                session.add(UserSetting(
-                    user_id=user_id, key=key, value=_encode(spec, value)
-                ))
+                session.add(UserSetting(user_id=user_id, key=key, value=encoded))
         await session.commit()
+
+    _after_write(updates)
     return await all_values(user_id)
+
+
+def _after_write(updates: dict[str, Any]) -> None:
+    """Make the change visible to the code that reads these values.
+
+    `runtime_config` caches, because its callers are sync and can't await a
+    query — so a write has to say so.
+    """
+    from app import runtime_config
+
+    runtime_config.invalidate()
 
 
 def described() -> list[dict[str, Any]]:
@@ -374,6 +539,9 @@ def described() -> list[dict[str, Any]]:
          "description": s.description, "group": s.group, "status": s.status,
          "scope": s.scope,
          **({"options": [{"value": v, "label": l} for v, l in s.options]}
-            if s.type == "choice" else {})}
+            if s.type == "choice" else {}),
+         **({"multiline": s.multiline, "placeholder": s.placeholder,
+             "testable": s.testable}
+            if s.type in _STRING_TYPES else {})}
         for s in SPEC
     ]

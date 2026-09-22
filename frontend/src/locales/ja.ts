@@ -579,4 +579,22 @@ export const ja: Record<string, string> = {
   'Translate comments into': 'コメントの翻訳先言語',
   'The language a comment\'s Translate button translates into. A comment already in it offers no button.': 'コメントの「翻訳」ボタンで翻訳する言語。すでにこの言語のコメントにはボタンが表示されません。',
   'Same as the app': 'アプリと同じ',
+  // Deploying it yourself: the Connections settings, and the key field
+  // that shows a key is set without ever showing the key.
+  'Could not run the check.': 'チェックを実行できませんでした。',
+  'Set': '設定済み',
+  'from .env': '.env から',
+  'Not set': '未設定',
+  'Enter a new value to replace it': '置き換える新しい値を入力',
+  'Checking…': '確認中…',
+  'Test': 'テスト',
+  'Connections': '接続',
+  'OpenRouter API key': 'OpenRouter API キー',
+  'Turns on the AI features: channel and video tagging, caption translation, video summaries and Ask. Without it the rest of the app works and channels are tagged by language alone. Get one at openrouter.ai.': 'AI 機能を有効にします: チャンネルと動画のタグ付け、字幕翻訳、動画の要約、質問。キーがなくても他の機能は動作し、チャンネルは言語だけでタグ付けされます。openrouter.ai で取得できます。',
+  'Google OAuth client ID': 'Google OAuth クライアント ID',
+  'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.': 'Google でサインインして YouTube の登録チャンネルを取り込めるようになります。Google Cloud コンソールで OAuth クライアント（種類: ウェブ アプリケーション）を作成し、YouTube Data API を有効にして、このアプリのアドレス + /api/auth/callback をリダイレクト URI として登録してください。なくても手動でチャンネルを追加できます。',
+  'Google OAuth client secret': 'Google OAuth クライアント シークレット',
+  'The secret from the same OAuth client as the ID above.': '上の ID と同じ OAuth クライアントのシークレットです。',
+  'Meilisearch key': 'Meilisearch キー',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': 'MEILI_URL がキーを必要とする Meilisearch を指している場合のみ必要です。付属の compose ファイルのものには不要で、外部からは接続できません。検索は常に任意です: なくても検索結果が空になるだけで、他は影響を受けません。',
 }

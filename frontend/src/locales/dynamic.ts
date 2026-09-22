@@ -104,4 +104,14 @@ export const DYNAMIC_MESSAGES: string[] = [
   'Translate comments into',
   'The language a comment\'s Translate button translates into. A comment already in it offers no button.',
   'Same as the app',
+  // Connections — the keys and credentials a deployment needs.
+  'Connections',
+  'OpenRouter API key',
+  'Turns on the AI features: channel and video tagging, caption translation, video summaries and Ask. Without it the rest of the app works and channels are tagged by language alone. Get one at openrouter.ai.',
+  'Google OAuth client ID',
+  'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.',
+  'Google OAuth client secret',
+  'The secret from the same OAuth client as the ID above.',
+  'Meilisearch key',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.',
 ]

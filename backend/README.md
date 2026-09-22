@@ -52,6 +52,7 @@ app/
   config.py        Settings (paths, OAuth, Meili, OpenRouter) via pydantic-settings
   bootstrap.py     what has to be true before serving: the data dir, and the
                    one-time copy forward from backend/config/
+  runtime_config.py  keys as the code reads them: stored value, else .env
   database.py      Async engine + session factory, schema create, tiny migrations
   models.py        SQLAlchemy tables (see "Data model")
 
@@ -92,8 +93,9 @@ app/
 $DATA_DIR/         everything the app WRITES, under one directory:
                    youtube_feed.db, config/ (oauth token, subscriptions.yaml,
                    categories.yaml), downloads/, local_thumbs/
-.env               secrets + deployment wiring (OPENROUTER_API_KEY); gitignored
-                   — user-facing preferences live in app_settings.py instead
+.env               deployment wiring: ports, paths, service addresses. API keys
+                   may be here too, but only as bootstrap defaults — the live
+                   values are stored settings (app_settings.py, runtime_config.py)
 scripts/           one-off maintenance scripts (backfills, fixes)
 ```
 
@@ -1875,6 +1877,43 @@ you watch on youtube.com) is **`user`** — one person turning it off must not t
 off another's — and has no `.env` twin, since it governs an optional browser
 extension that's nothing to do with how the server is deployed.
 
+### Keys are settings too (`runtime_config.py`)
+
+The `Connections` group — the OpenRouter key, the Google OAuth client, YouTube
+cookies, a proxy, a Meilisearch key — is `type="secret"`, `scope="app"`, and it is
+the one place the `.env`-vs-settings division moved.
+
+A key is genuinely a property of the deployment, so by the rule above it belongs
+in `.env`. But requiring a file *before the app will start* is the step a person
+deploying this gets wrong, and it is a bad one to get wrong quietly: the app comes
+up, and the half that needs the key is missing with nothing to say so. So the app
+comes up and asks.
+
+**Precedence: stored wins, else `.env`.** Same shape as `archive_fill_enabled`'s
+bootstrap default, and the fallback is load-bearing in one direction people hit —
+an emptied field **removes the row** rather than storing `""`. A `""` would shadow
+the environment variable, so clearing a key in the UI would turn off a feature the
+file still configures, and the page would report it unset while `.env` said
+otherwise. `from_env` in the served value is the other half of not lying about it.
+
+**A secret is never read back out.** `all_values` replaces the value with
+`{set, hint, from_env}`; `hint` is the last four characters, because every
+OpenRouter key ever issued begins `sk-or-v1-` and the head distinguishes nothing.
+The endpoint holds every credential the deployment has and `GET /api/settings` is
+called on every visit to the settings page, so "authenticated" was not a strong
+enough answer — it is simply not returned. `POST /api/settings/test/{key}` reports
+whether a key *works* without echoing it, for the two that can be checked by one
+cheap round trip.
+
+**Why `runtime_config` reads SQLite directly, synchronously.** Every consumer is
+sync — `llm.chat` posts with `httpx.post`, `search_index._headers` builds a dict,
+`ytdl.opts` is called from a worker thread — and none can await. A cache primed by
+the lifespan would be empty in the test suite (which doesn't run one) and in the
+scan thread (its own loop). So it is one read-only `sqlite3` query, cached until a
+write invalidates it. Read-only URI mode matters: a plain `connect` would CREATE
+the database file, and an empty file where SQLAlchemy expects to set up WAL is a
+worse problem than a missing value.
+
 ---
 
 ## Deploying it
@@ -2104,6 +2143,8 @@ no per-test decorator). What's covered:
 | `test_bootstrap.py` | the first boot on an empty volume: the directories made, a session key generated (and stable across restarts, and different between two deployments, and left alone when one is configured), the setup token written and read back — and that `SKIP_CONFIG_ADOPTION` stops a test run inheriting the developer's live OAuth token, which is not hypothetical: the guard it replaced inferred wrong and a suite ran against real credentials |
 
 | `test_spa_fallback.py` | serving the built frontend from this process without swallowing the API: a client-side route answered with the app, and an unknown `/api` path still a 404 — which is what keeps `test_api_contract.py` above meaning anything, since a catch-all that answered it would make every call site match |
+
+| `test_settings_secrets.py` | that a key never comes back out of the API it went in through, for every secret and not just the one; the tail-shaped hint; a stored value beating `.env` while an emptied field *removes* the row so the environment shows through again rather than the feature going quiet; a trailing newline stripped but a newline in the middle of a one-line credential refused; and the cookie jar reaching disk as a file yt-dlp can be handed |
 
 `conftest.py` redirects `DATA_DIR`, `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import

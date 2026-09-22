@@ -579,4 +579,22 @@ export const vi: Record<string, string> = {
   'Translate comments into': 'Dịch bình luận sang',
   'The language a comment\'s Translate button translates into. A comment already in it offers no button.': 'Ngôn ngữ mà nút Dịch của bình luận sẽ dịch sang. Bình luận đã ở ngôn ngữ này sẽ không hiện nút.',
   'Same as the app': 'Giống như ứng dụng',
+  // Deploying it yourself: the Connections settings, and the key field
+  // that shows a key is set without ever showing the key.
+  'Could not run the check.': 'Không thể chạy kiểm tra.',
+  'Set': 'Đã đặt',
+  'from .env': 'từ .env',
+  'Not set': 'Chưa đặt',
+  'Enter a new value to replace it': 'Nhập giá trị mới để thay thế',
+  'Checking…': 'Đang kiểm tra…',
+  'Test': 'Kiểm tra',
+  'Connections': 'Kết nối',
+  'OpenRouter API key': 'Khóa API OpenRouter',
+  'Turns on the AI features: channel and video tagging, caption translation, video summaries and Ask. Without it the rest of the app works and channels are tagged by language alone. Get one at openrouter.ai.': 'Bật các tính năng AI: gắn thẻ kênh và video, dịch phụ đề, tóm tắt video và Hỏi. Không có khóa, phần còn lại của ứng dụng vẫn hoạt động và kênh chỉ được gắn thẻ theo ngôn ngữ. Lấy khóa tại openrouter.ai.',
+  'Google OAuth client ID': 'ID ứng dụng khách Google OAuth',
+  'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.': 'Cho phép bạn đăng nhập bằng Google và nhập các kênh bạn đăng ký trên YouTube. Tạo một ứng dụng khách OAuth (loại: Ứng dụng web) trong Google Cloud console với YouTube Data API đã bật, rồi đăng ký địa chỉ của ứng dụng này + /api/auth/callback làm redirect URI. Không có nó, bạn thêm kênh bằng tay.',
+  'Google OAuth client secret': 'Mã bí mật ứng dụng khách Google OAuth',
+  'The secret from the same OAuth client as the ID above.': 'Mã bí mật của cùng ứng dụng khách OAuth với ID ở trên.',
+  'Meilisearch key': 'Khóa Meilisearch',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': 'Chỉ cần khi trỏ MEILI_URL tới một Meilisearch yêu cầu khóa. Cái đi kèm trong tệp compose không cần — nó không thể truy cập từ bên ngoài. Tìm kiếm luôn là tùy chọn: không có nó, tìm kiếm không trả về gì và mọi thứ khác không bị ảnh hưởng.',
 }

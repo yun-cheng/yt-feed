@@ -18,6 +18,7 @@ from __future__ import annotations
 import httpx
 from sqlalchemy import select
 
+from app import runtime_config
 from app.config import settings
 from app.database import async_session
 from app.models import Channel, Video
@@ -31,9 +32,11 @@ _ADMIN_TIMEOUT = 30.0
 
 
 def _headers() -> dict[str, str]:
-    if settings.meili_master_key:
-        return {"Authorization": f"Bearer {settings.meili_master_key}"}
-    return {}
+    # Read per call rather than captured: the key is a setting now (Settings →
+    # Connections), so pointing this at a different Meilisearch has to take
+    # effect without a restart.
+    key = runtime_config.meili_master_key()
+    return {"Authorization": f"Bearer {key}"} if key else {}
 
 
 async def _client(timeout: float) -> httpx.AsyncClient:

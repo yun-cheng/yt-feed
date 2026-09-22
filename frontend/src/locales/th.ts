@@ -579,4 +579,22 @@ export const th: Record<string, string> = {
   'Translate comments into': 'แปลความคิดเห็นเป็น',
   'The language a comment\'s Translate button translates into. A comment already in it offers no button.': 'ภาษาที่ปุ่มแปลของความคิดเห็นจะแปลเป็น ความคิดเห็นที่เป็นภาษานี้อยู่แล้วจะไม่มีปุ่ม',
   'Same as the app': 'เหมือนกับแอป',
+  // Deploying it yourself: the Connections settings, and the key field
+  // that shows a key is set without ever showing the key.
+  'Could not run the check.': 'ไม่สามารถตรวจสอบได้',
+  'Set': 'ตั้งค่าแล้ว',
+  'from .env': 'จาก .env',
+  'Not set': 'ยังไม่ตั้งค่า',
+  'Enter a new value to replace it': 'ใส่ค่าใหม่เพื่อแทนที่',
+  'Checking…': 'กำลังตรวจสอบ…',
+  'Test': 'ทดสอบ',
+  'Connections': 'การเชื่อมต่อ',
+  'OpenRouter API key': 'คีย์ API ของ OpenRouter',
+  'Turns on the AI features: channel and video tagging, caption translation, video summaries and Ask. Without it the rest of the app works and channels are tagged by language alone. Get one at openrouter.ai.': 'เปิดใช้ฟีเจอร์ AI: การติดแท็กช่องและวิดีโอ การแปลคำบรรยาย สรุปวิดีโอ และถาม หากไม่มีคีย์ ส่วนอื่นของแอปยังทำงานได้ และช่องจะติดแท็กตามภาษาเท่านั้น ขอคีย์ได้ที่ openrouter.ai',
+  'Google OAuth client ID': 'ไคลเอ็นต์ ID ของ Google OAuth',
+  'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.': 'ให้คุณลงชื่อเข้าใช้ด้วย Google และนำเข้าการติดตามช่องจาก YouTube สร้างไคลเอ็นต์ OAuth (ประเภท: เว็บแอปพลิเคชัน) ใน Google Cloud console โดยเปิดใช้ YouTube Data API แล้วลงทะเบียนที่อยู่ของแอปนี้ + /api/auth/callback เป็น redirect URI หากไม่มี ก็เพิ่มช่องด้วยตนเองได้',
+  'Google OAuth client secret': 'ไคลเอ็นต์ secret ของ Google OAuth',
+  'The secret from the same OAuth client as the ID above.': 'secret ของไคลเอ็นต์ OAuth ชุดเดียวกับ ID ด้านบน',
+  'Meilisearch key': 'คีย์ Meilisearch',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': 'จำเป็นเฉพาะเมื่อให้ MEILI_URL ชี้ไปที่ Meilisearch ที่ต้องใช้คีย์ ตัวที่มาพร้อมไฟล์ compose ไม่ต้องใช้ — เข้าถึงจากภายนอกไม่ได้ การค้นหาเป็นตัวเลือกเสมอ: ถ้าไม่มี การค้นหาจะไม่คืนผลลัพธ์ และส่วนอื่นไม่ได้รับผลกระทบ',
 }

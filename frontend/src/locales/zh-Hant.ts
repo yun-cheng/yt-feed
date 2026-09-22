@@ -580,4 +580,22 @@ export const zhHant: Record<string, string> = {
   'Translate comments into': '留言翻譯語言',
   'The language a comment\'s Translate button translates into. A comment already in it offers no button.': '留言的「翻譯」按鈕要翻成的語言。已經是這個語言的留言不會出現按鈕。',
   'Same as the app': '與 App 相同',
+  // Deploying it yourself: the Connections settings, and the key field
+  // that shows a key is set without ever showing the key.
+  'Could not run the check.': '無法執行檢查。',
+  'Set': '已設定',
+  'from .env': '來自 .env',
+  'Not set': '未設定',
+  'Enter a new value to replace it': '輸入新的值以取代',
+  'Checking…': '檢查中…',
+  'Test': '測試',
+  'Connections': '連線',
+  'OpenRouter API key': 'OpenRouter API 金鑰',
+  'Turns on the AI features: channel and video tagging, caption translation, video summaries and Ask. Without it the rest of the app works and channels are tagged by language alone. Get one at openrouter.ai.': '啟用 AI 功能：頻道與影片標籤、字幕翻譯、影片摘要與「問影片」。沒有金鑰時 App 其餘功能照常運作，頻道只依語言標籤。可在 openrouter.ai 申請。',
+  'Google OAuth client ID': 'Google OAuth 用戶端 ID',
+  'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.': '用來以 Google 登入並匯入你的 YouTube 訂閱。請在 Google Cloud 主控台建立 OAuth 用戶端（類型：網頁應用程式）並啟用 YouTube Data API，然後把這個 App 的網址加上 /api/auth/callback 註冊為重新導向 URI。沒有它也可以手動新增頻道。',
+  'Google OAuth client secret': 'Google OAuth 用戶端密鑰',
+  'The secret from the same OAuth client as the ID above.': '與上面 ID 同一組 OAuth 用戶端的密鑰。',
+  'Meilisearch key': 'Meilisearch 金鑰',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': '只有在 MEILI_URL 指向需要金鑰的 Meilisearch 時才需要。內附 compose 檔裡的那個不需要——它無法從外部連上。搜尋一直是選用的：沒有它時搜尋沒有結果，其他功能不受影響。',
 }

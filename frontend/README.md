@@ -771,6 +771,12 @@ components/
                                   shortcut applies it at once.
                                   Badges the ones scoped to the whole machine,
                                   and shows the extension's API key to copy
+  SecretField.tsx                 the `secret` setting's control: an API key
+                                  you can save into but never read out of. The
+                                  API returns {set, hint} and never the value,
+                                  so it starts empty however set the key is —
+                                  which is why Save is explicit, Clear is its
+                                  own button, and Test exists
   PageDefaultsEditor.tsx          the `page_defaults` setting's control: each
                                   page's opening window, sort and watch filter
   DefaultsLoader.tsx              holds the app back until your settings load

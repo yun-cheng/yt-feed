@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     config_dir: str = ""
 
     # --- OAuth (optional, only for initial subscription import) ---
+    # A bootstrap default only. The live values are stored in the database and
+    # set from Settings → Connections — see app/runtime_config.py, which reads
+    # these when nothing has been stored.
     google_client_id: str = ""
     google_client_secret: str = ""
 
@@ -41,9 +44,13 @@ class Settings(BaseSettings):
 
     # --- Search (Meilisearch companion service) ---
     meili_url: str = "http://127.0.0.1:7700"
-    meili_master_key: str = ""  # empty = dev mode (no auth), fine for localhost
+    # Bootstrap default; the live value lives in the database. Empty = dev mode
+    # (no auth), which is fine for a Meilisearch only this machine can reach.
+    meili_master_key: str = ""
 
     # --- LLM (OpenRouter — shared by AI features like channel tagging) ---
+    # Bootstrap default. Normally set from Settings → Connections instead; see
+    # app/runtime_config.py for which wins.
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Channel/video tagging runs in the background, so latency doesn't matter.

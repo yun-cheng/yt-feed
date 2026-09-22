@@ -4,6 +4,7 @@ import People from './People'
 import PageDefaultsEditor from './PageDefaultsEditor'
 import SpeedsEditor from './SpeedsEditor'
 import ShortcutsEditor from './ShortcutsEditor'
+import SecretField, { type SecretView } from './SecretField'
 import type { PageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
@@ -22,6 +23,11 @@ type SettingSpec = {
   status?: string
   /** For type "choice": the allowed values, in menu order. */
   options?: { value: string; label: string }[]
+  /** For type "secret": a textarea rather than a one-line input. */
+  multiline?: boolean
+  placeholder?: string
+  /** Whether `POST /api/settings/test/{key}` can check this one. */
+  testable?: boolean
 }
 
 /**
@@ -270,6 +276,21 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
                       onChange={(next) => {
                         void update(spec.key, next).then((ok) => { if (ok) onPageDefaultsChange?.(next) })
                       }}
+                    />
+                  )}
+                  {spec.type === 'secret' && (
+                    // Full width, under the description, rather than in the
+                    // control column on the right: a key is ~40 characters and a
+                    // cookie jar is a textarea, and neither fits where a toggle
+                    // goes.
+                    <SecretField
+                      settingKey={spec.key}
+                      view={(data.values[spec.key] ?? {}) as SecretView}
+                      multiline={spec.multiline}
+                      placeholder={spec.placeholder}
+                      testable={spec.testable}
+                      busy={busy === spec.key}
+                      onSave={(v) => update(spec.key, v)}
                     />
                   )}
                 </div>

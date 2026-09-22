@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator
 
 import httpx
 
+from app import runtime_config
 from app.config import settings
 
 
@@ -77,8 +78,9 @@ def chat(
 
     Raises LLMError if the key is missing or the API doesn't return 200.
     """
-    if not settings.openrouter_api_key:
-        raise LLMError("OPENROUTER_API_KEY is not set")
+    key = runtime_config.openrouter_api_key()
+    if not key:
+        raise LLMError("no OpenRouter key — add one under Settings → Connections")
     body: dict = {
         "model": model or settings.llm_tagging_model,
         "messages": [
@@ -95,7 +97,7 @@ def chat(
     try:
         resp = httpx.post(
             f"{settings.openrouter_base_url}/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+            headers={"Authorization": f"Bearer {key}"},
             json=body,
             timeout=timeout,
         )
@@ -158,8 +160,9 @@ async def chat_stream(
     then dies mid-answer raises too, but by then the caller has already sent
     tokens and can only stop.
     """
-    if not settings.openrouter_api_key:
-        raise LLMError("OPENROUTER_API_KEY is not set")
+    key = runtime_config.openrouter_api_key()
+    if not key:
+        raise LLMError("no OpenRouter key — add one under Settings → Connections")
     body: dict = {
         "model": model or settings.llm_tagging_model,
         "messages": [{"role": "system", "content": system}, *messages],
@@ -181,7 +184,7 @@ async def chat_stream(
             async with client.stream(
                 "POST",
                 f"{settings.openrouter_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                headers={"Authorization": f"Bearer {key}"},
                 json=body,
             ) as resp:
                 if resp.status_code != 200:

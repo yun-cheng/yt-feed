@@ -579,4 +579,22 @@ export const ko: Record<string, string> = {
   'Translate comments into': '댓글 번역 언어',
   'The language a comment\'s Translate button translates into. A comment already in it offers no button.': '댓글의 번역 버튼이 번역할 언어입니다. 이미 해당 언어로 작성된 댓글에는 버튼이 표시되지 않습니다.',
   'Same as the app': '앱과 동일',
+  // Deploying it yourself: the Connections settings, and the key field
+  // that shows a key is set without ever showing the key.
+  'Could not run the check.': '확인을 실행할 수 없습니다.',
+  'Set': '설정됨',
+  'from .env': '.env에서',
+  'Not set': '설정되지 않음',
+  'Enter a new value to replace it': '교체할 새 값 입력',
+  'Checking…': '확인 중…',
+  'Test': '테스트',
+  'Connections': '연결',
+  'OpenRouter API key': 'OpenRouter API 키',
+  'Turns on the AI features: channel and video tagging, caption translation, video summaries and Ask. Without it the rest of the app works and channels are tagged by language alone. Get one at openrouter.ai.': 'AI 기능을 켭니다: 채널과 동영상 태그, 자막 번역, 동영상 요약, 질문하기. 키가 없어도 나머지 기능은 작동하며 채널은 언어만으로 태그됩니다. openrouter.ai에서 발급받을 수 있습니다.',
+  'Google OAuth client ID': 'Google OAuth 클라이언트 ID',
+  'Lets you sign in with Google and import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console with the YouTube Data API enabled, and register this app\'s address + /api/auth/callback as a redirect URI. Without it, channels are added by hand.': 'Google로 로그인하고 YouTube 구독을 가져올 수 있습니다. Google Cloud 콘솔에서 OAuth 클라이언트(유형: 웹 애플리케이션)를 만들고 YouTube Data API를 활성화한 뒤, 이 앱의 주소 + /api/auth/callback을 리디렉션 URI로 등록하세요. 없어도 채널을 직접 추가할 수 있습니다.',
+  'Google OAuth client secret': 'Google OAuth 클라이언트 보안 비밀',
+  'The secret from the same OAuth client as the ID above.': '위 ID와 같은 OAuth 클라이언트의 보안 비밀입니다.',
+  'Meilisearch key': 'Meilisearch 키',
+  'Only for pointing MEILI_URL at a Meilisearch that requires a key. The one in the bundled compose file needs none — it isn\'t reachable from outside. Search is optional throughout: without it, search returns nothing and everything else is unaffected.': 'MEILI_URL이 키를 요구하는 Meilisearch를 가리킬 때만 필요합니다. 함께 제공되는 compose 파일의 것은 필요 없으며 외부에서 접근할 수 없습니다. 검색은 언제나 선택 사항입니다: 없으면 검색 결과가 비고 나머지는 영향받지 않습니다.',
 }

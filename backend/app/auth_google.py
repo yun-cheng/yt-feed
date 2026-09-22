@@ -49,12 +49,67 @@ USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
 # trip through Google.
 _RETURN_KEY = "post_login"
 
+# Where an OAuth client file used to be looked for, and still is if it's there.
+# That path exists on exactly one computer, which is the whole reason the client
+# id and secret are now settings — see `_make_flow`.
 CLIENT_SECRET_PATH = os.path.expanduser("~/.hermes/google_client_secret.json")
 TOKEN_PATH = str(Path(settings.config_dir) / "youtube_oauth_token.json")
 
 
+class OAuthNotConfigured(RuntimeError):
+    """No Google OAuth client, so there is nothing to sign in against."""
+
+
+def _client_config() -> dict:
+    """The OAuth client, from Settings → Connections.
+
+    A dict rather than a file because that is what a deployment can actually
+    supply: this used to read `~/.hermes/google_client_secret.json`, an absolute
+    path in one person's home directory, which made "sign in with Google" a
+    feature only its author could use. The id and secret are the whole of what
+    that file contributed that isn't a constant.
+
+    The file still wins where it exists, so nothing changes for the machine this
+    was written on.
+    """
+    from app import runtime_config
+
+    client_id = runtime_config.google_client_id()
+    client_secret = runtime_config.google_client_secret()
+    if not (client_id and client_secret):
+        raise OAuthNotConfigured(
+            "No Google OAuth client. Add one under Settings → Connections "
+            "(Google Cloud console → Credentials → OAuth client ID, type "
+            "\"Web application\"), or set GOOGLE_CLIENT_ID and "
+            "GOOGLE_CLIENT_SECRET."
+        )
+    return {
+        "web": {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        }
+    }
+
+
+def oauth_configured() -> bool:
+    """Whether signing in with Google is possible at all here."""
+    if os.path.isfile(CLIENT_SECRET_PATH):
+        return True
+    try:
+        _client_config()
+    except OAuthNotConfigured:
+        return False
+    return True
+
+
 def _make_flow(redirect_uri: str | None = None) -> Flow:
-    flow = Flow.from_client_secrets_file(CLIENT_SECRET_PATH, scopes=SCOPES)
+    if os.path.isfile(CLIENT_SECRET_PATH):
+        flow = Flow.from_client_secrets_file(CLIENT_SECRET_PATH, scopes=SCOPES)
+    else:
+        flow = Flow.from_client_config(_client_config(), scopes=SCOPES)
     if redirect_uri:
         flow.redirect_uri = redirect_uri
     return flow
@@ -141,7 +196,14 @@ def _return_to(request: Request) -> str:
 async def login(request: Request):
     """Redirect user to Google OAuth consent screen."""
     redirect_uri = _redirect_uri(request)
-    flow = _make_flow(redirect_uri)
+    try:
+        flow = _make_flow(redirect_uri)
+    except OAuthNotConfigured as e:
+        # A page rather than a 500, because this is reached by clicking "Sign in
+        # with Google" on a deployment where nobody has set the client up — which
+        # is an ordinary state for a fresh deployment, not a fault. The page says
+        # what to do; a stack trace wouldn't.
+        return _error_page(str(e))
     auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -197,7 +259,11 @@ async def callback(code: str, request: Request, state: str | None = None):
     at their YouTube account and quota.
     """
     redirect_uri = _redirect_uri(request)
-    flow = _make_flow(redirect_uri)
+    try:
+        flow = _make_flow(redirect_uri)
+    except OAuthNotConfigured as e:
+        # Reachable if the client was cleared between /login and here.
+        return _error_page(str(e))
     if state and state in _pending_verifiers:
         flow.code_verifier = _pending_verifiers.pop(state)
     try:
