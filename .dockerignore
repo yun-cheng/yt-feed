@@ -1,0 +1,47 @@
+# The build needs the two source trees and nothing else. Everything listed here
+# either costs build time, invalidates the cache on every commit, or is a secret.
+
+.git
+.gitignore
+.DS_Store
+.claude
+
+# Installed inside the image instead — and node_modules from a macOS host holds
+# the wrong platform's binaries.
+**/node_modules
+**/__pycache__
+**/*.pyc
+backend/.venv
+frontend/dist
+frontend/coverage
+backend/.coverage
+backend/.pytest_cache
+
+# The developer's own feed: a 69MB database, downloads, thumbnails, and the
+# generated session key. None of it belongs in a distributable image.
+data
+dumps
+
+# Secrets. The image must be buildable from a clone that has none of these, and
+# must never carry them if a clone does.
+.env
+**/.env
+backend/config/*.json
+backend/config/subscriptions.yaml
+backend/config/youtube_cookies.txt
+
+# Docs and tests don't affect the running app. Tests stay OUT on purpose: they
+# run against the source tree, and shipping them would ship pytest's fixtures —
+# including the conftest that redirects DATA_DIR at import.
+docs
+extension
+scripts
+backend/tests
+backend/pytest.ini
+backend/requirements-dev.txt
+README.md
+**/README.md
+
+# `backend/config/categories.yaml` is deliberately NOT ignored: it is the seed
+# taxonomy, and bootstrap copies it onto the data volume on first boot. The
+# developer's own subscription list and OAuth token are excluded above.

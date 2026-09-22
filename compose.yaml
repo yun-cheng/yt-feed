@@ -1,0 +1,60 @@
+# docker compose up -d
+#
+# Then open http://localhost:8000 and read the claim link out of the log:
+#
+#   docker compose logs app | grep setup
+#
+# Everything else — the OpenRouter key, the Google OAuth client, YouTube cookies
+# — is set from Settings → Connections inside the app. Nothing in .env is
+# required except APP_ORIGIN / PUBLIC_URL if you are not on localhost.
+
+services:
+  app:
+    build: .
+    # Also `image: ghcr.io/...` once this is published; `build: .` is what makes
+    # a clone deployable without one existing.
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    # Optional. The image runs with sensible defaults and no file at all, which
+    # is why this is `required: false` rather than a bare string.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # The whole reason there is a volume. See app/bootstrap.py.
+      DATA_DIR: /data
+      # Inside the compose network, by service name. Not the host's 127.0.0.1,
+      # which in a container is the container.
+      MEILI_URL: http://meili:7700
+    volumes:
+      - ytfeed-data:/data
+      # Uncomment to let the local-folder feature see your own video library.
+      # Read-only: this app indexes and plays those files, it never writes them.
+      # - ./media:/media:ro
+    depends_on:
+      # `started`, not `healthy`: search is optional and the app is written to
+      # come up and serve a feed whether or not Meili ever answers.
+      meili:
+        condition: service_started
+
+  meili:
+    image: getmeili/meilisearch:v1.24
+    restart: unless-stopped
+    environment:
+      # No master key, and no published port — the two go together. Meili is
+      # reachable only from inside this compose network, so the key would be
+      # protecting a service nothing else can address. Point MEILI_URL at an
+      # external instance instead and set MEILI_MASTER_KEY in Settings.
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    volumes:
+      - meili-data:/meili_data
+
+volumes:
+  # The one to back up: the database, the downloads, the OAuth token, the
+  # generated session key.
+  ytfeed-data:
+  # Derived from the above — it is rebuilt from the database on every startup, so
+  # losing it costs one reindex.
+  meili-data:

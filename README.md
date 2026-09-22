@@ -191,7 +191,55 @@ Investigations that shaped a decision, kept so it isn't relitigated:
   why watch history travels YouTube → app and never back, with the four routes
   that were measured and what each one hit.
 
-## Setup
+## Deploy it yourself
+
+```bash
+git clone https://github.com/yun-cheng/yt-feed.git && cd yt-feed
+docker compose up -d
+docker compose logs app | grep setup
+```
+
+That last line prints a link with a one-time token in it. Open it, claim the
+deployment, and you are its owner — after which nobody else can sign in unless
+you invite them from **Settings → People**.
+
+Then fill in what you want under **Settings → Connections**. Nothing there is
+required to get a feed:
+
+| | what it turns on | without it |
+|---|---|---|
+| **OpenRouter key** | channel/video tagging, caption translation, summaries, Ask | channels are tagged by language alone |
+| **Google OAuth client** | sign in with Google, import your subscriptions | add channels by hand |
+| **YouTube cookies / proxy** | getting past the bot check on a hosted address | see below |
+| **Meilisearch key** | only for an external Meilisearch | the bundled one needs no key |
+
+The keys live in the database, not in a file, so there is nothing to create
+before the app will start. The matching `.env` variables still work as
+bootstrap defaults if you prefer files — see [`.env.example`](.env.example).
+
+One volume holds everything the app writes: the database, downloads,
+thumbnails, the OAuth token and the generated session key. Backing that up is
+the whole backup story.
+
+**On a public address, set `PUBLIC_URL`.** It marks the session cookie `Secure`
+(on plain http a `Secure` cookie is never stored, so sign-in appears to do
+nothing) and it is where Google returns you after signing in. On a LAN, where
+the network is already the perimeter, `OPEN_SIGNUP=true` lets anyone who can
+reach the server have an account — which is how this app behaved before it could
+be deployed anywhere else.
+
+**A hosted address may get refused by YouTube.** Datacenter IP ranges are asked
+to "confirm you're not a bot" far more often than home connections, and yt-dlp
+is what the scan, the previews, the captions and the downloads all go through.
+Settings → Connections takes a cookie jar or a proxy to answer that, and the
+line under the cookies field says whether extraction is currently getting
+through. A machine at home remains the reliable host. Full detail, including the
+account-safety caveat on cookies, is in **[docs/deploying.md](docs/deploying.md)**.
+
+Speech-to-text is absent from the image on purpose: `mlx-whisper` is
+Apple-Silicon only, so the feature offers itself only where it can run.
+
+## Setup (from source)
 
 Run three processes. The frontend dev server proxies `/api` → `localhost:8000`.
 
@@ -240,6 +288,11 @@ unpacked), open its **Extension options** and paste the API key from the app's
 Watch Later the buttons reach; on a machine with one account you can leave it
 empty.
 
+Everything works without it; the app keeps YouTube's own controls and lays the
+bookmark / A–B marks over them instead. A video opened with the button need not
+be from a channel you follow — the watch page resolves and caches whatever it's
+never seen. See [`extension/README.md`](extension/README.md).
+
 ### Sharing it with the household
 
 The dev server already listens on every interface, so anyone on your network can
@@ -248,9 +301,18 @@ them the link it gives you — opening it signs them in and keeps them signed in
 Everyone keeps their own history, playlists, tags and saved videos; the channels,
 videos and downloads are shared, so a channel two people follow is fetched once.
 
-Google sign-in is for whoever runs the server: Google only accepts an `http`
-OAuth callback on `localhost`, so it can't be used from another machine on the
-LAN. That's what the links are for.
+**The links are how people get in, and by default the only way.** Signing in
+with Google admits nobody who wasn't invited — which starts mattering the moment
+this app is reachable at an address you didn't choose. `OPEN_SIGNUP=true` restores
+the older behaviour, where anyone who could reach the server could have an
+account: the right setting for a LAN, where the network is already the perimeter,
+and the wrong one for a public URL. `ALLOWED_EMAILS` names people explicitly
+instead.
+
+Google sign-in also only works where Google will send the browser back: it
+accepts an `http` callback on `localhost` and nowhere else, so on a LAN it is for
+whoever runs the server and the links are for everyone else. A deployment behind
+https has no such limit.
 
 The YouTube connection itself stays yours. It's a single token this app holds,
 and the scan, the archive fill and the subscription resync all run on it — so
@@ -258,19 +320,14 @@ those are the owner's, and a family member signing in with Google can't repoint
 them. What everyone else gets is the shared library plus their own everything
 on top of it; they add channels by hand rather than importing subscriptions.
 
-Everything works without it; the app keeps YouTube's own controls and lays the
-bookmark / A–B marks over them instead. A video opened with the button need not
-be from a channel you follow — the watch page resolves and caches whatever it's
-never seen. See [`extension/README.md`](extension/README.md).
 
 ### AI tagging (optional)
 
-LLM channel tagging needs an [OpenRouter](https://openrouter.ai) key in
-`backend/.env`:
-
-```bash
-echo 'OPENROUTER_API_KEY=sk-or-v1-...' >> backend/.env
-```
+LLM channel tagging needs an [OpenRouter](https://openrouter.ai) key. Paste it
+into **Settings → Connections** — there is a **Test** button next to it — or set
+`OPENROUTER_API_KEY` in `backend/.env` if you'd rather keep it in a file. A
+stored key wins over the file; see
+[`backend/app/runtime_config.py`](backend/app/runtime_config.py).
 
 Without it, channels are tagged by language only. See
 [`backend/README.md`](backend/README.md#channel-tagging-routerstagspy-llmpy).
@@ -309,3 +366,16 @@ cd backend && pip install -r requirements-dev.txt && pytest
 
 The backend suite runs against a temp SQLite file, never your real feed, and
 makes no network calls. See each side's README for what's covered.
+
+There is a third, for the seam neither suite can reach — an image, a volume, and
+a process that has never run before:
+
+```bash
+scripts/smoke-deploy.sh
+```
+
+It builds the image, brings it up against an empty volume on its own project
+name and port, and checks that a fresh deployment serves the app, reports itself
+unclaimed, refuses to be configured by a stranger, and hands its owner a key that
+cannot be read back out. It removes its own containers and volumes on the way
+out, and never touches your `data/` or a running dev server.

@@ -41,6 +41,10 @@ meilisearch --db-path ../data/meili --http-addr 127.0.0.1:7700 --no-analytics
 All three services (frontend, backend, meilisearch) are also defined in
 [`../.claude/launch.json`](../.claude/launch.json).
 
+For a deployment rather than a checkout, `docker compose up -d` runs one
+container that serves both the API and the built frontend — see
+[`../docs/deploying.md`](../docs/deploying.md) and "Deploying it" below.
+
 ---
 
 ## Layout
@@ -92,9 +96,9 @@ app/
     setup.py       claiming a deployment nobody owns yet
     watch_later.py / playlists.py / downloads.py / subscriptions.py
 
-$DATA_DIR/         everything the app WRITES, under one directory:
-                   youtube_feed.db, config/ (oauth token, subscriptions.yaml,
-                   categories.yaml, youtube_cookies.txt),
+$DATA_DIR/         everything the app WRITES, under one directory so a container
+                   needs one volume: youtube_feed.db, config/ (oauth token,
+                   subscriptions.yaml, categories.yaml, youtube_cookies.txt),
                    downloads/, local_thumbs/, secret_key, setup-token
 .env               deployment wiring: ports, paths, service addresses. API keys
                    may be here too, but only as bootstrap defaults — the live
@@ -2191,16 +2195,11 @@ no per-test decorator). What's covered:
 | `test_subscription_resync.py` | the prune's refusals — the one endpoint that deletes what you never named. An empty live list refused rather than obeyed (a 200 with nothing in it reads as "you subscribe to nothing", and the prune would take every channel and every video with it), expired auth refused the same way, a hand-added channel exempt because it will never be in the live list, the dry run reporting the damage without doing any of it — and, so the tests above can't pass by the prune having simply stopped working, a dropped subscription still going with its videos |
 | `test_youtube_parsing.py` | the pure transforms on the ingest boundary, where a wrong answer is stored as fact rather than raised: ISO 8601 durations including the **day** component (`P1DT2H` — anything past 24 hours, which a time-only pattern read as zero and so filed under "under 5 minutes"), unparseable input costing one video its length instead of the batch, the thumbnail ladder, telling a spent quota from a dead token across a 403, and a yt-dlp entry with no date reading as now rather than 1970 |
 | `test_api_contract.py` | that every `/api/…` the frontend calls is a route this app serves. The two suites meet nowhere — the frontend stubs `fetch`, so it answers whatever URL it's handed — and a renamed route leaves both green while the feature is dead in the browser. Reads the call sites out of `frontend/src` and resolves each against the real route table |
-
 | `test_bootstrap.py` | the first boot on an empty volume: the directories made, a session key generated (and stable across restarts, and different between two deployments, and left alone when one is configured), the setup token written and read back — and that `SKIP_CONFIG_ADOPTION` stops a test run inheriting the developer's live OAuth token, which is not hypothetical: the guard it replaced inferred wrong and a suite ran against real credentials |
-
-| `test_spa_fallback.py` | serving the built frontend from this process without swallowing the API: a client-side route answered with the app, and an unknown `/api` path still a 404 — which is what keeps `test_api_contract.py` above meaning anything, since a catch-all that answered it would make every call site match |
-
-| `test_settings_secrets.py` | that a key never comes back out of the API it went in through, for every secret and not just the one; the tail-shaped hint; a stored value beating `.env` while an emptied field *removes* the row so the environment shows through again rather than the feature going quiet; a trailing newline stripped but a newline in the middle of a one-line credential refused; and the cookie jar reaching disk as a file yt-dlp can be handed |
-
-| `test_ytdl_opts.py` | the shared yt-dlp floor: cookies and proxy passed only when set, a call site's own options surviving the merge — and, read across `app/`, that no call site builds its own option dict, because one that did would ignore both and fail while everything around it worked. Plus the extraction status: a bot check reported as itself rather than as "extraction failed", recorded by the logger without nine call sites remembering to |
-
 | `test_setup.py` | claiming a deployment nobody owns, which is mostly refusals: a stranger can't configure an unclaimed one (before this, an empty database meant nobody was signed in and nobody was turned away), a wrong token is refused, a claimed one asks you to sign in instead, and the second claim is a 409 — the token stays on disk, but the window it opens shuts the first time anybody walks through it |
+| `test_settings_secrets.py` | that a key never comes back out of the API it went in through, for every secret and not just the one; the tail-shaped hint; a stored value beating `.env` while an emptied field *removes* the row so the environment shows through again rather than the feature going quiet; a trailing newline stripped but a newline in the middle of a one-line credential refused; and the cookie jar reaching disk as a file yt-dlp can be handed |
+| `test_ytdl_opts.py` | the shared yt-dlp floor: cookies and proxy passed only when set, a call site's own options surviving the merge — and, read across `app/`, that no call site builds its own option dict, because one that did would ignore both and fail while everything around it worked. Plus the extraction status: a bot check reported as itself rather than as "extraction failed", recorded by the logger without nine call sites remembering to |
+| `test_spa_fallback.py` | serving the built frontend from this process without swallowing the API: a client-side route answered with the app, and an unknown `/api` path still a 404 — which is what keeps `test_api_contract.py` above meaning anything, since a catch-all that answered it would make every call site match |
 
 `conftest.py` redirects `DATA_DIR`, `DB_PATH` and `CONFIG_DIR` at a temp directory **before
 importing anything under `app`** — `database.py` builds its engine at import
