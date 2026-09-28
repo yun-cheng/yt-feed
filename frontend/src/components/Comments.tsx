@@ -1,5 +1,5 @@
 /**
- * The comment section, under the description on the watch page.
+ * The comment section — the watch page's Comments tab, beside Info.
  *
  * Everything here is shaped by one rule: nothing is fetched until you ask for
  * it. There is no prefetch on hover, no warm-up while the video plays, and no
@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { formatCount, linkify } from '../lib/richText'
-import { looksWrittenIn, t, tc, tn, translateTarget } from '../lib/i18n'
+import { looksWrittenIn, t, tn, translateTarget } from '../lib/i18n'
 
 export type Comment = {
   id: string
@@ -46,10 +46,14 @@ type Payload = {
   threads: Comment[]
 }
 
-type Sort = 'top' | 'new'
+export type Sort = 'top' | 'new'
 
 type Props = {
   videoId: string
+  /** Whether the tab is showing. Opening it is the ask; see the top of the file. */
+  open: boolean
+  /** Top or Newest. Picked from the Comments tab's own menu, so it's the page's. */
+  sort: Sort
   /** Jump the player to a timestamp written in a comment. */
   onSeek: (seconds: number) => void
   onChannelClick?: (channelId: string) => void
@@ -262,12 +266,10 @@ function Thread({
   )
 }
 
-export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
-  const [open, setOpen] = useState(false)
+export default function Comments({ videoId, open, sort, onSeek, onChannelClick }: Props) {
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
-  const [sort, setSort] = useState<Sort>('top')
   // The replies walk, running behind the comments already on screen.
   const [deepening, setDeepening] = useState(false)
   // Which request is current. The two walks and a sort change can all be in
@@ -275,16 +277,14 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
   // as long as the shallow one it followed.
   const turn = useRef(0)
 
-  // A new video starts closed and empty. Keeping the panel open across videos
-  // would mean fetching on load for every one of them, which is the thing this
-  // component exists to avoid.
+  // A new video starts empty. The watch page puts it back on Info, too: keeping
+  // this tab open across videos would mean fetching on load for every one of
+  // them, which is the thing this component exists to avoid.
   useEffect(() => {
     turn.current += 1
-    setOpen(false)
     setData(null)
     setFailed(false)
     setDeepening(false)
-    setSort('top')
   }, [videoId])
 
   /**
@@ -341,99 +341,76 @@ export default function Comments({ videoId, onSeek, onChannelClick }: Props) {
     }
   }, [videoId])
 
-  const toggle = () => {
-    const next = !open
-    setOpen(next)
-    if (next && !data && !loading) load(sort, false)
-  }
+  // Fetch on the switch TO this tab, and only then. Keyed on the transition
+  // rather than on "open with nothing loaded", so a failed fetch waits for Try
+  // again instead of retrying itself, and a new video arriving while the tab is
+  // still open doesn't count as asking — the page moves back to Info with it.
+  const wasOpen = useRef(false)
+  useEffect(() => {
+    const opening = open && !wasOpen.current
+    wasOpen.current = open
+    if (opening && !data && !loading) load(sort, false)
+  }, [open])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pickSort = (s: Sort) => {
-    if (s === sort) return
-    setSort(s)
-    // Keep whatever depth is already on screen: having waited once for replies,
-    // switching to Newest shouldn't silently throw them away.
-    load(s, !!data?.has_replies)
-  }
+  // A new sort re-reads what's on screen — and only that: before anything has
+  // been fetched it is just the order the first fetch will use. It keeps
+  // whatever depth is already there: having waited once for replies, switching
+  // to Newest shouldn't silently throw them away.
+  const fetchedSort = useRef(sort)
+  useEffect(() => {
+    if (sort === fetchedSort.current) return
+    fetchedSort.current = sort
+    if (data || loading) load(sort, !!data?.has_replies)
+  }, [sort])  // eslint-disable-line react-hooks/exhaustive-deps
 
   const threads = data?.threads ?? []
 
+  // Closed, it renders nothing but stays mounted, so what it fetched is still
+  // here when the tab comes back.
+  if (!open) return null
+
   return (
-    <div className="mt-4">
-      <button
-        onClick={toggle}
-        className="flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-[#f1f1f1] transition-colors hover:bg-white/10"
-      >
-        <svg
-          className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`}
-          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-        {t('Comments')}
-        {/* "40+" rather than "top 40": the same cap applies under Newest, where
-            nothing about the list is top-anything. */}
-        {data && !data.disabled && (
-          <span className="text-[#aaa]">{threads.length}{data.capped ? '+' : ''}</span>
-        )}
-      </button>
+    <div>
+      {loading && (
+        <div className="px-3 py-6 text-sm text-[#aaa]">{t('Reading the comments…')}</div>
+      )}
 
-      {open && (
-        <div className="mt-3">
-          {loading && (
-            <div className="px-3 py-6 text-sm text-[#aaa]">{t('Reading the comments…')}</div>
-          )}
-
-          {!loading && failed && (
-            <div className="flex items-center gap-3 px-3 py-4 text-sm text-[#aaa]">
-              {t('Couldn\'t load the comments.')}
-              <button onClick={() => load(sort, false)} className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]">
-                Try again
-              </button>
-            </div>
-          )}
-
-          {!loading && !failed && data?.disabled && (
-            <div className="px-3 py-4 text-sm text-[#aaa]">{t('Comments are turned off for this video.')}</div>
-          )}
-
-          {!loading && !failed && data && !data.disabled && threads.length === 0 && (
-            <div className="px-3 py-4 text-sm text-[#aaa]">{t('No comments yet.')}</div>
-          )}
-
-          {!loading && !failed && threads.length > 0 && (
-            <>
-              <div className="mb-4 flex items-center gap-2 px-3">
-                {(['top', 'new'] as Sort[]).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => pickSort(s)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      sort === s ? 'bg-white text-black' : 'bg-[#272727] text-[#f1f1f1] hover:bg-[#3f3f3f]'
-                    }`}
-                  >
-                    {s === 'top' ? t('Top') : tc('sort', 'Newest')}
-                  </button>
-                ))}
-                {/* Not a button. The replies are already on their way; this
-                    only explains why reply counts appear a few seconds after
-                    the comments they belong to. */}
-                {deepening && <span className="text-xs text-[#717171]">{t('loading replies…')}</span>}
-              </div>
-
-              <div className="space-y-5 px-3">
-                {threads.map((c) => (
-                  <Thread key={c.id} comment={c} depth={0} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} />
-                ))}
-              </div>
-
-              {data?.capped && (
-                <p className="mt-5 px-3 text-xs text-[#717171]">
-                  {sort === 'top' ? t('The top {n} — the app doesn\'t page through the rest.', { n: threads.length }) : t('The newest {n} — the app doesn\'t page through the rest.', { n: threads.length })}
-                </p>
-              )}
-            </>
-          )}
+      {!loading && failed && (
+        <div className="flex items-center gap-3 px-3 py-4 text-sm text-[#aaa]">
+          {t('Couldn\'t load the comments.')}
+          <button onClick={() => load(sort, false)} className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]">
+            Try again
+          </button>
         </div>
+      )}
+
+      {!loading && !failed && data?.disabled && (
+        <div className="px-3 py-4 text-sm text-[#aaa]">{t('Comments are turned off for this video.')}</div>
+      )}
+
+      {!loading && !failed && data && !data.disabled && threads.length === 0 && (
+        <div className="px-3 py-4 text-sm text-[#aaa]">{t('No comments yet.')}</div>
+      )}
+
+      {!loading && !failed && threads.length > 0 && (
+        <>
+          {/* Not a button. The replies are already on their way; this
+              only explains why reply counts appear a few seconds after the
+              comments they belong to. */}
+          {deepening && <p className="mb-3 px-3 text-xs text-[#717171]">{t('loading replies…')}</p>}
+
+          <div className="space-y-5 px-3">
+            {threads.map((c) => (
+              <Thread key={c.id} comment={c} depth={0} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} />
+            ))}
+          </div>
+
+          {data?.capped && (
+            <p className="mt-5 px-3 text-xs text-[#717171]">
+              {sort === 'top' ? t('The top {n} — the app doesn\'t page through the rest.', { n: threads.length }) : t('The newest {n} — the app doesn\'t page through the rest.', { n: threads.length })}
+            </p>
+          )}
+        </>
       )}
     </div>
   )

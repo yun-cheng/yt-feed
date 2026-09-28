@@ -14,10 +14,10 @@ import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
-import Comments from './Comments'
+import Comments, { type Sort as CommentSort } from './Comments'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
-import { t } from '../lib/i18n'
+import { t, tc } from '../lib/i18n'
 import { captionDefaults } from '../lib/captionDefaults'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
@@ -482,9 +482,22 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [sidePanel, setSidePanel] = useState<'transcript' | 'ask' | null>(initialPanel ?? null)
   const showTranscript = sidePanel === 'transcript'
   const showAsk = sidePanel === 'ask'
-  // The "…" overflow menu next to Save, holding download + the transcript toggle.
-  const [showMoreMenu, setShowMoreMenu] = useState(false)
-  const moreRef = useRef<HTMLDivElement>(null)
+  // The left panel's two tabs: everything about the video, or its comments. A
+  // tab rather than a section under the description, so reading the comments
+  // doesn't start with scrolling past everything else. Back on Info for every
+  // new video — see Comments.tsx for why the comments never stay open.
+  const [detailsTab, setDetailsTab] = useState<'info' | 'comments'>('info')
+  // Top or Newest, picked from the Comments pill itself once you're on that
+  // tab — a second press on the tab you're already on has nothing else to do,
+  // and it saves the comments a row of their own for two sort pills.
+  const [commentSort, setCommentSort] = useState<CommentSort>('top')
+  const [showSortMenu, setShowSortMenu] = useState(false)
+  const sortRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    setDetailsTab('info')
+    setCommentSort('top')
+    setShowSortMenu(false)
+  }, [videoId])
   const activeRowRef = useRef<HTMLButtonElement>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
   // Whether the transcript still tracks the play head. Scrolling away turns it off
@@ -620,15 +633,168 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // embed's own chrome when it isn't.
   const ownBar = playLocal || EMBED_OWN_CONTROLS
 
-  // Close the "…" menu on an outside click.
+  // Back to top, for both tabs. WHAT scrolls the details depends on the layout —
+  // the details pane while pinned, the left column when a transcript fills the
+  // pane beside it, the whole overlay unpinned — so rather than track that, it
+  // listens for any scroll (scroll doesn't bubble; capture sees it) and keeps
+  // the one whose box holds the left column. Unrelated scrollers, like the
+  // transcript's own list, don't contain it and are ignored.
+  const detailsRef = useRef<HTMLDivElement>(null)
+  const detailsScroller = useRef<HTMLElement | null>(null)
+  const [showToTop, setShowToTop] = useState(false)
+  // Whether the pinned stack — the Info / Comments switch and the actions —
+  // has left its place and floats over the scrolled column: the cue for a
+  // shadow, so it reads as on top, and for its labels to give way to icons.
+  const [stuck, setStuck] = useState(false)
   useEffect(() => {
-    if (!showMoreMenu) return
+    const onScroll = (e: Event) => {
+      const box = e.target
+      if (!(box instanceof HTMLElement) || !detailsRef.current || !box.contains(detailsRef.current)) return
+      detailsScroller.current = box
+      setStuck(detailsRef.current.getBoundingClientRect().top < box.getBoundingClientRect().top)
+      // About a screen down: before that the top is still in reach by eye.
+      setShowToTop(box.scrollTop > box.clientHeight * 0.8)
+    }
+    document.addEventListener('scroll', onScroll, true)
+    return () => document.removeEventListener('scroll', onScroll, true)
+  }, [])
+
+  /* Not `behavior: 'smooth'`: the browser paces that by distance, so from deep
+   * in a long comment thread it crawls for a second or more. This takes the
+   * same quarter-second from anywhere, easing out so it lands softly. */
+  const scrollDetailsToTop = () => {
+    const box = detailsScroller.current
+    if (!box) return
+    const from = box.scrollTop
+    if (!from) return
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { box.scrollTop = 0; return }
+    const start = performance.now()
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / 250)
+      box.scrollTop = from * (1 - p) ** 3
+      if (p < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }
+
+  /* The actions after Save, in the order they're shown: Transcript, Ask AI,
+   * Download. */
+  type Action = {
+    key: string
+    label: string
+    icon: React.ReactNode
+    active?: boolean
+    disabled?: boolean
+    onClick: () => void
+  }
+  const hasCaptions = !!captions?.length
+  const actions: Action[] = !meta ? [] : [
+    ...(hasCaptions ? [
+      {
+        key: 'transcript',
+        label: t('Transcript'),
+        icon: (
+          <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
+        ),
+        active: showTranscript,
+        onClick: () => setSidePanel((v) => (v === 'transcript' ? null : 'transcript')),
+      },
+      {
+        // Same gate as the transcript: the answers are read off the captions.
+        key: 'ask',
+        label: t('Ask AI'),
+        // The sparkle every product uses for "a model did this". A speech
+        // bubble would read as chat with a person, and it isn't one.
+        icon: (
+          <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
+            <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
+          </svg>
+        ),
+        active: showAsk,
+        onClick: () => setSidePanel((v) => (v === 'ask' ? null : 'ask')),
+      },
+    ] : []),
+    {
+      key: 'download',
+      label: isDownloaded ? t('Downloaded') : t('Download'),
+      icon: isDownloaded ? (
+        <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+        </svg>
+      ),
+      disabled: isDownloaded,
+      onClick: () => onDownload(meta),
+    },
+  ]
+  /* The whole row carries its labels or none of it does — and the switch above
+   * it with it — and it carries them when the labelled row fits beside a
+   * readable title: a 52rem column with the caption pills in it. Without them
+   * it's Save and Download, which fit anywhere. Short of that, everything is
+   * an icon, which is always enough: four icons are a 168px row. Written out
+   * whole, since Tailwind only generates the classes it can find in the
+   * source. */
+  const labelled = hasCaptions
+    ? { pill: 'w-9 @min-[52rem]:w-auto @min-[52rem]:px-3.5', text: 'hidden @min-[52rem]:inline' }
+    : { pill: 'px-3.5', text: '' }
+
+  /* Switching from the floating switch, deep in one tab, lands at the top of
+   * the other — not at whatever depth the first one had reached, which in the
+   * new tab means nothing. Back to where the column starts, not the page: a
+   * player scrolled out of view unpinned stays out of view. */
+  const switchTab = (tab: 'info' | 'comments') => {
+    setDetailsTab(tab)
+    const box = detailsScroller.current
+    const col = detailsRef.current
+    if (!box || !col) return
+    const above = box.getBoundingClientRect().top - col.getBoundingClientRect().top
+    if (above > 0) box.scrollTop -= above
+  }
+
+  // A column too narrow to float the stack beside the title (a phone): see
+  // the header's layout below.
+  const [narrow, setNarrow] = useState(false)
+  useEffect(() => {
+    const el = detailsRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setNarrow(el.offsetWidth < 576))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // How much of the header the pinned stack covers. Measured at rest only:
+  // scrolled, the actions shrink to icons, and the header following them would
+  // reflow the page under the reader's scroll.
+  const floatRef = useRef<HTMLDivElement>(null)
+  const [floatBox, setFloatBox] = useState({ w: 0, h: 0 })
+  const stuckRef = useRef(false)
+  stuckRef.current = stuck
+  useEffect(() => {
+    const el = floatRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (!stuckRef.current) setFloatBox({ w: el.offsetWidth, h: el.offsetHeight })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  // The stack moves in the tree when the layout flips, so it's a new element.
+  }, [narrow])
+
+  // Close the comments' sort menu on an outside click.
+  useEffect(() => {
+    if (!showSortMenu) return
     const onDown = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setShowMoreMenu(false)
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setShowSortMenu(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
-  }, [showMoreMenu])
+  }, [showSortMenu])
 
   // Is the video in a playlist? Re-asked whenever one changes, which covers
   // the popover's own toggles as well as edits made on the Playlists page.
@@ -2145,6 +2311,198 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </button>
   )
 
+  // The pieces of the details' header, ordered by the layout below.
+  const floatVars = { '--float-w': `${floatBox.w + 12}px`, '--float-h': `${floatBox.h}px` } as React.CSSProperties
+  const titleEl = (
+    <h1 className="text-lg md:text-xl font-semibold leading-snug text-white [overflow-wrap:anywhere]">
+      {meta?.title ?? '…'}
+    </h1>
+  )
+  const statsEl = (
+    <div hidden={detailsTab !== 'info'} className={narrow ? '' : 'mt-2'}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
+        {meta && (
+          <>
+            {meta.channel_thumbnail && (
+              <a
+                href={`/channel/${meta.channel_id}`}
+                onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
+                className="flex-shrink-0"
+                title={meta.channel_name || t('Channel')}
+              >
+                <img
+                  src={meta.channel_thumbnail}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover bg-[#3a3a3a]"
+                />
+              </a>
+            )}
+            <a
+              href={`/channel/${meta.channel_id}`}
+              onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
+              className="font-medium text-white hover:text-blue-400 transition-colors"
+            >
+              {meta.channel_name || t('Unknown')}
+            </a>
+            <span className="text-[#444]">·</span>
+            <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
+            <span className="text-[#444]">·</span>
+            <span>{timeAgo(meta.published_at)}</span>
+            {meta.view_count > 0 && (
+              <>
+                <span className="text-[#444]">·</span>
+                <span>{t('{count} likes', { count: formatCount(meta.like_count) })}</span>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+  const pinnedStack = (
+    <>
+      {/* The switch and the video's actions ride along as you scroll, like
+          the back-to-top button: a zero-height sticky layer at the top of the
+          column, so they take no room in the flow and hang down over the
+          right of the header below. The header leaves them that much room,
+          measured, since their width moves with the language.
+          items-start: a zero-height row stretches its children to zero, which
+          once left the switch's track a sliver and its halves bare. */}
+      <div className={`pointer-events-none sticky top-3 z-20 flex h-0 items-start justify-end${narrow ? ' mt-2' : ''}`}>
+      <div ref={floatRef} className="flex flex-col items-end gap-2">
+        {/* The sidebar's Videos / Shorts switch, copied: one track, the choice
+            lit inside it. Two equal columns so the track is the same width
+            whichever half is lit, and nothing on the half changes size when
+            it lights — the weight stays put and the chevron's room is kept
+            even while it's hidden — so switching never shifts the row.
+            Its words come and go with the actions' below: same breakpoint,
+            and gone while scrolled, leaving the icons. */}
+        <div
+          role="tablist"
+          ref={sortRef}
+          className={`pointer-events-auto relative grid shrink-0 grid-cols-2 rounded-full bg-[#272727] p-0.5 text-sm font-medium transition-shadow ${
+            stuck ? 'shadow-lg shadow-black/60 ring-1 ring-white/10' : ''
+          }`}
+        >
+          <button
+            role="tab"
+            aria-selected={detailsTab === 'info'}
+            aria-label={t('Info')}
+            title={t('Info')}
+            onClick={() => { switchTab('info'); setShowSortMenu(false) }}
+            className={`flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
+              detailsTab === 'info' ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'
+            }`}
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+              <circle cx="12" cy="12" r="9" />
+              <path strokeLinecap="round" d="M12 11v5M12 7.5v.01" />
+            </svg>
+            {!stuck && <span className={labelled.text}>{t('Info')}</span>}
+          </button>
+          <button
+            role="tab"
+            aria-selected={detailsTab === 'comments'}
+            aria-label={t('Comments')}
+            title={t('Comments')}
+            aria-haspopup={detailsTab === 'comments' ? 'menu' : undefined}
+            aria-expanded={detailsTab === 'comments' ? showSortMenu : undefined}
+            onClick={() => {
+              if (detailsTab === 'comments') setShowSortMenu((o) => !o)
+              else switchTab('comments')
+            }}
+            className={`flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
+              detailsTab === 'comments' ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'
+            }`}
+          >
+            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+              <path strokeLinejoin="round" d="M4 5h16v11H9l-5 4V5z" />
+            </svg>
+            {!stuck && <span className={labelled.text}>{t('Comments')}</span>}
+            {/* Only on the open tab, where a press means "sort" rather than
+                "go here" — the chevron is what says the press changed. */}
+            <svg
+              className={`-ml-0.5 h-4 w-4 shrink-0 ${detailsTab === 'comments' ? '' : 'invisible'}`}
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+          {showSortMenu && (
+            <div role="menu" className="absolute right-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
+              {([['top', t('Top')], ['new', tc('sort', 'Newest')]] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  role="menuitemradio"
+                  aria-checked={commentSort === key}
+                  onClick={() => { setCommentSort(key); setShowSortMenu(false) }}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10"
+                >
+                  <svg className={`h-4 w-4 ${commentSort === key ? '' : 'invisible'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* The actions, pinned under the switch. Info only: they're about the
+            video, and the comments tab has its own control in the switch.
+            Scrolled, they drop their words and keep their icons — the
+            labels are for the first look, and the pinned stack shouldn't
+            cover more of what you're reading than it has to. */}
+        {detailsTab === 'info' && meta && (
+          <div className="pointer-events-auto flex items-center gap-2">
+            <div className="relative" ref={saveRef}>
+              <button
+                onClick={() => setShowSavePanel((o) => !o)}
+                aria-label={saved ? t('Saved') : t('Save')}
+                title={saved ? t('Saved') : t('Save')}
+                className={`flex h-9 items-center justify-center gap-2 rounded-full bg-[#272727] text-sm font-medium text-white transition-colors hover:bg-[#3f3f3f] ${
+                  stuck ? 'w-9 shadow-lg shadow-black/60 ring-1 ring-white/10' : labelled.pill
+                }`}
+              >
+                <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
+                </svg>
+                {!stuck && <span className={labelled.text}>{saved ? t('Saved') : t('Save')}</span>}
+              </button>
+              {/* Opens leftwards: the stack sits at the column's right edge. */}
+              {showSavePanel && (
+                <div className="absolute right-0 top-full mt-2 z-40 rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2">
+                  <SaveToPlaylist video={meta} onBack={() => setShowSavePanel(false)} />
+                </div>
+              )}
+            </div>
+
+            {/* The rest, labelled with Save or not at all (see `labelled`).
+                Scrolled, every action is an icon. Each one's full name is
+                its tooltip. */}
+            {actions.map(({ key, label, icon, active, disabled, onClick }) => (
+              <button
+                key={key}
+                onClick={onClick}
+                disabled={disabled}
+                aria-pressed={active}
+                aria-label={label}
+                title={label}
+                className={`flex h-9 items-center justify-center gap-2 rounded-full text-sm font-medium transition-colors disabled:cursor-default disabled:text-[#aaa] disabled:hover:bg-[#272727] ${
+                  active ? 'bg-white text-black' : 'bg-[#272727] text-white hover:bg-[#3f3f3f]'
+                } ${stuck ? 'w-9 shadow-lg shadow-black/60 ring-1 ring-white/10' : labelled.pill}`}
+              >
+                {icon}
+                {!stuck && <span className={labelled.text}>{label}</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      </div>
+    </>
+  )
+
   return (
     // Pinned: a fixed column where the player stays put and the details scroll on
     // their own. Unpinned: a plain block, so the overlay scrolls the whole thing.
@@ -2390,138 +2748,38 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           the pane is a fixed-height row. The readability cap lives here rather
           than on the row, so the transcript gets its own width beside it instead
           of the two sharing one 1100px budget. */}
-      <div className={`${twoCol ? 'lg:min-w-0 lg:grow lg:basis-[650px] lg:max-w-[1100px]' : ''} ${fillsPane ? 'lg:overflow-y-auto' : ''}`}>
-        <h1 className="text-lg md:text-xl font-semibold leading-snug text-white [overflow-wrap:anywhere]">
-          {meta?.title ?? '…'}
-        </h1>
-        {/* Stats on the left, action pills on the right of the same row. */}
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
-            {meta && (
-              <>
-                {meta.channel_thumbnail && (
-                  <a
-                    href={`/channel/${meta.channel_id}`}
-                    onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
-                    className="flex-shrink-0"
-                    title={meta.channel_name || t('Channel')}
-                  >
-                    <img
-                      src={meta.channel_thumbnail}
-                      alt=""
-                      className="w-8 h-8 rounded-full object-cover bg-[#3a3a3a]"
-                    />
-                  </a>
-                )}
-                <a
-                  href={`/channel/${meta.channel_id}`}
-                  onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
-                  className="font-medium text-white hover:text-blue-400 transition-colors"
-                >
-                  {meta.channel_name || t('Unknown')}
-                </a>
-                <span className="text-[#444]">·</span>
-                <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
-                <span className="text-[#444]">·</span>
-                <span>{timeAgo(meta.published_at)}</span>
-                {meta.view_count > 0 && (
-                  <>
-                    <span className="text-[#444]">·</span>
-                    <span>{t('{count} likes', { count: formatCount(meta.like_count) })}</span>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Action pills — Save to playlist / Download, mirroring the card menu. */}
-          {meta && (
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative" ref={saveRef}>
-              <button
-                onClick={() => setShowSavePanel((o) => !o)}
-                className="flex items-center gap-2 rounded-full bg-[#272727] px-4 py-2 text-sm font-medium text-white hover:bg-[#3f3f3f] transition-colors"
-              >
-                <svg className="h-6 w-6" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
-                </svg>
-                {saved ? t('Saved') : t('Save')}
-              </button>
-              {showSavePanel && (
-                <div className="absolute left-0 top-full mt-2 z-40 rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2">
-                  <SaveToPlaylist video={meta} onBack={() => setShowSavePanel(false)} />
-                </div>
-              )}
+      <div ref={detailsRef} className={`@container ${twoCol ? 'lg:min-w-0 lg:grow lg:basis-[650px] lg:max-w-[1100px]' : ''} ${fillsPane ? 'lg:overflow-y-auto' : ''}`}>
+        {/* The header: the title, which heads both tabs — the comments are
+            still about something you can see the name of — and on Info the
+            channel and stats, with the pinned stack floating at its right,
+            padded clear of it and at least as tall, so nothing below starts
+            underneath it. Beside the title where there's room; on a narrow
+            column (a phone) the title takes the full width and the stack
+            floats beside the channel line instead. The stack has to be a
+            direct child of this column either way — it's sticky, and sticky
+            only travels as far as its parent does — so the two layouts are
+            two orders of the same pieces rather than one set of classes. */}
+        {narrow ? (
+          <>
+            {titleEl}
+            {pinnedStack}
+            <div style={floatVars} className={floatBox.w ? 'min-h-[var(--float-h)] pr-[var(--float-w)]' : ''}>
+              {statsEl}
             </div>
-
-            {/* Overflow menu — home for the actions that don't earn a pill of
-                their own: download, and the transcript when there is one. */}
-            <div className="relative" ref={moreRef}>
-              <button
-                onClick={() => setShowMoreMenu((o) => !o)}
-                aria-label={t('More actions')}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#272727] text-white transition-colors hover:bg-[#3f3f3f]"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="5" cy="12" r="1.8" />
-                  <circle cx="12" cy="12" r="1.8" />
-                  <circle cx="19" cy="12" r="1.8" />
-                </svg>
-              </button>
-              {showMoreMenu && (
-                <div className="absolute right-0 top-full z-40 mt-2 min-w-[12rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
-                  <button
-                    onClick={() => { onDownload(meta); setShowMoreMenu(false) }}
-                    disabled={isDownloaded}
-                    className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10 disabled:opacity-50 disabled:hover:bg-transparent"
-                  >
-                    {isDownloaded ? (
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    ) : (
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
-                      </svg>
-                    )}
-                    {isDownloaded ? t('Downloaded') : t('Download')}
-                  </button>
-                  {!!captions?.length && (
-                    <button
-                      onClick={() => { setSidePanel((v) => (v === 'transcript' ? null : 'transcript')); setShowMoreMenu(false) }}
-                      className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10"
-                    >
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-                      </svg>
-                      {showTranscript ? t('Hide transcript') : t('Show transcript')}
-                    </button>
-                  )}
-                  {/* Same gate as the transcript, and for the same reason: the
-                      answers are read off the caption track, so a video without
-                      one has nothing to ask about. */}
-                  {!!captions?.length && (
-                    <button
-                      onClick={() => { setSidePanel((v) => (v === 'ask' ? null : 'ask')); setShowMoreMenu(false) }}
-                      className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition-colors hover:bg-white/10"
-                    >
-                      {/* The sparkle every product uses for "a model did this".
-                          A speech bubble would read as chat with a person, and
-                          the point of the entry is that it isn't one. */}
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                        <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
-                        <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
-                      </svg>
-                      {showAsk ? t('Hide Ask AI') : t('Ask AI')}
-                    </button>
-                  )}
-                </div>
-              )}
+          </>
+        ) : (
+          <>
+            {pinnedStack}
+            <div style={floatVars} className={floatBox.w ? 'min-h-[var(--float-h)] pr-[var(--float-w)]' : ''}>
+              {titleEl}
+              {statsEl}
             </div>
-            </div>
-          )}
-        </div>
+          </>
+        )}
 
+        {/* Hidden rather than unmounted, so a trip to the comments and back
+            keeps the description where it was. */}
+        <div hidden={detailsTab !== 'info'}>
         {/* This video's topics — the channel-page labels derived from its title. */}
         {meta?.title_labels && meta.title_labels.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -2544,14 +2802,43 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           </div>
         )}
 
-        {/* Under the description, where YouTube puts them — and in the LEFT
-            column, so an open transcript is still the only thing that changes
-            this pane's shape. Closed until asked for; see Comments.tsx. */}
-        <Comments videoId={videoId} onSeek={seekTo} onChannelClick={onChannelClick} />
         </div>
 
-        {/* Right panel: the caption track as readable prose. Toggled from the "…"
-            menu in the action row. Below lg it just stacks under everything. */}
+        {/* In the LEFT column, so an open transcript is still the only thing
+            that changes this pane's shape. Mounted throughout, so switching
+            back to it reads what was already fetched; see Comments.tsx. */}
+        <div className="mt-3" hidden={detailsTab !== 'comments'}>
+        <Comments
+          videoId={videoId}
+          open={detailsTab === 'comments'}
+          sort={commentSort}
+          onSeek={seekTo}
+          onChannelClick={onChannelClick}
+        />
+        </div>
+
+        {/* Pinned to the bottom of whatever is scrolling this column, at its
+            right edge. A zero-height sticky row, so it takes no room in the
+            flow; the button hangs up out of it. */}
+        {showToTop && (
+          <div className="pointer-events-none sticky bottom-4 flex h-0 justify-end">
+            <button
+              onClick={scrollDetailsToTop}
+              aria-label={t('Back to top')}
+              title={t('Back to top')}
+              className="pointer-events-auto flex h-10 w-10 -translate-y-full items-center justify-center rounded-full bg-[#272727] text-white shadow-lg ring-1 ring-white/10 transition-colors hover:bg-[#3f3f3f]"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
+        )}
+        </div>
+
+        {/* Right panel: the caption track as readable prose, or Ask AI. Toggled
+            from their buttons in the Info tab's actions. Below lg it just stacks
+            under everything. */}
         {twoCol && (
           <div className={`mt-4 lg:mt-0 lg:grow-[999] lg:shrink-0 lg:basis-[26rem] lg:max-w-[56rem] ${fillsPane ? 'lg:flex lg:min-h-0 lg:flex-col' : ''}`}>
             {/* Which of the two the slot is showing, and the way out of both.

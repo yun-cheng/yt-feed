@@ -1,13 +1,14 @@
 /**
- * The comments panel, whose whole design is about NOT fetching.
+ * The comments tab, whose whole design is about NOT fetching.
  *
  * The first two tests are the feature's actual contract — a comment fetch takes
  * a couple of seconds of somebody's bandwidth, so it happens when asked for and
- * at no other moment. Everything after that is the panel behaving once open.
+ * at no other moment. Everything after that is the tab behaving once open.
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { useEffect, useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import Comments from '../components/Comments'
+import Comments, { type Sort } from '../components/Comments'
 import { setTranslateSetting } from '../lib/i18n'
 
 function comment(over: Record<string, unknown> = {}) {
@@ -29,6 +30,25 @@ function payload(over: Record<string, unknown> = {}) {
 
 let calls: string[]
 
+/** The watch page's two tabs, as far as the comments can tell: which one is
+ * showing and which sort its menu picked, both reset by a new video. */
+function Tabs({ videoId, onSeek = vi.fn() }: {
+  videoId: string
+  onSeek?: (s: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [sort, setSort] = useState<Sort>('top')
+  useEffect(() => { setOpen(false); setSort('top') }, [videoId])
+  return (
+    <>
+      <button onClick={() => setOpen(false)}>Info</button>
+      <button onClick={() => setOpen(true)}>Comments</button>
+      <button onClick={() => setSort('new')}>Newest</button>
+      <Comments videoId={videoId} open={open} sort={sort} onSeek={onSeek} />
+    </>
+  )
+}
+
 function serve(body: Record<string, unknown> | ((url: string) => Record<string, unknown>)) {
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -44,15 +64,15 @@ beforeEach(() => { calls = [] })
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('Comments', () => {
-  it('fetches nothing until the panel is expanded', () => {
+  it('fetches nothing until the tab is opened', () => {
     serve(payload())
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
     expect(calls).toEqual([])
   })
 
-  it('expanding fetches the comments, then their replies', async () => {
+  it('opening the tab fetches the comments, then their replies', async () => {
     serve((url) => payload({ has_replies: url.includes('replies=1') }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await screen.findByText('nice one')
@@ -64,14 +84,15 @@ describe('Comments', () => {
     expect(calls[1]).toBe('/api/feed/comments/v1?sort=top&replies=1')
   })
 
-  it('reopening reads what is already in hand', async () => {
+  it('coming back to the tab reads what is already in hand', async () => {
     serve((url) => payload({ has_replies: url.includes('replies=1') }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await waitFor(() => expect(calls).toHaveLength(2))
 
-    fireEvent.click(screen.getByRole('button', { name: /comments/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Info' }))
+    expect(screen.queryByText('nice one')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await screen.findByText('nice one')
     expect(calls).toHaveLength(2)
@@ -79,7 +100,7 @@ describe('Comments', () => {
 
   it('skips the replies walk when there is nothing to deepen', async () => {
     serve(payload({ fetched: 0, threads: [] }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await screen.findByText(/no comments yet/i)
@@ -95,7 +116,7 @@ describe('Comments', () => {
       if (url.includes('replies=1')) throw new Error('offline')
       return { ok: true, status: 200, json: async () => payload() } as Response
     }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await waitFor(() => expect(calls).toHaveLength(2))
@@ -105,11 +126,11 @@ describe('Comments', () => {
 
   it('starts closed again on a new video, without fetching', async () => {
     serve(payload())
-    const { rerender } = render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    const { rerender } = render(<Tabs videoId="v1" />)
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await screen.findByText('nice one')
 
-    rerender(<Comments videoId="v2" onSeek={vi.fn()} />)
+    rerender(<Tabs videoId="v2" />)
     await waitFor(() => expect(screen.queryByText('nice one')).not.toBeInTheDocument())
     // No further calls: a remembered "open" would have fetched for this video,
     // and for every video after it.
@@ -121,7 +142,7 @@ describe('Comments', () => {
   it('turns a timestamp in a comment into a seek', async () => {
     const onSeek = vi.fn()
     serve(payload({ threads: [comment({ text: 'the good bit is at 1:23' })] }))
-    render(<Comments videoId="v1" onSeek={onSeek} />)
+    render(<Tabs videoId="v1" onSeek={onSeek} />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     fireEvent.click(await screen.findByRole('button', { name: '1:23' }))
@@ -130,7 +151,7 @@ describe('Comments', () => {
 
   it('says when comments are switched off rather than showing an empty list', async () => {
     serve(payload({ disabled: true, fetched: 0, threads: [] }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     expect(await screen.findByText(/turned off/i)).toBeInTheDocument()
@@ -138,7 +159,7 @@ describe('Comments', () => {
 
   it('distinguishes an empty section from a switched-off one', async () => {
     serve(payload({ fetched: 0, threads: [] }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     expect(await screen.findByText(/no comments yet/i)).toBeInTheDocument()
@@ -146,7 +167,7 @@ describe('Comments', () => {
 
   it('changes sort in one request, keeping the replies already paid for', async () => {
     serve((url) => payload({ has_replies: url.includes('replies=1') }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await waitFor(() => expect(calls).toHaveLength(2))
@@ -158,12 +179,25 @@ describe('Comments', () => {
     expect(calls[2]).toBe('/api/feed/comments/v1?sort=new&replies=1')
   })
 
+  it('takes a sort picked before opening as the order to fetch in', async () => {
+    serve(payload())
+    render(<Tabs videoId="v1" />)
+
+    // Nothing on screen to re-read, so picking a sort fetches nothing yet.
+    fireEvent.click(screen.getByRole('button', { name: 'Newest' }))
+    expect(calls).toEqual([])
+
+    fireEvent.click(screen.getByRole('button', { name: /comments/i }))
+    await screen.findByText('nice one')
+    expect(calls[0]).toBe('/api/feed/comments/v1?sort=new')
+  })
+
   it('folds the replies in when they arrive, without opening any thread', async () => {
     serve((url) => payload({
       has_replies: url.includes('replies=1'),
       threads: [comment({ replies: url.includes('replies=1') ? [comment({ id: 'r1', text: 'agreed' })] : [] })],
     }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await screen.findByText('nice one')
@@ -189,7 +223,7 @@ describe('Comments', () => {
         })],
       })],
     }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     // Two replies, not "1 reply" with the second uncounted a level down.
@@ -206,7 +240,7 @@ describe('Comments', () => {
 
   it('offers a retry when the fetch fails', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline') }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument()
@@ -214,7 +248,7 @@ describe('Comments', () => {
 
   it('says a capped list is the top of the section, not all of it', async () => {
     serve(payload({ capped: true }))
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
 
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     expect(await screen.findByText(/doesn't page through the rest/i)).toBeInTheDocument()
@@ -240,7 +274,7 @@ describe('translating a comment', () => {
   const ok = (text: string) => ({ ok: true, status: 200, json: async () => ({ text }) }) as Response
 
   async function open() {
-    render(<Comments videoId="v1" onSeek={vi.fn()} />)
+    render(<Tabs videoId="v1" />)
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
   }
 

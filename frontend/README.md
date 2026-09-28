@@ -825,8 +825,8 @@ components/
   AskPanel.tsx                    Ask: a conversation about the video, answered
                                   from its transcript. Shares the right-hand
                                   panel with the transcript, one tab each
-  Comments.tsx                    the comment section under the description —
-                                  closed until asked for, and fetched only then
+  Comments.tsx                    the watch page's Comments tab, beside Info —
+                                  fetched only when you switch to it
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -1303,8 +1303,8 @@ Other details:
   (splitting it could only ever guess at timings, and whole sentences are what make
   the translation read well).
 - **Transcript**: the caption track as readable prose, in its own panel beside the
-  video's details. Opened from a "…" overflow menu next to Save (which also holds
-  Download), and offered only when the video has captions. Each row is a whole
+  video's details. Opened from its own button in the Info tab's actions, after
+  Save, and offered only when the video has captions. Each row is a whole
   **sentence** with its timestamp and seeks there on click — `toSentences(cues,
   false)`, i.e. the same stitching the caption block uses but with the
   display-width chunking off, since the panel has the width to hold a sentence and
@@ -1448,13 +1448,13 @@ swaps video exactly as if you'd clicked it in the feed. It never autoplays.
 ### Ask (`AskPanel.tsx`)
 
 A conversation about the video, answered from its own transcript (the backend
-half is `routers/ask.py`). Reached from the `…` menu as **Ask AI**, under the
-sparkle every product uses for "a model did this" — a speech bubble would read
-as chat with a person, and the point is that it isn't one. It shares the
-right-hand panel with the transcript —
-**one slot, two tabs** — because they are two ways of reading the same thing and
-the page should not have two shapes for that. Opening either is a press in the
-`…` menu; the tab strip switches between them and closes the slot.
+half is `routers/ask.py`). Reached from its button in the Info tab's actions as
+**Ask AI**, under the sparkle every product uses for "a model did this" — a
+speech bubble would read as chat with a person, and the point is that it isn't
+one. It shares the right-hand panel with the transcript — **one slot, two tabs** — because they are two ways of reading the same thing and
+the page should not have two shapes for that. Opening either is a press on
+its button (lit while its panel is open); the tab strip switches between them
+and closes the slot.
 
 Four things it does that are worth knowing before changing it:
 
@@ -1574,27 +1574,72 @@ visibly — the sidebar has a switch for it) and deleting a channel or a playlis
 which take their videos with them and want a confirmation rather than a
 ten-second window.
 
+### The details header: Info / Comments, and the actions
+
+The left column under the player has two tabs. **Info** is the channel, stats and
+description; **Comments** is `Comments.tsx`, below. A tab rather than a section
+under the description, so reading the comments doesn't start with scrolling past
+everything else. The title heads both. The switch is the sidebar's Videos /
+Shorts control copied — two equal halves in one track, the chevron's room kept
+while hidden — so it never shifts when you switch.
+
+The switch is **pinned**, and on Info the video's actions — Save, Transcript, Ask
+AI, Download, in that order — are pinned under it. They're a zero-height `sticky`
+layer at the top of the column, so the stack rides along as you scroll and hangs
+over the right of the header rather than taking rows. The header is padded by the
+stack's measured size — a `ResizeObserver`, since the width moves with the
+language — measured only at rest: scrolled, everything drops its label for an
+icon, and a header following that would reflow the page under the reader.
+Switching tabs from deep in one lands at the top of the other.
+
+Labels come and go together, the switch's included: labelled in a column wide
+enough (`@container`, 52rem) for the labelled row beside a readable title, icons
+below that and whenever you've scrolled. Icons always fit, so nothing hides behind
+a "…". On a phone-width column (under 576px) the title takes the full width and
+the stack floats beside the channel line instead. The stack has to be a direct
+child of the column to stay sticky, so the two layouts are two orders of the same
+pieces (`titleEl`, `pinnedStack`, `statsEl`), picked by a `ResizeObserver` on the
+column.
+
+A **back to top** button floats at the bottom right of the column, on both tabs,
+once you're about a screen down, and gets there in a fixed quarter-second rather
+than the browser's smooth scroll, which paces by distance and crawls from deep in
+a thread. What scrolls the column depends on the layout — the details pane while
+pinned, the column itself beside a transcript, the whole overlay unpinned — so
+rather than track that, `WatchPage` listens for scroll in the capture phase and
+keeps whichever scroller contains the column.
+
 ### Comments (`Comments.tsx`)
 
-Under the description, in the **left** column — so an open transcript is still
-the only thing that changes this pane's shape.
+The Comments tab. It's in the **left** column, so an open transcript is still the
+only thing that changes this pane's shape. The page owns which tab is showing and
+hands it down as `open`; the component stays mounted either way, so going back to
+Info and returning reads what was already fetched.
 
 Everything about it follows one rule: **nothing is fetched until you open it.**
 No hover prefetch, no warm-up while the video plays, and no remembered "open"
 state carried to the next video — that last one is the subtle way this would
 break its own rule, since a remembered preference would fetch on every video you
-opened afterwards. A new video starts closed and drops what it held. Reopening
+opened afterwards. A new video starts back on Info and drops what it held; the
+fetch is keyed on the switch *to* the tab, so a new video arriving while it's
+open doesn't count as asking. Reopening
 the same one inside half an hour is instant anyway (the backend's cache).
 
 The reason is cost: comments come from yt-dlp walking YouTube's own pages rather
 than the Data API — free of quota, but ~2.2s. Replies cost ~15s, because YouTube
 serves them a thread at a time, so they're a **second walk behind the first**:
 the comments appear at ~2s and are readable straight away, and the reply counts
-fold themselves in when the deeper walk lands (a quiet "loading replies…" next
-to the sort pills says why they're late). Opening the panel is the one ask —
+fold themselves in when the deeper walk lands (a quiet "loading replies…" above
+the threads says why they're late). Opening the tab is the one ask —
 a button for the second half would be asking the reader about our fetch
 strategy. Switching sort afterwards keeps the depth already paid for, in a
 single request.
+
+Top / Newest is a menu on the Comments pill itself, opened by pressing the pill
+while its tab is showing — a second press on the open tab had nothing else to
+do, and it saves the comments a row for two sort pills. So the sort is the
+page's and comes down as a prop; a sort picked before anything is fetched just
+sets the order the first fetch uses.
 
 Three things can be in flight at once — both walks and a sort change — and they
 finish out of order, so a `turn` counter marks which request is current and
@@ -1988,7 +2033,7 @@ problem.
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
-| `Comments.test.tsx` | that nothing is fetched before the panel opens, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
+| `Comments.test.tsx` | that nothing is fetched before the tab opens, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing; plus the three calls behind the row, where an unreachable server has to read as "no presets" and a refused save as nothing added |
 | `channels.test.ts` | the two calls behind all three ways of adding a channel by hand: the query encoded rather than pasted into the URL, a lookup miss answered in place instead of toasted (it's the call's ordinary negative answer), and a failed *add* still shouting — since that one you asked for |
 | `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range; plus the length buckets going to the server, this list being paged |
