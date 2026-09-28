@@ -141,6 +141,14 @@ style.textContent = `
     /* YouTube's own inset, reused as the gap so the pair reads as one column. */
     gap: 8px;
   }
+  /* A thumbnail too short for the column — a playlist page's rows are 112px,
+     the full-size column needs 152 with its inset — gets the column shrunk to
+     fit (--size, set by place()), and a tighter gap to go with it. Only
+     one too short for even that gets the buttons in a line along its top. */
+  .stack.compact { gap: 4px; }
+  .stack.compact button { width: var(--size); height: var(--size); }
+  .stack.compact svg { width: 60%; height: 60%; }
+  .stack.across { flex-direction: row; }
   button {
     display: flex;
     align-items: center;
@@ -164,14 +172,15 @@ style.textContent = `
      everything else. Only the failure gets a colour, because it's the one state
      you have to notice rather than merely read, and it clears on the next card. */
   button.failed { background: rgba(153, 27, 27, 0.9); }
-  /* The playlist menu. Absolutely positioned against the host — which is the
-     40px-wide column of buttons — so it can be flipped to the other side of the
-     stack near the right edge of the window by swapping left for right. */
+  /* The playlist menu. Absolutely positioned against the host — which is
+     exactly as wide as the buttons, whether they stand in a column or a row —
+     so it can be flipped to the other side of them near the right edge of the
+     window by swapping left for right. */
   .menu {
     display: none;
     position: absolute;
     top: 0;
-    left: 48px;
+    left: calc(100% + 8px);
     width: 240px;
     box-sizing: border-box;
     padding: 6px 0;
@@ -185,7 +194,7 @@ style.textContent = `
     cursor: default;
   }
   .menu.open { display: block }
-  .menu.flip { left: auto; right: 48px }
+  .menu.flip { left: auto; right: calc(100% + 8px) }
   .head {
     padding: 6px 16px 8px;
     font-size: 12px;
@@ -476,14 +485,26 @@ function place() {
   // Scrolled out of the viewport: let go entirely, which also stops the scroll
   // handler doing any more work. The next mouseover brings it back.
   if (box.bottom < 0 || box.top > innerHeight) return hide()
+  // A column, as YouTube stacks its own, at whatever size keeps it off the next
+  // card: full size where it fits, shrunk where it doesn't, and a row of
+  // full-size buttons where shrinking would make them too small to hit.
+  const count = stack.children.length
+  const room = box.height - 2 * INSET
+  const full = count * BUTTON + (count - 1) * INSET <= room
+  const size = Math.min(BUTTON, Math.floor((room - (count - 1) * COMPACT_GAP) / count))
+  stack.classList.toggle('compact', !full && size >= MIN_BUTTON)
+  stack.classList.toggle('across', !full && size < MIN_BUTTON)
+  stack.style.setProperty('--size', `${size}px`)
   host.style.transform = `translate(${box.left + INSET}px, ${box.top + INSET}px)`
   host.style.display = 'block'
   if (menuFor) positionMenu(box)
 }
 
-/* What the menu has to clear to sit beside the stack: the 40px button plus the
- * 8px gap between them, which is YouTube's own inset reused a third time. */
-const MENU_GAP = 48
+/* One button's side, as in the stylesheet, and the gap of a shrunk column. */
+const BUTTON = 40
+const COMPACT_GAP = 4
+/* Smaller than this and a column is harder to hit than a row is worth avoiding. */
+const MIN_BUTTON = 24
 const MENU_WIDTH = 240
 /* What a full menu measures, used until there is a real one to measure. */
 const MENU_HEIGHT_GUESS = 264
@@ -491,7 +512,8 @@ const MENU_HEIGHT_GUESS = 264
 /**
  * Put the menu beside the buttons, on whichever side of them it fits.
  *
- * The host is the 40px column, so left/right and a negative top are the whole
+ * The host is exactly as wide as the buttons — a 40px column, or a row of them
+ * on a short thumbnail — so left/right and a negative top are the whole
  * geometry. The height is measured rather than assumed, because it isn't
  * constant: the foot becomes a name field, and a menu that grew downwards off
  * the bottom of the window would put the Create button somewhere you can't
@@ -501,7 +523,10 @@ const MENU_HEIGHT_GUESS = 264
 function positionMenu(box) {
   const left = box.left + INSET
   const top = box.top + INSET
-  menu.classList.toggle('flip', left + MENU_GAP + MENU_WIDTH > innerWidth)
+  // What the menu has to clear: the buttons, plus an 8px gap, which is
+  // YouTube's own inset reused a third time.
+  const clear = host.offsetWidth + INSET
+  menu.classList.toggle('flip', left + clear + MENU_WIDTH > innerWidth)
   // Pull it up by however much it would otherwise hang off the bottom — zero
   // for most of the page — but never past the top of the window.
   const height = menu.offsetHeight || MENU_HEIGHT_GUESS

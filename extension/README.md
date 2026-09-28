@@ -208,6 +208,13 @@ they're a permanent fixture on a playing video — but ours only appear on hover
 and are the only clickable things on the thumbnail, so they darken to `.9` to
 answer the pointer.
 
+The column needs 152px of height with its inset, and a playlist page's
+thumbnails are 112px tall, so on a thumbnail too short for it the column shrinks
+to fit — 29px buttons 4px apart there, icons scaled with them. Only below 24px,
+where a column would be harder to hit than it's worth, do the buttons go
+full-size in a row along the top edge instead. The playlist menu is offset by
+the width of the buttons, so it clears them either way.
+
 Three details worth knowing if you touch this file:
 
 - The buttons live in a **shadow root**, so YouTube's stylesheets can't restyle
