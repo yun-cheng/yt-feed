@@ -69,26 +69,35 @@ function videoId(href) {
  *
  * A card has several links to the same video — thumbnail, title, sometimes the
  * duration badge — and the button belongs on the thumbnail whichever one the
- * pointer found. So: climb a few ancestors and take the WIDEST link to the same
- * video. Which element that is doesn't matter, and isn't named here; that's what
- * keeps this from going stale.
+ * pointer found. So: climb a few ancestors and take the BIGGEST link to the same
+ * video, by area. Which element that is doesn't matter, and isn't named here;
+ * that's what keeps this from going stale.
  *
- * Widest rather than first-with-an-image because search results expand a card
+ * Area rather than width because a horizontal card's title can be the wider of
+ * the two: on a playlist page the title runs 444px beside a 212px thumbnail, and
+ * "widest" put the buttons on the title. It is only 20px tall, though, and no
+ * title out-measures its thumbnail on area.
+ *
+ * Biggest rather than first-with-an-image because search results expand a card
  * into a chapter list, and every chapter is another link to the same video with
- * its own little image. Those are laid out at zero width until the card opens,
+ * its own little image. Those are laid out at zero size until the card opens,
  * and none of them can ever out-measure the thumbnail they belong to.
  */
 function thumbnailLink(link, id) {
+  const area = (el) => {
+    const box = el.getBoundingClientRect()
+    return box.width * box.height
+  }
   let best = link
-  let bestWidth = link.getBoundingClientRect().width
+  let bestArea = area(link)
   let node = link
   for (let depth = 0; depth < 6 && node; depth++, node = node.parentElement) {
     for (const other of node.querySelectorAll('a[href]')) {
       if (videoId(other.href) !== id) continue
-      const width = other.getBoundingClientRect().width
-      if (width > bestWidth) {
+      const size = area(other)
+      if (size > bestArea) {
         best = other
-        bestWidth = width
+        bestArea = size
       }
     }
   }

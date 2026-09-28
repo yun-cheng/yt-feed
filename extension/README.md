@@ -185,10 +185,12 @@ all three.
 The only YouTube fact it depends on is the URL shape of a video link, `/watch?v=`
 and `/shorts/`, which has outlived every generation of the site's markup. It
 never names a renderer element. To find the thumbnail of the card you're hovering
-— you might be on the title — it climbs a few ancestors and takes the *widest*
-link to the same video. Widest matters: search results expand a card into a
-chapter list, and every chapter is another link to the same video with its own
-small image, so "first one with an image in it" picks the wrong element.
+— you might be on the title — it climbs a few ancestors and takes the *biggest*
+link to the same video, by area. Biggest matters: search results expand a card
+into a chapter list, and every chapter is another link to the same video with its
+own small image, so "first one with an image in it" picks the wrong element. And
+area rather than width, because on a playlist page's horizontal cards the title
+link is wider than the thumbnail — just 20px tall.
 
 They're styled to pass for the mute and captions buttons YouTube floats over a
 thumbnail's hover preview — a plain dark circle, white icon, no text — which is
