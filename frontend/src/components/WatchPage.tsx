@@ -385,6 +385,21 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
   )
 }
 
+type DetailsTab = 'info' | 'comments' | 'transcript' | 'ask'
+
+// The round buttons that float at the bottom of a scrolling list: back to top,
+// and sync to video.
+const FLOAT_BUTTON = 'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#272727] text-white shadow-lg ring-1 ring-white/10 transition-colors hover:bg-[#3f3f3f]'
+
+// Crosshair: "put me back on the play head" — a directional arrow would be
+// wrong half the time (it can be either way).
+const SyncIcon = () => (
+  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <circle cx="12" cy="12" r="6" />
+    <path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+  </svg>
+)
+
 export default function WatchPage({ videoId, video, nextFilter = '', startAt, initialPanel, onChannelClick, onClose, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
@@ -528,7 +543,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   }
   useEffect(() => () => { if (volHintTimer.current) window.clearTimeout(volHintTimer.current) }, [])
   const hostRef = useRef<HTMLDivElement>(null)
-  // The player box wraps the iframe AND our overlays (HUD, pin). It is both the
+  // The player box wraps the iframe AND our overlays (HUD, captions). It is both the
   // fullscreen target — so the HUD is inside the fullscreen layer and the video
   // still fills the screen — and the keyboard-focus target, so our shortcut
   // handler owns the keyboard instead of the cross-origin iframe (which would
@@ -585,8 +600,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // here, so it works over the embed and over a downloaded file alike.
   const marks = usePlayerMarks(videoId, playerRef)
 
-  // Our chrome — the control bar over a local file, and the caption button, pin
-  // and mark rail over the embed — goes away after a few seconds of stillness,
+  // Our chrome — the control bar over a local file, and the caption button and
+  // mark rail over the embed — goes away after a few seconds of stillness,
   // the way a player's does. Leaving the player was the only signal at first,
   // which is no signal at all in FULLSCREEN: the player is the whole screen, so
   // the pointer never leaves it and the chrome sat there forever.
@@ -629,7 +644,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
   // Whether the controls under the video are OURS — either because it's a file
   // we play ourselves, or because we turned YouTube's off. The caption button and
-  // the pin sit in that bar's button row when it's ours, and float over the
+  // open-on-YouTube sit in that bar's button row when it's ours, and float over the
   // embed's own chrome when it isn't.
   const ownBar = playLocal || EMBED_OWN_CONTROLS
 
@@ -677,6 +692,19 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     requestAnimationFrame(step)
   }
 
+  /* Below lg the transcript and Ask AI get no column of their own — the right
+   * panel stacks under everything, a long scroll away on a phone. There they
+   * become tabs of the switch instead, beside Info and Comments, and open in
+   * the details column in their place. Viewport, not container: lg is where
+   * the panel's own column comes and goes. */
+  const [panelsAsTabs, setPanelsAsTabs] = useState(() => !matchMedia('(min-width: 1024px)').matches)
+  useEffect(() => {
+    const mq = matchMedia('(min-width: 1024px)')
+    const on = () => setPanelsAsTabs(!mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+
   /* The actions after Save, in the order they're shown: Transcript, Ask AI,
    * Download. */
   type Action = {
@@ -688,8 +716,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     onClick: () => void
   }
   const hasCaptions = !!captions?.length
+  // The open panel when it's showing as a tab (see panelsAsTabs), and so the
+  // tab that's lit: an open panel stands in for Info or Comments until you
+  // pick one of them again.
+  const tabbedPanel = panelsAsTabs && hasCaptions ? sidePanel : null
+  const activeTab: DetailsTab = tabbedPanel ?? detailsTab
   const actions: Action[] = !meta ? [] : [
-    ...(hasCaptions ? [
+    ...(hasCaptions && !panelsAsTabs ? [
       {
         key: 'transcript',
         label: t('Transcript'),
@@ -733,23 +766,33 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       onClick: () => onDownload(meta),
     },
   ]
-  /* The whole row carries its labels or none of it does — and the switch above
-   * it with it — and it carries them when the labelled row fits beside a
-   * readable title: a 52rem column with the caption pills in it. Without them
-   * it's Save and Download, which fit anywhere. Short of that, everything is
-   * an icon, which is always enough: four icons are a 168px row. Written out
-   * whole, since Tailwind only generates the classes it can find in the
-   * source. */
-  const labelled = hasCaptions
-    ? { pill: 'w-9 @min-[52rem]:w-auto @min-[52rem]:px-3.5', text: 'hidden @min-[52rem]:inline' }
-    : { pill: 'px-3.5', text: '' }
+  /* The whole stack carries its labels or none of it does, switch and actions
+   * alike, and it carries them while the labelled stack still leaves ~220px of
+   * title beside it (the header wraps around the stack) — icons below that and
+   * whenever you've scrolled. So the breakpoint is set by the wider row, which
+   * depends on what the rows hold rather than on whether there are captions:
+   *   actions  Save, Download ~217px;  + Transcript, Ask AI ~454px
+   *   switch   two tabs + pin ~319px;  four tabs + pin ~439px
+   * With captions on a wide screen that's the four actions, 43rem; below lg
+   * the four tabs, 42rem; without captions the two tabs, 34rem. Icons are
+   * always enough: four are a 168px row. Written out whole, since Tailwind only
+   * generates the classes it can find in the source. */
+  const labelled = hasCaptions && !panelsAsTabs
+    ? { pill: 'w-9 @min-[43rem]:w-auto @min-[43rem]:px-3.5', text: 'hidden @min-[43rem]:inline' }
+    : hasCaptions
+      ? { pill: 'w-9 @min-[42rem]:w-auto @min-[42rem]:px-3.5', text: 'hidden @min-[42rem]:inline' }
+      : { pill: 'w-9 @min-[34rem]:w-auto @min-[34rem]:px-3.5', text: 'hidden @min-[34rem]:inline' }
 
   /* Switching from the floating switch, deep in one tab, lands at the top of
    * the other — not at whatever depth the first one had reached, which in the
    * new tab means nothing. Back to where the column starts, not the page: a
    * player scrolled out of view unpinned stays out of view. */
-  const switchTab = (tab: 'info' | 'comments') => {
-    setDetailsTab(tab)
+  const switchTab = (tab: DetailsTab) => {
+    if (tab === 'transcript' || tab === 'ask') setSidePanel(tab)
+    else {
+      setDetailsTab(tab)
+      if (tabbedPanel) setSidePanel(null)
+    }
     const box = detailsScroller.current
     const col = detailsRef.current
     if (!box || !col) return
@@ -757,34 +800,33 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     if (above > 0) box.scrollTop -= above
   }
 
-  // A column too narrow to float the stack beside the title (a phone): see
-  // the header's layout below.
-  const [narrow, setNarrow] = useState(false)
-  useEffect(() => {
-    const el = detailsRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => setNarrow(el.offsetWidth < 576))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  // How much of the header the pinned stack covers. Measured at rest only:
-  // scrolled, the actions shrink to icons, and the header following them would
-  // reflow the page under the reader's scroll.
+  // The shape of the header the pinned stack covers: its two rows, the switch
+  // and the actions, each as wide as it is. Measured at rest only: scrolled,
+  // the actions shrink to icons, and the header following them would reflow
+  // the page under the reader's scroll.
   const floatRef = useRef<HTMLDivElement>(null)
-  const [floatBox, setFloatBox] = useState({ w: 0, h: 0 })
+  const [floatBox, setFloatBox] = useState({ w1: 0, h1: 0, w2: 0, h2: 0 })
   const stuckRef = useRef(false)
   stuckRef.current = stuck
+  const hasActions = !!meta
   useEffect(() => {
     const el = floatRef.current
     if (!el || typeof ResizeObserver === 'undefined') return
+    const [row1, row2] = Array.from(el.children) as HTMLElement[]
     const ro = new ResizeObserver(() => {
-      if (!stuckRef.current) setFloatBox({ w: el.offsetWidth, h: el.offsetHeight })
+      if (stuckRef.current || !row1) return
+      setFloatBox({
+        w1: row1.offsetWidth,
+        h1: row1.offsetHeight,
+        w2: row2?.offsetWidth ?? 0,
+        // The gap between the rows included, so the second starts where it does.
+        h2: row2 ? el.offsetHeight - row1.offsetHeight : 0,
+      })
     })
-    ro.observe(el)
+    for (const row of [row1, row2]) if (row) ro.observe(row)
     return () => ro.disconnect()
-  // The stack moves in the tree when the layout flips, so it's a new element.
-  }, [narrow])
+  // The actions row arrives with the video's details.
+  }, [hasActions])
 
   // Close the comments' sort menu on an outside click.
   useEffect(() => {
@@ -1424,9 +1466,20 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // onTranscriptScroll would read it as the reader scrolling away and cancel the
   // very scroll that's running. Instant lands in one event with the row already
   // centred, and the hops are one sentence long anyway.
+  //
+  // As a tab (see panelsAsTabs) the transcript has no box of its own: it runs
+  // its full length in the details column, and what scrolls it is whatever
+  // scrolls the column — so "the box" is the nearest ancestor that scrolls.
+  const transcriptFlows = tabbedPanel === 'transcript'
+  const transcriptScroller = (): HTMLElement | null => {
+    if (!transcriptFlows) return transcriptRef.current
+    let el = transcriptRef.current?.parentElement ?? null
+    while (el && !(/(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight)) el = el.parentElement
+    return el
+  }
   const centerActiveRow = () => {
     const row = activeRowRef.current
-    const box = transcriptRef.current
+    const box = transcriptScroller()
     if (!row || !box) return
     const delta = row.getBoundingClientRect().top - box.getBoundingClientRect().top
     box.scrollTo({ top: box.scrollTop + delta - (box.clientHeight - row.clientHeight) / 2 })
@@ -1442,6 +1495,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     : captionLangs.find((l) => l.code === transcriptTrackLang)?.label ?? t('Language')
 
   const searching = transcriptQuery.trim().length > 0
+  // Off the play head in a flowing transcript: the column offers the way back.
+  const syncOffered = transcriptFlows && !following && !searching
   const visibleRows = useMemo(() => {
     const q = transcriptQuery.trim().toLowerCase()
     const rows = transcript.map((s, i) => ({ s, i }))
@@ -1459,12 +1514,21 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // centred, so this needs no flag to tell programmatic scrolls from real ones.
   const onTranscriptScroll = () => {
     const row = activeRowRef.current
-    const box = transcriptRef.current
+    const box = transcriptScroller()
     if (!row || !box) return
     const r = row.getBoundingClientRect()
     const b = box.getBoundingClientRect()
     setFollowing(r.bottom > b.top && r.top < b.bottom)
   }
+
+  // Flowing, the scroll to watch is the column's, which doesn't bubble up to
+  // the list — so catch it on the way down, as the back-to-top button does.
+  useEffect(() => {
+    if (!transcriptFlows) return
+    const onScroll = (e: Event) => { if (e.target === transcriptScroller()) onTranscriptScroll() }
+    document.addEventListener('scroll', onScroll, true)
+    return () => document.removeEventListener('scroll', onScroll, true)
+  }, [transcriptFlows])
 
   // A new video (or reopening the panel) starts back in sync, with a clean search.
   useEffect(() => { setFollowing(true); setTranscriptQuery('') }, [videoId, showTranscript])
@@ -1899,7 +1963,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </>
   )
 
-  // The caption switcher and the pin toggle. Against the embed they float over
+  // The caption switcher. Against the embed they float over
   // the player — its control bar is inside the iframe, out of reach. With our
   // own bar (local playback) they sit in its button row like any other control.
   // A video with no track of its own still gets the button, so long as this
@@ -2106,7 +2170,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // The keyboard already does all of this (`b`, `[`, `]`, `\\`) and does it
   // faster — but a feature that only exists on a shortcut is one you have to
   // have been told about, and these two are the only marks on the bar you can't
-  // otherwise put there. Same two placements as the pin and the YouTube button:
+  // otherwise put there. Same two placements as the caption and YouTube buttons:
   // in our row when we own the bar, floating over YouTube's chrome when we
   // don't, there sitting just right of the caption button.
   const MARK_BUTTON_FLOAT = 'group relative flex h-11 w-11 items-center justify-center text-white'
@@ -2135,7 +2199,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
         )}
         {/* Filled while you're standing on one, outlined while you aren't — the
-            same solid-vs-hollow the pin uses two buttons along. */}
+            same solid-vs-hollow the pin by the Info / Comments switch uses. */}
         <svg className="relative h-6 w-6" viewBox="0 0 24 24" aria-hidden>
           {marks.markHere
             ? <path fill="currentColor" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />
@@ -2205,25 +2269,26 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </div>
   )
 
+  // Beside the Info / Comments switch rather than on the player: it decides
+  // how the details scroll, so it lives with them, and it's there whether or
+  // not the player's chrome is awake.
   const pinButton = (
     <button
       onClick={() => setPinned((p) => !p)}
-      // Over the embed: a pill in the bottom-right corner, on the button-row
-      // line so it clears the progress scrubber. In our bar: a plain button.
-      className={ownBar
-        ? BAR_BUTTON
-        : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
+      className={`pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#272727] text-white transition-colors hover:bg-[#3f3f3f] ${
+        stuck ? 'shadow-lg shadow-black/60 ring-1 ring-white/10' : ''
+      }`}
       title={pinned
         ? t('Unpin — scroll the whole page ({key})', { key: shortcutLabel('pin') })
         : t('Pin — keep the video in view ({key})', { key: shortcutLabel('pin') })}
       aria-pressed={pinned}
     >
       {pinned ? (
-        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
           <path d="M16 3a1 1 0 0 1 .117 1.993L16 5v4.764l1.447 2.895c.55 1.098-.2 2.38-1.41 2.34L16 15h-3v5a1 1 0 0 1-1.993.117L11 20v-5H8c-1.23.05-2.02-1.2-1.51-2.28l.063-.125L8 9.764V5a1 1 0 0 1-.117-1.993L8 3h8z" />
         </svg>
       ) : (
-        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v5M8 9.5V5h8v4.5l1.5 3H6.5L8 9.5z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 4l16 16" />
         </svg>
@@ -2297,12 +2362,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         p?.pauseVideo()
         window.open(`${youtubeUrl}&t=${at}s`, '_blank', 'noopener,noreferrer')
       }}
-      // Same two placements as the pin: a button in our row, or a floating pill
-      // over YouTube's chrome — there sitting left of the pin, the only other
-      // thing in that corner.
+      // Two placements: a button in our row, or a floating pill in the
+      // bottom-right corner over YouTube's chrome, on the button-row line so it
+      // clears the progress scrubber.
       className={ownBar
         ? BAR_BUTTON
-        : 'absolute bottom-2 right-12 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
+        : 'absolute bottom-2 right-2 z-20 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80'}
       title={t('Open on YouTube at this moment')}
     >
       <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -2311,15 +2376,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </button>
   )
 
-  // The pieces of the details' header, ordered by the layout below.
-  const floatVars = { '--float-w': `${floatBox.w + 12}px`, '--float-h': `${floatBox.h}px` } as React.CSSProperties
+  // The pieces of the details' header, laid out below.
   const titleEl = (
     <h1 className="text-lg md:text-xl font-semibold leading-snug text-white [overflow-wrap:anywhere]">
       {meta?.title ?? '…'}
     </h1>
   )
   const statsEl = (
-    <div hidden={detailsTab !== 'info'} className={narrow ? '' : 'mt-2'}>
+    <div hidden={activeTab !== 'info'} className="mt-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
         {meta && (
           <>
@@ -2359,6 +2423,197 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       </div>
     </div>
   )
+  const switchTabs: { key: DetailsTab; label: string; icon: React.ReactNode }[] = [
+    {
+      key: 'info',
+      label: t('Info'),
+      icon: (
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <circle cx="12" cy="12" r="9" />
+          <path strokeLinecap="round" d="M12 11v5M12 7.5v.01" />
+        </svg>
+      ),
+    },
+    {
+      key: 'comments',
+      label: t('Comments'),
+      icon: (
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinejoin="round" d="M4 5h16v11H9l-5 4V5z" />
+        </svg>
+      ),
+    },
+    ...(panelsAsTabs && hasCaptions ? [
+      {
+        key: 'transcript' as const,
+        label: t('Transcript'),
+        icon: (
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
+        ),
+      },
+      {
+        key: 'ask' as const,
+        label: t('Ask AI'),
+        icon: (
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
+            <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
+          </svg>
+        ),
+      },
+    ] : []),
+  ]
+  // What the transcript and Ask AI panels show — in the right column beside
+  // the details, or, as tabs (see panelsAsTabs), inside the details column.
+  const panelBody = (
+    <>
+      {showTranscript && (<>
+      {/* Pick the language and search the lines. */}
+      <div className="mb-2 flex items-center gap-2">
+        {(captionLangs.length > 1 || aiTranslateAvailable) && (
+          <div className="relative shrink-0" ref={transcriptLangRef}>
+            <button
+              onClick={() => setShowTranscriptLangMenu((o) => !o)}
+              aria-label={t('Transcript language')}
+              // The current language lives in the menu's tick; the header is
+              // tight, so the button is just the icon, named on hover.
+              title={t('Transcript language: {lang}', { lang: transcriptLangLabel })}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <circle cx="12" cy="12" r="9" />
+                <path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
+              </svg>
+            </button>
+            {showTranscriptLangMenu && (
+              <div className="absolute left-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
+                {captionLangs.map((l) => {
+                  const on = l.code === transcriptTrackLang
+                  return (
+                    <button
+                      key={l.code}
+                      onClick={() => { setTranscriptLang(l.code); setShowTranscriptLangMenu(false) }}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${on ? 'text-white' : 'text-[#ccc]'}`}
+                    >
+                      <span className="w-3.5 text-[#3ea6ff]">{on ? '✓' : ''}</span>
+                      {l.label}
+                    </button>
+                  )
+                })}
+                {/* The AI translation, same offer the caption menu makes:
+                    only when the source isn't already Chinese. */}
+                {aiTranslateAvailable && (
+                  <button
+                    onClick={() => { setTranscriptLang(AI_ZH); setShowTranscriptLangMenu(false) }}
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-[#ccc]'}`}
+                  >
+                    <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
+                    {t('Chinese')}
+                    <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#888]">AI</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="relative flex-1">
+          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#888]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <circle cx="11" cy="11" r="7" />
+            <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+          </svg>
+          <input
+            value={transcriptQuery}
+            onChange={(e) => setTranscriptQuery(e.target.value)}
+            // Esc clears the search; on an already-empty field it just gives
+            // the keyboard back to the player instead of doing nothing.
+            onKeyDown={(e) => {
+              if (e.key !== 'Escape') return
+              e.stopPropagation()
+              if (searching) setTranscriptQuery('')
+              else e.currentTarget.blur()
+            }}
+            placeholder={t('Search transcript')}
+            className="w-full rounded-full bg-[#121212] py-1.5 pl-9 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
+          />
+          {searching && (
+            <button
+              onClick={() => setTranscriptQuery('')}
+              aria-label={t('Clear search')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#888] transition-colors hover:bg-white/10 hover:text-white"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className={`relative ${fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
+        <div
+          ref={transcriptRef}
+          onScroll={transcriptFlows ? undefined : onTranscriptScroll}
+          className={`rounded-xl bg-[#1a1a1a] p-2 ${
+            transcriptFlows ? '' : `overflow-y-auto ${fillsPane ? 'h-full' : 'max-h-[34rem]'}`
+          }`}
+        >
+          {visibleRows.map(({ s, i }) => (
+            <button
+              key={`${s.start}-${i}`}
+              ref={i === activeRow ? activeRowRef : undefined}
+              onClick={() => { setFollowing(true); seekTo(s.start) }}
+              className={`flex w-full gap-3 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                i === activeRow ? 'bg-white/10' : 'hover:bg-white/5'
+              }`}
+            >
+              <span className="shrink-0 pt-px font-mono text-xs tabular-nums text-[#3ea6ff]">
+                {formatTime(s.start)}
+              </span>
+              <span className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-[#ccc]'}`}>
+                {highlight(s.text, transcriptQuery)}
+              </span>
+            </button>
+          ))}
+          {searching && !visibleRows.length && (
+            <p className="px-2 py-3 text-sm text-[#888]">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
+          )}
+          {/* The AI transcript fills in batch by batch, so say so rather than
+              letting a partial read look like the whole thing. */}
+          {aiTranscriptBusy && (
+            <p className="px-2 py-3 text-sm text-[#888]">{t('Translating…')}</p>
+          )}
+        </div>
+
+        {/* Floats in the list's bottom-right corner (outside the scroll box,
+            so it stays put) only while the reader has scrolled off the play
+            head. Flowing (a tab), the list is as long as the transcript, so
+            the same button joins back-to-top at the bottom of the column
+            instead — see syncOffered. */}
+        {!transcriptFlows && !following && !searching && (
+          <button
+            onClick={() => { setFollowing(true); centerActiveRow() }}
+            aria-label={t('Sync to video')}
+            title={t('Sync to video')}
+            className={`absolute bottom-3 right-5 ${FLOAT_BUTTON}`}
+          >
+            <SyncIcon />
+          </button>
+        )}
+      </div>
+      </>)}
+
+      {showAsk && (
+        <AskPanel
+          videoId={videoId}
+          currentTime={curTime}
+          onSeek={seekTo}
+          fillsPane={fillsPane}
+        />
+      )}
+    </>
+  )
   const pinnedStack = (
     <>
       {/* The switch and the video's actions ride along as you scroll, like
@@ -2368,66 +2623,61 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           measured, since their width moves with the language.
           items-start: a zero-height row stretches its children to zero, which
           once left the switch's track a sliver and its halves bare. */}
-      <div className={`pointer-events-none sticky top-3 z-20 flex h-0 items-start justify-end${narrow ? ' mt-2' : ''}`}>
+      <div className="pointer-events-none sticky top-3 z-20 flex h-0 items-start justify-end">
       <div ref={floatRef} className="flex flex-col items-end gap-2">
-        {/* The sidebar's Videos / Shorts switch, copied: one track, the choice
-            lit inside it. Two equal columns so the track is the same width
-            whichever half is lit, and nothing on the half changes size when
-            it lights — the weight stays put and the chevron's room is kept
-            even while it's hidden — so switching never shifts the row.
+        {/* The switch, then the pin at its right. */}
+        <div className="flex items-center gap-2">
+        {/* The top bar's Videos / Shorts switch, copied: one track, the choice
+            lit inside it. Nothing on a tab changes size when it lights — the
+            weight stays put and the chevron's room is kept even while it's
+            hidden — so switching never shifts the row; two tabs also get
+            equal columns, so the track is the same whichever half is lit.
             Its words come and go with the actions' below: same breakpoint,
             and gone while scrolled, leaving the icons. */}
         <div
           role="tablist"
           ref={sortRef}
-          className={`pointer-events-auto relative grid shrink-0 grid-cols-2 rounded-full bg-[#272727] p-0.5 text-sm font-medium transition-shadow ${
+          className={`pointer-events-auto relative grid shrink-0 ${switchTabs.length === 2 ? 'grid-cols-2' : 'grid-flow-col'} rounded-full bg-[#272727] p-0.5 text-sm font-medium transition-shadow ${
             stuck ? 'shadow-lg shadow-black/60 ring-1 ring-white/10' : ''
           }`}
         >
-          <button
-            role="tab"
-            aria-selected={detailsTab === 'info'}
-            aria-label={t('Info')}
-            title={t('Info')}
-            onClick={() => { switchTab('info'); setShowSortMenu(false) }}
-            className={`flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
-              detailsTab === 'info' ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'
-            }`}
-          >
-            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-              <circle cx="12" cy="12" r="9" />
-              <path strokeLinecap="round" d="M12 11v5M12 7.5v.01" />
-            </svg>
-            {!stuck && <span className={labelled.text}>{t('Info')}</span>}
-          </button>
-          <button
-            role="tab"
-            aria-selected={detailsTab === 'comments'}
-            aria-label={t('Comments')}
-            title={t('Comments')}
-            aria-haspopup={detailsTab === 'comments' ? 'menu' : undefined}
-            aria-expanded={detailsTab === 'comments' ? showSortMenu : undefined}
-            onClick={() => {
-              if (detailsTab === 'comments') setShowSortMenu((o) => !o)
-              else switchTab('comments')
-            }}
-            className={`flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 transition-colors ${
-              detailsTab === 'comments' ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'
-            }`}
-          >
-            <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-              <path strokeLinejoin="round" d="M4 5h16v11H9l-5 4V5z" />
-            </svg>
-            {!stuck && <span className={labelled.text}>{t('Comments')}</span>}
-            {/* Only on the open tab, where a press means "sort" rather than
-                "go here" — the chevron is what says the press changed. */}
-            <svg
-              className={`-ml-0.5 h-4 w-4 shrink-0 ${detailsTab === 'comments' ? '' : 'invisible'}`}
-              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
+          {switchTabs.map(({ key, label, icon }) => {
+            const lit = activeTab === key
+            // A press on the lit Comments tab means "sort" rather than "go
+            // here"; its chevron is what says the press changed.
+            const sorts = key === 'comments'
+            return (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={lit}
+                aria-label={label}
+                title={label}
+                aria-haspopup={sorts && lit ? 'menu' : undefined}
+                aria-expanded={sorts && lit ? showSortMenu : undefined}
+                onClick={() => {
+                  if (sorts && lit) setShowSortMenu((o) => !o)
+                  else { switchTab(key); setShowSortMenu(false) }
+                }}
+                // Four tabs sit closer, to leave the title beside them on a
+                // phone some room.
+                className={`flex items-center justify-center gap-1.5 rounded-full py-1.5 transition-colors ${
+                  switchTabs.length === 2 ? 'px-3' : 'px-2.5'
+                } ${lit ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'}`}
+              >
+                {icon}
+                {!stuck && <span className={labelled.text}>{label}</span>}
+                {sorts && (
+                  <svg
+                    className={`-mx-0.5 h-4 w-4 shrink-0 ${lit ? '' : 'invisible'}`}
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+                  </svg>
+                )}
+              </button>
+            )
+          })}
           {showSortMenu && (
             <div role="menu" className="absolute right-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
               {([['top', t('Top')], ['new', tc('sort', 'Newest')]] as const).map(([key, label]) => (
@@ -2447,13 +2697,15 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             </div>
           )}
         </div>
+        {pinButton}
+        </div>
 
-        {/* The actions, pinned under the switch. Info only: they're about the
-            video, and the comments tab has its own control in the switch.
-            Scrolled, they drop their words and keep their icons — the
-            labels are for the first look, and the pinned stack shouldn't
-            cover more of what you're reading than it has to. */}
-        {detailsTab === 'info' && meta && (
+        {/* The actions, pinned under the switch, on every tab: they're how the
+            side panel opens and closes, and a press shouldn't depend on which
+            tab you're reading. Scrolled, they drop their words and keep their
+            icons — the labels are for the first look, and the pinned stack
+            shouldn't cover more of what you're reading than it has to. */}
+        {meta && (
           <div className="pointer-events-auto flex items-center gap-2">
             <div className="relative" ref={saveRef}>
               <button
@@ -2555,7 +2807,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               onFullscreen={toggleFullscreen}
               nextControl={nextButton}
               leftControls={<>{captionControl}{marksControls}</>}
-              extraControls={<>{youtubeButton}{pinButton}</>}
+              extraControls={youtubeButton}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
               others={marks.others}
@@ -2616,7 +2868,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             box, which is also the fullscreen target, so they show in fullscreen. */}
         {overlays}
 
-        {/* Everything we draw over the EMBED — the caption button, the pin, and
+        {/* Everything we draw over the EMBED — the caption button, open-on-YouTube,
             the bookmark / A–B rail on its progress bar. They fade together with
             YouTube's own controls, or they'd be left sitting alone over an
             otherwise clean video once the embed hides its chrome.
@@ -2642,7 +2894,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             onFullscreen={toggleFullscreen}
             nextControl={nextButton}
             leftControls={<>{captionControl}{marksControls}</>}
-            extraControls={<>{youtubeButton}{pinButton}</>}
+            extraControls={youtubeButton}
             bookmarks={marks.bookmarks}
             loop={marks.loop}
             others={marks.others}
@@ -2656,7 +2908,6 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             {captionControl}
             {marksControls}
             {youtubeButton}
-            {pinButton}
             {/* Over the embed the progress bar lives inside the iframe, so the
                 marks are laid over it — see EmbedMarkRail. */}
             <EmbedMarkRail
@@ -2749,37 +3000,31 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           than on the row, so the transcript gets its own width beside it instead
           of the two sharing one 1100px budget. */}
       <div ref={detailsRef} className={`@container ${twoCol ? 'lg:min-w-0 lg:grow lg:basis-[650px] lg:max-w-[1100px]' : ''} ${fillsPane ? 'lg:overflow-y-auto' : ''}`}>
-        {/* The header: the title, which heads both tabs — the comments are
+        {/* The header: the title, which heads every tab — the comments are
             still about something you can see the name of — and on Info the
-            channel and stats, with the pinned stack floating at its right,
-            padded clear of it and at least as tall, so nothing below starts
-            underneath it. Beside the title where there's room; on a narrow
-            column (a phone) the title takes the full width and the stack
-            floats beside the channel line instead. The stack has to be a
-            direct child of this column either way — it's sticky, and sticky
-            only travels as far as its parent does — so the two layouts are
-            two orders of the same pieces rather than one set of classes. */}
-        {narrow ? (
-          <>
-            {titleEl}
-            {pinnedStack}
-            <div style={floatVars} className={floatBox.w ? 'min-h-[var(--float-h)] pr-[var(--float-w)]' : ''}>
-              {statsEl}
-            </div>
-          </>
-        ) : (
-          <>
-            {pinnedStack}
-            <div style={floatVars} className={floatBox.w ? 'min-h-[var(--float-h)] pr-[var(--float-w)]' : ''}>
-              {titleEl}
-              {statsEl}
-            </div>
-          </>
-        )}
+            channel and stats, flowing around the pinned stack at its right.
+            The stack itself can't be floated: it's sticky, a direct child of
+            this column so it travels the column's length. So two invisible
+            floats stand in for its two rows, each as wide as its row, and the
+            text wraps them the way it would the real thing — the title's first
+            line beside the switch, the lines beside the shorter actions row
+            wider, and full width below. flow-root holds the floats, so nothing
+            after the header starts underneath the stack. */}
+        {pinnedStack}
+        <div className="flow-root">
+          {floatBox.w1 > 0 && (
+            <div aria-hidden className="float-right clear-right" style={{ width: floatBox.w1 + 12, height: floatBox.h1 }} />
+          )}
+          {floatBox.h2 > 0 && (
+            <div aria-hidden className="float-right clear-right" style={{ width: floatBox.w2 + 12, height: floatBox.h2 }} />
+          )}
+          {titleEl}
+          {statsEl}
+        </div>
 
         {/* Hidden rather than unmounted, so a trip to the comments and back
             keeps the description where it was. */}
-        <div hidden={detailsTab !== 'info'}>
+        <div hidden={activeTab !== 'info'}>
         {/* This video's topics — the channel-page labels derived from its title. */}
         {meta?.title_labels && meta.title_labels.length > 0 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -2807,210 +3052,59 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         {/* In the LEFT column, so an open transcript is still the only thing
             that changes this pane's shape. Mounted throughout, so switching
             back to it reads what was already fetched; see Comments.tsx. */}
-        <div className="mt-3" hidden={detailsTab !== 'comments'}>
+        <div className="mt-3" hidden={activeTab !== 'comments'}>
         <Comments
           videoId={videoId}
-          open={detailsTab === 'comments'}
+          open={activeTab === 'comments'}
           sort={commentSort}
           onSeek={seekTo}
           onChannelClick={onChannelClick}
         />
         </div>
 
+        {tabbedPanel && <div className="mt-3">{panelBody}</div>}
+
         {/* Pinned to the bottom of whatever is scrolling this column, at its
             right edge. A zero-height sticky row, so it takes no room in the
-            flow; the button hangs up out of it. */}
-        {showToTop && (
-          <div className="pointer-events-none sticky bottom-4 flex h-0 justify-end">
-            <button
-              onClick={scrollDetailsToTop}
-              aria-label={t('Back to top')}
-              title={t('Back to top')}
-              className="pointer-events-auto flex h-10 w-10 -translate-y-full items-center justify-center rounded-full bg-[#272727] text-white shadow-lg ring-1 ring-white/10 transition-colors hover:bg-[#3f3f3f]"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
-              </svg>
-            </button>
+            flow; the buttons hang up out of it. Sync to video joins back to top
+            here when the transcript is a tab and runs the column's length. */}
+        {(showToTop || syncOffered) && (
+          <div className="pointer-events-none sticky bottom-4 flex h-0 justify-end gap-2">
+            {syncOffered && (
+              <button
+                onClick={() => { setFollowing(true); centerActiveRow() }}
+                aria-label={t('Sync to video')}
+                title={t('Sync to video')}
+                className={`-translate-y-full ${FLOAT_BUTTON}`}
+              >
+                <SyncIcon />
+              </button>
+            )}
+            {showToTop && (
+              <button
+                onClick={scrollDetailsToTop}
+                aria-label={t('Back to top')}
+                title={t('Back to top')}
+                className={`-translate-y-full ${FLOAT_BUTTON}`}
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
+            )}
           </div>
         )}
         </div>
 
-        {/* Right panel: the caption track as readable prose, or Ask AI. Toggled
-            from their buttons in the Info tab's actions. Below lg it just stacks
-            under everything. */}
-        {twoCol && (
-          <div className={`mt-4 lg:mt-0 lg:grow-[999] lg:shrink-0 lg:basis-[26rem] lg:max-w-[56rem] ${fillsPane ? 'lg:flex lg:min-h-0 lg:flex-col' : ''}`}>
-            {/* Which of the two the slot is showing, and the way out of both.
-                A strip rather than two menu entries fighting over one pane: the
-                pane is already open, so switching should be one press and should
-                not look like closing and reopening the page. */}
-            <div className="mb-2 flex items-center gap-1">
-              {([['transcript', t('Transcript')], ['ask', t('Ask AI')]] as const).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setSidePanel(key)}
-                  aria-pressed={sidePanel === key}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                    sidePanel === key ? 'bg-white text-black' : 'bg-[#272727] text-[#ddd] hover:bg-white/15 hover:text-white'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-              <button
-                onClick={() => setSidePanel(null)}
-                aria-label={t('Close panel')}
-                className="ml-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-
-            {showTranscript && (<>
-            {/* Pick the language and search the lines. */}
-            <div className="mb-2 flex items-center gap-2">
-              {(captionLangs.length > 1 || aiTranslateAvailable) && (
-                <div className="relative shrink-0" ref={transcriptLangRef}>
-                  <button
-                    onClick={() => setShowTranscriptLangMenu((o) => !o)}
-                    aria-label={t('Transcript language')}
-                    // The current language lives in the menu's tick; the header is
-                    // tight, so the button is just the icon, named on hover.
-                    title={t('Transcript language: {lang}', { lang: transcriptLangLabel })}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
-                  >
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <circle cx="12" cy="12" r="9" />
-                      <path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
-                    </svg>
-                  </button>
-                  {showTranscriptLangMenu && (
-                    <div className="absolute left-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
-                      {captionLangs.map((l) => {
-                        const on = l.code === transcriptTrackLang
-                        return (
-                          <button
-                            key={l.code}
-                            onClick={() => { setTranscriptLang(l.code); setShowTranscriptLangMenu(false) }}
-                            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${on ? 'text-white' : 'text-[#ccc]'}`}
-                          >
-                            <span className="w-3.5 text-[#3ea6ff]">{on ? '✓' : ''}</span>
-                            {l.label}
-                          </button>
-                        )
-                      })}
-                      {/* The AI translation, same offer the caption menu makes:
-                          only when the source isn't already Chinese. */}
-                      {aiTranslateAvailable && (
-                        <button
-                          onClick={() => { setTranscriptLang(AI_ZH); setShowTranscriptLangMenu(false) }}
-                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-[#ccc]'}`}
-                        >
-                          <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
-                          {t('Chinese')}
-                          <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#888]">AI</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="relative flex-1">
-                <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#888]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="11" cy="11" r="7" />
-                  <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
-                </svg>
-                <input
-                  value={transcriptQuery}
-                  onChange={(e) => setTranscriptQuery(e.target.value)}
-                  // Esc clears the search; on an already-empty field it just gives
-                  // the keyboard back to the player instead of doing nothing.
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Escape') return
-                    e.stopPropagation()
-                    if (searching) setTranscriptQuery('')
-                    else e.currentTarget.blur()
-                  }}
-                  placeholder={t('Search transcript')}
-                  className="w-full rounded-full bg-[#121212] py-1.5 pl-9 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
-                />
-                {searching && (
-                  <button
-                    onClick={() => setTranscriptQuery('')}
-                    aria-label={t('Clear search')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#888] transition-colors hover:bg-white/10 hover:text-white"
-                  >
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className={`relative ${fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
-              <div
-                ref={transcriptRef}
-                onScroll={onTranscriptScroll}
-                className={`max-h-[26rem] overflow-y-auto rounded-xl bg-[#1a1a1a] p-2 ${fillsPane ? 'lg:h-full lg:max-h-none' : 'lg:max-h-[34rem]'}`}
-              >
-                {visibleRows.map(({ s, i }) => (
-                  <button
-                    key={`${s.start}-${i}`}
-                    ref={i === activeRow ? activeRowRef : undefined}
-                    onClick={() => { setFollowing(true); seekTo(s.start) }}
-                    className={`flex w-full gap-3 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                      i === activeRow ? 'bg-white/10' : 'hover:bg-white/5'
-                    }`}
-                  >
-                    <span className="shrink-0 pt-px font-mono text-xs tabular-nums text-[#3ea6ff]">
-                      {formatTime(s.start)}
-                    </span>
-                    <span className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-[#ccc]'}`}>
-                      {highlight(s.text, transcriptQuery)}
-                    </span>
-                  </button>
-                ))}
-                {searching && !visibleRows.length && (
-                  <p className="px-2 py-3 text-sm text-[#888]">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
-                )}
-                {/* The AI transcript fills in batch by batch, so say so rather than
-                    letting a partial read look like the whole thing. */}
-                {aiTranscriptBusy && (
-                  <p className="px-2 py-3 text-sm text-[#888]">{t('Translating…')}</p>
-                )}
-              </div>
-
-              {/* Floats over the list (outside the scroll box, so it stays put)
-                  only while the reader has scrolled off the play head. */}
-              {!following && !searching && (
-                <button
-                  onClick={() => { setFollowing(true); centerActiveRow() }}
-                  className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#3ea6ff] px-3 py-1.5 text-xs font-medium text-black shadow-lg transition-colors hover:bg-[#65b8ff]"
-                >
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                    {/* Crosshair: "put me back on the play head" — a directional
-                        arrow would be wrong half the time (it can be either way). */}
-                    <circle cx="12" cy="12" r="6" />
-                    <path strokeLinecap="round" d="M12 2v3m0 14v3M2 12h3m14 0h3" />
-                  </svg>
-                  {t('Sync to video')}
-                </button>
-              )}
-            </div>
-            </>)}
-
-            {showAsk && (
-              <AskPanel
-                videoId={videoId}
-                currentTime={curTime}
-                onSeek={seekTo}
-                fillsPane={fillsPane}
-              />
-            )}
+        {/* Right panel: the caption track as readable prose, or Ask AI. A
+            chat's width, not a share of the screen: lines of a transcript and
+            a conversation both read best narrow, and the details keep the
+            rest. Opened, switched and closed from their buttons in the pinned
+            actions, which is all the header it needs. Below lg they're tabs of
+            the switch instead, and open in the column above. */}
+        {twoCol && !tabbedPanel && (
+          <div className={`mt-4 lg:mt-0 lg:w-[28rem] lg:shrink-0 ${fillsPane ? 'lg:flex lg:min-h-0 lg:flex-col' : ''}`}>
+            {panelBody}
           </div>
         )}
         </div>

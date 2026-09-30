@@ -419,7 +419,6 @@ export const ja: Record<string, string> = {
   'Open on YouTube': 'YouTube で開く',
   'Save': '保存',
   'Saved': '保存済み',
-  'Close panel': 'パネルを閉じる',
   'Transcript language': '文字起こしの言語',
   'Search transcript': '文字起こしを検索',
   'Sync to video': '動画に同期',

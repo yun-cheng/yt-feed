@@ -420,7 +420,6 @@ export const zhHant: Record<string, string> = {
   'Open on YouTube': '在 YouTube 上開啟',
   'Save': '儲存',
   'Saved': '已儲存',
-  'Close panel': '關閉面板',
   'Transcript language': '逐字稿語言',
   'Search transcript': '搜尋逐字稿',
   'Sync to video': '同步到影片位置',

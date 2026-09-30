@@ -419,7 +419,6 @@ export const th: Record<string, string> = {
   'Open on YouTube': 'เปิดใน YouTube',
   'Save': 'บันทึก',
   'Saved': 'บันทึกแล้ว',
-  'Close panel': 'ปิดแผง',
   'Transcript language': 'ภาษาบทถอดเสียง',
   'Search transcript': 'ค้นหาบทถอดเสียง',
   'Sync to video': 'ซิงค์กับวิดีโอ',

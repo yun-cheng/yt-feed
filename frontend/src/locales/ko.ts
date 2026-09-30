@@ -419,7 +419,6 @@ export const ko: Record<string, string> = {
   'Open on YouTube': 'YouTube에서 열기',
   'Save': '저장',
   'Saved': '저장됨',
-  'Close panel': '패널 닫기',
   'Transcript language': '스크립트 언어',
   'Search transcript': '스크립트 검색',
   'Sync to video': '동영상과 동기화',

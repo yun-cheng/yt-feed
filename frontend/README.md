@@ -1326,8 +1326,9 @@ Other details:
   cancels the scroll it just started.
 
   Scrolling so the active row leaves the box stops the auto-scroll (nothing should
-  fight a reader), and raises a floating **Sync to video** pill that re-centres and
-  resumes. Because our own centering leaves the row centred, that check needs no
+  fight a reader), and raises a **Sync to video** button that re-centres and
+  resumes — round, crosshair only, the same kind as back-to-top, in the box's
+  bottom-right corner. Because our own centering leaves the row centred, that check needs no
   flag to tell programmatic scrolls from real ones.
 
   A **globe** button in the panel header opens the languages the video provides
@@ -1345,17 +1346,21 @@ Other details:
   **Search** filters the lines rather than merely marking them — the point is to
   find a moment and click into it — with the match highlighted in each surviving
   row. `Esc` clears the query (and on an empty field blurs, handing the keyboard
-  back to the player); the `×` in the tab strip above closes the panel. Following
-  stands down while searching.
+  back to the player); a second press on the lit **Transcript** action closes
+  the panel. Following stands down while searching.
 
-  **Layout**: below `lg` the panel stacks under everything at a fixed height. At
-  `lg` and up with the overlay pinned, the details pane stops scrolling as a whole
-  and becomes a fixed-height two-column row: everything about the video on the
-  left (title, stats, actions, description), the transcript full-height on the
-  right, each scrolling independently. The width caps are **per panel**, not
-  shared — the left prefers 650px and the transcript takes essentially all the
-  spare room (up to 56rem), with any leftover falling back to the left so the row
-  still fills the width.
+  **Layout**: below `lg` the panel is a tab of the details switch (see *The
+  details header*), and the transcript has no box of its own there — it runs its
+  full length in the column, and following the play head scrolls the column
+  (`transcriptScroller`, the nearest ancestor that scrolls). **Sync to video**
+  then has no box to sit in, so the same button joins back-to-top at the
+  column's bottom right. At `lg` and up with the overlay pinned, the details
+  pane stops scrolling as a whole and becomes a fixed-height two-column row:
+  everything about the video on the left (title, stats, actions, description),
+  the transcript full-height on the right, each scrolling independently. The
+  panel is a chat's width, a fixed 28rem — transcript lines and a conversation
+  both read best narrow — and the details take the rest, up to their own
+  1100px cap.
 
   The position ticker that drives the caption reveal also feeds the transcript, at
   500ms instead of 120ms when only the transcript needs it: its highlight moves
@@ -1454,13 +1459,16 @@ swaps video exactly as if you'd clicked it in the feed. It never autoplays.
 ### Ask (`AskPanel.tsx`)
 
 A conversation about the video, answered from its own transcript (the backend
-half is `routers/ask.py`). Reached from its button in the Info tab's actions as
+half is `routers/ask.py`). Reached from its button in the pinned actions as
 **Ask AI**, under the sparkle every product uses for "a model did this" — a
 speech bubble would read as chat with a person, and the point is that it isn't
-one. It shares the right-hand panel with the transcript — **one slot, two tabs** — because they are two ways of reading the same thing and
-the page should not have two shapes for that. Opening either is a press on
-its button (lit while its panel is open); the tab strip switches between them
-and closes the slot.
+one. It shares the right-hand panel with the transcript — **one slot** —
+because they are two ways of reading the same thing and the page should not
+have two shapes for that. Their two buttons in the pinned actions are the whole
+of its controls: a press opens one (lit while its panel is open), a press on the
+other switches, and a press on the lit one closes the slot, so the panel carries
+no header of its own. Below `lg` both are tabs of the details switch instead —
+see the next section.
 
 Four things it does that are worth knowing before changing it:
 
@@ -1589,25 +1597,52 @@ everything else. The title heads both. The switch is the top bar's Videos /
 Shorts control copied — two equal halves in one track, the chevron's room kept
 while hidden — so it never shifts when you switch.
 
-The switch is **pinned**, and on Info the video's actions — Save, Transcript, Ask
-AI, Download, in that order — are pinned under it. They're a zero-height `sticky`
+The switch is **pinned**, with the player's pin toggle at its right — it decides
+how the details scroll, so it sits with them rather than fading with the player's
+chrome. The video's actions — Save, Transcript, Ask AI, Download, in that order
+— are pinned under it on every tab, since they're also how the side panel opens
+and closes. They're a zero-height `sticky`
 layer at the top of the column, so the stack rides along as you scroll and hangs
-over the right of the header rather than taking rows. The header is padded by the
-stack's measured size — a `ResizeObserver`, since the width moves with the
-language — measured only at rest: scrolled, everything drops its label for an
-icon, and a header following that would reflow the page under the reader.
+over the right of the header rather than taking rows. The header flows around
+it: two invisible floats stand in for its two rows (the stack is sticky, so it
+can't float itself), each measured to its row by a `ResizeObserver` — the width
+moves with the language — so the title's first line sits beside the switch, the
+lines beside the shorter actions row get more room, and the rest is full width.
+Measured only at rest: scrolled, everything drops its label for an icon, and a
+header following that would reflow the page under the reader.
 Switching tabs from deep in one lands at the top of the other.
 
-Labels come and go together, the switch's included: labelled in a column wide
-enough (`@container`, 52rem) for the labelled row beside a readable title, icons
-below that and whenever you've scrolled. Icons always fit, so nothing hides behind
-a "…". On a phone-width column (under 576px) the title takes the full width and
-the stack floats beside the channel line instead. The stack has to be a direct
-child of the column to stay sticky, so the two layouts are two orders of the same
-pieces (`titleEl`, `pinnedStack`, `statsEl`), picked by a `ResizeObserver` on the
-column.
+**Below `lg` the switch has four tabs**: Transcript and Ask AI join Info and
+Comments, and their buttons leave the actions (Save and Download stay). The
+right-hand panel has no column of its own there — it stacks under everything,
+a long scroll away on a phone — so as a tab it opens in the details column in
+Info's place, right under the switch; Info or Comments closes it again. It's the same `sidePanel` state either way, so
+resizing across `lg` moves an open panel between the tab and the column rather
+than closing it. `lg` is read with `matchMedia` (`panelsAsTabs`), not a
+container query: it's the viewport breakpoint the panel's column hangs on. Four
+tabs sit a little closer than two, which leaves the title beside them room on
+a phone.
 
-A **back to top** button floats at the bottom right of the column, on both tabs,
+Labels come and go together, switch and actions alike: the stack is labelled
+while it leaves ~220px of title beside it (`@container`), icons below that and
+whenever you've scrolled. Its wider row sets the breakpoint, and what the rows
+hold sets their widths:
+
+| row | labelled |
+|---|---|
+| actions: Save, Download | ~217px |
+| actions: + Transcript, Ask AI | ~454px |
+| switch: two tabs + pin | ~319px |
+| switch: four tabs + pin | ~439px |
+
+So with captions on a wide screen it's the four actions, 43rem (labelled beside
+an open transcript from a ~1200px window); below `lg` the four tabs, 42rem;
+without captions the two tabs, 34rem. Icons always fit, so nothing hides behind
+a "…". The same layout serves a phone: the title wraps beside the stack for a
+line or two and the channel line runs full width under it, rather than the stack
+taking rows of its own.
+
+A **back to top** button floats at the bottom right of the column, on every tab,
 once you're about a screen down, and gets there in a fixed quarter-second rather
 than the browser's smooth scroll, which paces by distance and crawls from deep in
 a thread. What scrolls the column depends on the layout — the details pane while
@@ -1927,9 +1962,8 @@ of the same audio is a worse greeting than pressing play again.
 
 Against the embed without the extension, these float over the player instead —
 its control bar is inside the iframe, out of reach — so the caption button, the
-two marks buttons, open-on-YouTube and the pin each render in two placements
-from one definition (`captionControl` / `marksControls` / `youtubeButton` /
-`pinButton`).
+two marks buttons and open-on-YouTube each render in two placements from one
+definition (`captionControl` / `marksControls` / `youtubeButton`).
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is
 > created. Both are YouTube players for the same video, and two live players for
