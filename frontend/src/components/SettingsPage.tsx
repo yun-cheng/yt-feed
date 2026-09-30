@@ -9,6 +9,7 @@ import type { PageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
 import { setShortcutOverrides } from '../lib/shortcuts'
+import { setVideoPanelDefault } from '../lib/videoPanel'
 import { setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 type SettingSpec = {
@@ -194,6 +195,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       setCaptionDefaults(next.values)
       setSpeedDefaults(next.values.playback_speeds)
       setShortcutOverrides(next.values.shortcuts)
+      setVideoPanelDefault(next.values.video_panel_tab)
       setTranslateSetting(next.values.translate_lang)
       setData(next)
       if (key === 'app_language') setLangSetting(next.values.app_language)

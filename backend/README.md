@@ -1876,6 +1876,10 @@ default can only name a language the watch page's picker knows. Labels and
 descriptions stay English here; the frontend translates them for display (see
 the frontend README, "Language").
 
+`video_panel_tab` is a **`user`** `choice` too: which tab the panel over the
+video opens on (`info`, `comments`, `transcript`, `ask` — the frontend's own tab
+names — defaulting to `comments`).
+
 The two switches are one of each scope. `archive_fill_enabled` (the nightly
 history fill) is **`app`**: one sweep spends a daily API quota billed to a single
 Cloud project, so a per-person copy would let whoever flipped it last commit

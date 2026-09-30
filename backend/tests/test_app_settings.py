@@ -92,11 +92,18 @@ async def test_language_settings_start_on_the_browser_and_the_videos_own(client)
 
 
 @pytest.mark.asyncio
+async def test_the_panel_on_the_video_opens_on_comments(client):
+    values = (await client.get("/api/settings")).json()["values"]
+    assert values["video_panel_tab"] == "comments"
+
+
+@pytest.mark.asyncio
 async def test_a_choice_serves_its_options_in_menu_order(client):
     spec = {s["key"]: s for s in (await client.get("/api/settings")).json()["settings"]}
     assert [o["value"] for o in spec["app_language"]["options"]] == ["auto", "en", "zh-Hant", "ja", "ko", "th", "vi"]
     assert [o["value"] for o in spec["caption_lang"]["options"]] == ["", "en", "zh", "ja", "ko", "th", "vi"]
     assert [o["value"] for o in spec["translate_lang"]["options"]] == ["", "en", "zh-Hant", "ja", "ko", "th", "vi"]
+    assert [o["value"] for o in spec["video_panel_tab"]["options"]] == ["info", "comments", "transcript", "ask"]
     assert "options" not in spec["page_defaults"]
 
 
@@ -109,7 +116,7 @@ async def test_a_choice_round_trips(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None), ("translate_lang", "zh")])
+@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None), ("translate_lang", "zh"), ("video_panel_tab", "settings")])
 async def test_a_choice_outside_its_options_is_a_400(client, key, bad):
     res = await client.put("/api/settings", json={"values": {key: bad}})
     assert res.status_code == 400

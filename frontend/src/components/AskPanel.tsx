@@ -10,9 +10,11 @@
  * comments use. So a citation inside a bullet is still a button that seeks the
  * player: one behaviour for every timestamp on the page.
  *
- * Lives in the right-hand panel beside the transcript, one tab each. Mounted
- * only while that tab is open, which is what keeps it free until asked for —
- * the same bargain Comments.tsx makes.
+ * Lives in the right-hand panel beside the transcript, one tab each, and on the
+ * Ask AI tab of the panel over the video (`inPanel`). Mounted only while a tab
+ * showing it is open, which is what keeps it free until asked for — the same
+ * bargain Comments.tsx makes. The thread is the server's, so either place reads
+ * the same conversation when it opens.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
@@ -31,6 +33,9 @@ type Props = {
   /** Whether the panel is filling a fixed-height pane (pinned + wide), in which
    *  case the thread scrolls inside it instead of the page growing. */
   fillsPane: boolean
+  /** On the panel over the video: fill its column, on its backdrop rather
+   *  than a card of its own, with the question box at the foot. */
+  inPanel?: boolean
 }
 
 /**
@@ -58,7 +63,7 @@ const OPENERS: { label: string; ask: string }[] = [
   },
 ]
 
-export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Props) {
+export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPanel = false }: Props) {
   const [messages, setMessages] = useState<Msg[]>([])
   const [draft, setDraft] = useState('')
   // The answer being written, separate from `messages` so a half-arrived reply
@@ -183,12 +188,13 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane }: Pr
   const empty = loaded && !messages.length && !busy
 
   return (
-    <div className={`flex flex-col ${fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
+    <div className={`flex flex-col ${inPanel ? 'min-h-0 flex-1 px-3 pb-3' : fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className={`flex-1 space-y-3 overflow-y-auto rounded-xl bg-[#1a1a1a] p-3 ${
-          fillsPane ? 'lg:h-full lg:max-h-none' : 'max-h-[26rem] lg:max-h-[34rem]'
+        className={`flex-1 space-y-3 overflow-y-auto ${
+          inPanel ? 'min-h-0 overscroll-contain py-1'
+            : `rounded-xl bg-[#1a1a1a] p-3 ${fillsPane ? 'lg:h-full lg:max-h-none' : 'max-h-[26rem] lg:max-h-[34rem]'}`
         }`}
       >
         {empty && (

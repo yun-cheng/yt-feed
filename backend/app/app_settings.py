@@ -303,6 +303,24 @@ SPEC: tuple[Spec, ...] = (
         group="Player",
     ),
     Spec(
+        key="video_panel_tab",
+        # The frontend's own tab names (DetailsTab in WatchPage.tsx). Which one
+        # the panel shows is a thing you do on the video; this is only where it
+        # starts, so it's a plain choice rather than anything remembered.
+        type="choice",
+        options=(("info", "Info"), ("comments", "Comments"),
+                 ("transcript", "Transcript"), ("ask", "Ask AI")),
+        default=lambda: "comments",
+        scope="user",
+        label="Panel on the video opens on",
+        description=(
+            "Which tab the panel over the video shows when you open it, with G or "
+            "the button beside CC. Transcript and Ask AI need a video with "
+            "captions; one without opens on Info instead."
+        ),
+        group="Player",
+    ),
+    Spec(
         key="shortcuts",
         # A JSON object of action -> key, holding only what you REBOUND. The
         # frontend owns the vocabulary (which actions exist, what each ships on

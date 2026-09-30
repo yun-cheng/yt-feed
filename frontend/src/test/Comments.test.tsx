@@ -5,10 +5,11 @@
  * a couple of seconds of somebody's bandwidth, so it happens when asked for and
  * at no other moment. Everything after that is the tab behaving once open.
  */
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { useEffect, useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import Comments, { useComments, type Sort } from '../components/Comments'
+import Comments, { CommentList, useComments, type Sort } from '../components/Comments'
+import VideoPanel from '../components/VideoPanel'
 import { setTranslateSetting } from '../lib/i18n'
 
 function comment(over: Record<string, unknown> = {}) {
@@ -46,6 +47,31 @@ function Tabs({ videoId, onSeek = vi.fn() }: {
       <button onClick={() => setOpen(true)}>Comments</button>
       <button onClick={() => setSort('new')}>Newest</button>
       <Comments videoId={videoId} feed={feed} open={open} sort={sort} onSeek={onSeek} />
+    </>
+  )
+}
+
+/** The tab plus the panel over the player on its Comments tab, sharing one
+ * feed the way the watch page does. */
+function TabAndOverlay({ videoId }: { videoId: string }) {
+  const [open, setOpen] = useState(false)
+  const [onVideo, setOnVideo] = useState(false)
+  const [side, setSide] = useState<'left' | 'right'>('right')
+  const feed = useComments(videoId, 'top', open || onVideo)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Comments</button>
+      <button onClick={() => setOnVideo(true)}>On the video</button>
+      <div data-testid="tab"><Comments videoId={videoId} feed={feed} open={open} sort="top" onSeek={vi.fn()} /></div>
+      {onVideo && (
+        <VideoPanel
+          open tabs={[{ key: 'comments', label: 'Comments', icon: null }]} tab="comments" onTab={vi.fn()}
+          onClose={() => setOnVideo(false)} bottom="0px" width="20rem"
+          side={side} onSwapSide={() => setSide((v) => (v === 'right' ? 'left' : 'right'))}
+        >
+          <CommentList videoId={videoId} feed={feed} sort="top" onSeek={vi.fn()} compact />
+        </VideoPanel>
+      )}
     </>
   )
 }
@@ -97,6 +123,31 @@ describe('Comments', () => {
     fireEvent.click(screen.getByRole('button', { name: /comments/i }))
     await screen.findByText('nice one')
     expect(calls).toHaveLength(2)
+  })
+
+  it('the panel on the video and the tab share one fetch', async () => {
+    serve((url) => payload({ has_replies: url.includes('replies=1') }))
+    render(<TabAndOverlay videoId="v1" />)
+    expect(calls).toEqual([])
+
+    // Opening the panel on its Comments tab is an ask of its own…
+    fireEvent.click(screen.getByRole('button', { name: 'On the video' }))
+    const overlay = await screen.findByRole('complementary', { name: 'Panel on the video' })
+    expect(await within(overlay).findByText('nice one')).toBeInTheDocument()
+    await waitFor(() => expect(calls).toHaveLength(2))
+
+    // …and the tab opened after it reads what the panel already fetched.
+    fireEvent.click(screen.getAllByRole('button', { name: 'Comments' })[0])
+    expect(within(screen.getByTestId('tab')).getByText('nice one')).toBeInTheDocument()
+    expect(calls).toHaveLength(2)
+
+    // The side button says where it would go, and goes there.
+    fireEvent.click(within(overlay).getByRole('button', { name: 'Move to the left' }))
+    expect(overlay).toHaveClass('left-0')
+    expect(within(overlay).getByRole('button', { name: 'Move to the right' })).toBeInTheDocument()
+
+    fireEvent.click(within(overlay).getByRole('button', { name: 'Hide the panel' }))
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
   })
 
   it('skips the replies walk when there is nothing to deepen', async () => {

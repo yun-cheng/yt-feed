@@ -14,7 +14,9 @@ import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
-import Comments, { useComments, type Sort as CommentSort } from './Comments'
+import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
+import VideoPanel, { PanelScroll, PanelTab } from './VideoPanel'
+import { videoPanelDefault } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
 import { t, tc } from '../lib/i18n'
@@ -186,6 +188,18 @@ function loadCaptionPrefs(): CaptionPrefs {
     return { on: false, mode: 'word', ...CAPTION_DISPLAY_DEFAULTS }
   }
 }
+
+// Which side of the player the panel over the video sits on. A layout choice,
+// so unlike whether it's ON it does carry over: remembering it fetches nothing.
+const PANEL_SIDE_KEY = 'ytfeed:video-panel-side'
+type PanelSide = 'left' | 'right'
+function loadPanelSide(): PanelSide {
+  try { return localStorage.getItem(PANEL_SIDE_KEY) === 'left' ? 'left' : 'right' } catch { return 'right' }
+}
+// The panel's width, in the one place: the panel draws at it and the captions
+// step aside by it. The floor is what its header needs for four tabs and two
+// buttons in one line.
+const PANEL_WIDTH = 'clamp(12rem, 34%, 20rem)'
 
 // The caption lines to show at `curTime` for one cue list. Auto-caption cues
 // overlap in time (the next line starts while the previous is still up), which
@@ -400,6 +414,101 @@ const SyncIcon = () => (
   </svg>
 )
 
+// One icon per tab, shared by the switch under the video and the panel over it.
+const TAB_ICONS: Record<DetailsTab, ReactNode> = {
+  info: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M12 11v5M12 7.5v.01" />
+    </svg>
+  ),
+  comments: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinejoin="round" d="M4 5h16v11H9l-5 4V5z" />
+    </svg>
+  ),
+  transcript: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+    </svg>
+  ),
+  ask: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
+      <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
+    </svg>
+  ),
+}
+
+/**
+ * The transcript on the panel over the video: the same rows as the page's, in
+ * the language picked there, following the play head in a box of its own.
+ * Searching and picking a language stay on the page's — the panel is for
+ * reading along, and its column is too narrow to do either well.
+ *
+ * Following works as the page's does: scrolling the active row out of view
+ * stops it, and Sync to video (or clicking a row) starts it again.
+ */
+function PanelTranscript({ rows, activeRow, onSeek, busy }: {
+  rows: { start: number; text: string }[]
+  activeRow: number
+  onSeek: (seconds: number) => void
+  busy: boolean
+}) {
+  const boxRef = useRef<HTMLDivElement>(null)
+  const rowRef = useRef<HTMLButtonElement>(null)
+  const [following, setFollowing] = useState(true)
+  // Centred in this box only — scrollIntoView would drag the page along too.
+  const center = () => {
+    const row = rowRef.current
+    const box = boxRef.current
+    if (!row || !box) return
+    const delta = row.getBoundingClientRect().top - box.getBoundingClientRect().top
+    box.scrollTo({ top: box.scrollTop + delta - (box.clientHeight - row.clientHeight) / 2 })
+  }
+  useEffect(() => { if (following) center() }, [activeRow, following])  // eslint-disable-line react-hooks/exhaustive-deps
+  const onScroll = () => {
+    const row = rowRef.current
+    const box = boxRef.current
+    if (!row || !box) return
+    const r = row.getBoundingClientRect()
+    const b = box.getBoundingClientRect()
+    setFollowing(r.bottom > b.top && r.top < b.bottom)
+  }
+  return (
+    <div className="relative min-h-0 flex-1">
+      <div ref={boxRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain px-1.5 pb-3">
+        {rows.map((s, i) => (
+          <button
+            key={`${s.start}-${i}`}
+            ref={i === activeRow ? rowRef : undefined}
+            onClick={() => { setFollowing(true); onSeek(s.start) }}
+            className={`flex w-full gap-2 rounded-lg px-1.5 py-1 text-left transition-colors ${
+              i === activeRow ? 'bg-white/15' : 'hover:bg-white/10'
+            }`}
+          >
+            <span className="shrink-0 pt-px font-mono text-[11px] tabular-nums text-[#3ea6ff]">{formatTime(s.start)}</span>
+            <span className={`text-[13px] leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-[#ccc]'}`}>
+              {s.text}
+            </span>
+          </button>
+        ))}
+        {busy && <p className="px-1.5 py-2 text-xs text-[#aaa]">{t('Translating…')}</p>}
+      </div>
+      {!following && (
+        <button
+          onClick={() => setFollowing(true)}
+          aria-label={t('Sync to video')}
+          title={t('Sync to video')}
+          className={`absolute bottom-3 right-3 ${FLOAT_BUTTON}`}
+        >
+          <SyncIcon />
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function WatchPage({ videoId, video, nextFilter = '', startAt, initialPanel, onChannelClick, onClose, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   // Fetched separately and never stored server-side (see /api/feed/description).
@@ -508,10 +617,28 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [commentSort, setCommentSort] = useState<CommentSort>('top')
   const [showSortMenu, setShowSortMenu] = useState(false)
   const sortRef = useRef<HTMLDivElement>(null)
+  // The panel over the video (VideoPanel), from the button beside CC or `g`.
+  // Off for every new video, like the Comments tab: left on, whatever it opens
+  // on would be fetched for every video you opened after it. Each video starts
+  // it on the tab Settings names; a tab picked on a video lasts for that video.
+  const [panelOnVideo, setPanelOnVideo] = useState(false)
+  const [panelTab, setPanelTab] = useState<DetailsTab>(videoPanelDefault)
+  // The panel's tabs opened so far on this video. Each stays mounted from its
+  // first opening — hidden, not thrown away — so switching tabs or closing the
+  // panel keeps where you'd scrolled to, the replies you'd opened, a half-typed
+  // question. A new video starts over.
+  const [panelKept, setPanelKept] = useState<DetailsTab[]>([])
+  const [panelSide, setPanelSide] = useState<PanelSide>(loadPanelSide)
+  useEffect(() => {
+    try { localStorage.setItem(PANEL_SIDE_KEY, panelSide) } catch { /* private window: just this visit */ }
+  }, [panelSide])
   useEffect(() => {
     setDetailsTab('info')
     setCommentSort('top')
     setShowSortMenu(false)
+    setPanelOnVideo(false)
+    setPanelTab(videoPanelDefault())
+    setPanelKept([])
   }, [videoId])
   const activeRowRef = useRef<HTMLButtonElement>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
@@ -721,8 +848,36 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // pick one of them again.
   const tabbedPanel = panelsAsTabs && hasCaptions ? sidePanel : null
   const activeTab: DetailsTab = tabbedPanel ?? detailsTab
-  // The comments' fetch, held here rather than in the tab — see useComments.
-  const commentsFeed = useComments(videoId, commentSort, activeTab === 'comments')
+  // The panel's tab as shown. Transcript and Ask read the captions, so once a
+  // video turns out to have none, a panel set to open on either opens on Info
+  // — the one tab that costs nothing to show. While the captions are still on
+  // their way it waits on the tab it was asked for rather than flashing past
+  // another (and, if that were Comments, fetching them for nothing).
+  const panelTabShown: DetailsTab = (panelTab === 'transcript' || panelTab === 'ask') && captions !== null && !hasCaptions
+    ? 'info' : panelTab
+  const panelShows = (tab: DetailsTab) => panelOnVideo && panelTabShown === tab
+  // Kept once shown. Read as "kept, or showing now" so a tab's first render
+  // doesn't wait a frame for the effect that records it.
+  const panelKeeps = (tab: DetailsTab) => panelKept.includes(tab) || panelShows(tab)
+  useEffect(() => {
+    if (panelOnVideo && !panelKept.includes(panelTabShown)) setPanelKept((k) => [...k, panelTabShown])
+  }, [panelOnVideo, panelTabShown])  // eslint-disable-line react-hooks/exhaustive-deps
+  // All four, whatever the page's own switch holds at this width. Transcript
+  // and Ask go once the video turns out to have no captions.
+  const panelTabs = [
+    { key: 'info' as const, label: t('Info'), icon: TAB_ICONS.info },
+    { key: 'comments' as const, label: t('Comments'), icon: TAB_ICONS.comments },
+    ...(captions === null || hasCaptions ? [
+      { key: 'transcript' as const, label: t('Transcript'), icon: TAB_ICONS.transcript },
+      { key: 'ask' as const, label: t('Ask AI'), icon: TAB_ICONS.ask },
+    ] : []),
+  ]
+  // One fetch for both places the comments show: asked for by whichever opens
+  // first, and already there for the other.
+  const commentsFeed = useComments(videoId, commentSort, activeTab === 'comments' || panelShows('comments'))
+  // Likewise the transcript: its rows, and the play-head tick that moves its
+  // highlight, are wanted while either place shows it.
+  const transcriptWanted = showTranscript || panelShows('transcript')
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -1314,14 +1469,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // common case where both are the same language.
   useEffect(() => {
     const same = !pickedTranscriptLang || pickedTranscriptLang === (activeLang || effCaptionLang)
-    if (!showTranscript || same || transcriptIsAI) { setTranscriptCues(null); return }
+    if (!transcriptWanted || same || transcriptIsAI) { setTranscriptCues(null); return }
     let cancelled = false
     apiFetch(`/api/feed/captions/${videoId}?lang=${pickedTranscriptLang}`, { quiet: true })
       .then((r) => r.json())
       .then((d) => { if (!cancelled) setTranscriptCues(Array.isArray(d?.cues) ? d.cues : []) })
       .catch(() => { if (!cancelled) setTranscriptCues([]) })
     return () => { cancelled = true }
-  }, [videoId, showTranscript, pickedTranscriptLang, activeLang, effCaptionLang, transcriptIsAI])
+  }, [videoId, transcriptWanted, pickedTranscriptLang, activeLang, effCaptionLang, transcriptIsAI])
 
   // The AI transcript translates the WHOLE video, unlike the caption version that
   // only stays ahead of the play head: a transcript is for reading and searching
@@ -1329,7 +1484,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // batches, rendered as they land, walking forward from the last covered end
   // until a short response says we've run out of video.
   useEffect(() => {
-    if (!showTranscript || !transcriptIsAI || !captions?.length) return
+    if (!transcriptWanted || !transcriptIsAI || !captions?.length) return
     let cancelled = false
     // Resume from the end of what's already here rather than restarting at 0:
     // closing and reopening the panel would otherwise replay the whole walk as
@@ -1373,7 +1528,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       if (!cancelled) setAiTranscriptBusy(false)
     })()
     return () => { cancelled = true; setAiTranscriptBusy(false) }
-  }, [videoId, showTranscript, transcriptIsAI, captions, effCaptionLang])
+  }, [videoId, transcriptWanted, transcriptIsAI, captions, effCaptionLang])
 
   // A new video or a different source track invalidates the translation.
   useEffect(() => { setAiTranscript([]); aiTranscriptDone.current = false }, [videoId, effCaptionLang])
@@ -1402,13 +1557,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // open transcript needs the same tick to follow along, at a lazier rate — its
   // highlight moves once a sentence, so 120ms would be ~8 renders per useful change.
   useEffect(() => {
-    if (!showCaptions && !showTranscript) return
+    if (!showCaptions && !transcriptWanted) return
     const id = window.setInterval(() => {
       const p = playerRef.current
       if (p) setCurTime(p.getCurrentTime())
     }, showCaptions ? 120 : 500)
     return () => window.clearInterval(id)
-  }, [showCaptions, showTranscript])
+  }, [showCaptions, transcriptWanted])
 
   // The AI-translated sentences as whole-line cues. Shared by whichever slot picked
   // AI (main or second): each translated sentence already covers its own span, and
@@ -1453,11 +1608,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       .filter((s) => s.text)
   }, [transcriptIsAI, aiTranscript, transcriptCues, captions])
   const activeRow = useMemo(() => {
-    if (!showTranscript) return -1
+    if (!transcriptWanted) return -1
     let i = -1
     while (i + 1 < transcript.length && transcript[i + 1].start <= curTime + 0.05) i++
     return i
-  }, [showTranscript, transcript, curTime])
+  }, [transcriptWanted, transcript, curTime])
 
   // Centre the active row in the transcript's own box — scrollIntoView would drag
   // the whole details column along with it. Measured from the rects rather than
@@ -1842,6 +1997,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // native `c` only works while the iframe is focused, which we avoid.
         e.preventDefault()
         setShowCaptions((v) => !v)
+      } else if (action === 'videoPanel') {
+        // The same toggle as the button beside CC. Opening it is the ask that
+        // fetches whatever its tab shows, the same as pressing the button.
+        e.preventDefault()
+        setPanelOnVideo((v) => !v)
       } else if (action === 'pin') {
         // The same toggle the pin button makes: whether the player holds its
         // place while the details scroll, or the whole page scrolls together.
@@ -1907,6 +2067,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // At the top the only thing in the way is the volume HUD, which sits at 1rem
   // and stands ~2rem tall whether or not any chrome is showing — over the embed
   // YouTube's title bar wants more room than that anyway.
+  // The panel over the video is a column down one side. While the controls are up
+  // it stops just above the progress bar — ours has its hit area 4.375rem up,
+  // YouTube's the same clearance the captions keep from it — and once they
+  // fade it runs to the bottom edge. It's anchored at the top, so only its foot
+  // moves: what you're reading stays put.
+  const panelBottom = !chromeUp ? '0px' : ownBar ? '4.5rem' : 'max(11%, 5.5rem)'
+
   const captionInset = captionPos === 'top'
     ? (ownBar ? '3.25rem' : 'max(9%, 4rem)')
     : ownBar
@@ -1930,7 +2097,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           // Anchored to whichever edge the block was sent to. Bottom-anchored,
           // new lines push the stack upward; top-anchored it grows downward,
           // which is the same reading order either way.
-          style={captionPos === 'top' ? { top: captionInset } : { bottom: captionInset }}
+          // With the panel over one side, the captions centre in what's left of
+          // the frame rather than running underneath it.
+          style={{
+            ...(captionPos === 'top' ? { top: captionInset } : { bottom: captionInset }),
+            ...(panelOnVideo && { [panelSide]: PANEL_WIDTH }),
+          }}
         >
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
@@ -1938,6 +2110,74 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           {captionLines.length > 0 && <CaptionBlock lines={captionLines} size={captionSize} />}
           {captionLines2.length > 0 && <CaptionBlock lines={captionLines2} size={captionSize} />}
         </div>
+      )}
+
+      {/* Mounted from its first opening until the video changes; closing hides
+          it, so what its tabs held is still there when it opens again. */}
+      {(panelOnVideo || panelKept.length > 0) && (
+        <VideoPanel
+          open={panelOnVideo}
+          tabs={panelTabs}
+          tab={panelTabShown}
+          onTab={setPanelTab}
+          side={panelSide}
+          onSwapSide={() => setPanelSide((v) => (v === 'right' ? 'left' : 'right'))}
+          onClose={() => setPanelOnVideo(false)}
+          width={PANEL_WIDTH}
+          bottom={panelBottom}
+        >
+          {panelKeeps('info') && (
+            <PanelTab shown={panelTabShown === 'info'}>
+              <PanelScroll>
+                <p className="text-sm font-semibold leading-snug [overflow-wrap:anywhere]">{meta?.title ?? '…'}</p>
+                {meta && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-[#aaa]">
+                    <a
+                      href={`/channel/${meta.channel_id}`}
+                      onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
+                      className="font-medium text-white transition-colors hover:text-blue-400"
+                    >
+                      {meta.channel_name || t('Unknown')}
+                    </a>
+                    <span className="text-[#666]">·</span>
+                    <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
+                    <span className="text-[#666]">·</span>
+                    <span>{timeAgo(meta.published_at)}</span>
+                  </div>
+                )}
+                {description && (
+                  <div className="mt-2 whitespace-pre-wrap text-[13px] leading-snug text-[#ddd] [overflow-wrap:anywhere]">
+                    {linkify(description, seekTo)}
+                  </div>
+                )}
+              </PanelScroll>
+            </PanelTab>
+          )}
+          {panelKeeps('comments') && (
+            <PanelTab shown={panelTabShown === 'comments'}>
+              <PanelScroll padded={false}>
+                <CommentList
+                  videoId={videoId}
+                  feed={commentsFeed}
+                  sort={commentSort}
+                  onSeek={seekTo}
+                  onChannelClick={onChannelClick}
+                  compact
+                />
+              </PanelScroll>
+            </PanelTab>
+          )}
+          {panelKeeps('transcript') && (
+            <PanelTab shown={panelTabShown === 'transcript'}>
+              <PanelTranscript rows={transcript} activeRow={activeRow} onSeek={seekTo} busy={aiTranscriptBusy} />
+            </PanelTab>
+          )}
+          {panelKeeps('ask') && (
+            <PanelTab shown={panelTabShown === 'ask'}>
+              <AskPanel videoId={videoId} currentTime={curTime} onSeek={seekTo} fillsPane={false} inPanel />
+            </PanelTab>
+          )}
+        </VideoPanel>
       )}
 
       {/* Volume HUD — a brief overlay while adjusting volume / mute by keyboard. */}
@@ -2167,6 +2407,36 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </div>
   )
 
+  // The panel over the video, beside CC because it's the same kind of thing:
+  // text laid over the picture, on or off. Same two placements as the caption
+  // button.
+  const panelControl = (
+    <button
+      onClick={() => setPanelOnVideo((v) => !v)}
+      className={ownBar
+        ? `group relative ${BAR_BUTTON}`
+        : 'group absolute bottom-[14px] left-[11rem] z-20 flex h-11 w-11 items-center justify-center text-white'}
+      title={panelOnVideo
+        ? t('Hide the panel ({key})', { key: shortcutLabel('videoPanel') })
+        : t('Show the panel on the video ({key})', { key: shortcutLabel('videoPanel') })}
+      aria-label={t('Panel on the video')}
+      aria-pressed={panelOnVideo}
+    >
+      {!ownBar && (
+        <span className="pointer-events-none absolute inset-0 m-auto h-10 w-10 rounded-full transition-colors group-hover:bg-white/10" />
+      )}
+      {/* A frame with a column down its right side, filled like the CC glyph:
+          the picture, and the panel laid over it. */}
+      <svg className="relative h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+        <path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2ZM3 19V5h11v14H3Zm13 0V5h5v14h-5Z" />
+      </svg>
+      {/* On: the same underline the CC button wears. */}
+      {panelOnVideo && (
+        <span className={`pointer-events-none absolute left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white ${ownBar ? 'bottom-[5px]' : 'bottom-[7px]'}`} />
+      )}
+    </button>
+  )
+
   // Bookmark + A–B repeat, as buttons.
   //
   // The keyboard already does all of this (`b`, `[`, `]`, `\\`) and does it
@@ -2174,10 +2444,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // have been told about, and these two are the only marks on the bar you can't
   // otherwise put there. Same two placements as the caption and YouTube buttons:
   // in our row when we own the bar, floating over YouTube's chrome when we
-  // don't, there sitting just right of the caption button.
+  // don't, there sitting just right of the panel button.
   const MARK_BUTTON_FLOAT = 'group relative flex h-11 w-11 items-center justify-center text-white'
   const marksControls = (
-    <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[11rem] z-20 flex items-center'}>
+    <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[13.75rem] z-20 flex items-center'}>
       <button
         onClick={marks.toggleBookmarkHere}
         // In the bookmarks' own colour while you're standing on one, so the
@@ -2426,45 +2696,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     </div>
   )
   const switchTabs: { key: DetailsTab; label: string; icon: React.ReactNode }[] = [
-    {
-      key: 'info',
-      label: t('Info'),
-      icon: (
-        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-          <circle cx="12" cy="12" r="9" />
-          <path strokeLinecap="round" d="M12 11v5M12 7.5v.01" />
-        </svg>
-      ),
-    },
-    {
-      key: 'comments',
-      label: t('Comments'),
-      icon: (
-        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-          <path strokeLinejoin="round" d="M4 5h16v11H9l-5 4V5z" />
-        </svg>
-      ),
-    },
+    { key: 'info', label: t('Info'), icon: TAB_ICONS.info },
+    { key: 'comments', label: t('Comments'), icon: TAB_ICONS.comments },
     ...(panelsAsTabs && hasCaptions ? [
-      {
-        key: 'transcript' as const,
-        label: t('Transcript'),
-        icon: (
-          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-          </svg>
-        ),
-      },
-      {
-        key: 'ask' as const,
-        label: t('Ask AI'),
-        icon: (
-          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
-            <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
-          </svg>
-        ),
-      },
+      { key: 'transcript' as const, label: t('Transcript'), icon: TAB_ICONS.transcript },
+      { key: 'ask' as const, label: t('Ask AI'), icon: TAB_ICONS.ask },
     ] : []),
   ]
   // What the transcript and Ask AI panels show — in the right column beside
@@ -2808,7 +3044,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu}
               onFullscreen={toggleFullscreen}
               nextControl={nextButton}
-              leftControls={<>{captionControl}{marksControls}</>}
+              leftControls={<>{captionControl}{panelControl}{marksControls}</>}
               extraControls={youtubeButton}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
@@ -2895,7 +3131,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             hovering={chromeUp}
             onFullscreen={toggleFullscreen}
             nextControl={nextButton}
-            leftControls={<>{captionControl}{marksControls}</>}
+            leftControls={<>{captionControl}{panelControl}{marksControls}</>}
             extraControls={youtubeButton}
             bookmarks={marks.bookmarks}
             loop={marks.loop}
@@ -2908,6 +3144,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             }`}
           >
             {captionControl}
+            {panelControl}
             {marksControls}
             {youtubeButton}
             {/* Over the embed the progress bar lives inside the iframe, so the
@@ -2925,11 +3162,15 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         {/* Up next. Only once the video has actually ENDED, so it can never cover
             something still playing — which also means it lands on top of the
             related-video grid the embed puts up at the end, in place of a wall of
-            other people's channels. Dismissing leaves the finished frame alone. */}
+            other people's channels. Dismissing leaves the finished frame alone.
+            With the panel over the video open, it takes the rest of the frame
+            beside it, as the captions do, rather than blacking the panel out
+            at the one moment there's time to read it. */}
         {ended && nextUp && !nextDismissed && (
           <div
             data-testid="up-next"
             className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 px-4"
+            style={panelOnVideo ? { [panelSide]: PANEL_WIDTH } : undefined}
           >
             <div className="w-full max-w-[22rem] text-center">
               <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[#aaa]">

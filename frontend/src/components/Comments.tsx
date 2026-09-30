@@ -1,5 +1,6 @@
 /**
- * The comment section — the watch page's Comments tab, beside Info.
+ * The comment section — the watch page's Comments tab, beside Info, and the
+ * same comments on the Comments tab of the panel over the player (VideoPanel).
  *
  * Everything here is shaped by one rule: nothing is fetched until you ask for
  * it. There is no prefetch on hover, no warm-up while the video plays, and no
@@ -267,12 +268,12 @@ export type CommentsFeed = {
 }
 
 /**
- * What was fetched for one video, owned by the page rather than by the tab that
- * shows it — so anything else that shows the comments reads what's already
- * here rather than walking YouTube again.
+ * What was fetched for one video, shared by everything that shows it — the
+ * Comments tab and the panel over the video. One owner, so opening the second
+ * after the first reads what's already here rather than walking YouTube again.
  *
- * `wanted` is the ask: true while they're showing. See the top of the file for
- * why nothing is fetched at any other moment.
+ * `wanted` is the ask: true while either of them is showing. See the top of the
+ * file for why nothing is fetched at any other moment.
  */
 export function useComments(videoId: string, sort: Sort, wanted: boolean): CommentsFeed {
   const [data, setData] = useState<Payload | null>(null)
@@ -380,11 +381,12 @@ type ListProps = {
   sort: Sort
   onSeek: (seconds: number) => void
   onChannelClick?: (channelId: string) => void
-  /** Smaller type and avatars, for a narrow column. */
+  /** Smaller type and avatars, for the panel over the video. */
   compact?: boolean
 }
 
-/** The comments themselves, with whatever the fetch has to say instead. */
+/** The comments themselves, with whatever the fetch has to say instead. Also
+ * what the panel over the video shows on its Comments tab, `compact`. */
 export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compact = false }: ListProps) {
   const { data, loading, failed, deepening } = feed
   const threads = data?.threads ?? []

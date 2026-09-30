@@ -830,9 +830,14 @@ components/
                                   metadata, description, topic chips
   AskPanel.tsx                    Ask: a conversation about the video, answered
                                   from its transcript. Shares the right-hand
-                                  panel with the transcript, one tab each
-  Comments.tsx                    the watch page's Comments tab, beside Info —
-                                  fetched only when you switch to it
+                                  panel with the transcript, one tab each, and
+                                  is the panel over the video's Ask AI tab
+  Comments.tsx                    the watch page's Comments tab, beside Info,
+                                  and the panel over the video's — fetched
+                                  only when you open one of them
+  VideoPanel.tsx                  the panel over the video: Info, Comments,
+                                  Transcript and Ask AI down one side of the
+                                  picture
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -966,7 +971,8 @@ Other details:
   IFrame API, so shortcuts work wherever focus is on the page — not only while
   the iframe holds focus. `space`/`k` play-pause, `m` mute, `f` fullscreen (of
   our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
-  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `p` pin,
+  `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `g` the
+  panel on the video, `p` pin,
   `,`/`.` playback speed (YouTube's two keys, without the shift it asks for), and
   the marks below (`b`, `[`, `]`, `\`). **Every one of those is a default, not a
   wire**: the handler asks `lib/shortcuts.ts` what a key *means* and the answer
@@ -989,8 +995,9 @@ Other details:
     a shortcut is one you have to have been told about — and these are the only
     marks on the bar you can't otherwise put there. The hook hands the buttons
     the same actions the key handler calls, so the two ways of asking can't
-    drift apart. They sit next to the caption button in both placements: in our
-    row when we own the bar, floating over YouTube's chrome when we don't.
+    drift apart. They sit right of the panel button, which sits right of the
+    caption button, in both placements: in our row when we own the bar,
+    floating over YouTube's chrome when we don't.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
     of the video and an unpinned B means the end of it, which is what each key
     reads as on its own: `[` is "repeat from here", `]` is "repeat up to here".
@@ -1468,7 +1475,8 @@ have two shapes for that. Their two buttons in the pinned actions are the whole
 of its controls: a press opens one (lit while its panel is open), a press on the
 other switches, and a press on the lit one closes the slot, so the panel carries
 no header of its own. Below `lg` both are tabs of the details switch instead —
-see the next section.
+see the next section. It is also the Ask AI tab of the panel over the video
+(`inPanel`), where it fills the column with its question box at the foot.
 
 Four things it does that are worth knowing before changing it:
 
@@ -1650,13 +1658,79 @@ pinned, the column itself beside a transcript, the whole overlay unpinned — so
 rather than track that, `WatchPage` listens for scroll in the capture phase and
 keeps whichever scroller contains the column.
 
+### The panel on the video (`VideoPanel.tsx`)
+
+A column laid over one side of the player with the same four tabs as the page —
+Info, Comments, Transcript, Ask AI — to read while the video plays without
+leaving it for the details below. The button right of CC (`panelControl`) or
+`g` (the `videoPanel` shortcut) opens and closes it; the × in its header closes
+it too.
+
+**Which tab.** Each video opens it on the tab the `video_panel_tab` setting names
+(Settings → Player; `comments` to begin with; `lib/videoPanel.ts` holds it,
+installed like the caption defaults). A tab picked on a video lasts for that
+video. Transcript and Ask read the captions, so on a video that turns out to
+have none they leave the tab row and a panel set to open on either opens on
+**Info**, the one tab that costs nothing (`panelTabShown`); while the captions
+are still on their way it waits on the tab it was asked for rather than
+flashing through Comments and fetching them for nothing. It's off again for
+every new video, for the Comments reason below.
+
+**Tabs keep their state.** A tab stays mounted from the first time it's opened
+on a video (`panelKept`), each in a `PanelTab`, and switching only hides the
+others; closing hides the whole panel the same way (`open`). So where you'd
+scrolled to, the replies you'd opened, a translation, the transcript's place and
+a half-typed question are all still there when you come back. Hidden by
+`visibility`, not `display`: a box taken out of layout can come back scrolled to
+the top. Hidden elements take no clicks, so a closed panel doesn't block the
+video. A new video starts over.
+
+**What each tab shows** is the watch page's own data, passed in as children, so
+a tab opened here after its twin below fetches nothing twice:
+
+| tab | on the panel |
+|---|---|
+| Info | title, channel, views and age, the description (timestamps seek) |
+| Comments | `CommentList compact`, from the same `useComments` feed as the tab |
+| Transcript | `PanelTranscript`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
+| Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
+
+**Where it sits.** `PANEL_WIDTH`, `clamp(12rem, 34%, 20rem)` — the floor is what
+the header needs for four tabs and two buttons on one line — on a `bg-black/65`
+blurred backdrop, flush with the player's top and side edges. It's in the
+player box, so it goes to fullscreen with it. It reaches the bottom edge while
+the controls are hidden; while they show it stops just above the progress bar
+(`panelBottom`): 4.5rem over our own bar, whose progress bar's hit area starts
+4.375rem up, and the captions' `max(11%, 5.5rem)` over YouTube's. It's anchored
+at the top, so only its foot moves and what you're reading stays put. Its one
+rounded corner is the inner foot, when it stops short of the bottom. While it's
+open, the caption block's edge on that side moves in by `PANEL_WIDTH`, so the
+captions centre in what's left of the frame — and so does the Up next screen
+when the video ends, which would otherwise black the panel out at the one moment
+there's time to read it.
+
+A button in its header moves it between the right and left sides — whichever
+half the video isn't using — and that choice is remembered
+(`ytfeed:video-panel-side` in localStorage; a layout preference fetches nothing,
+so it may carry over). On the left, the back button (which never fades) lands in
+the header's corner, so the header leaves it room; at the narrowest widths that
+puts the tabs and the two buttons on separate lines.
+
 ### Comments (`Comments.tsx`)
 
-The Comments tab. It's in the **left** column, so an open transcript is still the
-only thing that changes this pane's shape. The page owns which tab is showing,
-and the fetch too: `useComments(videoId, sort, wanted)` is called once by
-`WatchPage` and handed down as `feed`, so what was fetched belongs to the page
-rather than to the tab, and going back to Info and returning reads it.
+The Comments tab, and the same comments on the panel over the video. The tab is
+in the **left** column, so an open transcript is still the only thing that
+changes this pane's shape.
+
+The fetch lives in `useComments(videoId, sort, wanted)`, called once by
+`WatchPage`, and both views draw from what it returns — so whichever you open
+first does the fetching and the other reads what's in hand. `wanted` is "the tab
+is showing, or the panel is open on its Comments tab". Going back to Info and
+returning reads what was already fetched too.
+
+**On the video**, the comments are `CommentList` with `compact` on: smaller
+type and avatars than the tab, same threads, replies, seeking timestamps and
+Translate.
 
 Everything about it follows one rule: **nothing is fetched until you open it.**
 No hover prefetch, no warm-up while the video plays, and no remembered "open"
@@ -1963,8 +2037,9 @@ of the same audio is a worse greeting than pressing play again.
 
 Against the embed without the extension, these float over the player instead —
 its control bar is inside the iframe, out of reach — so the caption button, the
-two marks buttons and open-on-YouTube each render in two placements from one
-definition (`captionControl` / `marksControls` / `youtubeButton`).
+panel button, the two marks buttons and open-on-YouTube each render in two
+placements from one definition (`captionControl` / `panelControl` /
+`marksControls` / `youtubeButton`).
 
 > **Trap:** the hover preview must be destroyed *before* the watch player is
 > created. Both are YouTube players for the same video, and two live players for
@@ -2074,7 +2149,8 @@ problem.
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
-| `Comments.test.tsx` | that nothing is fetched before the tab opens, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
+| `VideoPanel.test.tsx` | that the panel over the video keeps a tab's state when you switch away and back, and when you close and reopen it, and that closed it's out of reach |
+| `Comments.test.tsx` | that nothing is fetched before the tab opens, that the panel on the video and the tab share one fetch and the panel's side button moves it, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing; plus the three calls behind the row, where an unreachable server has to read as "no presets" and a refused save as nothing added |
 | `channels.test.ts` | the two calls behind all three ways of adding a channel by hand: the query encoded rather than pasted into the URL, a lookup miss answered in place instead of toasted (it's the call's ordinary negative answer), and a failed *add* still shouting — since that one you asked for |
 | `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range; plus the length buckets going to the server, this list being paged |

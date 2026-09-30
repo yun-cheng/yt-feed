@@ -38,12 +38,14 @@ real video (muted, with custom captions and scrubbing).
   to the edge. Watching live never marks the stream watched
 - **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
   of leaving for youtube.com; browser back returns you to exactly where you were.
-  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, p, and
+  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, g, p, and
   the marks below) and our
   own captions, rendered from the transcript and styled like YouTube's —
   switchable between English / Chinese / Japanese / Korean / Thai / Vietnamese
   when offered, with dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
-  position and font size the embed's own captions would never give you
+  position and font size the embed's own captions would never give you; and a panel
+  laid over the video (`g`), down either side, with its info, comments,
+  transcript and Ask AI — which one it opens on is a setting
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click the tick to jump back); `[` and `]` set a loop's ends and `\` stops it,
   so a passage replays until you're done with it. **One end is enough**: `[` alone

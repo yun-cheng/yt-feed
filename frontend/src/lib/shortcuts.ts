@@ -24,7 +24,7 @@
  */
 
 export type ActionId =
-  | 'playPause' | 'mute' | 'fullscreen' | 'captions' | 'pin'
+  | 'playPause' | 'mute' | 'fullscreen' | 'captions' | 'videoPanel' | 'pin'
   | 'volumeUp' | 'volumeDown'
   | 'back5' | 'forward5' | 'back10' | 'forward10'
   | 'speedDown' | 'speedUp'
@@ -45,6 +45,7 @@ export const ACTIONS: readonly Action[] = [
   { id: 'mute', key: 'm', label: 'Mute', group: 'Playback' },
   { id: 'fullscreen', key: 'f', label: 'Fullscreen', group: 'Playback' },
   { id: 'captions', key: 'c', label: 'Captions on / off', group: 'Playback' },
+  { id: 'videoPanel', key: 'g', label: 'Panel on the video on / off', group: 'Playback' },
   { id: 'pin', key: 'p', label: 'Pin the player', group: 'Playback' },
   { id: 'volumeUp', key: 'ArrowUp', label: 'Volume up', group: 'Playback' },
   { id: 'volumeDown', key: 'ArrowDown', label: 'Volume down', group: 'Playback' },

@@ -315,7 +315,7 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
                     "page_defaults": "user", "app_language": "user",
                     "caption_lang": "user", "caption_lang2": "user",
                     "translate_lang": "user", "playback_speeds": "user",
-                    "shortcuts": "user"}
+                    "shortcuts": "user", "video_panel_tab": "user"}
 
 
 async def test_page_defaults_are_personal(client, pair):
