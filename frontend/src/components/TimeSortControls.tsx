@@ -88,13 +88,17 @@ export default function TimeSortControls({ variant = 'feed', age, onAgeChange, c
           don't wrap when squeezed — they overlap into a smear. */}
       {slider && <TimeRangeSlider value={age} onChange={onAgeChange} count={count} />}
 
-      {/* Row 2 on mobile / right on desktop: sort buttons */}
-      <div className={`flex gap-1 bg-[#1a1a1a] rounded-lg p-0.5 overflow-x-auto no-scrollbar max-w-full ${stacked ? '' : 'lg:ml-auto lg:flex-shrink-0'}`}>
+      {/* Row 2 on mobile / right on desktop: sort buttons. On its own row they
+          split it into equal columns — plain `1fr`, not Tailwind's
+          `auto-cols-fr`, which is minmax(0, 1fr) and let seven words overlap:
+          a word too long for its share takes what it needs and the rest share
+          the remainder. Beside the slider they size to their words. */}
+      <div className={`grid grid-flow-col [grid-auto-columns:1fr] gap-0.5 lg:gap-1 bg-[#1a1a1a] rounded-lg p-0.5 overflow-x-auto no-scrollbar max-w-full ${stacked ? '' : 'lg:flex lg:ml-auto lg:flex-shrink-0'}`}>
         {options.map((opt) => (
           <button
             key={opt.value}
             onClick={() => onSortChange(opt.value)}
-            className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+            className={`px-1 lg:px-2.5 py-1 text-xs whitespace-nowrap rounded-md transition-colors ${
               sort === opt.value
                 ? 'bg-[#272727] text-white font-medium'
                 : 'text-[#888] hover:text-white'
