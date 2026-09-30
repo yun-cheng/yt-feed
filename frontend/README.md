@@ -1653,9 +1653,10 @@ keeps whichever scroller contains the column.
 ### Comments (`Comments.tsx`)
 
 The Comments tab. It's in the **left** column, so an open transcript is still the
-only thing that changes this pane's shape. The page owns which tab is showing and
-hands it down as `open`; the component stays mounted either way, so going back to
-Info and returning reads what was already fetched.
+only thing that changes this pane's shape. The page owns which tab is showing,
+and the fetch too: `useComments(videoId, sort, wanted)` is called once by
+`WatchPage` and handed down as `feed`, so what was fetched belongs to the page
+rather than to the tab, and going back to Info and returning reads it.
 
 Everything about it follows one rule: **nothing is fetched until you open it.**
 No hover prefetch, no warm-up while the video plays, and no remembered "open"

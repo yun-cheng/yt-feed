@@ -48,17 +48,6 @@ type Payload = {
 
 export type Sort = 'top' | 'new'
 
-type Props = {
-  videoId: string
-  /** Whether the tab is showing. Opening it is the ask; see the top of the file. */
-  open: boolean
-  /** Top or Newest. Picked from the Comments tab's own menu, so it's the page's. */
-  sort: Sort
-  /** Jump the player to a timestamp written in a comment. */
-  onSeek: (seconds: number) => void
-  onChannelClick?: (channelId: string) => void
-}
-
 /* Long comments are usually long because someone pasted a chapter list, and a
  * wall of those between two short remarks makes the thread unreadable. Clamped
  * to this many lines with a "Read more" underneath. */
@@ -72,7 +61,7 @@ const CLAMP_LINES = 4
  * asking again. */
 type Translation = { status: 'loading' } | { status: 'error' } | { status: 'done'; text: string }
 
-function CommentBody({ text, onSeek, videoId }: { text: string; onSeek: (s: number) => void; videoId: string }) {
+function CommentBody({ text, onSeek, videoId, compact }: { text: string; onSeek: (s: number) => void; videoId: string; compact: boolean }) {
   const [open, setOpen] = useState(false)
   const [translation, setTranslation] = useState<Translation | null>(null)
   const [showTranslated, setShowTranslated] = useState(false)
@@ -109,7 +98,7 @@ function CommentBody({ text, onSeek, videoId }: { text: string; onSeek: (s: numb
   return (
     <>
       <div
-        className={`whitespace-pre-wrap text-sm leading-relaxed text-[#f1f1f1] [overflow-wrap:anywhere]${
+        className={`whitespace-pre-wrap ${compact ? 'text-[13px] leading-snug' : 'text-sm leading-relaxed'} text-[#f1f1f1] [overflow-wrap:anywhere]${
           long && !open ? ' line-clamp-4' : ''
         }`}
       >
@@ -155,16 +144,17 @@ function replyCount(comment: Comment): number {
 const MAX_INDENT = 3
 
 function Thread({
-  comment, depth, onSeek, onChannelClick, videoId,
+  comment, depth, onSeek, onChannelClick, videoId, compact,
 }: {
   comment: Comment
   depth: number
   videoId: string
+  compact: boolean
   onSeek: (s: number) => void
   onChannelClick?: (id: string) => void
 }) {
   const [openReplies, setOpenReplies] = useState(false)
-  const avatar = depth ? 'h-6 w-6' : 'h-9 w-9'
+  const avatar = compact ? (depth ? 'h-5 w-5' : 'h-6 w-6') : depth ? 'h-6 w-6' : 'h-9 w-9'
   /* One toggle governs a whole thread, and it counts every reply under it
    * rather than only the direct ones — which is what "12 replies" means to
    * someone deciding whether to open it. Below the top level there is no
@@ -175,7 +165,7 @@ function Thread({
 
   return (
     <div>
-      <div className="flex gap-3">
+      <div className={`flex ${compact ? 'gap-2' : 'gap-3'}`}>
       {comment.author_thumbnail ? (
         <img
           src={comment.author_thumbnail}
@@ -218,7 +208,7 @@ function Thread({
         </div>
 
         <div className="mt-1">
-          <CommentBody text={comment.text} onSeek={onSeek} videoId={videoId} />
+          <CommentBody text={comment.text} onSeek={onSeek} videoId={videoId} compact={compact} />
         </div>
 
         <div className="mt-1.5 flex items-center gap-3 text-xs text-[#aaa]">
@@ -253,12 +243,12 @@ function Thread({
           comment a reply answers, once the indent has stopped growing. */}
       {shown.length > 0 && (
         <div
-          className={`mt-3 space-y-3 border-l border-[#3f3f3f] ${
-            depth < MAX_INDENT ? 'ml-4 pl-4' : 'pl-2'
+          className={`${compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3'} border-l border-[#3f3f3f] ${
+            depth < MAX_INDENT ? (compact ? 'ml-2.5 pl-2.5' : 'ml-4 pl-4') : 'pl-2'
           }`}
         >
           {shown.map((r) => (
-            <Thread key={r.id} comment={r} depth={depth + 1} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} />
+            <Thread key={r.id} comment={r} depth={depth + 1} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} compact={compact} />
           ))}
         </div>
       )}
@@ -266,7 +256,25 @@ function Thread({
   )
 }
 
-export default function Comments({ videoId, open, sort, onSeek, onChannelClick }: Props) {
+export type CommentsFeed = {
+  data: Payload | null
+  loading: boolean
+  failed: boolean
+  /** The replies walk, running behind the comments already on screen. */
+  deepening: boolean
+  /** Ask again after a failure — the one fetch a press makes happen. */
+  retry: () => void
+}
+
+/**
+ * What was fetched for one video, owned by the page rather than by the tab that
+ * shows it — so anything else that shows the comments reads what's already
+ * here rather than walking YouTube again.
+ *
+ * `wanted` is the ask: true while they're showing. See the top of the file for
+ * why nothing is fetched at any other moment.
+ */
+export function useComments(videoId: string, sort: Sort, wanted: boolean): CommentsFeed {
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -341,16 +349,16 @@ export default function Comments({ videoId, open, sort, onSeek, onChannelClick }
     }
   }, [videoId])
 
-  // Fetch on the switch TO this tab, and only then. Keyed on the transition
+  // Fetch on the switch TO showing them, and only then. Keyed on the transition
   // rather than on "open with nothing loaded", so a failed fetch waits for Try
-  // again instead of retrying itself, and a new video arriving while the tab is
-  // still open doesn't count as asking — the page moves back to Info with it.
-  const wasOpen = useRef(false)
+  // again instead of retrying itself, and a new video arriving while they're
+  // still showing doesn't count as asking — the page closes them with it.
+  const wasWanted = useRef(false)
   useEffect(() => {
-    const opening = open && !wasOpen.current
-    wasOpen.current = open
+    const opening = wanted && !wasWanted.current
+    wasWanted.current = wanted
     if (opening && !data && !loading) load(sort, false)
-  }, [open])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wanted])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // A new sort re-reads what's on screen — and only that: before anything has
   // been fetched it is just the order the first fetch will use. It keeps
@@ -363,33 +371,46 @@ export default function Comments({ videoId, open, sort, onSeek, onChannelClick }
     if (data || loading) load(sort, !!data?.has_replies)
   }, [sort])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const threads = data?.threads ?? []
+  return { data, loading, failed, deepening, retry: () => load(sort, false) }
+}
 
-  // Closed, it renders nothing but stays mounted, so what it fetched is still
-  // here when the tab comes back.
-  if (!open) return null
+type ListProps = {
+  videoId: string
+  feed: CommentsFeed
+  sort: Sort
+  onSeek: (seconds: number) => void
+  onChannelClick?: (channelId: string) => void
+  /** Smaller type and avatars, for a narrow column. */
+  compact?: boolean
+}
+
+/** The comments themselves, with whatever the fetch has to say instead. */
+export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compact = false }: ListProps) {
+  const { data, loading, failed, deepening } = feed
+  const threads = data?.threads ?? []
+  const note = compact ? 'py-3 text-xs' : 'py-4 text-sm'
 
   return (
     <div>
       {loading && (
-        <div className="px-3 py-6 text-sm text-[#aaa]">{t('Reading the comments…')}</div>
+        <div className={`px-3 ${compact ? 'py-3 text-xs' : 'py-6 text-sm'} text-[#aaa]`}>{t('Reading the comments…')}</div>
       )}
 
       {!loading && failed && (
-        <div className="flex items-center gap-3 px-3 py-4 text-sm text-[#aaa]">
+        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 ${note} text-[#aaa]`}>
           {t('Couldn\'t load the comments.')}
-          <button onClick={() => load(sort, false)} className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]">
+          <button onClick={feed.retry} className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]">
             Try again
           </button>
         </div>
       )}
 
       {!loading && !failed && data?.disabled && (
-        <div className="px-3 py-4 text-sm text-[#aaa]">{t('Comments are turned off for this video.')}</div>
+        <div className={`px-3 ${note} text-[#aaa]`}>{t('Comments are turned off for this video.')}</div>
       )}
 
       {!loading && !failed && data && !data.disabled && threads.length === 0 && (
-        <div className="px-3 py-4 text-sm text-[#aaa]">{t('No comments yet.')}</div>
+        <div className={`px-3 ${note} text-[#aaa]`}>{t('No comments yet.')}</div>
       )}
 
       {!loading && !failed && threads.length > 0 && (
@@ -397,16 +418,16 @@ export default function Comments({ videoId, open, sort, onSeek, onChannelClick }
           {/* Not a button. The replies are already on their way; this
               only explains why reply counts appear a few seconds after the
               comments they belong to. */}
-          {deepening && <p className="mb-3 px-3 text-xs text-[#717171]">{t('loading replies…')}</p>}
+          {deepening && <p className={`${compact ? 'mb-2' : 'mb-3'} px-3 text-xs text-[#717171]`}>{t('loading replies…')}</p>}
 
-          <div className="space-y-5 px-3">
+          <div className={`${compact ? 'space-y-3' : 'space-y-5'} px-3`}>
             {threads.map((c) => (
-              <Thread key={c.id} comment={c} depth={0} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} />
+              <Thread key={c.id} comment={c} depth={0} onSeek={onSeek} onChannelClick={onChannelClick} videoId={videoId} compact={compact} />
             ))}
           </div>
 
           {data?.capped && (
-            <p className="mt-5 px-3 text-xs text-[#717171]">
+            <p className={`${compact ? 'mt-3' : 'mt-5'} px-3 text-xs text-[#717171]`}>
               {sort === 'top' ? t('The top {n} — the app doesn\'t page through the rest.', { n: threads.length }) : t('The newest {n} — the app doesn\'t page through the rest.', { n: threads.length })}
             </p>
           )}
@@ -414,4 +435,16 @@ export default function Comments({ videoId, open, sort, onSeek, onChannelClick }
       )}
     </div>
   )
+}
+
+type Props = ListProps & {
+  /** Whether the tab is showing. The fetch is `useComments`'s; this only draws. */
+  open: boolean
+}
+
+/** The Comments tab. Closed, it renders nothing; what was fetched lives in the
+ * feed, so it's still there when the tab comes back. */
+export default function Comments({ open, ...list }: Props) {
+  if (!open) return null
+  return <CommentList {...list} />
 }

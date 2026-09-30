@@ -14,7 +14,7 @@ import type { PlayerApi } from './LocalControls'
 import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
-import Comments, { type Sort as CommentSort } from './Comments'
+import Comments, { useComments, type Sort as CommentSort } from './Comments'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
 import { t, tc } from '../lib/i18n'
@@ -721,6 +721,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // pick one of them again.
   const tabbedPanel = panelsAsTabs && hasCaptions ? sidePanel : null
   const activeTab: DetailsTab = tabbedPanel ?? detailsTab
+  // The comments' fetch, held here rather than in the tab — see useComments.
+  const commentsFeed = useComments(videoId, commentSort, activeTab === 'comments')
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -3055,6 +3057,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         <div className="mt-3" hidden={activeTab !== 'comments'}>
         <Comments
           videoId={videoId}
+          feed={commentsFeed}
           open={activeTab === 'comments'}
           sort={commentSort}
           onSeek={seekTo}

@@ -8,7 +8,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { useEffect, useState } from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import Comments, { type Sort } from '../components/Comments'
+import Comments, { useComments, type Sort } from '../components/Comments'
 import { setTranslateSetting } from '../lib/i18n'
 
 function comment(over: Record<string, unknown> = {}) {
@@ -39,12 +39,13 @@ function Tabs({ videoId, onSeek = vi.fn() }: {
   const [open, setOpen] = useState(false)
   const [sort, setSort] = useState<Sort>('top')
   useEffect(() => { setOpen(false); setSort('top') }, [videoId])
+  const feed = useComments(videoId, sort, open)
   return (
     <>
       <button onClick={() => setOpen(false)}>Info</button>
       <button onClick={() => setOpen(true)}>Comments</button>
       <button onClick={() => setSort('new')}>Newest</button>
-      <Comments videoId={videoId} open={open} sort={sort} onSeek={onSeek} />
+      <Comments videoId={videoId} feed={feed} open={open} sort={sort} onSeek={onSeek} />
     </>
   )
 }
