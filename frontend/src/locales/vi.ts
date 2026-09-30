@@ -189,8 +189,6 @@ export const vi: Record<string, string> = {
   'Preset name': 'Tên bộ lọc',
   'Replaces the preset you saved under this name': 'Thay thế bộ lọc bạn đã lưu với tên này',
   'My Feed': 'Bảng tin của tôi',
-  'Show Shorts': 'Hiện Shorts',
-  'Showing Shorts — switch to Videos': 'Đang hiện Shorts — chuyển sang Video',
   'Shorts': 'Shorts',
   'Later': 'Xem sau',
   'Lists': 'Danh sách',

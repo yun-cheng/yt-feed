@@ -189,8 +189,6 @@ export const th: Record<string, string> = {
   'Preset name': 'ชื่อตัวกรอง',
   'Replaces the preset you saved under this name': 'จะแทนที่ตัวกรองที่คุณบันทึกไว้ในชื่อนี้',
   'My Feed': 'ฟีดของฉัน',
-  'Show Shorts': 'แสดง Shorts',
-  'Showing Shorts — switch to Videos': 'กำลังแสดง Shorts — สลับไปวิดีโอ',
   'Shorts': 'Shorts',
   'Later': 'ดูภายหลัง',
   'Lists': 'รายการ',

@@ -190,8 +190,6 @@ export const zhHant: Record<string, string> = {
   'Preset name': '預設名稱',
   'Replaces the preset you saved under this name': '會取代你之前用這個名稱儲存的預設',
   'My Feed': '我的首頁',
-  'Show Shorts': '顯示 Shorts',
-  'Showing Shorts — switch to Videos': '正在顯示 Shorts：切換到影片',
   'Shorts': 'Shorts',
   'Later': '稍後',
   'Lists': '清單',

@@ -189,8 +189,6 @@ export const ko: Record<string, string> = {
   'Preset name': '프리셋 이름',
   'Replaces the preset you saved under this name': '이 이름으로 저장한 프리셋을 덮어씁니다',
   'My Feed': '내 피드',
-  'Show Shorts': 'Shorts 표시',
-  'Showing Shorts — switch to Videos': 'Shorts 표시 중 — 동영상으로 전환',
   'Shorts': 'Shorts',
   'Later': '나중에 볼 동영상',
   'Lists': '목록',

@@ -189,8 +189,6 @@ export const ja: Record<string, string> = {
   'Preset name': 'プリセット名',
   'Replaces the preset you saved under this name': 'この名前で保存したプリセットを置き換えます',
   'My Feed': 'マイフィード',
-  'Show Shorts': 'Shorts を表示',
-  'Showing Shorts — switch to Videos': 'Shorts を表示中 — 動画に切り替え',
   'Shorts': 'Shorts',
   'Later': '後で見る',
   'Lists': 'リスト',

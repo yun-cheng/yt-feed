@@ -2143,8 +2143,6 @@ export default function App() {
           filters={sidebarFilters}
           lengths={modeLengths}
           onToggleLength={toggleLength}
-          contentMode={contentMode}
-          onContentModeChange={setContentMode}
           channelMode={page === 'channel'}
           channelLabels={channelLabelVocab}
           channelLabelsBuilding={channelLabelsBuilding}
@@ -2196,6 +2194,8 @@ export default function App() {
         <TopBar
           variant={topBarVariant(page)}
           onImport={page === 'imported' ? () => setImportOpen(true) : undefined}
+          contentMode={contentMode}
+          onContentModeChange={sidebarFilters.contentMode ? setContentMode : undefined}
           searchQuery={searchInput}
           onSearchChange={onSearchChange}
           onSearchFocus={onSearchFocus}

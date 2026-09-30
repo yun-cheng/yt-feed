@@ -58,8 +58,6 @@ type Props = {
   hiddenCount?: number
   showHidden?: boolean
   onToggleShowHidden?: () => void
-  contentMode?: 'videos' | 'shorts'
-  onContentModeChange?: (mode: 'videos' | 'shorts') => void
   // Channel-page mode: replace the global taxonomy with this channel's own
   // video-title labels (see ChannelPage). Single-select filtering.
   channelMode?: boolean
@@ -159,35 +157,6 @@ const LogoMark = () => (
   <svg className="w-6 h-6 text-red-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
     <path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0C.488 3.45.029 5.804 0 12c.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0C23.512 20.55 23.971 18.196 24 12c-.029-6.185-.484-8.549-4.385-8.816zM9 16V8l8 4-8 4z"/>
   </svg>
-)
-
-const ShortsIcon = () => (
-  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M10 8.64v6.72L15.27 12 10 8.64zM17.77 10.32c1.71.94 2.38 3.09 1.5 4.82-.34.67-.87 1.2-1.5 1.55l-6.9 3.8c-1.71.94-3.86.31-4.8-1.4-.94-1.71-.31-3.86 1.4-4.8l.4-.22-.4-.22c-1.71-.94-2.34-3.09-1.4-4.8.94-1.71 3.09-2.34 4.8-1.4l6.9 3.8z"/>
-  </svg>
-)
-
-const VideosIcon = () => (
-  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M4 5a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2v-3l4 3V7l-4 3V7a2 2 0 00-2-2H4z"/>
-  </svg>
-)
-
-const ContentModeToggle = ({ mode, onChange }: { mode: 'videos' | 'shorts'; onChange: (m: 'videos' | 'shorts') => void }) => (
-  <div className="flex bg-[#272727] rounded-full p-0.5 text-sm">
-    {(['videos', 'shorts'] as const).map((m) => (
-      <button
-        key={m}
-        onClick={() => onChange(m)}
-        className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-full transition-colors ${
-          mode === m ? 'bg-white text-black font-medium' : 'text-[#aaa] hover:text-white'
-        }`}
-      >
-        {m === 'videos' ? <VideosIcon /> : <ShortsIcon />}
-        {m === 'videos' ? t('Videos') : t('Shorts')}
-      </button>
-    ))}
-  </div>
 )
 
 const EyeIcon = () => (
@@ -467,8 +436,7 @@ const PresetSection = ({
 
 const ALL_FILTERS = { watchStatus: true, tags: true, hidden: true, contentMode: true, summarised: true, length: true }
 
-export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, lengths, onToggleLength, presets, activePresetId, onSavePreset, onApplyPreset, onDeletePreset, hiddenCount, showHidden, onToggleShowHidden, contentMode = 'videos', onContentModeChange, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
-  const showMode = filters.contentMode && !!onContentModeChange
+export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag, onSetTags, page, onPageChange, onHome, onToggleCollapse, onClearFilter, collapsed, watchLaterCount, downloadsCount, playlistsCount, importedCount, localFoldersCount, watchStatuses, onToggleWatchStatus, watchStatusOptions = WATCH_STATUSES, tagFilteredCounts, filters = ALL_FILTERS, lengths, onToggleLength, presets, activePresetId, onSavePreset, onApplyPreset, onDeletePreset, hiddenCount, showHidden, onToggleShowHidden, summarisedOnly, onToggleSummarised, channelMode, channelLabels, channelLabelsBuilding, channelHasTopics, selectedLabel, onToggleLabel }: Props) {
   const showHiddenToggle = filters.hidden && !!hiddenCount
   const grouped = new Map<string, TagInfo[]>()
   for (const tag of tags) {
@@ -492,18 +460,6 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           </button>
         </div>
         <nav className="flex flex-col items-center pt-2 gap-1">
-          {showMode && (
-            <button
-              onClick={() => onContentModeChange!(contentMode === 'shorts' ? 'videos' : 'shorts')}
-              title={contentMode === 'shorts' ? t('Showing Shorts — switch to Videos') : t('Show Shorts')}
-              className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-                contentMode === 'shorts' ? 'text-white' : 'text-[#717171] hover:text-white'
-              }`}
-            >
-              <ShortsIcon />
-              <span className="text-[10px]">{t('Shorts')}</span>
-            </button>
-          )}
           <button
             onClick={() => onPageChange('feed')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
@@ -631,14 +587,6 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <span className="text-base font-semibold tracking-tight text-white">{t('My Feed')}</span>
         </button>
       </div>
-
-      {/* Videos ↔ Shorts: switches what the feed / channel / history pages show.
-          The other pages are one flat list, so it's not offered there. */}
-      {showMode && (
-        <div className="px-3 pb-2 flex-shrink-0">
-          <ContentModeToggle mode={contentMode} onChange={onContentModeChange!} />
-        </div>
-      )}
 
       {/* Nav. The bottom bar carries the four most-used destinations on a phone;
           this list is the only way to reach the other five, so it shows at every

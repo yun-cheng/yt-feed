@@ -169,7 +169,12 @@ and renders the slider only when a window is passed to it — a page absent from
 that table has no control bar at all.
 
 Those same sets feed `pageFilters(page, shorts)`, which is what the **sidebar**
-renders from — so a filter is either usable *and* in the URL, or in neither:
+renders from — so a filter is either usable *and* in the URL, or in neither. The
+Videos/Shorts column is the one that lives in the **top bar** instead, at its left
+end: it decides what kind of list the page is, not which part of it you see.
+It's the watch page's Info / Comments switch in miniature — two equal halves, and
+its words go under a 48rem header (the header is the `@container`), leaving the
+icons:
 
 | page | Videos/Shorts | watch status | length | tags | topics | show hidden |
 |---|---|---|---|---|---|---|
@@ -296,7 +301,7 @@ The pieces that aren't obvious:
   video abandoned at 95% looks identical to one seen through. Idle-only, like
   the bar.
 - **The page obeys the global controls**, like the feed does: the Videos/Shorts
-  toggle and the sidebar's tag selection, plus its own watch-status selection
+  switch and the sidebar's tag selection, plus its own watch-status selection
   (see below). Both are applied
   client-side in `App` (`visibleHistory`) since the list is already loaded, and
   the tag rule — OR within a group, AND across groups — is the exported
@@ -741,8 +746,9 @@ data refresh, no scraping on the client.
 
 ```
 components/
-  Sidebar.tsx / TopBar.tsx        chrome: nav, search box (with the "in this
-                                  channel" scope at its right-hand end), tag
+  Sidebar.tsx / TopBar.tsx        chrome: nav, the Videos/Shorts switch, search
+                                  box (with the "in this channel" scope at its
+                                  right-hand end), tag
                                   filters, saved filter presets
                                   (on a channel page the sidebar swaps the
                                   global taxonomy for that channel's topic chips)
@@ -1579,7 +1585,7 @@ ten-second window.
 The left column under the player has two tabs. **Info** is the channel, stats and
 description; **Comments** is `Comments.tsx`, below. A tab rather than a section
 under the description, so reading the comments doesn't start with scrolling past
-everything else. The title heads both. The switch is the sidebar's Videos /
+everything else. The title heads both. The switch is the top bar's Videos /
 Shorts control copied — two equal halves in one track, the chevron's room kept
 while hidden — so it never shifts when you switch.
 
