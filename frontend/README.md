@@ -1702,7 +1702,11 @@ player box, so it goes to fullscreen with it. It reaches the bottom edge while
 the controls are hidden; while they show it stops just above the progress bar
 (`panelBottom`): 4.5rem over our own bar, whose progress bar's hit area starts
 4.375rem up, and the captions' `max(11%, 5.5rem)` over YouTube's. It's anchored
-at the top, so only its foot moves and what you're reading stays put. Its one
+at the top, so only its foot moves and what you're reading stays put. Our bar's
+box starts 2rem above its progress bar — a transparent fade — so that box takes
+no pointer itself; only its progress bar and button row do (`takesPointer` in
+`LocalControls`). Otherwise the fade sat over the panel's last lines and
+swallowed every click on them. Its one
 rounded corner is the inner foot, when it stops short of the bottom. While it's
 open, the caption block's edge on that side moves in by `PANEL_WIDTH`, so the
 captions centre in what's left of the frame — and so does the Up next screen

@@ -368,10 +368,16 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
     : null
   const hasFrame = Boolean(src) || Boolean(sbFrame)
 
+  // The box itself never takes the pointer: its top is a transparent fade 2rem
+  // tall, laid over whatever the player has there — the panel over the video's
+  // last lines, most of all, which it made unclickable. Only the two rows that
+  // are controls take it, and only while they're showing; a press on the fade
+  // lands on the video beneath, the way it does on any player.
+  const takesPointer = show ? 'pointer-events-auto' : ''
   return (
     <div
-      className={`absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
-        show ? 'opacity-100' : 'pointer-events-none opacity-0'
+      className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
+        show ? 'opacity-100' : 'opacity-0'
       }`}
     >
       {/* Scrub preview — a fixed-width popup so it keeps its size when clamped
@@ -427,7 +433,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           its horizontal edges match the track's). */}
       <div
         ref={barRef}
-        className="group/bar cursor-pointer py-2 pb-2"
+        className={`group/bar cursor-pointer py-2 pb-2 ${takesPointer}`}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId)
           draggingRef.current = true
@@ -477,7 +483,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
 
       {/* Play / mute / clock on the left, fullscreen on the right. Everything
           here also has a keyboard shortcut (k, m, f) — see the key handler. */}
-      <div className="flex items-center text-white">
+      <div className={`flex items-center text-white ${takesPointer}`}>
         <button
           onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
           className={BAR_BUTTON}
