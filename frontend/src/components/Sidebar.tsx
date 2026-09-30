@@ -447,9 +447,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
 
   if (collapsed) {
     return (
-      <aside className="w-16 bg-[#0f0f0f] flex-shrink-0 flex flex-col h-full">
+      <aside className="w-16 bg-[#0f0f0f] flex-shrink-0 flex flex-col h-full overflow-y-auto">
         {/* Menu toggle + logo */}
-        <div className="flex flex-col items-center pt-2 gap-1 flex-shrink-0">
+        <div className="sticky top-0 z-10 flex flex-col items-center pt-2 gap-1 flex-shrink-0 bg-[#0f0f0f]">
           <HamburgerButton onClick={onToggleCollapse} className="p-2" />
           <button
             onClick={onHome}
@@ -575,9 +575,12 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
   }
 
   return (
-    <aside className="w-60 bg-[#0f0f0f] flex-shrink-0 flex flex-col h-full">
+    // One scroll for the whole thing: the nav scrolls away with the filters
+    // rather than holding the top and leaving them a strip below it. Only the
+    // logo row stays, level with the top bar beside it.
+    <aside className="w-60 bg-[#0f0f0f] flex-shrink-0 h-full overflow-y-auto">
       {/* Menu toggle + logo */}
-      <div className="flex items-center gap-3 px-4 h-14 flex-shrink-0">
+      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 h-14 bg-[#0f0f0f]">
         <HamburgerButton onClick={onToggleCollapse} className="hidden md:block" />
         <button
           onClick={onHome}
@@ -723,7 +726,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           replacing the global taxonomy, which is meaningless when already scoped
           to one channel. */}
       {channelMode ? (
-        <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+        <div className="p-4 space-y-5">
           <PresetSection
             presets={presets}
             activeId={activePresetId}
@@ -792,7 +795,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
         </div>
       ) : (
       /* Tag groups */
-      <div className="p-4 space-y-5 flex-1 overflow-y-auto">
+      <div className="p-4 space-y-5">
         {showHiddenToggle && (
           <button
             onClick={onToggleShowHidden}
