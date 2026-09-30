@@ -2179,7 +2179,7 @@ export default function App() {
             </button>
           </div>
         )}
-      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 mb-[calc(3.5rem+env(safe-area-inset-bottom))] md:mb-0 [overflow-anchor:none] [scrollbar-gutter:stable]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
+      <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 pb-[env(safe-area-inset-bottom)] md:pb-0 [overflow-anchor:none] [scrollbar-gutter:stable]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
         {/* TopBar lives INSIDE the scroll container so scrolling works natively
             even when the cursor rests on it. Desktop: sticky at the top. Mobile:
             fixed (out of flow) and slides up/down on scroll — main's paddingTop
@@ -2472,52 +2472,7 @@ export default function App() {
       </main>
       </div>
 
-      {/* Mobile bottom nav */}
-      {/* The home indicator sits over the bottom of the screen on a modern
-          phone, so the bar pads itself out of its way — and <main> below
-          reserves the bar's full height, padding included. */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#0f0f0f] border-t border-[#272727] flex pb-[env(safe-area-inset-bottom)]">
-        <button
-          onClick={goHome}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'feed' ? 'text-white' : 'text-[#717171]'}`}
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-          <span className="text-[10px]">{t('My Feed')}</span>
-        </button>
-        <button
-          onClick={() => setPage('channels')}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors ${page === 'channels' ? 'text-white' : 'text-[#717171]'}`}
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h5v2h8v-2h5c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 14H3V5h18v12z"/></svg>
-          <span className="text-[10px]">{t('Channels')}</span>
-        </button>
-        <button
-          onClick={() => setPage('watchlater')}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${page === 'watchlater' ? 'text-white' : 'text-[#717171]'}`}
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
-          <span className="text-[10px]">{t('Watch Later')}</span>
-          {!!watchLater.length && (
-            <span className="absolute top-1.5 right-[calc(50%-14px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
-              {watchLater.length > 9 ? '9+' : watchLater.length}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setPage('downloads')}
-          className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 transition-colors relative ${page === 'downloads' ? 'text-white' : 'text-[#717171]'}`}
-        >
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-          <span className="text-[10px]">{t('Downloads')}</span>
-          {!!downloads.length && (
-            <span className="absolute top-1.5 right-[calc(50%-16px)] text-[9px] bg-blue-500 text-white rounded-full w-4 h-4 flex items-center justify-center font-bold">
-              {downloads.length > 9 ? '9+' : downloads.length}
-            </span>
-          )}
-        </button>
-      </nav>
-
-      {/* Watch overlay — full-screen, above everything (sidebar z-40, nav z-50).
+      {/* Watch overlay — full-screen, above everything (the sidebar is z-40).
           Rendered outside the page switch so the page underneath stays mounted
           with its scroll and loaded data intact; closing returns you there. */}
       {selectedVideoId && (

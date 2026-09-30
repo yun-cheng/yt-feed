@@ -33,10 +33,9 @@ describe('Sidebar — expanded', () => {
   })
 
   it('offers every destination at every width', () => {
-    // The bottom bar on a phone holds four of these; the other five have no
-    // other door, so this list must not be hidden below `md` the way it once
-    // was — Playlists, Imported, Local, History and Settings were reachable
-    // only by typing a URL.
+    // On a phone this list, in the drawer, is the only door to any page, so it
+    // must not be hidden below `md` the way it once was — Playlists, Imported,
+    // Local, History and Settings were reachable only by typing a URL.
     render(<Sidebar {...defaultProps} />)
     for (const name of ['Playlists', 'Imported', 'Local', 'History', 'Settings']) {
       const item = screen.getByRole('button', { name: new RegExp(name, 'i') })

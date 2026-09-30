@@ -101,9 +101,8 @@ real video (muted, with custom captions and scrubbing).
 - **Reachable on a phone** — the app is built for a desktop and a keyboard, and
   that hasn't changed; what's promised on a small screen is only that nothing is
   *unreachable*. Below 768px the sidebar becomes a drawer carrying every
-  destination, a bottom bar holds the four you use most, the player gets a back
-  button, and a control that only appeared on hover now stays put where there is
-  no pointer to hover with
+  destination, the player gets a back button, and a control that only appeared
+  on hover now stays put where there is no pointer to hover with
 - **Watch history** — every video remembers where you stopped: revisiting resumes
   from that timestamp, cards show a red progress bar before you hover, and finished
   videos get a "Watched" badge. All of it on its own History page

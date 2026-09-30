@@ -1947,14 +1947,14 @@ shortcuts are the point of it. What follows is the smaller promise: that
 nothing is *unreachable* without a pointer.
 
 **Navigation.** Below `md` the sidebar becomes a drawer over the page
-(`mobileMenuOpen` in `App.tsx`) and a fixed bottom bar appears with the four
-most-used destinations. The drawer's own nav list carries all nine, because the
-bar can't: Playlists, Imported, Local, History and Settings have no other door.
+(`mobileMenuOpen` in `App.tsx`), opened from the top bar's menu button, and its
+nav list is the way to every page. There's no bottom bar: it spent a strip of a
+small screen on four of the nine destinations, a door the drawer already has.
 Picking anything from the drawer closes it; a filter click inside it does not.
 `Sidebar.test.tsx` holds that line.
 
-**Leaving a video.** The watch overlay is `z-[60]` — above the sidebar, above
-the bottom bar — so a back button in the player's top-left corner is the only
+**Leaving a video.** The watch overlay is `z-[60]` — above the sidebar — so a
+back button in the player's top-left corner is the only
 way out that isn't the browser's own (`onClose`, which calls `history.back()`).
 `LocalWatchPage` has always had one in the same corner; `WatchPage` now matches
 it. It never fades with the rest of the chrome: the way out of a page can't be
@@ -1981,9 +1981,9 @@ left alone — the preview's volume slider and scrubber knob, and the up-next
 peek — because they live inside a hover preview a phone never opens.
 
 **The viewport.** The shell is `h-dvh`, not `h-screen`: iOS reports `100vh` as
-the screen *without* its toolbars, which pushes a fixed bottom bar behind them.
-The bar pads itself past the home indicator with
-`pb-[env(safe-area-inset-bottom)]`, and `<main>` reserves that padded height.
+the screen *without* its toolbars, which pushes the bottom of the page behind
+them. `<main>` pads itself past the home indicator with
+`pb-[env(safe-area-inset-bottom)]`, so the last row can scroll clear of it.
 
 **The tablet seam.** `md` (768px) is where the sidebar comes back, which leaves
 a 768px-wide tablet with ~528px of page. The time window and the sort row
@@ -2047,7 +2047,7 @@ problem.
 | `playbackSpeeds.test.ts` | the speed list: what a stored value is tidied into (sorted, de-duplicated, normal speed forced in, capped in length), what the settings field accepts and what it refuses outright, and `nextSpeed` stepping through *your* list from the nearest speed and stopping at both ends |
 | `playerSettings.test.tsx` | the two editors: a tidied list saved on blur and on Enter, text that isn't speeds refused instead of salvaged, Escape putting the field back — and, for shortcuts, a key recorded by being pressed, a taken key refused by name, a row put back on its default stored as nothing at all, and space declined |
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |
-| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off; and that the sidebar offers all nine destinations at every width, since the phone's bottom bar only holds four |
+| `VideoCard`, `VideoRow`, `Sidebar`, `TopBar`, `TimeSortControls` | the feed surfaces — including the sidebar's length chips: rendered only where a page can use them, which one was clicked, and "select all" turning on only what is off; and that the sidebar offers all nine destinations at every width, since on a phone its drawer is the only nav |
 | `appHelpers.test.ts` | the pure helpers `App.tsx` exports: the window, the sorts, the tag selection and its exclusions, the URL round-trip, `pageFilters` closing the length buckets in Shorts mode but only where that mode governs the list, the three watch statuses — including the two ways of saying "no filter" and the remembered choice a bad storage value falls back from — and the length buckets: each boundary second landing in the longer one, a runtime of 0 landing in none, and both ways of meaning "any length" |
 | `deploySetup.test.tsx` | deploying it yourself, from the browser's side. `SecretField` works with information the server won't give it: it starts empty however set the key is, so "set" has to be said another way — which is also why an empty field can't mean "clear this" and Clear is its own button. Plus `SignInGate`'s third state: an unclaimed deployment offers the claim screen rather than telling you to open a link nobody has sent you, and a server it can't ask is treated as claimed |
 | `backend/tests/test_api_contract.py` | not in this directory, but about it: every `/api/…` literal in `src/` has to resolve to a route the backend serves. These tests stub `fetch`, so they answer whatever URL they're handed and a renamed route breaks nothing here — it breaks in the browser |

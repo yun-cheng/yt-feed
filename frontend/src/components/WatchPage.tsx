@@ -58,7 +58,7 @@ type Props = {
   initialPanel?: 'transcript' | 'ask' | null
   onChannelClick: (channelId: string) => void
   // Leave the video and go back to the list underneath. The overlay covers the
-  // sidebar and the phone's bottom bar, so without this button the only way out
+  // sidebar, so without this button the only way out
   // is the browser's own Back — which a phone hides behind a gesture and an
   // installed PWA doesn't have at all.
   onClose: () => void

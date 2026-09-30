@@ -588,9 +588,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
         </button>
       </div>
 
-      {/* Nav. The bottom bar carries the four most-used destinations on a phone;
-          this list is the only way to reach the other five, so it shows at every
-          width rather than deferring to a bar that can't hold them all. */}
+      {/* Nav. The only way to any page, so it shows at every width — on a
+          phone it's in the drawer the top bar's menu button opens. */}
       <div className="py-2">
         <button
           onClick={() => onPageChange('feed')}
