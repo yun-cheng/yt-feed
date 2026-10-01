@@ -19,6 +19,7 @@ import VideoPanel, { PanelScroll, PanelTab } from './VideoPanel'
 import { videoPanelDefault } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
+import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
 import { captionDefaults } from '../lib/captionDefaults'
 
@@ -519,6 +520,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // Whether this video sits in any playlist, so the Save pill can say so.
   const [saved, setSaved] = useState(false)
   const saveRef = useRef<HTMLDivElement>(null)
+  const saveMenu = usePopover()
   // Pinned (default): the player holds its place and only the details below
   // scroll. Unpinned: the whole page scrolls, so a tall video can move away.
   const [pinned, setPinned] = useState(true)
@@ -1015,7 +1017,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   useEffect(() => {
     if (!showSavePanel) return
     const onDown = (e: MouseEvent) => {
-      if (saveRef.current && !saveRef.current.contains(e.target as Node)) setShowSavePanel(false)
+      const target = e.target as Node
+      if (saveRef.current && !saveRef.current.contains(target) && !saveMenu.contains(target)) setShowSavePanel(false)
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
@@ -2947,6 +2950,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           <div className="pointer-events-auto flex items-center gap-2">
             <div className="relative" ref={saveRef}>
               <button
+                ref={saveMenu.anchorRef}
                 onClick={() => setShowSavePanel((o) => !o)}
                 aria-label={saved ? t('Saved') : t('Save')}
                 title={saved ? t('Saved') : t('Save')}
@@ -2959,11 +2963,17 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 </svg>
                 {!stuck && <span className={labelled.text}>{saved ? t('Saved') : t('Save')}</span>}
               </button>
-              {/* Opens leftwards: the stack sits at the column's right edge. */}
-              {showSavePanel && (
-                <div className="absolute right-0 top-full mt-2 z-40 rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2">
+              {/* Opens leftwards, since the stack sits at the column's right
+                  edge. It goes above the button when there's no room below:
+                  pinned near the foot of a short window, or scrolled down to it. */}
+              {showSavePanel && inPortal(
+                <div
+                  ref={saveMenu.menuRef}
+                  style={saveMenu.menuStyle}
+                  className={`${MENU_LAYER} flex flex-col overflow-y-auto overscroll-contain rounded-xl bg-[#282828] py-2 shadow-2xl ring-1 ring-white/10`}
+                >
                   <SaveToPlaylist video={meta} onBack={() => setShowSavePanel(false)} />
-                </div>
+                </div>,
               )}
             </div>
 

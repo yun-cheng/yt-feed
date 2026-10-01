@@ -78,7 +78,10 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
   }
 
   return (
-    <div className="w-[260px]" onClick={(e) => e.stopPropagation()}>
+    // A column, so when the menu around it is capped to the window
+    // (lib/popover.ts) the playlist list gives up the height and the header
+    // and New playlist stay in view.
+    <div className="flex min-h-0 w-[260px] flex-col" onClick={(e) => e.stopPropagation()}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         <button onClick={onBack} className="text-[#aaa] hover:text-white p-1 -ml-1" aria-label={t('Back')}>
@@ -90,7 +93,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
       </div>
 
       {/* Playlists */}
-      <div className="max-h-56 overflow-y-auto">
+      <div className="max-h-[26rem] min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="px-4 py-3 text-sm text-[#aaa]">{t('Loading…')}</div>
         ) : playlists.length === 0 ? (

@@ -10,6 +10,7 @@ import { useSummaryStatus, startSummary } from '../hooks/summaryStore'
 import type { SummaryLength } from '../hooks/summaryStore'
 import { formatCount } from '../lib/richText'
 import { t } from '../lib/i18n'
+import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 
 // Minimal YT IFrame API types
 declare global {
@@ -228,6 +229,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [menuOpen, setMenuOpen] = useState(false)   // title "more actions" menu
   const [showSavePanel, setShowSavePanel] = useState(false)  // "save to playlist" sub-panel
   const menuRef = useRef<HTMLDivElement>(null)
+  const moreMenu = usePopover({ gap: 4 })
 
   const currentTimeRef = useRef(currentTime)
   useEffect(() => { currentTimeRef.current = currentTime }, [currentTime])
@@ -530,7 +532,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   useEffect(() => {
     if (!menuOpen) return
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) { setMenuOpen(false); setShowSavePanel(false) }
+      const target = e.target as Node
+      if (menuRef.current && !menuRef.current.contains(target) && !moreMenu.contains(target)) { setMenuOpen(false); setShowSavePanel(false) }
     }
     window.addEventListener('mousedown', onDown)
     return () => window.removeEventListener('mousedown', onDown)
@@ -1164,11 +1167,12 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           </p>
         </div>
 
-        {/* More-actions menu (right of the title). self-start so this container
-           hugs the button height — otherwise the flex row stretches it to the
-           full info-row height and the top-full dropdown drops below the card. */}
+        {/* More-actions menu (right of the title). It opens off the button
+           itself (lib/popover.ts): below it, or above it on a card near the
+           window's foot. */}
         <div className="relative flex-shrink-0 self-start" ref={menuRef}>
           <button
+            ref={moreMenu.anchorRef}
             className="p-1.5 -mr-1 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
             onClick={(e) => { e.stopPropagation(); setShowSavePanel(false); setMenuOpen((o) => !o) }}
             title={t('More actions')}
@@ -1178,9 +1182,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
             </svg>
           </button>
-          {menuOpen && (
+          {menuOpen && inPortal(
             <div
-              className="absolute right-0 top-full mt-1 z-40 min-w-[180px] rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10 py-2"
+              ref={moreMenu.menuRef}
+              style={moreMenu.menuStyle}
+              className={`${MENU_LAYER} flex flex-col min-w-[180px] overflow-y-auto overscroll-contain rounded-xl bg-[#282828] py-2 shadow-2xl ring-1 ring-white/10`}
               onClick={(e) => e.stopPropagation()}
             >
               {showSavePanel ? (
@@ -1299,7 +1305,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               )}
               </>
               )}
-            </div>
+            </div>,
           )}
         </div>
       </div>

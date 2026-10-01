@@ -576,6 +576,8 @@ Radix's slider is the one third-party UI component in the app. It was worth it
 for the keyboard and ARIA handling; what it does **not** do is drag the filled
 band as a unit to sweep a fixed-width window through time. That was cut, and
 it's purely additive on top of the same controlled value if it's ever wanted.
+Floating UI (`@floating-ui/react-dom`) is the other library here, and it places
+things rather than drawing them. It is used only by `lib/popover.ts`.
 
 ### The library pages
 
@@ -852,6 +854,10 @@ hooks/
                                   something is running
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
+  popover.ts                      usePopover — where a small menu opens (Floating
+                                  UI): below its button, or above it when
+                                  there's more room there, and scrolling when
+                                  neither side fits. The Save menu and a card's ⋮
   undo.ts                         the removals you can take back: delete, then
                                   offer the server's receipt back
   presets.ts                      saved sidebar filter sets: the model + its calls
