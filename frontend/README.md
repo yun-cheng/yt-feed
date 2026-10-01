@@ -854,6 +854,11 @@ hooks/
                                   something is running
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
+  title.ts                        useDocumentTitle — the browser tab's title:
+                                  the video over the page, else which channel,
+                                  playlist or folder, else the page's sidebar
+                                  name, then "- My Feed". The feed is the app's
+                                  name alone
   popover.ts                      usePopover — where a small menu opens (Floating
                                   UI): below its button, or above it when
                                   there's more room there, and scrolling when

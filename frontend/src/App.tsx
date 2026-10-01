@@ -34,6 +34,7 @@ import { DEFAULT_RANGE, formatAge, inWindow, parseAge, stampMs } from './lib/tim
 import { DEFAULT_PAGES, DEFAULT_WATCH_STATUSES, defaultsFor, setPageDefaultOverrides } from './lib/pageDefaults'
 import type { TimeRange } from './lib/timeWindow'
 import { t } from './lib/i18n'
+import { TITLE_RANK, useDocumentTitle } from './lib/title'
 
 export type DownloadItem = {
   youtube_id: string
@@ -707,6 +708,19 @@ const ACTIVE_INTERVAL = 5 * 60 * 1000  // 5 min when visible
 const INACTIVE_INTERVAL = 15 * 60 * 1000  // 15 min when hidden
 
 const FEED_PAGE_SIZE = 60  // home-feed pagination: videos fetched per page
+
+// The tab title of each page that has one name. The same words as its
+// sidebar entry.
+const PAGE_TITLES: Partial<Record<Page, string>> = {
+  channels: 'Channels',
+  watchlater: 'Watch Later',
+  downloads: 'Downloads',
+  playlists: 'Playlists',
+  imported: 'Imported',
+  history: 'History',
+  local: 'Local',
+  settings: 'Settings',
+}
 
 export default function App() {
   // Init from URL
@@ -1840,6 +1854,16 @@ export default function App() {
   // match_channels on the server): how well a channel's name answers what you
   // typed.
   const searchingChannels = page === 'channels' && searchInput.trim().length > 0
+
+  // The tab's title (lib/title.ts). A page that is one of many (a channel, a
+  // playlist) names itself once it has loaded. A local folder's name is
+  // already here. The feed is the app itself and claims nothing.
+  useDocumentTitle(
+    page === 'search' ? searchInput.trim() || t('Search')
+      : page === 'localfolder' ? localFolderMeta?.name
+      : PAGE_TITLES[page] && t(PAGE_TITLES[page]),
+    page === 'localfolder' ? TITLE_RANK.item : TITLE_RANK.page,
+  )
 
   useSearchSort(searchingChannel, 'channel', views.channel.sort, setViews)
   useSearchSort(searchingChannels, 'channels', views.channels.sort, setViews)

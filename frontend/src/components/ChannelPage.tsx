@@ -10,6 +10,7 @@ import ChannelHeader from './ChannelHeader'
 import ChannelTags from './ChannelTags'
 import ChannelArchive, { useArchiveStatus } from './ChannelArchive'
 import { locale, t, tn } from '../lib/i18n'
+import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 
 type ChannelInfo = {
   youtube_id: string
@@ -84,6 +85,13 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
   // when the channel plainly exists and could simply be added.
   const [unknown, setUnknown] = useState<ChannelLookup | null>(null)
   const [addingUnknown, setAddingUnknown] = useState(false)
+  // Matched on the id, so the last channel's name doesn't stay in the tab
+  // while the next one loads.
+  useDocumentTitle(
+    channel?.youtube_id === channelId ? channel.title
+      : unknown?.youtube_id === channelId ? unknown.title : null,
+    TITLE_RANK.item,
+  )
   const loadingMoreRef = useRef(false)
 
   // How much of this channel's back catalogue we hold, plus the action that

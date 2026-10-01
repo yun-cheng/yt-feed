@@ -21,6 +21,7 @@ import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
 import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
+import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { captionDefaults } from '../lib/captionDefaults'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
@@ -512,6 +513,7 @@ function PanelTranscript({ rows, activeRow, onSeek, busy }: {
 
 export default function WatchPage({ videoId, video, nextFilter = '', startAt, initialPanel, onChannelClick, onClose, onDownload, isDownloaded, hasLocalFile, downloadsKnown }: Props) {
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
+  useDocumentTitle(meta?.youtube_id === videoId ? meta.title : null, TITLE_RANK.video)
   // Fetched separately and never stored server-side (see /api/feed/description).
   // Usually a cache hit: hovering the card already warmed it.
   const [description, setDescription] = useState('')

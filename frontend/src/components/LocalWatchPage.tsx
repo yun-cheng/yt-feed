@@ -8,6 +8,7 @@ import { nextSpeed } from '../lib/playbackSpeeds'
 import { actionFor } from '../lib/shortcuts'
 import type { LocalFolder, LocalVideo } from '../lib/local'
 import { t } from '../lib/i18n'
+import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 
 type Props = {
   video: LocalVideo
@@ -36,6 +37,7 @@ const RESUME_TAIL_SEC = 15
  * volume and the shortcuts all behave identically.
  */
 export default function LocalWatchPage({ video, folder, siblings, onClose, onSelect, onProgress }: Props) {
+  useDocumentTitle(video.title, TITLE_RANK.video)
   const videoRef = useRef<HTMLVideoElement>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const [hovering, setHovering] = useState(false)

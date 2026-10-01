@@ -5,6 +5,7 @@ import { filterByTime, filterBySummarised, filterByWatchStatus, filterByLength, 
 import type { VideoItem, WatchProgress } from '../App'
 import type { TimeRange } from '../lib/timeWindow'
 import { t } from '../lib/i18n'
+import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { removePlaylistItem } from '../lib/undo'
 
 type Props = {
@@ -60,6 +61,7 @@ export default function PlaylistPage({
   }, [playlistId])
 
   useEffect(() => { setLoading(true); setNotFound(false); load() }, [load])
+  useDocumentTitle(name, TITLE_RANK.item)
 
   // Refresh when a video is added/removed from any card's save-to-playlist panel.
   useEffect(() => {
