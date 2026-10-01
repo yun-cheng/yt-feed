@@ -179,6 +179,7 @@ async def chat_stream(
         body["provider"] = {"sort": provider_sort}
 
     said_something = False
+    finish = None
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(
@@ -205,6 +206,7 @@ async def chat_stream(
                     if chunk.get("usage"):
                         _record_usage(chunk["usage"])
                     choices = chunk.get("choices") or []
+                    finish = ((choices[0] or {}).get("finish_reason") if choices else None) or finish
                     delta = ((choices[0] or {}).get("delta") or {}).get("content") if choices else None
                     if delta:
                         said_something = True
@@ -216,6 +218,12 @@ async def chat_stream(
         # Same failure `chat()` guards: a 200 whose choices carry only reasoning
         # tokens, or nothing at all. Silence is not an empty answer.
         raise LLMError(f"empty reply from {body['model']}")
+    if finish == "length":
+        # Cut off by `max_tokens`. The text so far arrived as an ordinary
+        # answer, and it ends mid-sentence with nothing to say it isn't the
+        # whole thing. Raised after the last yield, so the caller keeps what it
+        # sent and marks it as a partial.
+        raise LLMError(f"the answer reached its {max_tokens}-token limit")
 
 
 def chat_json(system: str, user: str, **kw) -> dict:

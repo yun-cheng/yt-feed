@@ -90,7 +90,7 @@ LONG_SUMMARY_QUESTION = SUMMARY_QUESTIONS["long"]
 
 class SummaryRequest(BaseModel):
     # Anything else is refused rather than silently treated as long: a typo
-    # here would quietly bill a 2,500-token answer for a three-sentence ask.
+    # here would quietly bill a full summary for a three-sentence ask.
     length: str = DEFAULT_LENGTH
 
 # Its own pool, NOT the default executor — the same reason routers/local.py and

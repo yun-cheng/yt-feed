@@ -899,6 +899,14 @@ tab, which is why that write happens in the generator's `finally` and the closin
 frame is yielded *after* it. Yielding inside that block is a `RuntimeError` during
 teardown, and would lose the very partial it exists to keep.
 
+A reply stopped by the token cap counts as a stream that died. A clipped
+summary ends mid-sentence and would otherwise read as finished. So
+`llm.chat_stream` raises after the last delta when the provider reports
+`finish_reason: length`, and the panel shows *The answer stopped early* under
+the text. The cap itself (`MAX_ANSWER_TOKENS`, 16,000) sits above what the
+context budget lets in. Its first value, 2,500, cut off six of seven full
+summaries of 30–40 minute videos about halfway through.
+
 A video with no captions is a **422** rather than an empty answer. The watch page
 hides the entry point in that case, so anything reaching here asked directly and
 deserves the real reason.
@@ -927,7 +935,7 @@ menu.
   precisely why leaving it out would have been the wrong simplification. The job
   row keeps which was asked for, so the menu can put its spinner on the entry
   that is running rather than on both. A `length` that is neither is a **400**,
-  not a fallback: silently reading a typo as "long" bills a 2,500-token answer
+  not a fallback: silently reading a typo as "long" bills a full summary
   for a three-sentence ask.
 - **The job row is the only thing that can report progress.** Nobody is holding a
   stream, so "Summarising" has to be state the server wrote down *before* the
@@ -2187,6 +2195,7 @@ no per-test decorator). What's covered:
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
+| `test_llm_stream.py` | how a streamed reply ends: whole when the model stops, and as an error after the text when the token cap cuts it off |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer; translating one comment (the target in the prompt, the title as context, one model call per text and target, what's refused, a failure not cached) |
 | `test_categorizer.py` | keyword matching and the `categories.yaml` round-trip |
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup, and a restore that keeps its place on the page and never fetches |

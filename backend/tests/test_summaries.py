@@ -92,7 +92,7 @@ async def test_asking_for_nothing_in_particular_gets_the_long_one(client, monkey
 
 
 async def test_a_length_that_is_not_one_of_the_two_is_refused(client, monkeypatch):
-    """Silently falling back to long would bill a 2,500-token answer for a typo."""
+    """Silently falling back to long would bill a full summary for a typo."""
     stub_captions(monkeypatch, CUES)
     stub_model(monkeypatch)
     r = await client.post("/api/summaries/vid1", json={"length": "medium"})

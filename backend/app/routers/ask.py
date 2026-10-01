@@ -57,11 +57,16 @@ CONTEXT_CHAR_BUDGET = 60_000
 # transcript stays the bulk of the prompt.
 HISTORY_TURNS = 6
 
-# What a question may cost. Sized for the LONGEST honest answer, not the typical
-# one: "summarise this" over a 40-minute tier list is a section per item, and
-# measured at ~1,400 tokens. A cap that trims that is worse than a slow answer —
-# it cuts the list off partway and the reader can't tell that it did.
-MAX_ANSWER_TOKENS = 2500
+# What a question may cost. A guard against a runaway reply, not a size for the
+# answer. A cap that trims an honest answer is worse than a slow one: it cuts
+# the summary off partway. The first cap here, 2,500, was sized from a
+# measured 1,400-token summary. Once answers took on headings and bold
+# figures, a full summary of a 40-minute video ran past it about 16 minutes in.
+# Six of seven long summaries were cut off. Now it sits above the context
+# budget: at ~15k tokens of transcript in, a summary of it can't honestly need
+# more out. At this model's price, a reply that uses it all costs a quarter of
+# a cent. A reply that still hits it says so (llm.chat_stream).
+MAX_ANSWER_TOKENS = 16_000
 
 
 class AskRequest(BaseModel):
