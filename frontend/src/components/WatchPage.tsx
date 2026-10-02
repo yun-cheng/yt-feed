@@ -19,6 +19,7 @@ import VideoPanel, { PanelScroll, PanelTab } from './VideoPanel'
 import { videoPanelDefault } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
+import type { Chapter } from '../lib/chapters'
 import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
 import { TITLE_RANK, useDocumentTitle } from '../lib/title'
@@ -515,8 +516,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [meta, setMeta] = useState<VideoItem | null>(video ?? null)
   useDocumentTitle(meta?.youtube_id === videoId ? meta.title : null, TITLE_RANK.video)
   // Fetched separately and never stored server-side (see /api/feed/description).
-  // Usually a cache hit: hovering the card already warmed it.
+  // Usually a cache hit: hovering the card already warmed it. The chapters come
+  // with it — yt-dlp's reading of the description's timestamp list — and go on
+  // our bar's track; over a bare embed, YouTube's own bar already shows them.
   const [description, setDescription] = useState('')
+  const [chapters, setChapters] = useState<Chapter[]>([])
   const [embedError, setEmbedError] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
   // Whether this video sits in any playlist, so the Save pill can say so.
@@ -1221,10 +1225,15 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
   useEffect(() => {
     setDescription('')
+    setChapters([])
     let cancelled = false
     apiFetch(`/api/feed/description/${videoId}`)
       .then((r) => r.json())
-      .then((d) => { if (!cancelled) setDescription(d?.description || '') })
+      .then((d) => {
+        if (cancelled) return
+        setDescription(d?.description || '')
+        setChapters(Array.isArray(d?.chapters) ? d.chapters : [])
+      })
       .catch(() => { /* no description box */ })
     return () => { cancelled = true }
   }, [videoId])
@@ -3062,6 +3071,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               bookmarks={marks.bookmarks}
               loop={marks.loop}
               others={marks.others}
+              chapters={chapters}
             />
           </>
         ) : (
@@ -3149,6 +3159,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             bookmarks={marks.bookmarks}
             loop={marks.loop}
             others={marks.others}
+            chapters={chapters}
           />
         ) : (
           <div

@@ -689,6 +689,34 @@ describe('LocalControls — the scrub preview', () => {
   })
 })
 
+describe('LocalControls — chapters', () => {
+  const CHAPTERS = [
+    { start: 0, end: 120, title: 'Intro' },
+    { start: 120, end: 450, title: 'The middle' },
+    { start: 450, end: 600, title: 'Outro' },
+  ]
+
+  it('names the chapter under the cursor over the time', () => {
+    const { container } = renderOverEmbed({ chapters: CHAPTERS })
+    act(() => { vi.advanceTimersByTime(300) })
+    // 50% of 600s = 300s, inside the second chapter.
+    fireEvent.pointerMove(bar(container), { clientX: 200, pointerId: 1 })
+    expect(screen.getByTestId('scrub-chapter')).toHaveTextContent('The middle')
+    fireEvent.pointerMove(bar(container), { clientX: 350, pointerId: 1 })
+    expect(screen.getByTestId('scrub-chapter')).toHaveTextContent('Outro')
+  })
+
+  // The cuts themselves are a CSS mask jsdom can't parse (it drops the whole
+  // declaration), so they're pinned in chapters.test.ts through chapterMask.
+
+  it('leaves the preview untitled without chapters', () => {
+    const { container } = renderOverEmbed()
+    act(() => { vi.advanceTimersByTime(300) })
+    fireEvent.pointerMove(bar(container), { clientX: 200, pointerId: 1 })
+    expect(screen.queryByTestId('scrub-chapter')).toBeNull()
+  })
+})
+
 describe('LocalControls — the resolution label', () => {
   it("shows YouTube's quality as a resolution over the embed", () => {
     const { container } = renderOverEmbed({}, { getPlaybackQuality: () => 'hd1080' })
@@ -784,13 +812,16 @@ describe('LocalControls — marks on the track', () => {
       loop: { a: 150, b: 450 },
     })
     act(() => { vi.advanceTimersByTime(300) })
-    const track = container.querySelector('.bg-white\\/30') as HTMLElement
+    // The fill lives in the rail (the layer chapters cut), the first child.
+    const rail = screen.getByTestId('track-rail')
+    const track = rail.parentElement as HTMLElement
     const at = (el: Element | null) => [...track.children].indexOf(el as Element)
-    const fills = track.querySelectorAll('.bg-red-500')
+    const thumbs = [...track.children].filter((el) => el.classList.contains('bg-red-500'))
     const dims = screen.getAllByTestId('loop-dim')
 
-    expect(at(fills[0])).toBeLessThan(at(dims[0]))                       // fill under the veil
-    expect(at(dims[1])).toBeLessThan(at(fills[fills.length - 1]))        // thumb over it
+    expect(rail.querySelector('.bg-red-500')).not.toBeNull()
+    expect(at(rail)).toBeLessThan(at(dims[0]))                           // fill under the veil
+    expect(at(dims[1])).toBeLessThan(at(thumbs[thumbs.length - 1]))      // thumb over it
     expect(at(dims[1])).toBeLessThan(at(screen.getByLabelText('Bookmark at 5:00')))
   })
 

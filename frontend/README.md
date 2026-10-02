@@ -913,6 +913,8 @@ lib/
   quality.ts                      YouTube's quality names → "1080p"
   local.ts                        local-folder types + fetch helpers
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
+  chapters.ts                     a video's chapters: which one a moment is in,
+                                  and the mask that cuts the track between them
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   i18n.ts                         t / tn / tc and the current language (see "Language")
   captionDefaults.ts              the caption languages every video opens with
@@ -1236,6 +1238,13 @@ Other details:
     **storyboard** sprite sheets stand in — the same `/api/feed/storyboard` the
     cards use, scaled to the popup's width so the two look identical. A video
     with no storyboards falls back to the timestamp alone.
+  - **Chapters** cut the track into segments, YouTube-style, and the scrub
+    preview names the chapter under the cursor above its timestamp. They arrive
+    with the description (`/api/feed/description`, yt-dlp's `chapters`). The cut
+    is a CSS mask on the rail layer alone (`chapterMask` in `lib/chapters.ts`),
+    so the track and fill stay single elements and the play head, hover line
+    and marks — drawn outside that layer — are never cut. Over a bare embed
+    YouTube's own bar already shows them, so only our bar draws them.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
   embed's own captions can't be positioned or styled). The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,

@@ -65,10 +65,11 @@ _CC_TTL = 86400  # 24 hours
 # so the language list and every per-language fetch share ONE yt-dlp extraction.
 _ct_cache: dict[str, tuple[float, Optional[tuple]]] = {}
 
-# In-memory description cache: video_id -> (timestamp, text-or-None). Descriptions
-# are only ever fetched on demand for the watch page and deliberately NOT stored in
-# the DB — they're multi-KB blobs nothing else in the app reads.
-_desc_cache: dict[str, tuple[float, Optional[str]]] = {}
+# In-memory description cache: video_id -> (timestamp, {description, chapters}-or-None).
+# Descriptions are only ever fetched on demand for the watch page and deliberately
+# NOT stored in the DB — they're multi-KB blobs nothing else in the app reads. The
+# chapters ride along because they come out of the same extraction.
+_desc_cache: dict[str, tuple[float, Optional[dict]]] = {}
 _DESC_TTL = 3600  # 1 hour
 
 # In-memory comment cache: "video_id::sort::depth" -> (timestamp, payload-or-None).
@@ -89,7 +90,7 @@ _NEG_TTL = 300  # 5 min
 _sb_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 _cc_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 _ct_inflight: dict[str, "asyncio.Future[Optional[tuple]]"] = {}
-_desc_inflight: dict[str, "asyncio.Future[Optional[str]]"] = {}
+_desc_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 _cm_inflight: dict[str, "asyncio.Future[Optional[dict]]"] = {}
 
 
@@ -150,6 +151,30 @@ def _storyboard_from_info(info: dict) -> dict | None:
     }
 
 
+def _chapters_from_info(info: dict) -> list[dict]:
+    """The video's chapters as [{start, end, title}], in seconds.
+
+    yt-dlp has already done the work: it reads the timestamp list in the
+    description by YouTube's own rules (first at 0:00, at least three, each 10s
+    or longer) and fills in the ends. What's left is dropping anything malformed,
+    so the bar never has to.
+    """
+    out = []
+    for c in info.get("chapters") or []:
+        try:
+            start, end = float(c["start_time"]), float(c["end_time"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if end > start:
+            out.append({"start": start, "end": end, "title": str(c.get("title") or "")})
+    return out
+
+
+def _watch_info(info: dict) -> dict:
+    """What the watch page reads from an extraction: description and chapters."""
+    return {"description": info.get("description") or "", "chapters": _chapters_from_info(info)}
+
+
 def _extract_info(video_id: str) -> dict:
     """Blocking full yt-dlp extraction for one video. Runs in `_preview_pool`."""
     import yt_dlp
@@ -161,29 +186,30 @@ def _extract_info(video_id: str) -> dict:
 async def _fetch_storyboard(video_id: str) -> dict | None:
     """Run yt-dlp in a thread to get storyboard fragment URLs.
 
-    The same extraction also carries the description, so stash it on the way past:
-    hovering a card is what triggers this, and hovering is almost always how you
-    reach the watch page — so the description is usually already warm by then.
+    The same extraction also carries the description and chapters, so stash them
+    on the way past: hovering a card is what triggers this, and hovering is almost
+    always how you reach the watch page — so they're usually already warm by then.
     """
     def _run():
         info = _extract_info(video_id)
-        return _storyboard_from_info(info), info.get("description") or None
+        return _storyboard_from_info(info), _watch_info(info)
 
     try:
-        sb, desc = await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
+        sb, watch = await asyncio.get_event_loop().run_in_executor(_preview_pool, _run)
     except Exception:
         return None
-    _desc_cache[video_id] = (time.time(), desc)
+    _desc_cache[video_id] = (time.time(), watch)
     return sb
 
 
-async def _fetch_description(video_id: str) -> str | None:
-    """Fetch a video's description via yt-dlp. Only used when no hover warmed it."""
+async def _fetch_description(video_id: str) -> dict | None:
+    """Fetch a video's description and chapters via yt-dlp. Only used when no
+    hover warmed them."""
     try:
         info = await asyncio.get_event_loop().run_in_executor(_preview_pool, _extract_info, video_id)
     except Exception:
         return None
-    return info.get("description") or None
+    return _watch_info(info)
 
 
 # How much of a comment section one fetch brings back, and why replies are a
@@ -1422,16 +1448,19 @@ async def get_generated_captions(video_id: str):
 
 @router.get("/description/{video_id}")
 async def get_description(video_id: str):
-    """Return a video's description for the watch page, or {description: ""}.
+    """Return a video's description and chapters for the watch page, as
+    {description, chapters}; both empty when the extraction failed.
 
     Fetched on demand rather than stored: descriptions are multi-KB and nothing
-    else reads them, so they live only in a TTL cache.
+    else reads them, so they live only in a TTL cache. `chapters` is yt-dlp's
+    reading of the description's timestamp list (see _chapters_from_info), which
+    the player draws on its progress bar.
     """
-    text = await _cached_fetch(
+    data = await _cached_fetch(
         video_id, _desc_cache, _desc_inflight,
         lambda: _fetch_description(video_id), _DESC_TTL,
     )
-    return {"description": text or ""}
+    return data or {"description": "", "chapters": []}
 
 
 @router.get("/comments/{video_id}")

@@ -86,7 +86,8 @@ real video (muted, with custom captions and scrubbing).
   it from inside the player's own frame
 - **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
   A downloaded video plays from disk in that same watch page — no ads, works
-  offline — with our own control bar and a scrub preview of the actual frames
+  offline — with our own control bar and a scrub preview of the actual frames.
+  The bar is cut into the video's chapters, and hovering it names the chapter
 - **Playlists imported from YouTube** — bring a playlist over and it keeps a link
   back, so a Re-sync button pulls anything new. Never anything out: your copy is
   yours, so re-syncing is always safe. The Playlists page lists the ones your

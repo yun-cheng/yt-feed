@@ -18,6 +18,8 @@ import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
 import { qualityLabel, heightLabel } from '../lib/quality'
 import { MarkTrack } from './PlayerMarks'
+import { chapterAt, chapterMask } from '../lib/chapters'
+import type { Chapter } from '../lib/chapters'
 import type { Bookmark, Loop } from './PlayerMarks'
 import { t } from '../lib/i18n'
 import { playbackSpeeds } from '../lib/playbackSpeeds'
@@ -274,7 +276,7 @@ export const LIVE_EDGE_SEC = 10
  *  watch page keeps YouTube's controls and never renders this bar over an embed
  *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
  *  modes — there is no leftover chrome for it to paint over. */
-export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, embedHost, nextControl, leftControls, extraControls, bookmarks, loop, others }: {
+export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, embedHost, nextControl, leftControls, extraControls, bookmarks, loop, others, chapters }: {
   // One of these two. `videoRef` + `src` give the scrub preview its frames
   // directly; over the embed, `storyboard` supplies them instead.
   videoRef?: RefObject<HTMLVideoElement | null>
@@ -305,6 +307,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   loop?: Loop
   /** The video's other saved passages, drawn as quiet cuts (see MarkTrack). */
   others?: Loop[]
+  // The video's chapters: the track is cut at each one, and the scrub preview
+  // names the one under the cursor.
+  chapters?: Chapter[]
 }) {
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
@@ -461,6 +466,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
     ? storyboardFrame(storyboard, shownTime, scaleToWidth(storyboard, PREVIEW_W))
     : null
   const hasFrame = Boolean(src) || Boolean(sbFrame)
+  const hoverChapter = chapterAt(chapters, shownTime)
+  // Cuts the track and its fill — not the play head, the hover line or the
+  // marks, which sit outside the masked layer.
+  const mask = chapterMask(chapters, duration)
 
   // The box itself never takes the pointer: its top is a transparent fade 2rem
   // tall, laid over whatever the player has there — the panel over the video's
@@ -517,6 +526,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           />
         )}
         <div className="mt-1 text-center">
+          {hoverChapter?.title && (
+            <div data-testid="scrub-chapter" className="mb-0.5 truncate text-sm font-medium text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.8)]">
+              {hoverChapter.title}
+            </div>
+          )}
           <span className="inline-block rounded bg-black/80 px-1.5 py-0.5 text-sm font-semibold text-white">
             {formatTime(shownTime)}
           </span>
@@ -545,8 +559,14 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         onPointerUp={() => { draggingRef.current = false }}
       >
         {/* Thickens on hover, YouTube-style, to make the target read as grabbable. */}
-        <div className="relative h-1.5 rounded-full bg-white/30 transition-all group-hover/bar:h-2">
-          <div className="absolute inset-y-0 left-0 rounded-full bg-red-500" style={{ width: `${progress * 100}%` }} />
+        <div className="relative h-1.5 transition-all group-hover/bar:h-2">
+          <div
+            data-testid="track-rail"
+            className="absolute inset-0 overflow-hidden rounded-full bg-white/30"
+            style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
+          >
+            <div className="absolute inset-y-0 left-0 bg-red-500" style={{ width: `${progress * 100}%` }} />
+          </div>
           {/* Bookmarks and the A–B loop, on the track they're positions on.
               Clicking a mark seeks to the exact moment it marks rather than to
               wherever on the track the click landed. */}

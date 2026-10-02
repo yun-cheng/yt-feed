@@ -566,11 +566,16 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   Batch size is *not* a latency lever: it's set by provider choice, not payload —
   12 lines measured a 7.3s median against 5.7s for 40.
 - **Descriptions** (`/api/feed/description/{id}`) — the watch page's description
-  box. Kept out of the DB deliberately: they run a few KB each and only one page
-  ever wants one, so a TTL cache is the whole storage story.
+  box, and the video's **chapters** as `[{start, end, title}]` in seconds. Kept
+  out of the DB deliberately: they run a few KB each and only one page ever
+  wants one, so a TTL cache is the whole storage story. The chapters are
+  yt-dlp's own `chapters` field — its reading of the description's timestamp
+  list by YouTube's rules (first at 0:00, at least three, each 10s or longer) —
+  so there's no parser of ours to drift from YouTube's. `_chapters_from_info`
+  only drops malformed entries.
 
-The storyboard fetch is a full extraction that already carries the description,
-so it stashes it in the description cache on the way past (`_fetch_storyboard`
+The storyboard fetch is a full extraction that already carries the description
+and chapters, so it stashes them in the description cache on the way past (`_fetch_storyboard`
 shares `_extract_info` with `_fetch_description`). Hovering a card is nearly
 always how you reach the watch page, so by the time the description is asked for
 it's usually warm — ~9ms, instead of another ~1s extraction on a cold open.
@@ -2120,7 +2125,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
 | GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
-| GET | `/api/feed/description/{id}` | one video's description, fetched on demand (never stored) |
+| GET | `/api/feed/description/{id}` | one video's description and chapters, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
 | POST | `/api/feed/comments-translate` | one comment translated into `target` (`en` \| `zh-Hant` \| `ja` \| `ko` \| `th` \| `vi`) → `{text}`; cached in memory |
 | GET | `/api/channels` | the channels you follow, with their topics (`?tags=` filters, `-tag` excludes; `?q=` filters by name — typo-tolerant, via Meilisearch — or by topic, and `sort=relevance` keeps that match's order) |
