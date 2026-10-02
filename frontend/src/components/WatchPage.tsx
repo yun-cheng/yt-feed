@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../lib/api'
-import type { ReactNode, RefObject } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import type { VideoItem } from '../App'
 import { ensureYTApi } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
@@ -11,7 +11,7 @@ import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalCon
 import { nextSpeed } from '../lib/playbackSpeeds'
 import { actionFor, shortcutLabel } from '../lib/shortcuts'
 import type { PlayerApi } from './LocalControls'
-import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
+import { usePlayerMarks, BookmarkMenu, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
@@ -666,6 +666,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // The list of passages, opened from the loop button. Holds the chrome up the
   // same way the caption menu does — see chromeUp.
   const [showLoopMenu, setShowLoopMenu] = useState(false)
+  const [showBookmarkMenu, setShowBookmarkMenu] = useState(false)
   // The transcript panel beside the video's details — closed until asked for,
   // since it's a long read most visits don't want.
   // The right-hand panel holds one of two things at a time. A single state
@@ -835,7 +836,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // be absurd for a button to fade out from under the menu it opened — and with
   // our own bar the menu goes with it, so the menu faded out from under the
   // pointer that was working it.
-  const chromeUp = chromeAwake || showCaptionMenu || showLoopMenu
+  const chromeUp = chromeAwake || showCaptionMenu || showLoopMenu || showBookmarkMenu
 
   // Whether the controls under the video are OURS — either because it's a file
   // we play ourselves, or because we turned YouTube's off. The caption button and
@@ -2589,11 +2590,32 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // otherwise put there. Same two placements as the caption and YouTube buttons:
   // in our row when we own the bar, floating over YouTube's chrome when we
   // don't, there sitting just right of the panel button.
+  //
+  // Each opens its menu on hover and acts on a click, the way CC does: the
+  // bookmark button marks (or clears) this moment, the repeat button turns the
+  // repeat on or off (toggleRepeat). A touch has no hover, so there a tap opens
+  // the menu instead, and the menu's own rows do what the click would have.
   const MARK_BUTTON_FLOAT = 'group relative flex h-11 w-11 items-center justify-center text-white'
+  const bookmarkMenuRef = useRef<HTMLDivElement>(null)
+  const loopMenuRef = useRef<HTMLDivElement>(null)
+  const bookmarkTapRef = useRef(false)
+  const loopTapRef = useRef(false)
+  const hoverMenu = (set: (open: boolean) => void) => ({
+    onPointerEnter: (e: ReactPointerEvent) => { if (e.pointerType !== 'touch') set(true) },
+    onPointerLeave: (e: ReactPointerEvent) => { if (e.pointerType !== 'touch') set(false) },
+  })
   const marksControls = (
     <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[13.75rem] z-20 flex items-center'}>
+      <div ref={bookmarkMenuRef} className="relative" {...hoverMenu(setShowBookmarkMenu)}>
       <button
-        onClick={marks.toggleBookmarkHere}
+        onPointerDown={(e) => { bookmarkTapRef.current = e.pointerType === 'touch' }}
+        onClick={() => {
+          if (bookmarkTapRef.current) setShowBookmarkMenu((o) => !o)
+          else marks.toggleBookmarkHere()
+          bookmarkTapRef.current = false
+        }}
+        aria-haspopup="menu"
+        aria-expanded={showBookmarkMenu}
         // In the bookmarks' own colour while you're standing on one, so the
         // button, the tick on the bar and the line that confirmed the press are
         // visibly one feature. `!` beats the `text-white` both placements bring
@@ -2622,14 +2644,31 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             : <path fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />}
         </svg>
       </button>
-      <div className="relative">
+      {showBookmarkMenu && (
+        <BookmarkMenu
+          rows={bookmarkRows}
+          markHere={marks.markHere}
+          onSeek={seekTo}
+          onRemove={marks.removeBookmark}
+          onToggleHere={marks.toggleBookmarkHere}
+          onClose={() => setShowBookmarkMenu(false)}
+          within={bookmarkMenuRef}
+        />
+      )}
+      </div>
+      <div ref={loopMenuRef} className="relative" {...hoverMenu(setShowLoopMenu)}>
       <button
-        onClick={() => setShowLoopMenu((open) => !open)}
-        // Opens the list of passages. It used to cycle — pin one end, pin the
-        // other, clear — but once a video can hold several passages the question
-        // stopped being "what's the next step" and became "which one", and that
-        // has as many answers as you've marked. The cycle lives on in the
-        // keyboard, which is where it was always faster.
+        onPointerDown={(e) => { loopTapRef.current = e.pointerType === 'touch' }}
+        onClick={() => {
+          if (loopTapRef.current) setShowLoopMenu((o) => !o)
+          else marks.toggleRepeat()
+          loopTapRef.current = false
+        }}
+        // On or off; which passage is the menu's question. It used to cycle —
+        // pin one end, pin the other, clear — but once a video can hold several
+        // passages the question stopped being "what's the next step" and became
+        // "which one", and that has as many answers as you've marked. The cycle
+        // lives on in the keyboard, which is where it was always faster.
         // `relative` because the badge and underline below are positioned
         // against it, and BAR_BUTTON doesn't bring its own — without it they
         // resolve against the control bar instead and paint themselves across
@@ -2679,6 +2718,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           onStop={marks.clearLoop}
           onNew={marks.newLoop}
           onClose={() => setShowLoopMenu(false)}
+          within={loopMenuRef}
         />
       )}
       </div>
@@ -3193,7 +3233,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             <LocalControls
               videoRef={videoRef}
               src={localSrc}
-              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu}
+              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu || showBookmarkMenu}
               onFullscreen={toggleFullscreen}
               nextControl={nextButton}
               leftControls={marksControls}

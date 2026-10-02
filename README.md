@@ -51,13 +51,14 @@ real video (muted, with custom captions and scrubbing).
   so a passage replays until you're done with it. **One end is enough**: `[` alone
   repeats from there to the end of the video, `]` alone from the start up to
   there. **A video keeps as many passages as you mark**, saved with it — the loop
-  button opens the list, where you switch between them, delete one, or start a
+  button's menu lists them, where you switch between them, delete one, or start a
   new one from where you are. Both show on the progress bar —
   a bookmark as a tick in the track, the loop as the bar itself: its ends notch
   the track and everything outside the loop dims back. Both also have a **button
-  in the control bar**: the loop's opens that list of passages, and the
-  bookmark's fills in and offers to clear the mark whenever you're standing on
-  one. It's our own bar over a file on disk, and a
+  in the control bar** that opens its menu on hover: a click on the loop's turns
+  the repeat on or off, a click on the bookmark's marks the moment or clears the
+  one you're standing on, and the bookmark's menu lists them all to jump to. It's
+  our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
 - **Up next, in the channel's own order** — when a video ends, the card offered
   is the same channel's **next one forward in time**, which is the order YouTube's

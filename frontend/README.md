@@ -1057,6 +1057,19 @@ Other details:
     buttons open the right-hand group, where YouTube keeps CC (`rightControls`;
     the caption menu opens leftwards from there). Floating over YouTube's
     chrome, all four sit in a row on the left: caption, panel, then these.
+  - **Each opens its menu on hover and acts on a click**, the way CC does. The
+    bookmark button's click marks or clears this moment; its menu
+    (`BookmarkMenu`) lists the video's bookmarks, each with the line the panel's
+    Bookmarks tab gives it, to jump to (the menu stays open — you hop through
+    marks to find the one you meant) or clear with its ×. The repeat button's
+    click turns the repeat on or off (`toggleRepeat`): off stops the running
+    passage and keeps it, as `\` does; on resumes the newest passage you marked,
+    from its top, or starts one here when there are none. A touch has no hover,
+    so there a tap opens the menu, and the menus' own rows — the bookmark menu's
+    foot is *Bookmark this moment* / *Clear this bookmark* — do what the click
+    would. Both menus sit flush on their buttons, with no gap for the pointer to
+    fall through on the way up, and treat their button as inside, so pressing it
+    doesn't shut a menu that hover opened.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
     of the video and an unpinned B means the end of it, which is what each key
     reads as on its own: `[` is "repeat from here", `]` is "repeat up to here".
@@ -1075,10 +1088,10 @@ Other details:
     ordinarily both at once: running, and still offering to pin the other end, so
     the button carries the underline and the A/B badge together.
   - **A video keeps as many passages as you mark** (`SavedLoop`, `/loops`), and
-    the button opens the list of them (`LoopMenu`). It used to cycle — pin one
+    the button's menu lists them (`LoopMenu`). It used to cycle — pin one
     end, pin the other, clear — but once a video can hold several, the question
-    the button answers stopped being "what's the next step" and became "which
-    one", and that has as many answers as you've marked. The cycle lives on in
+    stopped being "what's the next step" and became "which one", and that has
+    as many answers as you've marked. The cycle lives on in
     the keyboard, which is where it was always faster.
     - **`active` is what a bookmark doesn't need.** A bookmark is a point, so
       marks coexist; a loop is a mode, so only one passage repeats at a time.
@@ -2253,7 +2266,7 @@ problem.
 
 | File | Covers |
 |------|--------|
-| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the bookmark menu, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |

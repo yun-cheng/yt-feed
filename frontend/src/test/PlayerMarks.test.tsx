@@ -1,10 +1,11 @@
 /**
  * Bookmarks and A–B repeat: the state, the shortcuts, and the marks on the bar.
  */
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useRef } from 'react'
 import {
+  BookmarkMenu,
   EmbedMarkRail,
   LoopMenu,
   MarkTrack,
@@ -106,6 +107,7 @@ function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: st
       <button onClick={() => m.pinLoopEnd('b')}>pin b</button>
       <button onClick={m.newLoop}>new</button>
       <button onClick={m.clearLoop}>stop</button>
+      <button onClick={m.toggleRepeat}>repeat</button>
       {m.loops.map((l) => (
         <span key={l.id}>
           <button onClick={() => m.useLoop(l.id)}>{`use ${l.a ?? '-'}`}</button>
@@ -714,6 +716,37 @@ describe('usePlayerMarks — the control bar’s buttons', () => {
     expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
   })
 
+  it('the repeat button, with nothing marked, starts a passage here', async () => {
+    const p = fakePlayer()
+    p._set(70)
+    await renderMarks(p)
+    await act(async () => { press('repeat') })
+    expect(screen.getByTestId('loops')).toHaveTextContent('*70/-')
+  })
+
+  it('stops the one running, and keeps it', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(20) }); act(() => key(']'))
+    await act(async () => { press('repeat') })
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/20')
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+  })
+
+  it('and turns the newest one back on, from its top', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(10) }); act(() => key('['))
+    p._set(300)
+    await act(async () => { press('new') })
+    await act(async () => { press('stop') })
+    p._set(500)
+    await act(async () => { press('repeat') })
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/- *300/-')
+    expect(p.seekTo).toHaveBeenLastCalledWith(300, true)
+  })
+
   it('stopping with nothing running does nothing at all', async () => {
     const p = fakePlayer()
     await renderMarks(p)
@@ -1314,5 +1347,62 @@ describe('LoopMenu', () => {
     expect(props.onClose).not.toHaveBeenCalled()
     fireEvent.mouseDown(document.body)
     expect(props.onClose).toHaveBeenCalled()
+  })
+})
+
+describe('BookmarkMenu', () => {
+  const rows = [
+    { id: 1, start: 30, text: 'what was said' },
+    { id: 2, start: 95, text: '' },
+  ]
+  const open = (over: Partial<Parameters<typeof BookmarkMenu>[0]> = {}) => {
+    const props = {
+      rows, markHere: false,
+      onSeek: vi.fn(), onRemove: vi.fn(), onToggleHere: vi.fn(), onClose: vi.fn(),
+      ...over,
+    }
+    render(<BookmarkMenu {...props} />)
+    return props
+  }
+
+  it('lists every bookmark with its line, and jumps to one without closing', () => {
+    const props = open()
+    expect(screen.getByText('what was said')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('1:35'))
+    expect(props.onSeek).toHaveBeenCalledWith(95)
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('clears one from its ×', () => {
+    const props = open()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove bookmark' })[0])
+    expect(props.onRemove).toHaveBeenCalledWith(1)
+  })
+
+  it('its foot does what the button does, and says which', () => {
+    const props = open()
+    fireEvent.click(screen.getByRole('menuitem', { name: /Bookmark this moment/ }))
+    expect(props.onToggleHere).toHaveBeenCalled()
+    cleanup()
+    open({ markHere: true })
+    expect(screen.getByRole('menuitem', { name: /Clear this bookmark/ })).toBeInTheDocument()
+  })
+
+  it('says so when there are none', () => {
+    open({ rows: [] })
+    expect(screen.getByText('Nothing marked yet.')).toBeInTheDocument()
+  })
+
+  it('a press on its own button is not a press outside', () => {
+    // Hover opened it, so the pointer is on the button; pressing that shouldn't
+    // shut the menu under it.
+    const within = { current: document.createElement('div') }
+    document.body.appendChild(within.current)
+    const props = open({ within })
+    fireEvent.mouseDown(within.current)
+    expect(props.onClose).not.toHaveBeenCalled()
+    fireEvent.mouseDown(document.body)
+    expect(props.onClose).toHaveBeenCalled()
+    within.current.remove()
   })
 })

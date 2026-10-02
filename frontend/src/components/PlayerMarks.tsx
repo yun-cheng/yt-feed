@@ -11,6 +11,7 @@
  * already know about.
  *
  *  - usePlayerMarks(), which owns the state, the shortcuts, and the loop tick
+ *  - BookmarkMenu, the video's bookmarks, to jump to or clear
  *  - LoopMenu, the video's saved passages and everything you can do to one
  *  - MarkTrack, the marks themselves, drawn along a time axis
  *  - EmbedMarkRail, which puts a MarkTrack on the YouTube embed's progress bar
@@ -481,9 +482,21 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     if (p) toggleBookmarkAt(p.getCurrentTime())
   }, [playerRef, toggleBookmarkAt])
 
+  /** The repeat button's click, as CC's click is captions on / off — the menu
+   *  opens on hover, so the press itself turns the repeat on or off. Off means
+   *  stopping whatever is running (kept, as `\\` keeps it). On means the newest
+   *  passage you marked, since that's the likeliest one you were working on —
+   *  or, with none marked, a new one from here. */
+  const toggleRepeat = useCallback(() => {
+    const list = loopsRef.current
+    if (list.some((l) => l.active)) clearLoop()
+    else if (list.length) useLoop(list[list.length - 1].id)
+    else newLoop()
+  }, [clearLoop, useLoop, newLoop])
+
   return {
     bookmarks, loop, loops, others, loopStage, looping, markHere, flash,
-    toggleBookmarkHere, removeBookmark, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop,
+    toggleBookmarkHere, removeBookmark, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop, toggleRepeat,
   }
 }
 
@@ -636,7 +649,98 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
  *  It's laid over the video, so it closes on Escape and on any click outside —
  *  the same as the player's own menus. The caller places it.
  */
-export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop, onNew, onClose }: {
+/** Closes a bar menu on Escape or a press outside it. Capture, because the
+ *  page's own handlers sit on window too and a click meant to dismiss shouldn't
+ *  also reach whatever is under it. `within`, when given, is what counts as
+ *  inside instead: the menu and its button together, so pressing the button
+ *  of a menu that hover opened doesn't shut it under the pointer. */
+function useDismiss(box: RefObject<HTMLDivElement | null>, onClose: () => void, within?: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onDown = (e: MouseEvent) => {
+      if (!(within ?? box).current?.contains(e.target as Node)) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('mousedown', onDown, true)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('mousedown', onDown, true)
+    }
+  }, [box, onClose, within])
+}
+
+/** One bookmark as the menu reads it: where it is, and a line saying what's
+ *  there (the watch page picks it — the note, what's said, the chapter). */
+export type BookmarkRow = { id: number; start: number; text: string }
+
+/** The video's bookmarks, from the bookmark button: each jumps to its moment,
+ *  and its × clears it. Jumping leaves the menu open — you hop through marks
+ *  to find the one you meant — and the foot does what the button's own press
+ *  does, for a touch screen, where a tap opens this instead. */
+export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, onClose, within }: {
+  rows: BookmarkRow[]
+  markHere: boolean
+  onSeek: (seconds: number) => void
+  onRemove: (id: number) => void
+  onToggleHere: () => void
+  onClose: () => void
+  within?: RefObject<HTMLElement | null>
+}) {
+  const box = useRef<HTMLDivElement | null>(null)
+  useDismiss(box, onClose, within)
+  const row = 'flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-sm text-white transition-colors hover:bg-white/10'
+  return (
+    <div
+      ref={box}
+      data-testid="bookmark-menu"
+      role="menu"
+      // Flush with its button, like the repeat menu. It opens rightwards: the
+      // bookmark button is the left end of its group.
+      className="absolute bottom-full left-0 z-40 w-[18rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
+    >
+      <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
+        {t('Bookmarks')}
+      </div>
+      <div className="max-h-56 overflow-y-auto">
+        {rows.map((b) => (
+          <div key={b.id} className="group/row flex items-center">
+            <button role="menuitem" onClick={() => onSeek(b.start)} className={row}>
+              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${BOOKMARK_COLOR}`} />
+              <span className="shrink-0 tabular-nums">{formatTime(b.start)}</span>
+              {b.text && <span className="min-w-0 truncate text-white/70">{b.text}</span>}
+            </button>
+            <button
+              onClick={() => onRemove(b.id)}
+              title={t('Remove bookmark')}
+              aria-label={t('Remove bookmark')}
+              className="mr-1 shrink-0 rounded p-1 text-white/60 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        {!rows.length && (
+          <div className="px-3 py-2 text-sm text-white/60">{t('Nothing marked yet.')}</div>
+        )}
+      </div>
+      <div className="mt-1 border-t border-white/10 pt-1">
+        <button role="menuitem" onClick={onToggleHere} className={row}>
+          <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            {markHere
+              ? <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+              : <path strokeLinecap="round" d="M12 5v14M5 12h14" />}
+          </svg>
+          {markHere ? t('Clear this bookmark') : t('Bookmark this moment')}
+          <span className="ml-auto pl-2 text-white/60">{shortcutLabel('bookmark')}</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop, onNew, onClose, within }: {
   loops: SavedLoop[]
   duration: number
   stage: LoopStage
@@ -646,22 +750,10 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
   onStop: () => void
   onNew: () => void
   onClose: () => void
+  within?: RefObject<HTMLElement | null>
 }) {
   const box = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    // Capture, because the page's own handlers sit on window too and a click
-    // meant to dismiss shouldn't also reach whatever is under it.
-    const onDown = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    window.addEventListener('mousedown', onDown, true)
-    return () => {
-      window.removeEventListener('keydown', onKey)
-      window.removeEventListener('mousedown', onDown, true)
-    }
-  }, [onClose])
+  useDismiss(box, onClose, within)
 
   // Choosing a passage to work on closes the menu; managing the list doesn't.
   // Once you've picked one you want to hear it, and the panel sits over the
@@ -674,7 +766,9 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
       ref={box}
       data-testid="loop-menu"
       role="menu"
-      className="absolute bottom-full right-0 z-40 mb-2 min-w-[15rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
+      // Flush with its button, with no gap: it opens on hover, and a gap is
+      // somewhere the pointer leaves both on its way across.
+      className="absolute bottom-full right-0 z-40 min-w-[15rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
     >
       <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
         {t('Repeat')}
