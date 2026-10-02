@@ -46,19 +46,103 @@ import { shortcutLabel } from '../lib/shortcuts'
 export const BAR_BUTTON =
   'flex h-10 w-12 shrink-0 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10'
 
-// A slider that unrolls out of the button beside it — volume, and boost. Each
-// site adds its own group's reveal, which has to be written out rather than
-// interpolated: Tailwind reads the source for literal class names and would
-// generate nothing for a name assembled at runtime.
+// The volume popup: the volume slider, and beside it the per-video boost, as
+// two columns over the mute button. Popped up rather than unrolled sideways: a
+// slider that opens in the row pushes every button after it along, and they
+// move out from under the pointer on the way to them.
 //
-// Collapsed only where there's a pointer to unroll it with (`hoverable`, see
-// index.css), and open by default everywhere else — a slider you can only
-// reach by hovering is one a phone can't reach at all. The reveals carry the
-// same prefix for a duller reason: a custom variant is emitted after the
-// built-in ones, so an unprefixed `group-hover:` would come first and lose to
-// `hoverable:w-0` at equal specificity, shutting the slider on a desktop too.
-const REVEALING_SLIDER =
-  'ml-1 h-1 w-16 cursor-pointer accent-white transition-all duration-150 hoverable:w-0 hoverable:opacity-0 hoverable:focus:w-16 hoverable:focus:opacity-100'
+// Hidden only where there's a pointer to open it with (`hoverable`, see
+// index.css); everywhere else the same sliders sit in the row, horizontal and
+// always open — a slider you can only reach by hovering is one a phone can't
+// reach at all. Open while the group is hovered, while something in it has
+// keyboard focus (Tab from the button lands on the sliders), and while a slider
+// is held, so a drag that strays off it doesn't drop it. `invisible` rather
+// than only transparent, so a hidden slider takes no clicks and no Tab.
+// Left-aligned with the button (`left-0`), so the volume column, the button's
+// own width, stands straight above it with the boost column to its right; and
+// flush against the button's top, so the pointer never crosses a gap on the
+// way up. The reveal is written out whole because Tailwind reads the source for
+// literal class names and would generate nothing for one assembled at runtime.
+const SLIDER_POPUP =
+  'flex items-center hoverable:absolute hoverable:bottom-full hoverable:left-0 hoverable:z-10 ' +
+  'hoverable:invisible hoverable:opacity-0 transition-opacity duration-150 ' +
+  'hoverable:group-hover/slider:visible hoverable:group-hover/slider:opacity-100 ' +
+  'hoverable:group-has-[:focus-visible]/slider:visible hoverable:group-has-[:focus-visible]/slider:opacity-100 ' +
+  'hoverable:group-has-[:active]/slider:visible hoverable:group-has-[:active]/slider:opacity-100'
+
+// The panel the columns sit on, where it's a popup.
+const SLIDER_PANEL =
+  'flex items-center gap-3 hoverable:items-stretch hoverable:gap-0 hoverable:rounded-lg hoverable:bg-shade-28/90 hoverable:shadow-lg hoverable:ring-1 hoverable:ring-white/10'
+
+// What sits at the head of a column: the value it's set to.
+const SLIDER_HEAD = 'h-4 text-xs font-medium leading-4 tabular-nums text-white'
+
+// The thumb's diameter, as `.popup-slider` in index.css draws it. Its centre
+// travels from half a thumb in at one end to half a thumb in at the other, and
+// the track, fill and ticks drawn behind the input have to land on it.
+const THUMB = 14
+
+/** One column of the volume popup: `head` (its value) at the top, then the
+ *  slider, with a tick at each of `ticks` — a longer one at each multiple of
+ *  `majorEvery`, the way a ruler marks its tens. Without a pointer it's the head
+ *  and a plain horizontal slider, side by side in the row.
+ *
+ *  Where it pops up, the input is the whole column and transparent — anywhere
+ *  in it takes a click — and what you see is drawn behind it. */
+function SliderColumn({ value, min, max, step, ticks, majorEvery, head, onChange, label, title }: {
+  value: number
+  min: number
+  max: number
+  step: number
+  ticks: number[]
+  majorEvery: number
+  head: ReactNode
+  onChange: (value: number) => void
+  label: string
+  title: string
+}) {
+  const at = (v: number) => `calc(${THUMB / 2}px + (100% - ${THUMB}px) * ${(v - min) / (max - min)})`
+  return (
+    <div className="flex items-center gap-1.5 hoverable:w-12 hoverable:flex-col hoverable:gap-1 hoverable:pt-2 hoverable:pb-1.5">
+      {head}
+      <div className="relative flex items-center hoverable:h-28 hoverable:w-full">
+        <div aria-hidden className="pointer-events-none absolute inset-0 hidden hoverable:block">
+          {ticks.map((v) => (
+            <div
+              key={v}
+              className={`absolute left-1/2 h-px -translate-x-1/2 bg-white/40 ${(v - min) % majorEvery === 0 ? 'w-5' : 'w-2.5'}`}
+              style={{ bottom: at(v) }}
+            />
+          ))}
+          <div
+            className="absolute left-1/2 w-1 -translate-x-1/2 rounded-full bg-white/30"
+            style={{ top: THUMB / 2, bottom: THUMB / 2 }}
+          />
+          <div
+            className="absolute left-1/2 w-1 -translate-x-1/2 rounded-full bg-white"
+            style={{ bottom: THUMB / 2, height: `calc((100% - ${THUMB}px) * ${(value - min) / (max - min)})` }}
+          />
+        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          title={title}
+          aria-label={label}
+          className="popup-slider relative h-1 w-16 cursor-pointer accent-white"
+        />
+      </div>
+    </div>
+  )
+}
+
+// Every 10%, long at every 20%.
+const VOLUME_TICKS = Array.from({ length: 11 }, (_, i) => i * 10)
+// Every half, long at each whole multiple — 1× (none) at the bottom.
+const BOOST_TICKS = Array.from({ length: (MAX_BOOST - 1) * 2 + 1 }, (_, i) => 1 + i / 2)
 
 // The scrub popup's size. Both sources render into it: the local <video>, and a
 // storyboard frame scaled to match (see `sbFrame` below).
@@ -494,10 +578,12 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           </svg>
         </button>
         {nextControl}
-        {/* Mute + volume, as one YouTube-style group: the slider is collapsed
-            until the group is hovered (or the slider itself has focus, so it
-            stays open while dragging or tabbing). */}
-        <div className="group/vol flex items-center">
+        {/* Mute, and the volume popup over it (see SLIDER_POPUP). Boost is the
+            popup's second column, deliberately NOT the same scope as the
+            first: volume is how loud you like things; boost is how quiet this
+            particular video was mixed, and it goes with the video rather than
+            with you. */}
+        <div className="group/slider relative flex items-center">
           <button
             onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
             className={BAR_BUTTON}
@@ -509,78 +595,76 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
                 : <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />}
             </svg>
           </button>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={VOLUME_STEP}
-            value={muted ? 0 : volume}
-            onChange={(e) => {
-              const next = Number(e.target.value)
-              // Dragging off zero unmutes, like YouTube — otherwise the slider
-              // would move with no sound and look broken.
-              if (next > 0) api()?.unMute()
-              setAudioVolume(next)
-            }}
-            title={t('Volume ({up}/{down})', { up: shortcutLabel('volumeUp'), down: shortcutLabel('volumeDown') })}
-            aria-label={t('Volume')}
-            className={`${REVEALING_SLIDER} hoverable:group-hover/vol:w-16 hoverable:group-hover/vol:opacity-100`}
-          />
-          {/* The number the slider is sitting on. Always shown, unlike the
-              slider it labels: the level is worth knowing without having to go
+          <div className={SLIDER_POPUP}>
+            <div className={SLIDER_PANEL}>
+              <SliderColumn
+                value={muted ? 0 : volume}
+                min={0}
+                max={100}
+                step={VOLUME_STEP}
+                ticks={VOLUME_TICKS}
+                majorEvery={20}
+                head={<span className={SLIDER_HEAD}>{muted ? 0 : volume}%</span>}
+                onChange={(next) => {
+                  // Dragging off zero unmutes, like YouTube — otherwise the slider
+                  // would move with no sound and look broken.
+                  if (next > 0) api()?.unMute()
+                  setAudioVolume(next)
+                }}
+                title={t('Volume ({up}/{down})', { up: shortcutLabel('volumeUp'), down: shortcutLabel('volumeDown') })}
+                label={t('Volume')}
+              />
+              {canBoost && (
+                <SliderColumn
+                  value={boost}
+                  min={1}
+                  max={MAX_BOOST}
+                  step={BOOST_STEP}
+                  ticks={BOOST_TICKS}
+                  majorEvery={1}
+                  head={
+                    /* Its value doubles as the quick switch: off, or 2×. */
+                    <button
+                      onClick={() => setBoost(boost > 1 ? 1 : 2)}
+                      className={`${SLIDER_HEAD} rounded px-1 hover:bg-white/10`}
+                      title={boost > 1
+                        ? t('Boosting this video {n}× — click for normal', { n: boost })
+                        : t('Boost just this video, past 100%')}
+                      aria-pressed={boost > 1}
+                      aria-label={t('Boost this video’s volume')}
+                      data-testid="boost-button"
+                    >
+                      {boost}×
+                    </button>
+                  }
+                  onChange={setBoost}
+                  title={t('Volume boost, this video only')}
+                  label={t('Volume boost')}
+                />
+              )}
+            </div>
+          </div>
+          {/* The levels, in the row. Where the sliders sit in the row too, their
+              heads already say this, so these are for where they pop up. The
+              volume always: the level is worth knowing without having to go
               looking for it, and in whole steps of 5 (see VOLUME_STEP) it's a
-              number that stays still. */}
+              number that stays still. The boost only while it's doing
+              something: at 1× it would be a number that never moves. */}
           <span
             data-testid="volume-readout"
-            className="ml-1.5 w-9 text-right text-xs tabular-nums text-white/90"
+            className="ml-1.5 hidden w-9 text-right text-xs tabular-nums text-white/90 hoverable:inline"
           >
             {muted ? 0 : volume}%
           </span>
-        </div>
-        {canBoost && (
-          /* Boost, as a second volume group beside the first: same shape, same
-             reveal, and deliberately NOT the same scope. The one on the left is
-             how loud you like things; this one is how quiet this particular
-             video was mixed, and it goes with the video rather than with you. */
-          <div className="group/boost flex items-center">
-            <button
-              onClick={() => setBoost(boost > 1 ? 1 : 2)}
-              className={BAR_BUTTON}
-              title={boost > 1
-                ? t('Boosting this video {n}× — click for normal', { n: boost })
-                : t('Boost just this video, past 100%')}
-              aria-pressed={boost > 1}
-              aria-label={t('Boost this video’s volume')}
-              data-testid="boost-button"
+          {canBoost && boost > 1 && (
+            <span
+              data-testid="boost-readout"
+              className="ml-1.5 hidden text-xs tabular-nums text-white/90 hoverable:inline"
             >
-              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M3 9v6h4l5 5V4L7 9H3z" />
-                <path d="M17 8h2v3h3v2h-3v3h-2v-3h-3v-2h3V8z" />
-              </svg>
-            </button>
-            <input
-              type="range"
-              min={1}
-              max={MAX_BOOST}
-              step={BOOST_STEP}
-              value={boost}
-              onChange={(e) => setBoost(Number(e.target.value))}
-              title={t('Volume boost, this video only')}
-              aria-label={t('Volume boost')}
-              className={`${REVEALING_SLIDER} hoverable:group-hover/boost:w-16 hoverable:group-hover/boost:opacity-100`}
-            />
-            {/* Shown only while it's doing something. At 1× it would be a
-                number that never moves, next to one that does. */}
-            {boost > 1 && (
-              <span
-                data-testid="boost-readout"
-                className="ml-1.5 text-xs tabular-nums text-white/90"
-              >
-                {boost}×
-              </span>
-            )}
-          </div>
-        )}
+              {boost}×
+            </span>
+          )}
+        </div>
         {/* Playback speed. A menu rather than a click-through cycle: eight rates
             are too many to step past one at a time, and the label has to say
             where you are anyway. Left group, with the other things that belong

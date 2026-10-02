@@ -507,7 +507,7 @@ here →  {__ytFeed:'boost', op:'ready'}           yes, and this browser can
 ```
 
 - **The app asks before it offers a control.** No extension, no reply, no boost
-  button — rather than a button that does nothing. That also means the boost
+  slider — rather than a slider that does nothing. That also means the boost
   appears over the embed exactly where our own control bar does, since both
   depend on this extension being installed.
 - **Only the app is answered.** The sender has to be the parent frame *and* be on

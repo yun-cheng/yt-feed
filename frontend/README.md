@@ -1886,9 +1886,9 @@ never revisited:
 **Our own control bar** replaces the browser's native one, which can't show a
 scrub preview. It carries play/pause, mute + a volume slider with the level beside it as a
 percentage (the shared, persisted store, so a level set here follows you to the
-next video; the slider stays collapsed until hovered, but the percentage is
-always on the bar), a **boost** group beside it (below), a **speed** menu
-(below), the clock,
+next video; the slider pops up over the button on hover, but the percentage is
+always on the bar), a **boost** slider as that popup's second column (below), a
+**speed** menu (below), the clock,
 the CC button, pin and fullscreen — everything with a keyboard equivalent
 (`k`, `m`, `c`, `p`, `f`, `,`/`.`). It shows while the pointer is over the player or while paused,
 and mirrors the element's own events rather than polling, so a keyboard seek or
@@ -1914,8 +1914,8 @@ raises it, pausing included.
   does; the key handler is bound once, so it would otherwise keep answering with
   whatever the setting was when the page opened.
 
-The **volume boost** (`hooks/audioBoost.ts`) is the second group in that row,
-and deliberately not the same thing as the first. The shared volume is one level
+The **volume boost** (`hooks/audioBoost.ts`) is the volume popup's second
+column, and deliberately not the same thing as the first. The shared volume is one level
 for everything you watch and stops at 100% — the loudest the file is. Some videos
 are simply mixed quiet, and turning the shared level up to compensate makes the
 *next* video shout. So the boost belongs to the video instead: 1× to 8× in
@@ -1923,9 +1923,11 @@ quarter steps, multiplying the element's own volume, **reset whenever `src`
 changes**. The chain ends in a **limiter** (a `DynamicsCompressorNode` at −6dB,
 12:1, 3ms attack): plain gain on a track that already peaks near full scale
 clips rather than gets louder, so past about 4× the extra range is only worth
-having if the peaks are held down while the quiet parts keep climbing. The button toggles 1× ↔ 2×; the slider is the fine control. The
-multiplier shows only while it's above 1×, since at 1× it would be a number that
-never moves next to one that does.
+having if the peaks are held down while the quiet parts keep climbing. The
+column's head is its multiplier, and a click on it toggles 1× ↔ 2×; the slider
+is the fine control. On the bar itself the multiplier shows only while it's
+above 1×, since there it would be a number that never moves next to one that
+does.
 
 - **It needs the audio**, so the page can only do this where we serve the file — a
   download or a local folder. The embed is a cross-origin iframe: its audio is
@@ -2141,10 +2143,16 @@ to the rule that hides it, at equal specificity, on a desktop as well.
 
 What that covers today: deleting a playlist, deleting a mark, dismissing a
 summary notification, removing a local folder, hiding a channel, and the volume
-and audio-boost sliders in our own control bar (`REVEALING_SLIDER`, which is
-the shared half of those two — each site still spells out its own group's
-reveal, because Tailwind reads the source for literal class names and generates
-nothing for one assembled at runtime). Three reveals are deliberately
+and audio-boost sliders in our own control bar (`SLIDER_POPUP`: with a pointer
+they pop up together over the mute button, flush against it, as two columns
+(`SliderColumn`) — volume the button's width and straight above it, boost to its
+right — each with its value at the top and ruler ticks along the track, long and
+short alternating (volume every 10%, boost every half). Opening it moves nothing
+else in the row; without a pointer the same two sit in the row as plain
+horizontal sliders, always open, each after its value. The input fills its column
+and is transparent, and the component draws the track, fill and ticks behind it
+on the thumb's centre, whose diameter `THUMB` has to match `.popup-slider` in
+`index.css`). Three reveals are deliberately
 left alone — the preview's volume slider and scrubber knob, and the up-next
 peek — because they live inside a hover preview a phone never opens.
 

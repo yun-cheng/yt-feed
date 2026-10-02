@@ -78,7 +78,8 @@ real video (muted, with custom captions and scrubbing).
 - **Shorts** — a separate feed for vertical short-form videos
 - **Per-video volume boost** — some videos are mixed so quietly that 100% isn't
   enough, and raising the shared volume just makes the next one shout. A second
-  volume control in the bar amplifies **this video only**, up to 8× — through a
+  slider beside the volume one amplifies **this video only**, up to 8× — through
+  a
   limiter, so the extra range makes quiet dialogue louder instead of making loud
   parts crackle — and resets when you move on. Downloaded files and local folders it amplifies directly;
   on a YouTube embed the audio is out of the page's reach, so the extension does

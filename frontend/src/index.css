@@ -271,6 +271,49 @@ button, a, [role="button"] {
   cursor: pointer;
 }
 
+/* The control bar's pop-up sliders (LocalControls' PopupSlider: volume, boost),
+   where they pop up — with a pointer, the same media query as `hoverable`.
+   Stood on end bottom-to-top (`vertical-lr`, then `rtl` puts the minimum at the
+   bottom), filling the popup's column, and transparent: the track, fill and
+   ticks are drawn behind it by the component, on the thumb's centre. Unlayered,
+   so it overrides the row slider's utilities rather than losing to them. */
+@media (hover: hover) {
+  .popup-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    background: transparent;
+    outline: none;
+  }
+  .popup-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+  }
+  .popup-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 3px rgba(0, 0, 0, 0.7);
+  }
+  .popup-slider:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.4);
+  }
+  .popup-slider:focus-visible::-moz-range-thumb {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.4);
+  }
+}
+
 .no-scrollbar {
   scrollbar-width: none !important;
 }
