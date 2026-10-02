@@ -24,6 +24,7 @@ import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
 import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { captionDefaults } from '../lib/captionDefaults'
+import { CJK, MAX_CJK_LINE_CHARS, MAX_LINE_CHARS, splitTimed } from '../lib/captionSplit'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
 // same one a downloaded file gets.
@@ -238,14 +239,9 @@ function linesAt(cues: Cue[] | null, curTime: number): CaptionLine[] {
 
 // A token whose text ends a sentence (Latin or CJK terminals, optional closing quote).
 const SENTENCE_END = /[.!?。！？][")'”’」』]?\s*$/
-const CJK = /[　-鿿＀-￯]/
-// Where a too-long sentence may be broken, and how long "too long" is. Roughly two
-// subtitle lines' worth: the Latin convention is ~42 characters a line, and CJK is
-// far denser so it caps lower. Only word-segment tracks (English/Japanese, in
-// practice) are ever chunked — see toSentences.
+// Where a too-long sentence may be broken; how long "too long" is lives with
+// splitTimed, which breaks the lines that have no word timing to break on.
 const BREAK_AFTER = /[,;:，、；：][")'”’」』]?\s*$/
-const MAX_LINE_CHARS = 84
-const MAX_CJK_LINE_CHARS = 36
 
 /** Append one token to a running string, spacing Latin but not CJK. */
 function appendToken(s: string, t: string): string {
@@ -1613,9 +1609,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
   // The AI-translated sentences as whole-line cues. Shared by whichever slot picked
   // AI (main or second): each translated sentence already covers its own span, and
-  // partially buffered stretches simply render as far as they've got.
+  // partially buffered stretches simply render as far as they've got. A long one
+  // is shown a piece at a time, as a long word-timed sentence is (see splitTimed).
   const aiCues = useMemo<Cue[]>(
-    () => aiSents.map((s) => ({
+    () => aiSents.flatMap(splitTimed).map((s) => ({
       start: s.start, dur: s.end - s.start, text: s.text,
       words: [{ t: s.start, text: s.text }],
     })),

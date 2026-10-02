@@ -915,6 +915,8 @@ lib/
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
   chapters.ts                     a video's chapters: which one a moment is in,
                                   and the mask that cuts the track between them
+  captionSplit.ts                 a long caption with no word timing (the AI
+                                  translation) cut into timed pieces
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   i18n.ts                         t / tn / tc and the current language (see "Language")
   captionDefaults.ts              the caption languages every video opens with
@@ -1379,11 +1381,20 @@ Other details:
   pieces are needed and places each break nearest its ideal length, with a comma
   scoring a modest bonus rather than forcing the break. Same video: 0 runts.
 
-  Chunking only happens here, for word-segment tracks, so every piece takes an
-  **exact** start from its own token — no interpolation. Whole-cue tracks arrive
-  pre-split by their author, and the AI translation is deliberately left whole
-  (splitting it could only ever guess at timings, and whole sentences are what make
-  the translation read well).
+  Here every piece takes an **exact** start from its own token — no interpolation.
+  Whole-cue tracks arrive pre-split by their author and aren't chunked.
+
+  The AI translation is chunked too, by `splitTimed` (`lib/captionSplit.ts`), to the
+  same limits and with the same even sizing. It is translated a whole sentence at a
+  time — that's what makes it read well — so a Chinese sentence carries only its own
+  start and end, and a long one used to stand as one tall block while the English
+  beside it moved through its pieces. Each piece's time is therefore a **guess**:
+  its share of the span is its share of the characters. Breaks fall at word
+  boundaries (`Intl.Segmenter`, since Chinese writes no spaces), never in front of
+  a closing mark or after an opening one, with a punctuation mark preferred. The
+  guess is acceptable because no piece of a translation maps to a stretch of the
+  source anyway — clauses swap places — and the transcript keeps the whole
+  sentences.
 - **Transcript**: the caption track as readable prose, in its own panel beside the
   video's details. Opened from its own button in the Info tab's actions, after
   Save, and offered only when the video has captions. Each row is a whole
