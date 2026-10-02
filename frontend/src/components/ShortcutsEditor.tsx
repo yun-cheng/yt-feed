@@ -63,14 +63,14 @@ export default function ShortcutsEditor({ value, onChange }: {
     <div className="mt-2">
       {groups.map((group) => (
         <div key={group} className="mb-2">
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-[#999]">{t(group)}</div>
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-shade-99">{t(group)}</div>
           <div className="flex flex-col">
             {ACTIONS.filter((a) => a.group === group).map((a) => {
               const moved = a.id in value
               const waiting = listening === a.id
               return (
                 <div key={a.id} className="flex items-center gap-2 py-0.5">
-                  <span className="min-w-0 flex-1 truncate text-xs text-[#ccc]">{t(a.label)}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-shade-cc">{t(a.label)}</span>
                   {/* Take the key away. A shortcut you keep hitting by
                       accident is worth being rid of, and "off" is not the same
                       answer as "back on its default" — so this is its own
@@ -81,7 +81,7 @@ export default function ShortcutsEditor({ value, onChange }: {
                       onClick={() => { onChange({ ...value, [a.id]: '' }); setListening(null) }}
                       title={t('No key for this')}
                       aria-label={t('No key for {action}', { action: t(a.label) })}
-                      className="cursor-pointer px-1 text-xs text-[#999] hover:text-white"
+                      className="cursor-pointer px-1 text-xs text-shade-99 hover:text-white"
                     >
                       ✕
                     </button>
@@ -95,7 +95,7 @@ export default function ShortcutsEditor({ value, onChange }: {
                       }}
                       title={t('Back to {key}', { key: keyLabel(a.key) })}
                       aria-label={t('Back to {key}', { key: keyLabel(a.key) })}
-                      className="cursor-pointer px-1 text-xs text-[#999] hover:text-white"
+                      className="cursor-pointer px-1 text-xs text-shade-99 hover:text-white"
                     >
                       ↺
                     </button>
@@ -106,7 +106,7 @@ export default function ShortcutsEditor({ value, onChange }: {
                     className={`min-w-[4.5rem] cursor-pointer rounded-lg border px-2 py-1 font-mono text-xs ${
                       waiting
                         ? 'border-white bg-white/10 text-white'
-                        : 'border-[#3f3f3f] bg-[#1c1c1c] text-[#ddd] hover:bg-white/5'
+                        : 'border-shade-3f bg-shade-1c text-shade-dd hover:bg-white/5'
                     }`}
                   >
                     {waiting ? t('press a key') : keyLabel(keyFor(a.id, value))}
@@ -117,7 +117,7 @@ export default function ShortcutsEditor({ value, onChange }: {
           </div>
         </div>
       ))}
-      <p className="mt-1 text-xs text-[#999]">
+      <p className="mt-1 text-xs text-shade-99">
         {taken
           ? t('{action} is already on that key.', { action: label(taken) })
           : listening
@@ -127,7 +127,7 @@ export default function ShortcutsEditor({ value, onChange }: {
       {Object.keys(value).length > 0 && (
         <button
           onClick={() => onChange({})}
-          className="mt-2 cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1.5 text-xs text-[#ccc] hover:bg-white/5"
+          className="mt-2 cursor-pointer rounded-full border border-shade-3f px-3 py-1.5 text-xs text-shade-cc hover:bg-white/5"
         >
           {t('Reset')}
         </button>

@@ -43,7 +43,7 @@ type Props = {
   children: ReactNode
 }
 
-const HEADER_BUTTON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#ccc] transition-colors hover:bg-white/10 hover:text-white'
+const HEADER_BUTTON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-shade-cc transition-colors hover:bg-white/10 hover:text-white'
 
 export default function VideoPanel({ open, tabs, tab, onTab, side, onSwapSide, onClose, width, bottom, children }: Props) {
   const other = side === 'right' ? t('Move to the left') : t('Move to the right')
@@ -73,7 +73,7 @@ export default function VideoPanel({ open, tabs, tab, onTab, side, onSwapSide, o
               title={label}
               onClick={() => onTab(key)}
               className={`flex h-7 w-8 items-center justify-center rounded-full transition-colors ${
-                tab === key ? 'bg-white text-black' : 'text-[#ccc] hover:text-white'
+                tab === key ? 'bg-white text-black' : 'text-shade-cc hover:text-white'
               }`}
             >
               {icon}

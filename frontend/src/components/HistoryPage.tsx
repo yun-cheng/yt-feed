@@ -29,19 +29,19 @@ export default function HistoryPage({
 }: Props) {
   if (totalCount === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
-        <svg className="w-12 h-12 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-shade-aa">
+        <svg className="w-12 h-12 text-shade-99" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <p className="text-sm">{t('Nothing watched yet.')}</p>
-        <p className="text-xs text-[#999]">{t('Videos show up here once you\'ve played more than a few seconds.')}</p>
+        <p className="text-xs text-shade-99">{t('Videos show up here once you\'ve played more than a few seconds.')}</p>
       </div>
     )
   }
 
   if (history.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-[#999] text-sm">
+      <div className="flex items-center justify-center h-32 text-shade-99 text-sm">
         {query.trim()
           ? t('Nothing you\'ve watched matches “{q}” with the current filters.', { q: query.trim() })
           : t('No watched videos match the current filters.')}

@@ -30,13 +30,13 @@ function ago(iso: string | null): string {
 function iconFor(kind: string) {
   if (kind === 'summary_error') {
     return (
-      <svg className="h-4 w-4 flex-shrink-0 text-[#f2a0a0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <svg className="h-4 w-4 flex-shrink-0 text-tint-f2a0a0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
       </svg>
     )
   }
   return (
-    <svg className="h-4 w-4 flex-shrink-0 text-[#8ab4f8]" viewBox="0 0 24 24" fill="currentColor">
+    <svg className="h-4 w-4 flex-shrink-0 text-tint-8ab4f8" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
       <path d="M18.5 14l.85 2.3 2.15.7-2.15.7-.85 2.3-.85-2.3-2.15-.7 2.15-.7.85-2.3z" />
     </svg>
@@ -78,7 +78,7 @@ export default function NotificationBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={toggle}
-        className="relative rounded-full p-2 text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+        className="relative rounded-full p-2 text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
         aria-label={unread ? t('Notifications ({n} unread)', { n: unread }) : t('Notifications')}
         title={t('Notifications')}
       >
@@ -93,20 +93,20 @@ export default function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-1 w-[min(92vw,360px)] overflow-hidden rounded-xl bg-[#282828] shadow-2xl ring-1 ring-white/10">
+        <div className="absolute right-0 top-full z-50 mt-1 w-[min(92vw,360px)] overflow-hidden rounded-xl bg-shade-28 shadow-2xl ring-1 ring-white/10">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-2.5">
             <span className="text-sm font-medium text-white">{t('Notifications')}</span>
             {items.length > 0 && (
               <button
                 onClick={() => clearNotifications()}
-                className="text-xs text-[#aaa] transition-colors hover:text-white"
+                className="text-xs text-shade-aa transition-colors hover:text-white"
               >
                 Clear all
               </button>
             )}
           </div>
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-[#999]">{t('Nothing yet.')}</p>
+            <p className="px-4 py-6 text-center text-xs text-shade-99">{t('Nothing yet.')}</p>
           ) : (
             <ul className="max-h-[60vh] overflow-y-auto">
               {items.map((n) => (
@@ -121,7 +121,7 @@ export default function NotificationBell() {
                         back to the kind's icon, which is also what a row written
                         before covers existed gets. */}
                     {n.thumbnail_url ? (
-                      <span className="relative mt-0.5 block w-20 flex-shrink-0 overflow-hidden rounded bg-black/40">
+                      <span data-theme="dark" className="relative mt-0.5 block w-20 flex-shrink-0 overflow-hidden rounded bg-black/40">
                         <img
                           src={n.thumbnail_url}
                           alt=""
@@ -138,14 +138,14 @@ export default function NotificationBell() {
                     )}
                     <span className="min-w-0">
                       <span className="block text-sm text-white">{t(n.title)}</span>
-                      <span className="block truncate text-xs text-[#aaa]">{n.body}</span>
-                      <span className="block text-[11px] text-[#999]">{ago(n.created_at)}</span>
+                      <span className="block truncate text-xs text-shade-aa">{n.body}</span>
+                      <span className="block text-[11px] text-shade-99">{ago(n.created_at)}</span>
                     </span>
                   </button>
                   <button
                     onClick={() => dismissNotification(n.id)}
                     aria-label={t('Dismiss notification')}
-                    className="mt-0.5 rounded-full p-1 text-[#999] hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100 hoverable:focus:opacity-100"
+                    className="mt-0.5 rounded-full p-1 text-shade-99 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100 hoverable:focus:opacity-100"
                   >
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

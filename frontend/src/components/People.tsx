@@ -92,28 +92,28 @@ export default function People() {
 
   return (
     <section className="mb-8">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#999]">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-shade-99">
         {t('People')}
       </h3>
 
-      <p className="mb-3 text-xs leading-relaxed text-[#999]">
+      <p className="mb-3 text-xs leading-relaxed text-shade-99">
         {t('Everyone here keeps their own history, playlists, tags and saved videos. Channels and downloads are shared — one copy, fetched once.')}
       </p>
 
-      <div className="flex flex-col divide-y divide-[#222] rounded-xl border border-[#2a2a2a]">
+      <div className="flex flex-col divide-y divide-shade-22 rounded-xl border border-shade-2a">
         {people.map((p) => (
           <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
             <div className="min-w-0 flex-1">
               <span className="text-sm text-white">{p.name}</span>
-              {p.is_you && <span className="ml-2 text-xs text-[#999]">{t('you')}</span>}
-              <p className="text-xs text-[#999]">
+              {p.is_you && <span className="ml-2 text-xs text-shade-99">{t('you')}</span>}
+              <p className="text-xs text-shade-99">
                 {p.google ? p.email || t('signs in with Google') : t('signs in with a link')}
               </p>
             </div>
             {!p.google && (
               <button
                 onClick={() => newLink(p.id)}
-                className="flex-shrink-0 cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1 text-xs text-[#ddd] hover:border-[#666]"
+                className="flex-shrink-0 cursor-pointer rounded-full border border-shade-3f px-3 py-1 text-xs text-shade-dd hover:border-shade-66"
               >
                 {link?.id === p.id ? t('New link') : t('Get link')}
               </button>
@@ -121,7 +121,7 @@ export default function People() {
             {!p.is_you && (
               <button
                 onClick={() => remove(p)}
-                className="flex-shrink-0 cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1 text-xs text-[#e0a0a0] hover:border-[#5c2b2b]"
+                className="flex-shrink-0 cursor-pointer rounded-full border border-shade-3f px-3 py-1 text-xs text-tint-e0a0a0 hover:border-tint-5c2b2b"
               >
                 {t('Remove')}
               </button>
@@ -131,12 +131,12 @@ export default function People() {
       </div>
 
       {link && (
-        <div className="mt-3 rounded-xl border border-[#2a2a2a] bg-[#161616] px-3 py-3">
-          <p className="text-xs text-[#aaa]">
+        <div className="mt-3 rounded-xl border border-shade-2a bg-shade-16 px-3 py-3">
+          <p className="text-xs text-shade-aa">
             {t('Send them this. Opening it signs them in and keeps them signed in, on as many devices as they like. Anyone with the link is them, so send it the way you’d send a password — and get a new link if it goes astray.')}
           </p>
           <div className="mt-2 flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-[#ddd]">
+            <code className="min-w-0 flex-1 truncate rounded-lg border border-shade-3f bg-shade-1c px-3 py-2 font-mono text-xs text-shade-dd">
               {link.url}
             </code>
             <button
@@ -159,7 +159,7 @@ export default function People() {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') add() }}
           placeholder={t('Add someone — their name')}
-          className="min-w-0 flex-1 rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 text-sm text-white placeholder:text-[#888] focus:border-[#666] focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-shade-3f bg-shade-1c px-3 py-2 text-sm text-white placeholder:text-shade-88 focus:border-shade-66 focus:outline-none"
         />
         <button
           onClick={add}

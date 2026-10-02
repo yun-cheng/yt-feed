@@ -284,7 +284,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+      <div className="flex items-center justify-center h-64 text-shade-aa">
         {t('Loading...')}
       </div>
     )
@@ -295,7 +295,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
     // or no network) — which is the only case left with nothing to show.
     if (!unknown) {
       return (
-        <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+        <div className="flex items-center justify-center h-64 text-shade-aa">
           {t('Channel not found.')}
         </div>
       )
@@ -310,13 +310,13 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
             <button
               onClick={addUnknown}
               disabled={addingUnknown}
-              className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40"
+              className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-colors hover:bg-shade-dd disabled:opacity-40"
             >
               {addingUnknown ? t('Adding…') : t('Add to your feed')}
             </button>
           }
         />
-        <p className="text-sm text-[#999]">
+        <p className="text-sm text-shade-99">
           {addingUnknown
             ? t('Fetching its recent videos…')
             : t('You\'re not following this channel, so there\'s nothing of theirs here yet. Adding it fetches their recent uploads and keeps them coming.')}
@@ -347,18 +347,18 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
 
       {/* Active label filter indicator */}
       {labelFilter && (
-        <div className="flex items-center gap-2 mb-4 text-sm text-[#aaa]">
+        <div className="flex items-center gap-2 mb-4 text-sm text-shade-aa">
           <span>{t('Filtering by')}</span>
           <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white text-black font-medium">
             {labelFilter}
           </span>
-          <span className="text-[#999]">· {tn(total, '{n} video', '{n} videos')}</span>
+          <span className="text-shade-99">· {tn(total, '{n} video', '{n} videos')}</span>
         </div>
       )}
 
       {/* Video grid */}
       {videos.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-2 h-40 text-[#aaaaaa] text-sm">
+        <div className="flex flex-col items-center justify-center gap-2 h-40 text-shade-aa text-sm">
           <span>
             {ch.scanning
               // Just added: the grid is empty because its videos are still on
@@ -377,17 +377,17 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
               offered when there IS more: a channel we hold in full is telling
               you something true. */}
           {!labelFilter && archive.status && !archive.status.exhausted && (
-            <span className="flex items-center gap-2 text-xs text-[#999]">
+            <span className="flex items-center gap-2 text-xs text-shade-99">
               {archive.status.oldest_held && (
                 <span>{t('Fetched back to {date}.', { date: new Date(archive.status.oldest_held)
                   .toLocaleDateString(locale(), { year: 'numeric', month: 'short' }) })}</span>
               )}
               {archive.status.filling ? (
-                <span className="text-[#aaa]">{t('Fetching more…')}</span>
+                <span className="text-shade-aa">{t('Fetching more…')}</span>
               ) : (
                 <button
                   onClick={archive.start}
-                  className="cursor-pointer rounded-full border border-[#3f3f3f] px-2.5 py-0.5 text-[#aaa] transition-colors hover:border-[#666] hover:text-white"
+                  className="cursor-pointer rounded-full border border-shade-3f px-2.5 py-0.5 text-shade-aa transition-colors hover:border-shade-66 hover:text-white"
                 >
                   {t('Fetch older videos')}
                   {archive.status.remaining ? ` (${archive.status.remaining.toLocaleString()})` : ''}

@@ -53,6 +53,39 @@ an emerald play button with a black triangle, not YouTube's red and white, so a
 tab of this app doesn't pass for a YouTube one. The colour lives in both files
 (`LOGO_COLOR` in `Sidebar.tsx`); change them together.
 
+### Theme (`lib/theme.ts`, `index.css`)
+
+Dark or light, chosen by the `theme` setting (Settings → Appearance), or
+`system` to follow the device and switch when it does. Dark is the default.
+
+- **Every color is a variable.** Components never write a hex value: the
+  neutrals are `shade-*`, named for their dark-theme value (`bg-shade-27` is
+  #272727 in the dark theme), and the colors are `tint-*`, named the same way.
+  `index.css` gives each one a value per theme, under `[data-theme]`, and the
+  light scale runs the other way, so a class keeps its role in both:
+  `text-shade-aa` is secondary text on either page. Tailwind's `white` and
+  `black` swap in the light theme, which turns the `bg-white/10` hovers, the
+  `ring-white/10` edges and the white active chip into their light versions
+  with no change to the components. The palette's pale text shades
+  (`text-blue-400`, `text-amber-300`…) take their deep counterparts there.
+- **Nothing you read is dimmer than `shade-99`.** That is 4.5:1 or better on
+  the page, its panels and its chips in both themes; anything longer than a
+  label, like a channel's description, takes `shade-aa` or brighter. Dimmer
+  is only for what isn't read: disabled controls, `·` separators, empty-state
+  icons.
+- **Anything over a picture stays dark.** A thumbnail, the player and
+  everything drawn on them (badges, captions, controls, the panel on the video)
+  carry `data-theme="dark"`, which puts that subtree back on the dark values.
+  A new surface over a video wants the same attribute on its container. The
+  `scrim` color is black in both, for dialog backdrops.
+- **Applied before the first paint.** The setting arrives with
+  `/api/settings`, after the page has drawn once, so `lib/theme.ts` keeps a
+  copy in localStorage and `index.html`'s inline script applies it at load. A
+  live switch holds transitions off for the one style recalculation, so the
+  page changes all at once rather than fading across element by element.
+- **`test/theme.test.ts`** fails on a hex value in a class, and on a token no
+  theme defines, which Tailwind would otherwise answer with no rule at all.
+
 ### `App.tsx` is the hub
 
 There is **no router library**. `App.tsx` holds essentially all page state and
@@ -2167,6 +2200,7 @@ problem.
 | `api.test.ts` | the error toast, `quiet` mode, reading the detail off a clone |
 | `toastStore.test.tsx`, `audioStore.test.tsx` | the two external stores, incl. cross-tab volume sync and the undo toast: one press only, dismissing without undoing, and expiring sooner than an error |
 | `undo.test.tsx` | the four undoable removals: that the server's receipt is what goes back, that a playlist item keeps its place, that a deleted download is fetched again, and that nothing is offered when nothing was removed |
+| `theme.test.ts` | the theme setting reaching `<html>` and the copy kept for the next load, following the device, and that every class color is a token both themes define |
 | `touchReveal.test.ts` | that no control is hidden behind a hover a phone can't perform — and that the reveal which brings it back is prefixed to outrank the rule that hides it |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |

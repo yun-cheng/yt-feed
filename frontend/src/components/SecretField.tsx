@@ -84,20 +84,20 @@ export default function SecretField({ settingKey, view, multiline, placeholder, 
       <div className="mb-1.5 flex items-center gap-2 text-xs">
         {isSet ? (
           <>
-            <span className="text-[#7ac77a]">
+            <span className="text-tint-7ac77a">
               {t('Set')}
-              {view.hint ? <span className="ml-1 font-mono text-[#999]">{view.hint}</span> : null}
+              {view.hint ? <span className="ml-1 font-mono text-shade-99">{view.hint}</span> : null}
             </span>
             {view.from_env && (
               // Otherwise clearing it looks like it did nothing: the value comes
               // back from the environment, which is correct and invisible.
-              <span className="rounded-full border border-[#3f3f3f] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#999]">
+              <span className="rounded-full border border-shade-3f px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-shade-99">
                 {t('from .env')}
               </span>
             )}
           </>
         ) : (
-          <span className="text-[#999]">{t('Not set')}</span>
+          <span className="text-shade-99">{t('Not set')}</span>
         )}
       </div>
 
@@ -113,7 +113,7 @@ export default function SecretField({ settingKey, view, multiline, placeholder, 
         autoComplete="off"
         placeholder={isSet ? t('Enter a new value to replace it') : placeholder}
         onChange={(e) => setDraft(e.target.value)}
-        className="w-full rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-white placeholder:text-[#888] disabled:opacity-50"
+        className="w-full rounded-lg border border-shade-3f bg-shade-1c px-3 py-2 font-mono text-xs text-white placeholder:text-shade-88 disabled:opacity-50"
       />
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -128,7 +128,7 @@ export default function SecretField({ settingKey, view, multiline, placeholder, 
           <button
             disabled={busy}
             onClick={() => void save('')}
-            className="cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1.5 text-xs text-[#ccc] disabled:opacity-40"
+            className="cursor-pointer rounded-full border border-shade-3f px-3 py-1.5 text-xs text-shade-cc disabled:opacity-40"
           >
             {t('Clear')}
           </button>
@@ -137,13 +137,13 @@ export default function SecretField({ settingKey, view, multiline, placeholder, 
           <button
             disabled={busy || testing}
             onClick={() => void test()}
-            className="cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1.5 text-xs text-[#ccc] disabled:opacity-40"
+            className="cursor-pointer rounded-full border border-shade-3f px-3 py-1.5 text-xs text-shade-cc disabled:opacity-40"
           >
             {testing ? t('Checking…') : t('Test')}
           </button>
         )}
         {tested && (
-          <span className={`text-xs ${tested.ok ? 'text-[#7ac77a]' : 'text-[#e0a0a0]'}`}>
+          <span className={`text-xs ${tested.ok ? 'text-tint-7ac77a' : 'text-tint-e0a0a0'}`}>
             {tested.text}
           </span>
         )}

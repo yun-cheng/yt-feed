@@ -10,6 +10,7 @@ import { setCaptionDefaults } from '../lib/captionDefaults'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
 import { setShortcutOverrides } from '../lib/shortcuts'
 import { setVideoPanelDefault } from '../lib/videoPanel'
+import { setThemeSetting } from '../lib/theme'
 import { setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 type SettingSpec = {
@@ -49,7 +50,7 @@ function StatusLine({ path, refreshKey }: { path: string; refreshKey: unknown })
   }, [path, refreshKey])
 
   if (!text) return null
-  return <p className="mt-1.5 text-xs text-[#aaa]">{text}</p>
+  return <p className="mt-1.5 text-xs text-shade-aa">{text}</p>
 }
 
 type SettingsResponse = {
@@ -86,16 +87,16 @@ function ExtensionKey() {
 
   return (
     <section className="mb-8">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#999]">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-shade-99">
         {t('Extension')}
       </h3>
       <div className="min-w-0">
         <label className="text-sm font-medium text-white">{t('Your API key')}</label>
-        <p className="mt-0.5 text-xs leading-relaxed text-[#999]">
+        <p className="mt-0.5 text-xs leading-relaxed text-shade-99">
           {t('The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.')}
         </p>
         <div className="mt-2 flex items-center gap-2">
-          <code className="min-w-0 flex-1 truncate rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-[#ddd]">
+          <code className="min-w-0 flex-1 truncate rounded-lg border border-shade-3f bg-shade-1c px-3 py-2 font-mono text-xs text-shade-dd">
             {key}
           </code>
           <button
@@ -123,7 +124,7 @@ function Choice({ value, options, busy, onChange }: {
       value={value}
       disabled={busy}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full cursor-pointer rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-1.5 text-sm text-white disabled:opacity-50 sm:w-auto sm:flex-shrink-0"
+      className="w-full cursor-pointer rounded-lg border border-shade-3f bg-shade-1c px-3 py-1.5 text-sm text-white disabled:opacity-50 sm:w-auto sm:flex-shrink-0"
     >
       {options.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
     </select>
@@ -138,12 +139,12 @@ function Toggle({ on, busy, onChange }: { on: boolean; busy: boolean; onChange: 
       disabled={busy}
       onClick={() => onChange(!on)}
       className={`relative h-6 w-11 flex-shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
-        on ? 'bg-white' : 'bg-[#3f3f3f]'
+        on ? 'bg-white' : 'bg-shade-3f'
       }`}
     >
       <span
         className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-          on ? 'left-[22px] bg-black' : 'left-0.5 bg-[#888]'
+          on ? 'left-[22px] bg-black' : 'left-0.5 bg-shade-88'
         }`}
       />
     </button>
@@ -197,6 +198,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       setShortcutOverrides(next.values.shortcuts)
       setVideoPanelDefault(next.values.video_panel_tab)
       setTranslateSetting(next.values.translate_lang)
+      setThemeSetting(next.values.theme)
       setData(next)
       if (key === 'app_language') setLangSetting(next.values.app_language)
       return true
@@ -209,10 +211,10 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
   }, [])
 
   if (error && !data) {
-    return <div className="px-6 py-8 text-sm text-[#aaa]">{error}</div>
+    return <div className="px-6 py-8 text-sm text-shade-aa">{error}</div>
   }
   if (!data) {
-    return <div className="px-6 py-8 text-sm text-[#999]">{t('Loading…')}</div>
+    return <div className="px-6 py-8 text-sm text-shade-99">{t('Loading…')}</div>
   }
 
   const groups = [...new Set(data.settings.map((s) => s.group))]
@@ -222,14 +224,14 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       <h2 className="text-xl font-bold text-white mb-6">{t('Settings')}</h2>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-[#5c2b2b] bg-[#2a1a1a] px-3 py-2 text-xs text-[#e0a0a0]">
+        <div className="mb-4 rounded-lg border border-tint-5c2b2b bg-tint-2a1a1a px-3 py-2 text-xs text-tint-e0a0a0">
           {error}
         </div>
       )}
 
       {groups.map((group) => (
         <section key={group} className="mb-8">
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#999]">
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-shade-99">
             {t(group)}
           </h3>
           <div className="flex flex-col gap-4">
@@ -249,12 +251,12 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
                       // fill spends one daily API quota for the whole machine —
                       // so changing them changes them for everybody. Worth
                       // saying before the click, not after.
-                      <span className="ml-2 rounded-full border border-[#3f3f3f] px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wide text-[#999]">
+                      <span className="ml-2 rounded-full border border-shade-3f px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wide text-shade-99">
                         {t('everyone')}
                       </span>
                     )}
                   </label>
-                  <p className="mt-0.5 text-xs leading-relaxed text-[#999]">
+                  <p className="mt-0.5 text-xs leading-relaxed text-shade-99">
                     {t(spec.description)}
                   </p>
                   {spec.status && (

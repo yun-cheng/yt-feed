@@ -5,6 +5,7 @@ import { setCaptionDefaults } from '../lib/captionDefaults'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
 import { setShortcutOverrides } from '../lib/shortcuts'
 import { setVideoPanelDefault } from '../lib/videoPanel'
+import { setThemeSetting } from '../lib/theme'
 import { getLang, onLangChange, setLangSetting, setTranslateSetting, t } from '../lib/i18n'
 
 /**
@@ -40,6 +41,7 @@ export default function DefaultsLoader({ children }: { children: React.ReactNode
         setShortcutOverrides(d.values?.shortcuts)
         setVideoPanelDefault(d.values?.video_panel_tab)
         setTranslateSetting(d.values?.translate_lang)
+        setThemeSetting(d.values?.theme)
         setLangSetting(d.values?.app_language)
       })
       .catch(() => { /* built-in defaults */ })
@@ -48,7 +50,7 @@ export default function DefaultsLoader({ children }: { children: React.ReactNode
   }, [])
 
   if (!ready) {
-    return <div className="flex h-dvh items-center justify-center text-sm text-[#999]">{t('Loading…')}</div>
+    return <div className="flex h-dvh items-center justify-center text-sm text-shade-99">{t('Loading…')}</div>
   }
   return <Fragment key={lang}>{children}</Fragment>
 }

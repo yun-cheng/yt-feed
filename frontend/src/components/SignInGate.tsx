@@ -58,31 +58,31 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
   }, [me])
 
   if (me === null || needsSetup === null) {
-    return <div className="flex h-dvh items-center justify-center text-sm text-[#999]">{t('Loading…')}</div>
+    return <div className="flex h-dvh items-center justify-center text-sm text-shade-99">{t('Loading…')}</div>
   }
   if (me.resolved) return <>{children}</>
   if (needsSetup) return <SetupPage onClaimed={load} />
 
   return (
-    <div className="flex h-dvh items-center justify-center bg-[#0f0f0f] px-6">
+    <div className="flex h-dvh items-center justify-center bg-shade-0f px-6">
       <div className="w-full max-w-sm text-center">
         <h1 className="text-2xl font-bold text-white">YT Feed</h1>
-        <p className="mt-2 text-sm leading-relaxed text-[#aaa]">
+        <p className="mt-2 text-sm leading-relaxed text-shade-aa">
           {t('This app keeps your own history, playlists and channels separate from everyone else’s. Open the link you were sent to pick yours up.')}
         </p>
 
-        <div className="mt-8 rounded-xl border border-[#2a2a2a] bg-[#161616] px-4 py-3 text-left">
-          <p className="text-xs font-medium uppercase tracking-wide text-[#999]">
+        <div className="mt-8 rounded-xl border border-shade-2a bg-shade-16 px-4 py-3 text-left">
+          <p className="text-xs font-medium uppercase tracking-wide text-shade-99">
             {t('No link?')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-[#999]">
+          <p className="mt-1.5 text-xs leading-relaxed text-shade-99">
             {t('Ask whoever set this up to add you — Settings → People — and send you your link. It works on as many devices as you like.')}
           </p>
         </div>
 
         <a
           href="/api/auth/login"
-          className="mt-4 inline-block text-xs text-[#999] underline underline-offset-4 hover:text-white"
+          className="mt-4 inline-block text-xs text-shade-99 underline underline-offset-4 hover:text-white"
         >
           {t('Or sign in with Google (works on the server itself)')}
         </a>

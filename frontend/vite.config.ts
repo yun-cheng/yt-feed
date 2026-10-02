@@ -14,6 +14,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // Vitest blanks every stylesheet, `?raw` imports included. test/theme.test.ts
+    // reads the theme tokens out of this one.
+    css: { include: [/index\.css/] },
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       // `all` so a file with no test at all still shows as 0% rather than

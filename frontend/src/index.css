@@ -14,9 +14,209 @@
    or neither; `test/touchReveal.test.ts` enforces that across the components. */
 @custom-variant hoverable (@media (hover: hover));
 
+/* ---- Themes ------------------------------------------------------------
+
+   Every color is a variable, set per theme on <html data-theme> (lib/theme.ts
+   puts it there, from the Theme setting). Two kinds:
+
+   - `shade-*` are the neutrals, named for their dark-theme value: `shade-27` is
+     #272727 in the dark theme and its counterpart in the light one. The light
+     scale runs the other way — surfaces go pale, text goes dark — so a class
+     keeps its role in both: `text-shade-aa` is secondary text either way.
+   - `tint-*` are the colors, named the same way.
+
+   Tailwind's own `white` and `black` swap in the light theme, which is what turns
+   `bg-white/10` hovers, `ring-white/10` edges and the white active chip with its
+   black text into their light-theme equivalents. A class meaning "white, always"
+   has nothing to say that here, so it doesn't exist: what must stay white sits
+   over a picture, and that is what the scope below is for.
+
+   `data-theme="dark"` on an element puts its whole subtree back on the dark
+   values. Thumbnails, the player and everything drawn over them carry it, since
+   a caption, a duration badge or a scrubber over a video is the same in either
+   theme. `@theme inline` is what lets that work: a utility reads the variable
+   where it is used rather than where it was declared. The `scrim` stays black in
+   both, for the backdrop behind a dialog and for shadows. */
+@theme inline {
+  --color-shade-0d: var(--shade-0d);
+  --color-shade-0f: var(--shade-0f);
+  --color-shade-12: var(--shade-12);
+  --color-shade-16: var(--shade-16);
+  --color-shade-18: var(--shade-18);
+  --color-shade-1a: var(--shade-1a);
+  --color-shade-1c: var(--shade-1c);
+  --color-shade-1e: var(--shade-1e);
+  --color-shade-21: var(--shade-21);
+  --color-shade-22: var(--shade-22);
+  --color-shade-27: var(--shade-27);
+  --color-shade-28: var(--shade-28);
+  --color-shade-2a: var(--shade-2a);
+  --color-shade-30: var(--shade-30);
+  --color-shade-33: var(--shade-33);
+  --color-shade-3a: var(--shade-3a);
+  --color-shade-3f: var(--shade-3f);
+  --color-shade-44: var(--shade-44);
+  --color-shade-55: var(--shade-55);
+  --color-shade-66: var(--shade-66);
+  --color-shade-71: var(--shade-71);
+  --color-shade-77: var(--shade-77);
+  --color-shade-88: var(--shade-88);
+  --color-shade-99: var(--shade-99);
+  --color-shade-aa: var(--shade-aa);
+  --color-shade-cc: var(--shade-cc);
+  --color-shade-dd: var(--shade-dd);
+  --color-shade-ee: var(--shade-ee);
+  --color-shade-f1: var(--shade-f1);
+  --color-tint-3ea6ff: var(--tint-3ea6ff);
+  --color-tint-65b8ff: var(--tint-65b8ff);
+  --color-tint-6cbcff: var(--tint-6cbcff);
+  --color-tint-8ab4f8: var(--tint-8ab4f8);
+  --color-tint-7ac77a: var(--tint-7ac77a);
+  --color-tint-2a1414: var(--tint-2a1414);
+  --color-tint-2a1a1a: var(--tint-2a1a1a);
+  --color-tint-331818: var(--tint-331818);
+  --color-tint-5c2626: var(--tint-5c2626);
+  --color-tint-5c2b2b: var(--tint-5c2b2b);
+  --color-tint-e0a0a0: var(--tint-e0a0a0);
+  --color-tint-f2a0a0: var(--tint-f2a0a0);
+  --color-tint-f28b82: var(--tint-f28b82);
+  --color-tint-f2d0d0: var(--tint-f2d0d0);
+  --color-tint-ffc9c9: var(--tint-ffc9c9);
+  --color-tint-ff4e45: var(--tint-ff4e45);
+  --color-tint-f00: var(--tint-f00);
+  --color-scrim: #000;
+}
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-white: #fff;
+  --color-black: #000;
+  --color-blue-300: oklch(80.9% 0.105 251.813);
+  --color-blue-400: oklch(70.7% 0.165 254.624);
+  --color-red-300: oklch(80.8% 0.114 19.571);
+  --color-red-400: oklch(70.4% 0.191 22.216);
+  --color-amber-100: oklch(96.2% 0.059 95.617);
+  --color-amber-200: oklch(92.4% 0.12 95.746);
+  --color-amber-300: oklch(87.9% 0.169 91.605);
+  --color-amber-400: oklch(82.8% 0.189 84.429);
+  --color-green-400: oklch(79.2% 0.209 151.711);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --shade-0d: #0d0d0d;
+  --shade-0f: #0f0f0f;
+  --shade-12: #121212;
+  --shade-16: #161616;
+  --shade-18: #181818;
+  --shade-1a: #1a1a1a;
+  --shade-1c: #1c1c1c;
+  --shade-1e: #1e1e1e;
+  --shade-21: #212121;
+  --shade-22: #222;
+  --shade-27: #272727;
+  --shade-28: #282828;
+  --shade-2a: #2a2a2a;
+  --shade-30: #303030;
+  --shade-33: #333;
+  --shade-3a: #3a3a3a;
+  --shade-3f: #3f3f3f;
+  --shade-44: #444;
+  --shade-55: #555;
+  --shade-66: #666;
+  --shade-71: #717171;
+  --shade-77: #777;
+  --shade-88: #888;
+  --shade-99: #999;
+  --shade-aa: #aaa;
+  --shade-cc: #ccc;
+  --shade-dd: #ddd;
+  --shade-ee: #eee;
+  --shade-f1: #f1f1f1;
+  --tint-3ea6ff: #3ea6ff;
+  --tint-65b8ff: #65b8ff;
+  --tint-6cbcff: #6cbcff;
+  --tint-8ab4f8: #8ab4f8;
+  --tint-7ac77a: #7ac77a;
+  --tint-2a1414: #2a1414;
+  --tint-2a1a1a: #2a1a1a;
+  --tint-331818: #331818;
+  --tint-5c2626: #5c2626;
+  --tint-5c2b2b: #5c2b2b;
+  --tint-e0a0a0: #e0a0a0;
+  --tint-f2a0a0: #f2a0a0;
+  --tint-f28b82: #f28b82;
+  --tint-f2d0d0: #f2d0d0;
+  --tint-ffc9c9: #ffc9c9;
+  --tint-ff4e45: #ff4e45;
+  --tint-f00: #f00;
+}
+
+/* The palette's pale shades are text on a dark page; on a white one they take
+   their deep counterparts (400 → 700, and so on) to stay readable. */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-white: #0f0f0f;
+  --color-black: #fff;
+  --color-blue-300: oklch(42.4% 0.199 265.638);
+  --color-blue-400: oklch(48.8% 0.243 264.376);
+  --color-red-300: oklch(44.4% 0.177 26.899);
+  --color-red-400: oklch(50.5% 0.213 27.518);
+  --color-amber-100: oklch(41.4% 0.112 45.904);
+  --color-amber-200: oklch(47.3% 0.137 46.201);
+  --color-amber-300: oklch(47.3% 0.137 46.201);
+  --color-amber-400: oklch(55.5% 0.163 48.998);
+  --color-green-400: oklch(52.7% 0.154 150.069);
+  --color-sky-400: oklch(50% 0.134 242.749);
+  --shade-0d: #ffffff;
+  --shade-0f: #ffffff;
+  --shade-12: #fafafa;
+  --shade-16: #f7f7f7;
+  --shade-18: #f6f6f6;
+  --shade-1a: #f5f5f5;
+  --shade-1c: #f3f3f3;
+  --shade-1e: #f0f0f0;
+  --shade-21: #eeeeee;
+  --shade-22: #ececec;
+  --shade-27: #e9e9e9;
+  --shade-28: #ffffff;
+  --shade-2a: #e5e5e5;
+  --shade-30: #e0e0e0;
+  --shade-33: #dddddd;
+  --shade-3a: #d6d6d6;
+  --shade-3f: #d0d0d0;
+  --shade-44: #c6c6c6;
+  --shade-55: #b3b3b3;
+  --shade-66: #8f8f8f;
+  --shade-71: #7a7a7a;
+  --shade-77: #777777;
+  --shade-88: #767676;
+  --shade-99: #636363;
+  --shade-aa: #555555;
+  --shade-cc: #3d3d3d;
+  --shade-dd: #2b2b2b;
+  --shade-ee: #1f1f1f;
+  --shade-f1: #1a1a1a;
+  --tint-3ea6ff: #065fd4;
+  --tint-65b8ff: #0b57d0;
+  --tint-6cbcff: #0b57d0;
+  --tint-8ab4f8: #1a56c4;
+  --tint-7ac77a: #1e7e34;
+  --tint-2a1414: #fdecea;
+  --tint-2a1a1a: #fdecea;
+  --tint-331818: #fbe3e1;
+  --tint-5c2626: #f8d7d4;
+  --tint-5c2b2b: #f1b9b4;
+  --tint-e0a0a0: #a8231b;
+  --tint-f2a0a0: #b3261e;
+  --tint-f28b82: #b3261e;
+  --tint-f2d0d0: #8c1d18;
+  --tint-ffc9c9: #8c1d18;
+  --tint-ff4e45: #d93025;
+  --tint-f00: #e00000;
+}
+
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3a3a3a transparent;
+  scrollbar-color: var(--shade-3a) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -29,12 +229,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--shade-3a);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--shade-55);
 }
 
 button, a, [role="button"] {

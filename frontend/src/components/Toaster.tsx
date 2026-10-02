@@ -20,12 +20,12 @@ export default function Toaster() {
         toast.kind === 'undo' ? (
           <div
             key={toast.id}
-            className="flex items-center gap-3 rounded-lg border border-[#3f3f3f] bg-[#212121] px-3 py-2 text-xs text-[#eee] shadow-xl"
+            className="flex items-center gap-3 rounded-lg border border-shade-3f bg-shade-21 px-3 py-2 text-xs text-shade-ee shadow-xl"
           >
             <span className="flex-1 [overflow-wrap:anywhere]">{toast.message}</span>
             <button
               onClick={() => runUndo(toast.id)}
-              className="flex-shrink-0 cursor-pointer rounded-full px-3 py-1 font-medium text-[#3ea6ff] hover:bg-white/10 transition-colors"
+              className="flex-shrink-0 cursor-pointer rounded-full px-3 py-1 font-medium text-tint-3ea6ff hover:bg-white/10 transition-colors"
             >
               {t('Undo')}
             </button>
@@ -33,7 +33,7 @@ export default function Toaster() {
               onClick={() => dismissToast(toast.id)}
               title={t('Dismiss')}
               aria-label={t('Dismiss')}
-              className="flex-shrink-0 cursor-pointer rounded-full px-1.5 py-1 text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
+              className="flex-shrink-0 cursor-pointer rounded-full px-1.5 py-1 text-shade-aa hover:bg-white/10 hover:text-white transition-colors"
             >
               ✕
             </button>
@@ -43,7 +43,7 @@ export default function Toaster() {
             key={toast.id}
             onClick={() => dismissToast(toast.id)}
             title={t('Dismiss')}
-            className="text-left w-full rounded-lg border border-[#5c2b2b] bg-[#2a1414] px-3 py-2 text-xs text-[#f2d0d0] shadow-xl hover:bg-[#331818] transition-colors"
+            className="text-left w-full rounded-lg border border-tint-5c2b2b bg-tint-2a1414 px-3 py-2 text-xs text-tint-f2d0d0 shadow-xl hover:bg-tint-331818 transition-colors"
           >
             <span className="mr-2">⚠️</span>
             <span className="[overflow-wrap:anywhere]">{toast.message}</span>

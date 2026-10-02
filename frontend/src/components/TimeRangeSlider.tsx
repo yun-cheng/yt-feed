@@ -33,7 +33,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
       <div className="mb-1.5 flex items-baseline gap-2">
         <span className="text-sm font-medium text-white">{rangeLabel(value)}</span>
         {count !== undefined && (
-          <span className="text-xs text-[#999]">{tn(count, '{n} video', '{n} videos', { n: count.toLocaleString() })}</span>
+          <span className="text-xs text-shade-99">{tn(count, '{n} video', '{n} videos', { n: count.toLocaleString() })}</span>
         )}
       </div>
 
@@ -47,7 +47,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
         minStepsBetweenThumbs={1}
         aria-label={t('Time window')}
       >
-        <Slider.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-[#272727]">
+        <Slider.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-shade-27">
           <Slider.Range className="absolute h-full bg-white" />
           {/* Notch the track at every tick, so the ladder the thumbs snap to is
               something you can see rather than something you discover by
@@ -60,7 +60,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
               data-testid="time-tick"
               aria-hidden
               style={{ left: tickLeft(i + 1) }}
-              className="absolute top-0 h-full w-0.5 -translate-x-1/2 bg-[#0f0f0f]"
+              className="absolute top-0 h-full w-0.5 -translate-x-1/2 bg-shade-0f"
             />
           ))}
         </Slider.Track>
@@ -88,7 +88,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
             <span
               key={label}
               style={style}
-              className={`absolute whitespace-nowrap text-[11px] ${inRange ? 'text-white' : 'text-[#999]'}`}
+              className={`absolute whitespace-nowrap text-[11px] ${inRange ? 'text-white' : 'text-shade-99'}`}
             >
               {tickLabel(i)}
             </span>
@@ -98,7 +98,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
               onClick={() => pick(i)}
               style={style}
               className={`absolute cursor-pointer whitespace-nowrap text-[11px] transition-colors hover:text-white ${
-                inRange ? 'text-white' : 'text-[#999]'
+                inRange ? 'text-white' : 'text-shade-99'
               }`}
             >
               {tickLabel(i)}

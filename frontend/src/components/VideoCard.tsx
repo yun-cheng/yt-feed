@@ -744,7 +744,8 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
     <div className={`relative cursor-pointer isolate ${menuOpen ? 'z-[5]' : ''}`} onClick={handleVideoActivate}>
       {/* Thumbnail — hover here only triggers preview. Shorts are portrait (9:16). */}
       <div
-        className={`relative rounded-xl overflow-hidden bg-[#272727] ${isShort ? 'aspect-[9/16]' : 'aspect-video'}`}
+        data-theme="dark"
+        className={`relative rounded-xl overflow-hidden bg-shade-27 ${isShort ? 'aspect-[9/16]' : 'aspect-video'}`}
         onMouseEnter={() => onHover(video.youtube_id)}
         onMouseLeave={() => onHover(null)}
       >
@@ -1070,7 +1071,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               </span>
             )}
             {summary?.status === 'running' && (
-              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-[#8ab4f8]">
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-tint-8ab4f8">
                 <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
                   <path strokeLinecap="round" d="M12 3a9 9 0 019 9" />
                 </svg>
@@ -1078,7 +1079,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               </span>
             )}
             {summary?.status === 'done' && (
-              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-[#8ab4f8]">
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-tint-8ab4f8">
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
                 </svg>
@@ -1086,7 +1087,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               </span>
             )}
             {summary?.status === 'error' && (
-              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-[#f2a0a0]">
+              <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-tint-f2a0a0">
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 </svg>
@@ -1120,7 +1121,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
               src={video.channel_thumbnail}
               alt=""
               loading="lazy"
-              className="w-9 h-9 rounded-full object-cover bg-[#3a3a3a]"
+              className="w-9 h-9 rounded-full object-cover bg-shade-3a"
             />
           </a>
         )}
@@ -1140,11 +1141,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           <a
             href={`/channel/${video.channel_id}`}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChannelClick(video.channel_id) }}
-            className="inline-block text-xs text-[#aaaaaa] mt-0.5 hover:text-blue-400 transition-colors"
+            className="inline-block text-xs text-shade-aa mt-0.5 hover:text-blue-400 transition-colors"
           >
             {video.channel_name || t('Unknown')}
           </a>
-          <p className="text-xs text-[#999] mt-0.5">
+          <p className="text-xs text-shade-99 mt-0.5">
             {(() => {
               const likeRate = video.view_count > 0 ? (video.like_count / video.view_count) * 100 : null
               const stats: { key: string; label: string }[] = [
@@ -1158,7 +1159,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 const active = sort === key || (key === 'newest' && sort === 'oldest')
                 return (
                   <span key={key}>
-                    {i > 0 && <span className="text-[#999]"> · </span>}
+                    {i > 0 && <span className="text-shade-99"> · </span>}
                     <span className={active ? 'text-white font-medium' : ''}>{label}</span>
                   </span>
                 )
@@ -1173,7 +1174,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
         <div className="relative flex-shrink-0 self-start" ref={menuRef}>
           <button
             ref={moreMenu.anchorRef}
-            className="p-1.5 -mr-1 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
+            className="p-1.5 -mr-1 rounded-full text-shade-aa hover:bg-white/10 hover:text-white transition-colors"
             onClick={(e) => { e.stopPropagation(); setShowSavePanel(false); setMenuOpen((o) => !o) }}
             title={t('More actions')}
             aria-label={t('More actions')}
@@ -1186,7 +1187,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             <div
               ref={moreMenu.menuRef}
               style={moreMenu.menuStyle}
-              className={`${MENU_LAYER} flex flex-col min-w-[180px] overflow-y-auto overscroll-contain rounded-xl bg-[#282828] py-2 shadow-2xl ring-1 ring-white/10`}
+              className={`${MENU_LAYER} flex flex-col min-w-[180px] overflow-y-auto overscroll-contain rounded-xl bg-shade-28 py-2 shadow-2xl ring-1 ring-white/10`}
               onClick={(e) => e.stopPropagation()}
             >
               {showSavePanel ? (

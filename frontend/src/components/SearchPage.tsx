@@ -77,7 +77,7 @@ export default function SearchPage({
 
   if (!trimmed) {
     return (
-      <div className="px-6 py-16 flex flex-col items-center justify-center text-[#aaa] gap-3">
+      <div className="px-6 py-16 flex flex-col items-center justify-center text-shade-aa gap-3">
         <svg className="w-10 h-10 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
@@ -91,9 +91,9 @@ export default function SearchPage({
   return (
     <div className="px-6 py-4">
       {empty ? (
-        <div className="flex flex-col items-center justify-center h-64 gap-2 text-[#aaa]">
+        <div className="flex flex-col items-center justify-center h-64 gap-2 text-shade-aa">
           <p className="text-sm">{t('No results for “{q}”', { q: trimmed })}</p>
-          <p className="text-xs text-[#999]">{t('Try fewer or different words.')}</p>
+          <p className="text-xs text-shade-99">{t('Try fewer or different words.')}</p>
         </div>
       ) : (
         <>
@@ -106,12 +106,12 @@ export default function SearchPage({
                   <button
                     key={c.youtube_id}
                     onClick={() => onChannelClick(c.youtube_id)}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-[#272727] transition-colors text-left"
+                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-shade-27 transition-colors text-left"
                   >
                     {c.thumbnail_url ? (
                       <img src={c.thumbnail_url} alt="" className="w-10 h-10 rounded-full flex-shrink-0 object-cover" />
                     ) : (
-                      <div className="w-10 h-10 rounded-full flex-shrink-0 bg-[#272727]" />
+                      <div className="w-10 h-10 rounded-full flex-shrink-0 bg-shade-27" />
                     )}
                     <span className="text-sm text-white truncate">{c.title}</span>
                   </button>

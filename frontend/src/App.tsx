@@ -2114,7 +2114,7 @@ export default function App() {
       {/* Mobile backdrop */}
       {mobileMenuOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="fixed inset-0 z-30 bg-scrim/50 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
@@ -2254,8 +2254,8 @@ export default function App() {
         </div>
 
         {selectedTags.length > 0 && sidebarFilters.tags && (
-          <div className="sticky z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2" style={{ top: isMobile ? 0 : topbarHeight }}>
-            <span className="text-xs text-[#999] font-medium">Filters:</span>
+          <div className="sticky z-10 px-4 py-2 border-b border-shade-27 bg-shade-0d flex items-center gap-2" style={{ top: isMobile ? 0 : topbarHeight }}>
+            <span className="text-xs text-shade-99 font-medium">Filters:</span>
             <div className="flex flex-wrap gap-1.5">
               {selectedTags.map((tag) => {
                 const name = tagName(tag)
@@ -2270,7 +2270,7 @@ export default function App() {
                     onClick={() => clearTag(tag)}
                     title={not ? t('Stop excluding {name}', { name }) : t('Remove the {name} filter', { name })}
                     className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full font-medium hover:opacity-80 transition-opacity ${
-                      not ? 'bg-[#5c2626] text-[#ffc9c9]' : 'bg-white text-black'
+                      not ? 'bg-tint-5c2626 text-tint-ffc9c9' : 'bg-white text-black'
                     }`}
                   >
                     <span>{info?.icon || '🏷️'}</span>
@@ -2282,7 +2282,7 @@ export default function App() {
             </div>
             <button
               onClick={clearFilter}
-              className="ml-1 text-xs text-[#999] hover:text-white transition-colors"
+              className="ml-1 text-xs text-shade-99 hover:text-white transition-colors"
             >
               {t('Clear')}
             </button>
@@ -2380,12 +2380,12 @@ export default function App() {
         ) : page === 'watchlater' ? (
           <div className="px-6 py-4">
             {watchLater.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
-                <svg className="w-12 h-12 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <div className="flex flex-col items-center justify-center h-64 gap-3 text-shade-aa">
+                <svg className="w-12 h-12 text-shade-99" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                 </svg>
                 <p className="text-sm">{t('No videos saved yet.')}</p>
-                <p className="text-xs text-[#999]">{t('Hover a video and click the bookmark icon to save it.')}</p>
+                <p className="text-xs text-shade-99">{t('Hover a video and click the bookmark icon to save it.')}</p>
               </div>
             ) : (() => {
               // Windowed by when you saved it, not when it was published.
@@ -2398,7 +2398,7 @@ export default function App() {
               result = filterByText(result, wlQuery)
               result = sortVideos(result, view.sort)
               return result.length === 0 ? (
-                <div className="flex items-center justify-center h-32 text-[#999] text-sm">
+                <div className="flex items-center justify-center h-32 text-shade-99 text-sm">
                   {wlQuery
                     ? t('Nothing saved matches “{q}” with the current filters.', { q: wlQuery })
                     : t('No saved videos match the current filters.')}
@@ -2443,11 +2443,11 @@ export default function App() {
           <div className="px-6 py-4">
             {!feed ? (
               loading ? (
-                <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                <div className="flex items-center justify-center h-64 text-shade-aa">
                   {t('Loading feed...')}
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                <div className="flex items-center justify-center h-64 text-shade-aa">
                   {t('No data yet.')}
                 </div>
               )
@@ -2462,7 +2462,7 @@ export default function App() {
               // Only show an empty-state once there are no more pages to load.
               if (videos.length === 0 && !hasMore) {
                 return (
-                  <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+                  <div className="flex items-center justify-center h-64 text-shade-aa">
                     {watchStatuses.length > 0 && watchStatuses.length < WATCH_STATUSES.length
                       ? t('No videos match the watch status filter.')
                       : hiddenChannels.size > 0 && !showHidden
@@ -2500,7 +2500,7 @@ export default function App() {
           Rendered outside the page switch so the page underneath stays mounted
           with its scroll and loaded data intact; closing returns you there. */}
       {selectedVideoId && (
-        <div className="fixed inset-0 z-[60] bg-[#0f0f0f] overflow-y-auto">
+        <div className="fixed inset-0 z-[60] bg-shade-0f overflow-y-auto">
           <WatchPage
             key={selectedVideoId}
             videoId={selectedVideoId}
@@ -2520,7 +2520,7 @@ export default function App() {
       {/* Local-video overlay — same layering and close-by-back behaviour as the
           watch overlay above; the folder grid stays mounted behind it. */}
       {selectedLocalVideo && (
-        <div className="fixed inset-0 z-[60] bg-[#0f0f0f]">
+        <div className="fixed inset-0 z-[60] bg-shade-0f">
           <LocalWatchPage
             key={selectedLocalVideo.id}
             video={selectedLocalVideo}

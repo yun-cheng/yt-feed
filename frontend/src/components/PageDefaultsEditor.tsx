@@ -77,7 +77,7 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
   }
 
   return (
-    <div className="mt-4 flex flex-col divide-y divide-[#272727] rounded-xl border border-[#272727]">
+    <div className="mt-4 flex flex-col divide-y divide-shade-27 rounded-xl border border-shade-27">
       {PAGES.map(({ page, label }) => {
         const d = resolveDefaults(page, draft)
         const hasWatch = pageFilters(page).watchStatus
@@ -98,7 +98,7 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
                     delete next[page]
                     set(next)
                   }}
-                  className="ml-auto text-xs text-[#999] hover:text-white"
+                  className="ml-auto text-xs text-shade-99 hover:text-white"
                 >
                   {t('Reset')}
                 </button>
@@ -124,20 +124,20 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
                       aria-pressed={on}
                       onClick={() => put('watch', on ? d.watch.filter(v => v !== w.value) : [...d.watch, w.value])}
                       className={`rounded-full px-2.5 py-1 text-xs transition-colors ${
-                        on ? 'bg-white text-black' : 'bg-[#1a1a1a] text-[#aaa] hover:text-white'
+                        on ? 'bg-white text-black' : 'bg-shade-1a text-shade-aa hover:text-white'
                       }`}
                     >
                       {w.icon} {t(w.label)}
                     </button>
                   )
                 })}
-                <span className="ml-1 text-xs text-[#999]">
+                <span className="ml-1 text-xs text-shade-99">
                   {d.watch.length === 0 || d.watch.length >= options.length ? t('Shows everything') : ''}
                 </span>
               </div>
             )}
             {hasWatch && !ownWatch && (
-              <p className="text-xs text-[#999]">{t('Watch filter follows Home’s.')}</p>
+              <p className="text-xs text-shade-99">{t('Watch filter follows Home’s.')}</p>
             )}
           </div>
         )

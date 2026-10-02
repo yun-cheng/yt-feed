@@ -92,6 +92,16 @@ async def test_language_settings_start_on_the_browser_and_the_videos_own(client)
 
 
 @pytest.mark.asyncio
+async def test_the_theme_starts_dark_and_takes_light_or_the_system(client):
+    values = (await client.get("/api/settings")).json()["values"]
+    assert values["theme"] == "dark"
+    spec = {s["key"]: s for s in (await client.get("/api/settings")).json()["settings"]}
+    assert [o["value"] for o in spec["theme"]["options"]] == ["dark", "light", "system"]
+    assert (await client.put("/api/settings", json={"values": {"theme": "light"}})).status_code == 200
+    assert (await client.get("/api/settings")).json()["values"]["theme"] == "light"
+
+
+@pytest.mark.asyncio
 async def test_the_panel_on_the_video_opens_on_comments(client):
     values = (await client.get("/api/settings")).json()["values"]
     assert values["video_panel_tab"] == "comments"
@@ -116,7 +126,7 @@ async def test_a_choice_round_trips(client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None), ("translate_lang", "zh"), ("video_panel_tab", "settings")])
+@pytest.mark.parametrize("key,bad", [("app_language", "fr"), ("caption_lang", "zh-Hant"), ("caption_lang2", None), ("translate_lang", "zh"), ("video_panel_tab", "settings"), ("theme", "sepia")])
 async def test_a_choice_outside_its_options_is_a_400(client, key, bad):
     res = await client.put("/api/settings", json={"values": {key: bad}})
     assert res.status_code == 400

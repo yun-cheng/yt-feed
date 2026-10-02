@@ -194,7 +194,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
         onScroll={onScroll}
         className={`flex-1 space-y-3 overflow-y-auto ${
           inPanel ? 'min-h-0 overscroll-contain py-1'
-            : `rounded-xl bg-[#1a1a1a] p-3 ${fillsPane ? 'lg:h-full lg:max-h-none' : 'max-h-[26rem] lg:max-h-[34rem]'}`
+            : `rounded-xl bg-shade-1a p-3 ${fillsPane ? 'lg:h-full lg:max-h-none' : 'max-h-[26rem] lg:max-h-[34rem]'}`
         }`}
       >
         {empty && (
@@ -203,7 +203,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
               <button
                 key={o.label}
                 onClick={() => send(o.ask)}
-                className="rounded-full bg-[#272727] px-3 py-1.5 text-xs text-[#ddd] transition-colors hover:bg-white/15 hover:text-white"
+                className="rounded-full bg-shade-27 px-3 py-1.5 text-xs text-shade-dd transition-colors hover:bg-white/15 hover:text-white"
               >
                 {t(o.label)}
               </button>
@@ -215,25 +215,25 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
           <div
             key={i}
             className={m.role === 'user'
-              ? 'ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#272727] px-3 py-2 text-sm text-white [overflow-wrap:anywhere]'
-              : 'text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]'}
+              ? 'ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-shade-27 px-3 py-2 text-sm text-white [overflow-wrap:anywhere]'
+              : 'text-sm leading-relaxed text-shade-cc [overflow-wrap:anywhere]'}
           >
             {m.role === 'assistant' ? renderMarkdown(m.content, onSeek) : m.content}
           </div>
         ))}
 
         {busy && (
-          <div className="text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
-            {pending ? renderMarkdown(pending, onSeek) : <span className="text-[#999]">{t('Reading the transcript…')}</span>}
+          <div className="text-sm leading-relaxed text-shade-cc [overflow-wrap:anywhere]">
+            {pending ? renderMarkdown(pending, onSeek) : <span className="text-shade-99">{t('Reading the transcript…')}</span>}
           </div>
         )}
 
         {covered && (
-          <p className="text-xs text-[#999]">
+          <p className="text-xs text-shade-99">
             {t('This video is too long to read whole — the answer covers {from}–{to}.', { from: formatTime(covered[0]), to: formatTime(covered[1]) })}
           </p>
         )}
-        {error && <p className="text-xs text-[#f28b82]">{error}</p>}
+        {error && <p className="text-xs text-tint-f28b82">{error}</p>}
       </div>
 
       <div className="mt-2 flex items-end gap-2">
@@ -248,13 +248,13 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
           }}
           rows={1}
           placeholder={t('Ask about this video')}
-          className="max-h-28 min-h-[2.25rem] flex-1 resize-none rounded-2xl bg-[#121212] px-3 py-2 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
+          className="max-h-28 min-h-[2.25rem] flex-1 resize-none rounded-2xl bg-shade-12 px-3 py-2 text-sm text-white ring-1 ring-white/10 placeholder:text-shade-88 focus:outline-none focus:ring-white/25"
         />
         <button
           onClick={() => void send(draft)}
           disabled={busy || !draft.trim()}
           aria-label={t('Send question')}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#3ea6ff] text-black transition-colors hover:bg-[#65b8ff] disabled:bg-[#272727] disabled:text-[#666]"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-tint-3ea6ff text-black transition-colors hover:bg-tint-65b8ff disabled:bg-shade-27 disabled:text-shade-66"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
@@ -265,7 +265,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
       {!!messages.length && !busy && (
         <button
           onClick={clear}
-          className="mt-1.5 self-start px-1 text-xs text-[#999] transition-colors hover:text-white"
+          className="mt-1.5 self-start px-1 text-xs text-shade-99 transition-colors hover:text-white"
         >
           {t('Clear conversation')}
         </button>

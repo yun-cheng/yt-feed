@@ -42,15 +42,15 @@ export default function ImportDialog({ onClose, onImport }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-24"
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-scrim/60 p-4 pt-24"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl bg-[#212121] p-5 shadow-2xl ring-1 ring-white/10"
+        className="w-full max-w-lg rounded-xl bg-shade-21 p-5 shadow-2xl ring-1 ring-white/10"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-medium text-white">{t('Import videos')}</h2>
-        <p className="mt-1 text-xs text-[#999]">
+        <p className="mt-1 text-xs text-shade-99">
           {t('Paste YouTube links — one per line. Works with watch, youtu.be, shorts and live URLs.')}
         </p>
 
@@ -64,7 +64,7 @@ export default function ImportDialog({ onClose, onImport }: Props) {
           }}
           rows={5}
           placeholder="https://www.youtube.com/watch?v=…"
-          className="mt-3 w-full resize-y rounded-lg bg-[#121212] px-3 py-2 text-sm text-white placeholder-[#555] outline-none ring-1 ring-[#303030] focus:ring-[#3ea6ff]"
+          className="mt-3 w-full resize-y rounded-lg bg-shade-12 px-3 py-2 text-sm text-white placeholder-shade-55 outline-none ring-1 ring-shade-30 focus:ring-tint-3ea6ff"
         />
 
         {result && (
@@ -73,7 +73,7 @@ export default function ImportDialog({ onClose, onImport }: Props) {
               <p className="text-green-400">{tn(result.added.length, 'Imported {n} video.', 'Imported {n} videos.')}</p>
             )}
             {result.skipped.length > 0 && (
-              <p className="text-[#999]">{t('{n} already imported.', { n: result.skipped.length })}</p>
+              <p className="text-shade-99">{t('{n} already imported.', { n: result.skipped.length })}</p>
             )}
             {result.failed.map((f) => (
               <p key={f.input} className="text-red-400 break-all">{f.input} — {f.error}</p>
@@ -84,7 +84,7 @@ export default function ImportDialog({ onClose, onImport }: Props) {
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-full px-4 py-1.5 text-sm text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+            className="rounded-full px-4 py-1.5 text-sm text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
           >
             {result && result.failed.length === 0 ? t('Done') : t('Cancel')}
           </button>

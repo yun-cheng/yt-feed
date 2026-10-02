@@ -99,7 +99,7 @@ function CommentBody({ text, onSeek, videoId, compact }: { text: string; onSeek:
   return (
     <>
       <div
-        className={`whitespace-pre-wrap ${compact ? 'text-[13px] leading-snug' : 'text-sm leading-relaxed'} text-[#f1f1f1] [overflow-wrap:anywhere]${
+        className={`whitespace-pre-wrap ${compact ? 'text-[13px] leading-snug' : 'text-sm leading-relaxed'} text-shade-f1 [overflow-wrap:anywhere]${
           long && !open ? ' line-clamp-4' : ''
         }`}
       >
@@ -110,7 +110,7 @@ function CommentBody({ text, onSeek, videoId, compact }: { text: string; onSeek:
           {long && (
             <button
               onClick={() => setOpen((v) => !v)}
-              className="text-[#aaa] hover:text-white"
+              className="text-shade-aa hover:text-white"
             >
               {open ? t('Show less') : t('Read more')}
             </button>
@@ -119,7 +119,7 @@ function CommentBody({ text, onSeek, videoId, compact }: { text: string; onSeek:
             <button
               onClick={toggleTranslate}
               disabled={translation?.status === 'loading'}
-              className="text-[#aaa] hover:text-white disabled:cursor-default disabled:hover:text-[#aaa]"
+              className="text-shade-aa hover:text-white disabled:cursor-default disabled:hover:text-shade-aa"
             >
               {translation?.status === 'loading' ? t('Translating…')
                 : translation?.status === 'error' ? t('Couldn\'t translate — try again')
@@ -176,11 +176,11 @@ function Thread({
           className={`${avatar} shrink-0 rounded-full ${onChannelClick && comment.author_id ? 'cursor-pointer' : ''}`}
         />
       ) : (
-        <div className={`${avatar} shrink-0 rounded-full bg-[#333]`} />
+        <div className={`${avatar} shrink-0 rounded-full bg-shade-33`} />
       )}
       <div className="min-w-0 flex-1">
         {comment.is_pinned && (
-          <div className="mb-0.5 flex items-center gap-1 text-xs text-[#aaa]">
+          <div className="mb-0.5 flex items-center gap-1 text-xs text-shade-aa">
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M16 3v2l1 1v4l3 3v2h-6v6l-1 1-1-1v-6H6v-2l3-3V6l1-1V3z" />
             </svg>
@@ -193,26 +193,26 @@ function Thread({
             disabled={!comment.author_id || !onChannelClick}
             className={`text-xs font-medium ${
               comment.author_is_uploader
-                ? 'rounded-full bg-[#333] px-2 py-0.5 text-white'
-                : 'text-[#f1f1f1] hover:text-[#aaa] disabled:hover:text-[#f1f1f1]'
+                ? 'rounded-full bg-shade-33 px-2 py-0.5 text-white'
+                : 'text-shade-f1 hover:text-shade-aa disabled:hover:text-shade-f1'
             }`}
           >
             {comment.author}
           </button>
           {comment.author_is_verified && (
-            <svg className="h-3.5 w-3.5 text-[#aaa]" viewBox="0 0 24 24" fill="currentColor" aria-label={t('Verified')}>
+            <svg className="h-3.5 w-3.5 text-shade-aa" viewBox="0 0 24 24" fill="currentColor" aria-label={t('Verified')}>
               <path d="M12 2l2.2 2.3 3.2-.4.5 3.2L20.8 9 19 12l1.8 3-2.9 1.9-.5 3.2-3.2-.4L12 22l-2.2-2.3-3.2.4-.5-3.2L3.2 15 5 12 3.2 9l2.9-1.9.5-3.2 3.2.4z" />
-              <path d="M10.6 15.4l-2.9-2.9 1.1-1.1 1.8 1.8 4-4 1.1 1.1z" fill="#0f0f0f" />
+              <path d="M10.6 15.4l-2.9-2.9 1.1-1.1 1.8 1.8 4-4 1.1 1.1z" className="fill-shade-0f" />
             </svg>
           )}
-          <span className="text-xs text-[#aaa]">{comment.time_text}</span>
+          <span className="text-xs text-shade-aa">{comment.time_text}</span>
         </div>
 
         <div className="mt-1">
           <CommentBody text={comment.text} onSeek={onSeek} videoId={videoId} compact={compact} />
         </div>
 
-        <div className="mt-1.5 flex items-center gap-3 text-xs text-[#aaa]">
+        <div className="mt-1.5 flex items-center gap-3 text-xs text-shade-aa">
           {comment.like_count > 0 && (
             <span className="flex items-center gap-1">
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -222,7 +222,7 @@ function Thread({
             </span>
           )}
           {comment.hearted && (
-            <span title={t('Hearted by creator')} className="text-[#ff4e45]">
+            <span title={t('Hearted by creator')} className="text-tint-ff4e45">
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 21s-7-4.5-9-9a5 5 0 019-3 5 5 0 019 3c-2 4.5-9 9-9 9z" />
               </svg>
@@ -231,7 +231,7 @@ function Thread({
           {total > 0 && (
             <button
               onClick={() => setOpenReplies((v) => !v)}
-              className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]"
+              className="font-medium text-tint-3ea6ff hover:text-tint-6cbcff"
             >
               {openReplies ? tn(total, 'Hide reply', 'Hide replies') : tn(total, '{n} reply', '{n} replies')}
             </button>
@@ -244,7 +244,7 @@ function Thread({
           comment a reply answers, once the indent has stopped growing. */}
       {shown.length > 0 && (
         <div
-          className={`${compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3'} border-l border-[#3f3f3f] ${
+          className={`${compact ? 'mt-2 space-y-2' : 'mt-3 space-y-3'} border-l border-shade-3f ${
             depth < MAX_INDENT ? (compact ? 'ml-2.5 pl-2.5' : 'ml-4 pl-4') : 'pl-2'
           }`}
         >
@@ -395,24 +395,24 @@ export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compa
   return (
     <div>
       {loading && (
-        <div className={`px-3 ${compact ? 'py-3 text-xs' : 'py-6 text-sm'} text-[#aaa]`}>{t('Reading the comments…')}</div>
+        <div className={`px-3 ${compact ? 'py-3 text-xs' : 'py-6 text-sm'} text-shade-aa`}>{t('Reading the comments…')}</div>
       )}
 
       {!loading && failed && (
-        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 ${note} text-[#aaa]`}>
+        <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3 ${note} text-shade-aa`}>
           {t('Couldn\'t load the comments.')}
-          <button onClick={feed.retry} className="font-medium text-[#3ea6ff] hover:text-[#6cbcff]">
+          <button onClick={feed.retry} className="font-medium text-tint-3ea6ff hover:text-tint-6cbcff">
             Try again
           </button>
         </div>
       )}
 
       {!loading && !failed && data?.disabled && (
-        <div className={`px-3 ${note} text-[#aaa]`}>{t('Comments are turned off for this video.')}</div>
+        <div className={`px-3 ${note} text-shade-aa`}>{t('Comments are turned off for this video.')}</div>
       )}
 
       {!loading && !failed && data && !data.disabled && threads.length === 0 && (
-        <div className={`px-3 ${note} text-[#aaa]`}>{t('No comments yet.')}</div>
+        <div className={`px-3 ${note} text-shade-aa`}>{t('No comments yet.')}</div>
       )}
 
       {!loading && !failed && threads.length > 0 && (
@@ -420,7 +420,7 @@ export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compa
           {/* Not a button. The replies are already on their way; this
               only explains why reply counts appear a few seconds after the
               comments they belong to. */}
-          {deepening && <p className={`${compact ? 'mb-2' : 'mb-3'} px-3 text-xs text-[#999]`}>{t('loading replies…')}</p>}
+          {deepening && <p className={`${compact ? 'mb-2' : 'mb-3'} px-3 text-xs text-shade-99`}>{t('loading replies…')}</p>}
 
           <div className={`${compact ? 'space-y-3' : 'space-y-5'} px-3`}>
             {threads.map((c) => (
@@ -429,7 +429,7 @@ export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compa
           </div>
 
           {data?.capped && (
-            <p className={`${compact ? 'mt-3' : 'mt-5'} px-3 text-xs text-[#999]`}>
+            <p className={`${compact ? 'mt-3' : 'mt-5'} px-3 text-xs text-shade-99`}>
               {sort === 'top' ? t('The top {n} — the app doesn\'t page through the rest.', { n: threads.length }) : t('The newest {n} — the app doesn\'t page through the rest.', { n: threads.length })}
             </p>
           )}

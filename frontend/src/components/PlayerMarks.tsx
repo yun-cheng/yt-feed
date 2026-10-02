@@ -674,7 +674,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
       ref={box}
       data-testid="loop-menu"
       role="menu"
-      className="absolute bottom-full right-0 z-40 mb-2 min-w-[15rem] overflow-hidden rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10"
+      className="absolute bottom-full right-0 z-40 mb-2 min-w-[15rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
     >
       <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
         {t('Repeat')}

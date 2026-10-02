@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,8 +12,17 @@
     <link rel="preconnect" href="https://googlevideo.com" />
     <link rel="dns-prefetch" href="https://googlevideo.com" />
     <title>My Feed</title>
+    <!-- The Theme setting as last seen (lib/theme.ts keeps the copy), applied
+         before the first paint so a light page doesn't flash dark on load. -->
+    <script>
+      try {
+        var theme = localStorage.getItem('ytfeed:theme')
+        if (theme === 'system') theme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+        if (theme === 'light') document.documentElement.dataset.theme = 'light'
+      } catch (e) {}
+    </script>
   </head>
-  <body class="bg-[#0f0f0f] text-white">
+  <body class="bg-shade-0f text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

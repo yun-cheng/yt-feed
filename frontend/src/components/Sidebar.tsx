@@ -144,7 +144,7 @@ const PlaylistsIcon = () => (
 const HamburgerButton = ({ onClick, className = '' }: { onClick: () => void; className?: string }) => (
   <button
     onClick={onClick}
-    className={`text-[#aaa] hover:text-white transition-colors flex-shrink-0 ${className}`}
+    className={`text-shade-aa hover:text-white transition-colors flex-shrink-0 ${className}`}
     aria-label={t('Toggle sidebar')}
   >
     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,8 +193,8 @@ const WatchStatusSection = ({
         })}
         className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
           allSelected
-            ? 'text-white hover:bg-[#2a2a2a]'
-            : 'text-[#999] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+            ? 'text-white hover:bg-shade-2a'
+            : 'text-shade-99 hover:text-shade-cc hover:bg-shade-1e'
         }`}
       >
         <span>👁️</span>
@@ -213,7 +213,7 @@ const WatchStatusSection = ({
               className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
                 active
                   ? 'bg-white text-black font-medium'
-                  : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+                  : 'bg-shade-27 text-shade-dd hover:bg-shade-3a'
               }`}
             >
               <span>{w.icon}</span>
@@ -246,8 +246,8 @@ const LengthSection = ({
         })}
         className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
           allSelected
-            ? 'text-white hover:bg-[#2a2a2a]'
-            : 'text-[#999] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+            ? 'text-white hover:bg-shade-2a'
+            : 'text-shade-99 hover:text-shade-cc hover:bg-shade-1e'
         }`}
       >
         <span>⏳</span>
@@ -267,7 +267,7 @@ const LengthSection = ({
               className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
                 active
                   ? 'bg-white text-black font-medium'
-                  : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+                  : 'bg-shade-27 text-shade-dd hover:bg-shade-3a'
               }`}
             >
               <span>{l.icon}</span>
@@ -281,7 +281,7 @@ const LengthSection = ({
 }
 
 const ToggleSwitch = ({ on }: { on: boolean }) => (
-  <span className={`relative inline-block w-9 h-5 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-blue-500' : 'bg-[#3f3f3f]'}`}>
+  <span className={`relative inline-block w-9 h-5 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-blue-500' : 'bg-shade-3f'}`}>
     <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${on ? 'translate-x-4' : ''}`} />
   </span>
 )
@@ -293,7 +293,7 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
   if (!onToggle) return null
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#999] px-1 -mx-1">
+      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-shade-99 px-1 -mx-1">
         <span>📝</span>
         <span>{t('Summary')}</span>
       </div>
@@ -301,7 +301,7 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
         onClick={onToggle}
         aria-pressed={!!on}
         className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
-          on ? 'bg-white text-black font-medium' : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+          on ? 'bg-white text-black font-medium' : 'bg-shade-27 text-shade-dd hover:bg-shade-3a'
         }`}
       >
         <span>📝</span>
@@ -352,7 +352,7 @@ const PresetSection = ({
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#999] px-1 -mx-1">
+      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-shade-99 px-1 -mx-1">
         <span>🔖</span>
         <span>{t('Presets')}</span>
         {onSave && !naming && (
@@ -379,7 +379,7 @@ const PresetSection = ({
             placeholder={t('Name these filters')}
             aria-label={t('Preset name')}
             maxLength={60}
-            className="w-full px-2 py-1 text-sm rounded bg-[#121212] border border-[#3a3a3a] text-[#ddd] placeholder-[#555] focus:outline-none focus:border-[#666]"
+            className="w-full px-2 py-1 text-sm rounded bg-shade-12 border border-shade-3a text-shade-dd placeholder-shade-55 focus:outline-none focus:border-shade-66"
           />
           {/* Saving under a name you already used replaces that preset — said
               here rather than discovered afterwards. */}
@@ -399,7 +399,7 @@ const PresetSection = ({
             <span
               key={p.id}
               className={`inline-flex items-center rounded-full text-sm transition-colors ${
-                active ? 'bg-white text-black font-medium' : 'bg-[#272727] text-[#ddd]'
+                active ? 'bg-white text-black font-medium' : 'bg-shade-27 text-shade-dd'
               }`}
             >
               <button
@@ -426,7 +426,7 @@ const PresetSection = ({
                     ? 'border-red-500 bg-red-600 text-white text-[11px]'
                     : active
                       ? 'border-black/15 text-black/60 hover:bg-black/10 hover:text-black'
-                      : 'border-[#3a3a3a] text-[#999] hover:bg-white/10 hover:text-[#ddd]'
+                      : 'border-shade-3a text-shade-99 hover:bg-white/10 hover:text-shade-dd'
                 }`}
               >
                 {arming ? 'delete?' : '×'}
@@ -452,9 +452,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
 
   if (collapsed) {
     return (
-      <aside className="w-16 bg-[#0f0f0f] flex-shrink-0 flex flex-col h-full overflow-y-auto">
+      <aside className="w-16 bg-shade-0f flex-shrink-0 flex flex-col h-full overflow-y-auto">
         {/* Menu toggle + logo */}
-        <div className="sticky top-0 z-10 flex flex-col items-center pt-2 gap-1 flex-shrink-0 bg-[#0f0f0f]">
+        <div className="sticky top-0 z-10 flex flex-col items-center pt-2 gap-1 flex-shrink-0 bg-shade-0f">
           <HamburgerButton onClick={onToggleCollapse} className="p-2" />
           <button
             onClick={onHome}
@@ -468,7 +468,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('feed')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-              page === 'feed' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'feed' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <HomeIcon />
@@ -477,7 +477,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('channels')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-              page === 'channels' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'channels' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <ChannelsIcon />
@@ -486,7 +486,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('watchlater')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'watchlater' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'watchlater' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <WatchLaterIcon />
@@ -500,7 +500,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('downloads')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'downloads' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'downloads' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <DownloadsIcon />
@@ -514,7 +514,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('playlists')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'playlists' || page === 'playlist' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'playlists' || page === 'playlist' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <PlaylistsIcon />
@@ -528,7 +528,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('imported')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'imported' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'imported' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <ImportedIcon />
@@ -542,7 +542,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('local')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'local' || page === 'localfolder' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'local' || page === 'localfolder' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <LocalIcon />
@@ -556,7 +556,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('history')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-              page === 'history' ? 'text-white' : 'text-[#999] hover:text-white'
+              page === 'history' ? 'text-white' : 'text-shade-99 hover:text-white'
             }`}
           >
             <HistoryIcon />
@@ -567,7 +567,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
               onClick={onToggleShowHidden}
               title={showHidden ? t('Hiding hidden channels') : t('Show hidden channels')}
               className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-                showHidden ? 'text-white' : 'text-[#999] hover:text-white'
+                showHidden ? 'text-white' : 'text-shade-99 hover:text-white'
               }`}
             >
               <EyeIcon />
@@ -583,9 +583,9 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
     // One scroll for the whole thing: the nav scrolls away with the filters
     // rather than holding the top and leaving them a strip below it. Only the
     // logo row stays, level with the top bar beside it.
-    <aside className="w-60 bg-[#0f0f0f] flex-shrink-0 h-full overflow-y-auto">
+    <aside className="w-60 bg-shade-0f flex-shrink-0 h-full overflow-y-auto">
       {/* Menu toggle + logo */}
-      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 h-14 bg-[#0f0f0f]">
+      <div className="sticky top-0 z-10 flex items-center gap-3 px-4 h-14 bg-shade-0f">
         <HamburgerButton onClick={onToggleCollapse} className="hidden md:block" />
         <button
           onClick={onHome}
@@ -603,8 +603,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('feed')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'feed'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <HomeIcon />
@@ -614,8 +614,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('channels')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'channels'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <ChannelsIcon />
@@ -625,14 +625,14 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('watchlater')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'watchlater'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <WatchLaterIcon />
           {t('Watch Later')}
           {!!watchLaterCount && (
-            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+            <span className="ml-auto text-xs bg-shade-3a text-shade-aa rounded-full px-2 py-0.5 font-medium">
               {watchLaterCount}
             </span>
           )}
@@ -641,14 +641,14 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('downloads')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'downloads'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <DownloadsIcon />
           {t('Downloads')}
           {!!downloadsCount && (
-            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+            <span className="ml-auto text-xs bg-shade-3a text-shade-aa rounded-full px-2 py-0.5 font-medium">
               {downloadsCount}
             </span>
           )}
@@ -657,14 +657,14 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('playlists')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'playlists' || page === 'playlist'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <PlaylistsIcon />
           {t('Playlists')}
           {!!playlistsCount && (
-            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+            <span className="ml-auto text-xs bg-shade-3a text-shade-aa rounded-full px-2 py-0.5 font-medium">
               {playlistsCount}
             </span>
           )}
@@ -673,14 +673,14 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('imported')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'imported'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <ImportedIcon />
           {t('Imported')}
           {!!importedCount && (
-            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+            <span className="ml-auto text-xs bg-shade-3a text-shade-aa rounded-full px-2 py-0.5 font-medium">
               {importedCount}
             </span>
           )}
@@ -689,14 +689,14 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('local')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'local' || page === 'localfolder'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <LocalIcon />
           {t('Local')}
           {!!localFoldersCount && (
-            <span className="ml-auto text-xs bg-[#3a3a3a] text-[#aaa] rounded-full px-2 py-0.5 font-medium">
+            <span className="ml-auto text-xs bg-shade-3a text-shade-aa rounded-full px-2 py-0.5 font-medium">
               {localFoldersCount}
             </span>
           )}
@@ -705,8 +705,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('history')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'history'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <HistoryIcon />
@@ -716,8 +716,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           onClick={() => onPageChange('settings')}
           className={`w-full flex items-center gap-4 px-4 py-2.5 text-sm transition-colors ${
             page === 'settings'
-              ? 'bg-[#272727] text-white font-medium'
-              : 'text-[#aaa] hover:bg-[#1a1a1a] hover:text-white'
+              ? 'bg-shade-27 text-white font-medium'
+              : 'text-shade-aa hover:bg-shade-1a hover:text-white'
           }`}
         >
           <SettingsIcon />
@@ -725,7 +725,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
         </button>
       </div>
 
-      <div className="border-t border-[#272727] mx-4" />
+      <div className="border-t border-shade-27 mx-4" />
 
       {/* Channel page: this channel's own topic labels (drawn from video titles),
           replacing the global taxonomy, which is meaningless when already scoped
@@ -753,24 +753,24 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             <SummarySection on={summarisedOnly} onToggle={onToggleSummarised} />
           )}
           <div>
-          <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#999]">
+          <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-shade-99">
             <span>🏷️</span>
             <span>{t('Topics')}</span>
             {!!selectedLabel && (
               <button
                 onClick={() => onToggleLabel?.(selectedLabel)}
-                className="ml-auto text-[10px] normal-case tracking-normal font-normal text-[#999] hover:text-white"
+                className="ml-auto text-[10px] normal-case tracking-normal font-normal text-shade-99 hover:text-white"
               >
                 {t('clear')}
               </button>
             )}
           </div>
           {channelLabels === null || channelLabels === undefined ? (
-            <p className="text-xs text-[#999] animate-pulse">
+            <p className="text-xs text-shade-99 animate-pulse">
               {channelLabelsBuilding ? t('Finding topics…') : t('Loading…')}
             </p>
           ) : channelLabels.length === 0 ? (
-            <p className="text-xs text-[#999]">
+            <p className="text-xs text-shade-99">
               {channelHasTopics ? t('No topics in this time range.') : t('No topics found for this channel.')}
             </p>
           ) : (
@@ -784,11 +784,11 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                     className={`inline-flex items-center gap-1 px-2.5 py-1 text-sm rounded-full transition-colors ${
                       active
                         ? 'bg-white text-black font-medium'
-                        : 'bg-[#272727] text-[#ddd] hover:bg-[#3a3a3a]'
+                        : 'bg-shade-27 text-shade-dd hover:bg-shade-3a'
                     }`}
                   >
                     <span>{name}</span>
-                    <span className={`text-[10px] ${active ? 'text-black/60' : 'text-[#999]'}`}>
+                    <span className={`text-[10px] ${active ? 'text-black/60' : 'text-shade-99'}`}>
                       {count}
                     </span>
                   </button>
@@ -804,7 +804,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
         {showHiddenToggle && (
           <button
             onClick={onToggleShowHidden}
-            className="w-full flex items-center gap-3 pb-4 border-b border-[#272727] text-left text-[#aaa] hover:text-white transition-colors"
+            className="w-full flex items-center gap-3 pb-4 border-b border-shade-27 text-left text-shade-aa hover:text-white transition-colors"
           >
             <ToggleSwitch on={!!showHidden} />
             <span className="text-sm">{t('Show hidden channels')}</span>
@@ -850,8 +850,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                     onClick={toggleGroup}
                     className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
                       allSelected
-                        ? 'text-white hover:bg-[#2a2a2a]'
-                        : 'text-[#999] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+                        ? 'text-white hover:bg-shade-2a'
+                        : 'text-shade-99 hover:text-shade-cc hover:bg-shade-1e'
                     }`}
                   >
                     <span>{icon}</span>
@@ -879,10 +879,10 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                       key={tag.name}
                       className={`inline-flex items-center rounded-full text-sm transition-colors ${
                         excluded
-                          ? 'bg-[#5c2626] text-[#ffc9c9] font-medium'
+                          ? 'bg-tint-5c2626 text-tint-ffc9c9 font-medium'
                           : active
                             ? 'bg-white text-black font-medium'
-                            : 'bg-[#272727] text-[#ddd]'
+                            : 'bg-shade-27 text-shade-dd'
                       }`}
                     >
                       <button
@@ -899,7 +899,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                             reflows the whole group. */}
                         <span className={excluded ? 'line-through decoration-2' : ''}>{tag.name}</span>
                         <span className={`text-[10px] ${
-                          excluded ? 'text-white/60' : active ? 'text-black/60' : 'text-[#999]'
+                          excluded ? 'text-white/60' : active ? 'text-black/60' : 'text-shade-99'
                         }`}>
                           {count}
                         </span>
@@ -914,7 +914,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                             ? 'border-white/25 text-white hover:bg-white/10'
                             : active
                               ? 'border-black/15 text-black/60 hover:bg-black/10 hover:text-black'
-                              : 'border-[#3a3a3a] text-[#999] hover:bg-white/10 hover:text-[#ddd]'
+                              : 'border-shade-3a text-shade-99 hover:bg-white/10 hover:text-shade-dd'
                         }`}
                       >
                         −

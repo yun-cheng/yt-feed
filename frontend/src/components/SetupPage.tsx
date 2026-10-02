@@ -79,19 +79,19 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
     }
   }
 
-  const field = 'w-full rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-white placeholder:text-[#888] disabled:opacity-50'
+  const field = 'w-full rounded-lg border border-shade-3f bg-shade-1c px-3 py-2 font-mono text-xs text-white placeholder:text-shade-88 disabled:opacity-50'
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-[#0f0f0f] px-6 py-10">
+    <div className="flex min-h-dvh items-center justify-center bg-shade-0f px-6 py-10">
       <div className="w-full max-w-md">
         <h1 className="text-2xl font-bold text-white">YT Feed</h1>
-        <p className="mt-2 text-sm leading-relaxed text-[#aaa]">
+        <p className="mt-2 text-sm leading-relaxed text-shade-aa">
           {t('Nobody owns this deployment yet. Claim it to become its owner — after that, nobody else can sign in unless you invite them.')}
         </p>
 
         <div className="mt-6">
           <label className="text-sm font-medium text-white">{t('Setup token')}</label>
-          <p className="mt-0.5 text-xs leading-relaxed text-[#999]">
+          <p className="mt-0.5 text-xs leading-relaxed text-shade-99">
             {t('Printed in the server’s log when it first started. With Docker: docker compose logs app | grep setup')}
           </p>
           <input
@@ -103,21 +103,21 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
             className={`mt-2 ${field}`}
           />
           {accepted === false && (
-            <p className="mt-1.5 text-xs text-[#e0a0a0]">
+            <p className="mt-1.5 text-xs text-tint-e0a0a0">
               {t('That isn’t the token this server is expecting.')}
             </p>
           )}
           {accepted === true && (
-            <p className="mt-1.5 text-xs text-[#7ac77a]">{t('Token accepted.')}</p>
+            <p className="mt-1.5 text-xs text-tint-7ac77a">{t('Token accepted.')}</p>
           )}
         </div>
 
         {showOauth ? (
-          <div className="mt-6 rounded-xl border border-[#2a2a2a] bg-[#161616] px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-[#999]">
+          <div className="mt-6 rounded-xl border border-shade-2a bg-shade-16 px-4 py-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-shade-99">
               {t('Sign in with Google (optional)')}
             </p>
-            <p className="mt-1.5 text-xs leading-relaxed text-[#999]">
+            <p className="mt-1.5 text-xs leading-relaxed text-shade-99">
               {t('Needed only to import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console, enable the YouTube Data API, and register this address + /api/auth/callback as a redirect URI. You can add this later in Settings.')}
             </p>
             <input
@@ -143,14 +143,14 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
         ) : (
           <button
             onClick={() => setShowOauth(true)}
-            className="mt-4 cursor-pointer text-xs text-[#999] underline underline-offset-4 hover:text-white"
+            className="mt-4 cursor-pointer text-xs text-shade-99 underline underline-offset-4 hover:text-white"
           >
             {t('Add a Google OAuth client too (optional)')}
           </button>
         )}
 
         {error && (
-          <div className="mt-4 rounded-lg border border-[#5c2b2b] bg-[#2a1a1a] px-3 py-2 text-xs text-[#e0a0a0]">
+          <div className="mt-4 rounded-lg border border-tint-5c2b2b bg-tint-2a1a1a px-3 py-2 text-xs text-tint-e0a0a0">
             {error}
           </div>
         )}
@@ -163,7 +163,7 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
           {busy ? t('Claiming…') : t('Claim this deployment')}
         </button>
 
-        <p className="mt-4 text-xs leading-relaxed text-[#999]">
+        <p className="mt-4 text-xs leading-relaxed text-shade-99">
           {t('Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.')}
         </p>
       </div>

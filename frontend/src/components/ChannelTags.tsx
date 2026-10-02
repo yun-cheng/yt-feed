@@ -84,7 +84,7 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
       {tags.map((tag) => (
         <span
           key={tag}
-          className="group flex items-center gap-1 pl-2 pr-1 py-0.5 text-[11px] bg-[#272727] text-[#ccc] rounded-full"
+          className="group flex items-center gap-1 pl-2 pr-1 py-0.5 text-[11px] bg-shade-27 text-shade-cc rounded-full"
         >
           <span>{iconFor(tag)}</span>
           {tag}
@@ -92,7 +92,7 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
             onClick={() => send(tag, 'DELETE')}
             disabled={busy === tag}
             title={`Remove ${tag}`}
-            className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[#999] hover:text-white hover:bg-[#444] transition-colors disabled:opacity-40"
+            className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-shade-99 hover:text-white hover:bg-shade-44 transition-colors disabled:opacity-40"
           >
             ×
           </button>
@@ -105,44 +105,44 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
           onClick={() => send(tag, 'POST')}
           disabled={busy === tag}
           title={`Add ${tag}`}
-          className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-dashed border-[#444] text-[#999] hover:text-[#ccc] hover:border-[#666] transition-colors disabled:opacity-40"
+          className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-dashed border-shade-44 text-shade-99 hover:text-shade-cc hover:border-shade-66 transition-colors disabled:opacity-40"
         >
           <span>{iconFor(tag)}</span>
           {tag}
-          <span className="text-[#999]">+</span>
+          <span className="text-shade-99">+</span>
         </button>
       ))}
 
       <div className="relative" ref={pickerRef}>
         <button
           onClick={() => setPickerOpen((o) => !o)}
-          className="px-2 py-0.5 text-[11px] rounded-full text-[#999] hover:text-[#ccc] hover:bg-[#272727] transition-colors"
+          className="px-2 py-0.5 text-[11px] rounded-full text-shade-99 hover:text-shade-cc hover:bg-shade-27 transition-colors"
         >
           {t('+ Add label')}
         </button>
 
         {pickerOpen && (
-          <div className="absolute left-0 top-full mt-1 z-30 w-60 max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-[#333] bg-[#1a1a1a] p-2 shadow-xl">
+          <div className="absolute left-0 top-full mt-1 z-30 w-60 max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-shade-33 bg-shade-1a p-2 shadow-xl">
             <input
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('Search labels…')}
-              className="w-full mb-2 px-2 py-1 text-xs bg-[#272727] text-white rounded-lg outline-none placeholder:text-[#888]"
+              className="w-full mb-2 px-2 py-1 text-xs bg-shade-27 text-white rounded-lg outline-none placeholder:text-shade-88"
             />
             {grouped.length === 0 && (
-              <p className="px-1 py-2 text-[11px] text-[#999]">{t('No matching labels.')}</p>
+              <p className="px-1 py-2 text-[11px] text-shade-99">{t('No matching labels.')}</p>
             )}
             {grouped.map(([group, items]) => (
               <div key={group} className="mb-1.5">
-                <p className="px-1 mb-1 text-[10px] uppercase tracking-wider text-[#999]">{group}</p>
+                <p className="px-1 mb-1 text-[10px] uppercase tracking-wider text-shade-99">{group}</p>
                 <div className="flex flex-wrap gap-1">
                   {items.map((t) => (
                     <button
                       key={t.name}
                       onClick={() => send(t.name, 'POST')}
                       disabled={busy === t.name}
-                      className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-[#272727] text-[#ccc] hover:bg-[#3a3a3a] transition-colors disabled:opacity-40"
+                      className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full bg-shade-27 text-shade-cc hover:bg-shade-3a transition-colors disabled:opacity-40"
                     >
                       <span>{t.icon}</span>
                       {t.name}

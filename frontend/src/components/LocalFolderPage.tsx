@@ -30,7 +30,7 @@ export default function LocalFolderPage({ folder, videos, scanning, loading, onB
       <div className="mb-4 flex items-center gap-3">
         <button
           onClick={onBack}
-          className="rounded-full p-1.5 text-[#aaa] transition-colors hover:bg-[#272727] hover:text-white"
+          className="rounded-full p-1.5 text-shade-aa transition-colors hover:bg-shade-27 hover:text-white"
           title={t('All local folders')}
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -39,12 +39,12 @@ export default function LocalFolderPage({ folder, videos, scanning, loading, onB
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold text-white">{folder?.name ?? t('Local folder')}</h2>
-          <p className="truncate text-xs text-[#999]" title={folder?.path}>{folder?.path}</p>
+          <p className="truncate text-xs text-shade-99" title={folder?.path}>{folder?.path}</p>
         </div>
-        <span className="flex-shrink-0 text-xs text-[#999]">{tn(videos.length, '{n} video', '{n} videos')}</span>
+        <span className="flex-shrink-0 text-xs text-shade-99">{tn(videos.length, '{n} video', '{n} videos')}</span>
         <button
           onClick={onRescan}
-          className="flex-shrink-0 rounded-full border border-[#303030] px-3 py-1.5 text-xs text-[#aaa] transition-colors hover:bg-[#272727] hover:text-white"
+          className="flex-shrink-0 rounded-full border border-shade-30 px-3 py-1.5 text-xs text-shade-aa transition-colors hover:bg-shade-27 hover:text-white"
         >
           {t('Rescan')}
         </button>
@@ -56,7 +56,7 @@ export default function LocalFolderPage({ folder, videos, scanning, loading, onB
         </div>
       )}
       {scanning && (
-        <div className="mb-4 flex items-center gap-2 text-xs text-[#999]">
+        <div className="mb-4 flex items-center gap-2 text-xs text-shade-99">
           <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -66,9 +66,9 @@ export default function LocalFolderPage({ folder, videos, scanning, loading, onB
       )}
 
       {loading && videos.length === 0 ? (
-        <div className="flex h-64 items-center justify-center text-[#aaa]">{t('Scanning folder…')}</div>
+        <div className="flex h-64 items-center justify-center text-shade-aa">{t('Scanning folder…')}</div>
       ) : videos.length === 0 ? (
-        <div className="flex h-64 items-center justify-center text-[#aaa]">{t('No videos in this folder.')}</div>
+        <div className="flex h-64 items-center justify-center text-shade-aa">{t('No videos in this folder.')}</div>
       ) : (
         <div className="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(360px,1fr))]">
           {videos.map((v) => (
@@ -122,9 +122,9 @@ function LocalVideoCard({ video, hovered, onHover, onOpen }: {
       onMouseLeave={() => onHover(null)}
       onClick={onOpen}
     >
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-[#1c1c1c]">
+      <div data-theme="dark" className="relative aspect-video w-full overflow-hidden rounded-xl bg-shade-1c">
         {thumbFailed ? (
-          <div className="flex h-full w-full items-center justify-center text-[#666]">
+          <div className="flex h-full w-full items-center justify-center text-shade-66">
             <svg className="h-10 w-10" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </div>
         ) : (
@@ -168,10 +168,10 @@ function LocalVideoCard({ video, hovered, onHover, onOpen }: {
       </div>
 
       <div className="mt-2">
-        <h3 className="line-clamp-2 text-sm font-medium leading-5 text-white group-hover:text-[#3ea6ff]">
+        <h3 className="line-clamp-2 text-sm font-medium leading-5 text-white group-hover:text-tint-3ea6ff">
           {video.title}
         </h3>
-        <div className="mt-1 flex items-center gap-1.5 text-xs text-[#999]">
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-shade-99">
           {video.sub_dir && (
             <>
               <span className="truncate" title={video.sub_dir}>{video.sub_dir}</span>
@@ -179,7 +179,7 @@ function LocalVideoCard({ video, hovered, onHover, onOpen }: {
             </>
           )}
           <span>{formatSize(video.filesize)}</span>
-          {!video.probed && <span className="text-[#999]">· {t('measuring…')}</span>}
+          {!video.probed && <span className="text-shade-99">· {t('measuring…')}</span>}
         </div>
       </div>
     </div>

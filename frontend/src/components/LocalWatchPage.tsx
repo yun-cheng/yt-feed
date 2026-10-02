@@ -170,6 +170,7 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
       <div
         ref={boxRef}
         tabIndex={-1}
+        data-theme="dark"
         className="relative w-full shrink-0 bg-black outline-none aspect-video [&:fullscreen]:aspect-auto"
         onMouseEnter={() => setHovering(true)}
         onMouseLeave={() => setHovering(false)}
@@ -209,14 +210,14 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
         <div className="flex flex-col gap-6 px-4 py-4 md:px-6 lg:flex-row">
           <div className="min-w-0 flex-1 lg:max-w-[1100px]">
             <h1 className="text-xl font-semibold text-white">{video.title}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-shade-aa">
               {folder && <span className="text-white">{folder.name}</span>}
               {video.sub_dir && <span>· {video.sub_dir}</span>}
               <span>· {formatSize(video.filesize)}</span>
               {video.duration_seconds > 0 && <span>· {formatTime(video.duration_seconds)}</span>}
               {video.modified_at && <span>· {video.modified_at.slice(0, 10)}</span>}
             </div>
-            <p className="mt-3 break-all rounded-lg bg-[#121212] px-3 py-2 font-mono text-xs text-[#999]">
+            <p className="mt-3 break-all rounded-lg bg-shade-12 px-3 py-2 font-mono text-xs text-shade-99">
               {folder ? `${folder.path}/${video.rel_path}` : video.rel_path}
             </p>
           </div>
@@ -229,9 +230,9 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
                   <button
                     key={s.id}
                     onClick={() => onSelect(s)}
-                    className="flex gap-2 rounded-lg p-1 text-left transition-colors hover:bg-[#1c1c1c]"
+                    className="flex gap-2 rounded-lg p-1 text-left transition-colors hover:bg-shade-1c"
                   >
-                    <div className="relative aspect-video w-[168px] flex-shrink-0 overflow-hidden rounded bg-[#1c1c1c]">
+                    <div data-theme="dark" className="relative aspect-video w-[168px] flex-shrink-0 overflow-hidden rounded bg-shade-1c">
                       <img src={s.thumbnail_url} alt="" loading="lazy" className="h-full w-full object-cover" />
                       {s.duration_seconds > 0 && (
                         <span className="absolute bottom-1 right-1 rounded bg-black/80 px-1 text-[11px] text-white">
@@ -246,7 +247,7 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="line-clamp-2 text-sm text-white">{s.title}</div>
-                      <div className="mt-0.5 text-xs text-[#999]">{formatSize(s.filesize)}</div>
+                      <div className="mt-0.5 text-xs text-shade-99">{formatSize(s.filesize)}</div>
                     </div>
                   </button>
                 ))}

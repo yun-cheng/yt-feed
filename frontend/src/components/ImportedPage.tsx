@@ -29,12 +29,12 @@ export default function ImportedPage({
 }: Props) {
   if (totalCount === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
-        <svg className="w-12 h-12 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-shade-aa">
+        <svg className="w-12 h-12 text-shade-99" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 15V3m0 12l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
         </svg>
         <p className="text-sm">{t('No imported videos yet.')}</p>
-        <button onClick={onImport} className="text-xs text-[#3ea6ff] hover:underline">
+        <button onClick={onImport} className="text-xs text-tint-3ea6ff hover:underline">
           {t('Paste a YouTube link to import one')}
         </button>
       </div>
@@ -43,7 +43,7 @@ export default function ImportedPage({
 
   if (videos.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-[#999] text-sm">
+      <div className="flex items-center justify-center h-32 text-shade-99 text-sm">
         {query.trim()
           ? t('Nothing imported matches “{q}” with the current filters.', { q: query.trim() })
           : t('No imported videos match the current filters.')}

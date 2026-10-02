@@ -52,19 +52,19 @@ export default function SpeedsEditor({ value, onChange }: {
           }}
           aria-label={t('Playback speeds')}
           spellCheck={false}
-          className={`min-w-0 flex-1 rounded-lg border bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-[#ddd] ${
-            bad ? 'border-[#5c2b2b]' : 'border-[#3f3f3f]'
+          className={`min-w-0 flex-1 rounded-lg border bg-shade-1c px-3 py-2 font-mono text-xs text-shade-dd ${
+            bad ? 'border-tint-5c2b2b' : 'border-shade-3f'
           }`}
         />
         <button
           onClick={() => onChange(DEFAULT_SPEEDS)}
           disabled={savedText === formatSpeeds(DEFAULT_SPEEDS)}
-          className="flex-shrink-0 cursor-pointer rounded-full border border-[#3f3f3f] px-3 py-1.5 text-xs text-[#ccc] hover:bg-white/5 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+          className="flex-shrink-0 cursor-pointer rounded-full border border-shade-3f px-3 py-1.5 text-xs text-shade-cc hover:bg-white/5 disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
         >
           {t('Reset')}
         </button>
       </div>
-      <p className={`mt-1 text-xs ${bad ? 'text-[#e0a0a0]' : 'text-[#999]'}`}>
+      <p className={`mt-1 text-xs ${bad ? 'text-tint-e0a0a0' : 'text-shade-99'}`}>
         {bad
           ? t('Speeds are numbers, up to {max} of them — like 0.5, 1, 1.5, 2.', { max: MAX_SPEEDS })
           : t('Separated by commas. Normal speed is always in the list.')}

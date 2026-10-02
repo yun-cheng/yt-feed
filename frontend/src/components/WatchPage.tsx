@@ -88,7 +88,7 @@ function highlight(text: string, query: string): ReactNode {
   if (!q) return text
   const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'))
   return parts.map((p, i) =>
-    i % 2 ? <mark key={i} className="rounded bg-[#3ea6ff]/30 px-0.5 text-white">{p}</mark> : p
+    i % 2 ? <mark key={i} className="rounded bg-tint-3ea6ff/30 px-0.5 text-white">{p}</mark> : p
   )
 }
 
@@ -405,7 +405,7 @@ type DetailsTab = 'info' | 'comments' | 'transcript' | 'ask'
 
 // The round buttons that float at the bottom of a scrolling list: back to top,
 // and sync to video.
-const FLOAT_BUTTON = 'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#272727] text-white shadow-lg ring-1 ring-white/10 transition-colors hover:bg-[#3f3f3f]'
+const FLOAT_BUTTON = 'pointer-events-auto flex h-10 w-10 items-center justify-center rounded-full bg-shade-27 text-white shadow-lg ring-1 ring-white/10 transition-colors hover:bg-shade-3f'
 
 // Crosshair: "put me back on the play head" — a directional arrow would be
 // wrong half the time (it can be either way).
@@ -489,13 +489,13 @@ function PanelTranscript({ rows, activeRow, onSeek, busy }: {
               i === activeRow ? 'bg-white/15' : 'hover:bg-white/10'
             }`}
           >
-            <span className="shrink-0 pt-px font-mono text-[11px] tabular-nums text-[#3ea6ff]">{formatTime(s.start)}</span>
-            <span className={`text-[13px] leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-[#ccc]'}`}>
+            <span className="shrink-0 pt-px font-mono text-[11px] tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
+            <span className={`text-[13px] leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
               {s.text}
             </span>
           </button>
         ))}
-        {busy && <p className="px-1.5 py-2 text-xs text-[#aaa]">{t('Translating…')}</p>}
+        {busy && <p className="px-1.5 py-2 text-xs text-shade-aa">{t('Translating…')}</p>}
       </div>
       {!following && (
         <button
@@ -2136,7 +2136,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               <PanelScroll>
                 <p className="text-sm font-semibold leading-snug [overflow-wrap:anywhere]">{meta?.title ?? '…'}</p>
                 {meta && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-[#aaa]">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-shade-aa">
                     <a
                       href={`/channel/${meta.channel_id}`}
                       onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
@@ -2144,14 +2144,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     >
                       {meta.channel_name || t('Unknown')}
                     </a>
-                    <span className="text-[#999]">·</span>
+                    <span className="text-shade-99">·</span>
                     <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
-                    <span className="text-[#999]">·</span>
+                    <span className="text-shade-99">·</span>
                     <span>{timeAgo(meta.published_at)}</span>
                   </div>
                 )}
                 {description && (
-                  <div className="mt-2 whitespace-pre-wrap text-[13px] leading-snug text-[#ddd] [overflow-wrap:anywhere]">
+                  <div className="mt-2 whitespace-pre-wrap text-[13px] leading-snug text-shade-dd [overflow-wrap:anywhere]">
                     {linkify(description, seekTo)}
                   </div>
                 )}
@@ -2232,7 +2232,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // video offers, plus the AI translation. No "Off" row — an empty slot
         // is off (toggle by clicking the active row). The same track can't sit
         // in both columns; picking it in the other slot moves/swaps it.
-        <div className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-[#282828] text-sm text-white shadow-2xl ring-1 ring-white/10">
+        <div className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-shade-28 text-sm text-white shadow-2xl ring-1 ring-white/10">
           {captionLangs.length > 0 ? (
           <div className="flex">
             {([
@@ -2240,7 +2240,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               { title: t('Second'), cur: curSecond, pick: pickSecond },
             ] as const).map((col, ci) => (
               <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
-                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#999]">{col.title}</div>
+                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-shade-99">{col.title}</div>
                 {captionLangs.map((l) => {
                   const active = col.cur === l.code
                   // A word-segment track splits into two rows: the plain label for
@@ -2282,7 +2282,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   >
                     <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
                     {t('Chinese')}
-                    <span className="ml-auto pl-2 text-xs text-[#999]">
+                    <span className="ml-auto pl-2 text-xs text-shade-99">
                       {col.cur === AI_ZH && translating ? t('Translating…') : 'AI'}
                     </span>
                   </button>
@@ -2295,7 +2295,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                is one we make. Progress is in seconds of audio because that is
                what the work is measured in, and the cues appear as they land. */
             <div className="min-w-[13rem] py-1">
-              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#999]">
+              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-shade-99">
                 {t('No captions on this video')}
               </div>
               <button
@@ -2308,18 +2308,18 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   : gen?.status === 'stalled' ? t('Resume transcribing')
                   : gen?.status === 'error' ? t('Try again')
                   : t('Generate captions')}
-                <span className="ml-auto pl-2 text-xs text-[#999]">
+                <span className="ml-auto pl-2 text-xs text-shade-99">
                   {gen?.status === 'running' ? `${genPct}%` : 'AI'}
                 </span>
               </button>
               {gen?.status === 'running' && (
                 <div className="mx-3 mb-1.5 mt-1 h-[3px] overflow-hidden rounded-full bg-white/15">
-                  <div className="h-full bg-[#3ea6ff] transition-[width] duration-500"
+                  <div className="h-full bg-tint-3ea6ff transition-[width] duration-500"
                        style={{ width: `${genPct}%` }} />
                 </div>
               )}
               {gen?.status === 'error' && (
-                <div className="px-3 pb-1.5 text-xs text-[#f28b82]">{gen.error}</div>
+                <div className="px-3 pb-1.5 text-xs text-tint-f28b82">{gen.error}</div>
               )}
             </div>
           )}
@@ -2330,9 +2330,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               captions are locked to the bottom and to a size chosen for a
               phone. Reset is greyed once there's nothing to undo. */}
           <div className="border-t border-white/10 py-1">
-            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#999]">{t('Display')}</div>
+            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-shade-99">{t('Display')}</div>
             <div className="flex items-center gap-1.5 px-3 py-1">
-              <span className="mr-auto pr-3 text-[#ccc]">{t('Position')}</span>
+              <span className="mr-auto pr-3 text-shade-cc">{t('Position')}</span>
               {(['top', 'bottom'] as const).map((pos) => (
                 <button
                   key={pos}
@@ -2347,7 +2347,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               ))}
             </div>
             <div className="flex items-center gap-1.5 px-3 py-1">
-              <span className="mr-auto pr-3 text-[#ccc]">{t('Size')}</span>
+              <span className="mr-auto pr-3 text-shade-cc">{t('Size')}</span>
               <button
                 onClick={() => stepCaptionSize(-1)}
                 disabled={captionSize <= CAPTION_SIZE_MIN}
@@ -2357,7 +2357,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               >
                 −
               </button>
-              <span className="w-11 text-center tabular-nums text-[#ccc]">{Math.round(captionSize * 100)}%</span>
+              <span className="w-11 text-center tabular-nums text-shade-cc">{Math.round(captionSize * 100)}%</span>
               <button
                 onClick={() => stepCaptionSize(1)}
                 disabled={captionSize >= CAPTION_SIZE_MAX}
@@ -2374,7 +2374,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 setCaptionSize(CAPTION_DISPLAY_DEFAULTS.size)
               }}
               disabled={captionDisplayIsDefault}
-              className="w-full px-3 py-1.5 text-left text-[#ccc] hover:bg-white/10 disabled:text-[#666] disabled:hover:bg-transparent"
+              className="w-full px-3 py-1.5 text-left text-shade-cc hover:bg-white/10 disabled:text-shade-66 disabled:hover:bg-transparent"
             >
               Reset position and size
             </button>
@@ -2552,7 +2552,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const pinButton = (
     <button
       onClick={() => setPinned((p) => !p)}
-      className={`pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#272727] text-white transition-colors hover:bg-[#3f3f3f] ${
+      className={`pointer-events-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-shade-27 text-white transition-colors hover:bg-shade-3f ${
         stuck ? 'shadow-lg shadow-black/60 ring-1 ring-white/10' : ''
       }`}
       title={pinned
@@ -2597,7 +2597,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           ever eating a click meant for the player. */}
       <div
         data-testid="next-preview"
-        className="pointer-events-none absolute bottom-full left-0 mb-3 w-56 origin-bottom-left scale-95 overflow-hidden rounded-xl bg-[#282828] opacity-0 shadow-lg ring-1 ring-white/10 transition-all duration-150 group-hover/next:scale-100 group-hover/next:opacity-100 group-focus-within/next:scale-100 group-focus-within/next:opacity-100"
+        className="pointer-events-none absolute bottom-full left-0 mb-3 w-56 origin-bottom-left scale-95 overflow-hidden rounded-xl bg-shade-28 opacity-0 shadow-lg ring-1 ring-white/10 transition-all duration-150 group-hover/next:scale-100 group-hover/next:opacity-100 group-focus-within/next:scale-100 group-focus-within/next:opacity-100"
       >
         <div className="relative aspect-video w-full bg-black">
           {nextUp.thumbnail_url && (
@@ -2610,7 +2610,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           )}
         </div>
         <div className="px-2.5 py-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-[#aaa]">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-shade-aa">
             {t('Next from {channel}', { channel: nextUp.channel_name || meta?.channel_name || t('this channel') })}
           </p>
           <p className="mt-0.5 text-sm font-medium leading-snug text-white line-clamp-2">
@@ -2661,7 +2661,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   )
   const statsEl = (
     <div hidden={activeTab !== 'info'} className="mt-2">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[#aaa]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-shade-aa">
         {meta && (
           <>
             {meta.channel_thumbnail && (
@@ -2674,7 +2674,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 <img
                   src={meta.channel_thumbnail}
                   alt=""
-                  className="w-8 h-8 rounded-full object-cover bg-[#3a3a3a]"
+                  className="w-8 h-8 rounded-full object-cover bg-shade-3a"
                 />
               </a>
             )}
@@ -2685,13 +2685,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             >
               {meta.channel_name || t('Unknown')}
             </a>
-            <span className="text-[#999]">·</span>
+            <span className="text-shade-99">·</span>
             <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
-            <span className="text-[#999]">·</span>
+            <span className="text-shade-99">·</span>
             <span>{timeAgo(meta.published_at)}</span>
             {meta.view_count > 0 && (
               <>
-                <span className="text-[#999]">·</span>
+                <span className="text-shade-99">·</span>
                 <span>{t('{count} likes', { count: formatCount(meta.like_count) })}</span>
               </>
             )}
@@ -2723,7 +2723,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               // The current language lives in the menu's tick; the header is
               // tight, so the button is just the icon, named on hover.
               title={t('Transcript language: {lang}', { lang: transcriptLangLabel })}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
             >
               <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <circle cx="12" cy="12" r="9" />
@@ -2731,16 +2731,16 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               </svg>
             </button>
             {showTranscriptLangMenu && (
-              <div className="absolute left-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
+              <div className="absolute left-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10">
                 {captionLangs.map((l) => {
                   const on = l.code === transcriptTrackLang
                   return (
                     <button
                       key={l.code}
                       onClick={() => { setTranscriptLang(l.code); setShowTranscriptLangMenu(false) }}
-                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${on ? 'text-white' : 'text-[#ccc]'}`}
+                      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${on ? 'text-white' : 'text-shade-cc'}`}
                     >
-                      <span className="w-3.5 text-[#3ea6ff]">{on ? '✓' : ''}</span>
+                      <span className="w-3.5 text-tint-3ea6ff">{on ? '✓' : ''}</span>
                       {l.label}
                     </button>
                   )
@@ -2750,11 +2750,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 {aiTranslateAvailable && (
                   <button
                     onClick={() => { setTranscriptLang(AI_ZH); setShowTranscriptLangMenu(false) }}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-[#ccc]'}`}
+                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors hover:bg-white/10 ${transcriptIsAI ? 'text-white' : 'text-shade-cc'}`}
                   >
-                    <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
+                    <span className="w-3.5 text-tint-3ea6ff">{transcriptIsAI ? '✓' : ''}</span>
                     {t('Chinese')}
-                    <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#999]">AI</span>
+                    <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-shade-99">AI</span>
                   </button>
                 )}
               </div>
@@ -2762,7 +2762,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           </div>
         )}
         <div className="relative flex-1">
-          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-shade-99" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <circle cx="11" cy="11" r="7" />
             <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
           </svg>
@@ -2778,13 +2778,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               else e.currentTarget.blur()
             }}
             placeholder={t('Search transcript')}
-            className="w-full rounded-full bg-[#121212] py-1.5 pl-9 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-[#888] focus:outline-none focus:ring-white/25"
+            className="w-full rounded-full bg-shade-12 py-1.5 pl-9 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-shade-88 focus:outline-none focus:ring-white/25"
           />
           {searching && (
             <button
               onClick={() => setTranscriptQuery('')}
               aria-label={t('Clear search')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#999] transition-colors hover:bg-white/10 hover:text-white"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-shade-99 transition-colors hover:bg-white/10 hover:text-white"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
@@ -2798,7 +2798,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         <div
           ref={transcriptRef}
           onScroll={transcriptFlows ? undefined : onTranscriptScroll}
-          className={`rounded-xl bg-[#1a1a1a] p-2 ${
+          className={`rounded-xl bg-shade-1a p-2 ${
             transcriptFlows ? '' : `overflow-y-auto ${fillsPane ? 'h-full' : 'max-h-[34rem]'}`
           }`}
         >
@@ -2811,21 +2811,21 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 i === activeRow ? 'bg-white/10' : 'hover:bg-white/5'
               }`}
             >
-              <span className="shrink-0 pt-px font-mono text-xs tabular-nums text-[#3ea6ff]">
+              <span className="shrink-0 pt-px font-mono text-xs tabular-nums text-tint-3ea6ff">
                 {formatTime(s.start)}
               </span>
-              <span className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-[#ccc]'}`}>
+              <span className={`text-sm leading-relaxed [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
                 {highlight(s.text, transcriptQuery)}
               </span>
             </button>
           ))}
           {searching && !visibleRows.length && (
-            <p className="px-2 py-3 text-sm text-[#999]">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
+            <p className="px-2 py-3 text-sm text-shade-99">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
           )}
           {/* The AI transcript fills in batch by batch, so say so rather than
               letting a partial read look like the whole thing. */}
           {aiTranscriptBusy && (
-            <p className="px-2 py-3 text-sm text-[#999]">{t('Translating…')}</p>
+            <p className="px-2 py-3 text-sm text-shade-99">{t('Translating…')}</p>
           )}
         </div>
 
@@ -2880,7 +2880,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         <div
           role="tablist"
           ref={sortRef}
-          className={`pointer-events-auto relative grid shrink-0 ${switchTabs.length === 2 ? 'grid-cols-2' : 'grid-flow-col'} rounded-full bg-[#272727] p-0.5 text-sm font-medium transition-shadow ${
+          className={`pointer-events-auto relative grid shrink-0 ${switchTabs.length === 2 ? 'grid-cols-2' : 'grid-flow-col'} rounded-full bg-shade-27 p-0.5 text-sm font-medium transition-shadow ${
             stuck ? 'shadow-lg shadow-black/60 ring-1 ring-white/10' : ''
           }`}
         >
@@ -2906,7 +2906,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 // phone some room.
                 className={`flex items-center justify-center gap-1.5 rounded-full py-1.5 transition-colors ${
                   switchTabs.length === 2 ? 'px-3' : 'px-2.5'
-                } ${lit ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'}`}
+                } ${lit ? 'bg-white text-black' : 'text-shade-aa hover:text-white'}`}
               >
                 {icon}
                 {!stuck && <span className={labelled.text}>{label}</span>}
@@ -2922,7 +2922,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             )
           })}
           {showSortMenu && (
-            <div role="menu" className="absolute right-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10">
+            <div role="menu" className="absolute right-0 top-full z-40 mt-2 min-w-[9rem] rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10">
               {([['top', t('Top')], ['new', tc('sort', 'Newest')]] as const).map(([key, label]) => (
                 <button
                   key={key}
@@ -2956,7 +2956,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 onClick={() => setShowSavePanel((o) => !o)}
                 aria-label={saved ? t('Saved') : t('Save')}
                 title={saved ? t('Saved') : t('Save')}
-                className={`flex h-9 items-center justify-center gap-2 rounded-full bg-[#272727] text-sm font-medium text-white transition-colors hover:bg-[#3f3f3f] ${
+                className={`flex h-9 items-center justify-center gap-2 rounded-full bg-shade-27 text-sm font-medium text-white transition-colors hover:bg-shade-3f ${
                   stuck ? 'w-9 shadow-lg shadow-black/60 ring-1 ring-white/10' : labelled.pill
                 }`}
               >
@@ -2972,7 +2972,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 <div
                   ref={saveMenu.menuRef}
                   style={saveMenu.menuStyle}
-                  className={`${MENU_LAYER} flex flex-col overflow-y-auto overscroll-contain rounded-xl bg-[#282828] py-2 shadow-2xl ring-1 ring-white/10`}
+                  className={`${MENU_LAYER} flex flex-col overflow-y-auto overscroll-contain rounded-xl bg-shade-28 py-2 shadow-2xl ring-1 ring-white/10`}
                 >
                   <SaveToPlaylist video={meta} onBack={() => setShowSavePanel(false)} />
                 </div>,
@@ -2990,8 +2990,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 aria-pressed={active}
                 aria-label={label}
                 title={label}
-                className={`flex h-9 items-center justify-center gap-2 rounded-full text-sm font-medium transition-colors disabled:cursor-default disabled:text-[#aaa] disabled:hover:bg-[#272727] ${
-                  active ? 'bg-white text-black' : 'bg-[#272727] text-white hover:bg-[#3f3f3f]'
+                className={`flex h-9 items-center justify-center gap-2 rounded-full text-sm font-medium transition-colors disabled:cursor-default disabled:text-shade-aa disabled:hover:bg-shade-27 ${
+                  active ? 'bg-white text-black' : 'bg-shade-27 text-white hover:bg-shade-3f'
                 } ${stuck ? 'w-9 shadow-lg shadow-black/60 ring-1 ring-white/10' : labelled.pill}`}
               >
                 {icon}
@@ -3015,6 +3015,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       <div
         ref={playerBoxRef}
         tabIndex={-1}
+        data-theme="dark"
         // container-type so captions can size by player width (2.5cqw ≈ YouTube's
         // 2.5%-of-player-width caption size), matching at any player scale.
         style={{ containerType: 'inline-size' }}
@@ -3185,7 +3186,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             style={panelOnVideo ? { [panelSide]: PANEL_WIDTH } : undefined}
           >
             <div className="w-full max-w-[22rem] text-center">
-              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[#aaa]">
+              <p className="mb-3 text-xs font-medium uppercase tracking-wide text-shade-aa">
                 {t('Next from {channel}', { channel: nextUp.channel_name || meta?.channel_name || t('this channel') })}
               </p>
               <button
@@ -3193,7 +3194,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 // Same event a card's plain-click sends, so the overlay swaps
                 // video exactly as if you'd clicked this one in the feed.
                 onClick={() => window.dispatchEvent(new CustomEvent<VideoItem>('app:watch', { detail: nextUp }))}
-                className="block w-full overflow-hidden rounded-xl bg-[#282828] text-left ring-1 ring-white/10 transition-colors hover:bg-[#3f3f3f]"
+                className="block w-full overflow-hidden rounded-xl bg-shade-28 text-left ring-1 ring-white/10 transition-colors hover:bg-shade-3f"
               >
                 <span className="relative block aspect-video w-full bg-black">
                   {nextUp.thumbnail_url && (
@@ -3212,7 +3213,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               <button
                 type="button"
                 onClick={() => setNextDismissed(true)}
-                className="mt-3 text-xs text-[#aaa] transition-colors hover:text-white"
+                className="mt-3 text-xs text-shade-aa transition-colors hover:text-white"
               >
                 Dismiss
               </button>
@@ -3222,7 +3223,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
         {embedError && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/95 px-6 text-center">
-            <p className="text-sm text-[#aaa]">This video can’t be played in-app (the uploader disabled embedding).</p>
+            <p className="text-sm text-shade-aa">This video can’t be played in-app (the uploader disabled embedding).</p>
             <a
               href={youtubeUrl}
               target="_blank"
@@ -3286,7 +3287,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             {meta.title_labels.map((label) => (
               <span
                 key={label}
-                className="inline-flex items-center rounded-full bg-[#272727] px-2.5 py-1 text-xs text-[#ddd]"
+                className="inline-flex items-center rounded-full bg-shade-27 px-2.5 py-1 text-xs text-shade-dd"
               >
                 {label}
               </span>
@@ -3297,7 +3298,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         {/* No own scroll here: the left panel (or the details wrapper) owns it, so
             the description flows at full height and scrolls with the rest. */}
         {description && (
-          <div className="mt-4 whitespace-pre-wrap rounded-xl bg-[#1a1a1a] p-4 text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
+          <div className="mt-4 whitespace-pre-wrap rounded-xl bg-shade-1a p-4 text-sm leading-relaxed text-shade-cc [overflow-wrap:anywhere]">
             {linkify(description, seekTo)}
           </div>
         )}

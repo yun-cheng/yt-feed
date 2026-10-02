@@ -51,18 +51,18 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
   }, [channel.description])
 
   return (
-    <div className="flex items-start gap-4 mb-6 pb-6 border-b border-[#272727]">
+    <div className="flex items-start gap-4 mb-6 pb-6 border-b border-shade-27">
       <img
         src={channel.thumbnail_url}
         alt={channel.title}
-        className="w-20 h-20 rounded-full object-cover bg-[#333] flex-shrink-0"
+        className="w-20 h-20 rounded-full object-cover bg-shade-33 flex-shrink-0"
       />
       <div className="min-w-0">
         <h2 className="text-xl font-bold text-white">{channel.title}</h2>
         {/* Hidden at zero rather than shown as "0 subscribers", which is a
             channel that hides its count, not one nobody watches. */}
         {channel.subscriber_count > 0 && (
-          <p className="text-sm text-[#999] mt-1">
+          <p className="text-sm text-shade-99 mt-1">
             {t('{count} subscribers', { count: formatCount(channel.subscriber_count) })}
           </p>
         )}
@@ -71,14 +71,14 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
           <div className="max-w-xl">
             <p
               ref={descRef}
-              className={`text-xs text-[#aaa] mt-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${expanded ? '' : 'line-clamp-2'}`}
+              className={`text-xs text-shade-aa mt-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${expanded ? '' : 'line-clamp-2'}`}
             >
               {channel.description}
             </p>
             {(overflows || expanded) && (
               <button
                 onClick={() => setExpanded((v) => !v)}
-                className="mt-1 text-xs font-medium text-[#999] hover:text-white"
+                className="mt-1 text-xs font-medium text-shade-99 hover:text-white"
               >
                 {expanded ? t('Show less') : t('Show more')}
               </button>

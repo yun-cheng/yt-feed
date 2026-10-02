@@ -88,7 +88,7 @@ export default function ChannelArchive({
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-      <span className="text-[#999]">
+      <span className="text-shade-99">
         {exhausted ? (
           <>{t('Complete — all {n} videos', { n: held.toLocaleString() })}</>
         ) : reachable ? (
@@ -96,21 +96,21 @@ export default function ChannelArchive({
         ) : (
           <>{tn(held, '{n} video', '{n} videos', { n: held.toLocaleString() })}</>
         )}
-        {oldest_held && <span className="text-[#999]"> · {t('back to {date}', { date: shortDate(oldest_held) })}</span>}
+        {oldest_held && <span className="text-shade-99"> · {t('back to {date}', { date: shortDate(oldest_held) })}</span>}
       </span>
 
       {!exhausted && reachable != null && (
-        <span className="h-1 w-24 overflow-hidden rounded-full bg-[#272727]" aria-hidden>
-          <span className="block h-full bg-[#777]" style={{ width: `${pct}%` }} />
+        <span className="h-1 w-24 overflow-hidden rounded-full bg-shade-27" aria-hidden>
+          <span className="block h-full bg-shade-77" style={{ width: `${pct}%` }} />
         </span>
       )}
 
       {filling ? (
-        <span className="text-[#aaa]">{t('Fetching…')}</span>
+        <span className="text-shade-aa">{t('Fetching…')}</span>
       ) : !exhausted && (remaining == null || remaining > 0) ? (
         <button
           onClick={onStart}
-          className="cursor-pointer rounded-full border border-[#3f3f3f] px-2.5 py-0.5 text-[#aaa] transition-colors hover:border-[#666] hover:text-white"
+          className="cursor-pointer rounded-full border border-shade-3f px-2.5 py-0.5 text-shade-aa transition-colors hover:border-shade-66 hover:text-white"
         >
           {t('Fetch the rest')}{remaining ? ` (${remaining.toLocaleString()})` : ''}
         </button>
@@ -119,7 +119,7 @@ export default function ChannelArchive({
       {/* Said plainly rather than shown as a bar that can never fill: YouTube's
           uploads playlist stops at 20,000 however many videos exist. */}
       {capped_by_api && (
-        <span className="text-[#999]">{t('YouTube only serves the newest 20,000')}</span>
+        <span className="text-shade-99">{t('YouTube only serves the newest 20,000')}</span>
       )}
     </div>
   )

@@ -55,15 +55,15 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-24"
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-scrim/60 p-4 pt-24"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl bg-[#212121] p-5 shadow-2xl ring-1 ring-white/10"
+        className="w-full max-w-lg rounded-xl bg-shade-21 p-5 shadow-2xl ring-1 ring-white/10"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-medium text-white">{t('Add a channel')}</h2>
-        <p className="mt-1 text-xs text-[#999]">
+        <p className="mt-1 text-xs text-shade-99">
           {t('Any channel, subscribed or not. Its videos join the feed and update with everything else.')}
         </p>
 
@@ -74,12 +74,12 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
             onChange={(e) => { setText(e.target.value); setFound(null); setError('') }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); found ? add() : look() } }}
             placeholder="https://www.youtube.com/@someone"
-            className="min-w-0 flex-1 rounded-lg bg-[#121212] px-3 py-2 text-sm text-white placeholder-[#555] outline-none ring-1 ring-[#303030] focus:ring-[#3ea6ff]"
+            className="min-w-0 flex-1 rounded-lg bg-shade-12 px-3 py-2 text-sm text-white placeholder-shade-55 outline-none ring-1 ring-shade-30 focus:ring-tint-3ea6ff"
           />
           <button
             onClick={look}
             disabled={!text.trim() || busy}
-            className="rounded-full bg-[#272727] px-4 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a] disabled:opacity-40"
+            className="rounded-full bg-shade-27 px-4 py-1.5 text-sm text-white transition-colors hover:bg-shade-3a disabled:opacity-40"
           >
             {t('Look up')}
           </button>
@@ -88,19 +88,19 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
         {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
 
         {found && (
-          <div className="mt-4 flex items-start gap-3 rounded-lg bg-[#181818] p-3 ring-1 ring-[#303030]">
+          <div className="mt-4 flex items-start gap-3 rounded-lg bg-shade-18 p-3 ring-1 ring-shade-30">
             <img
               src={found.thumbnail_url}
               alt={found.title}
-              className="h-12 w-12 flex-shrink-0 rounded-full bg-[#333] object-cover"
+              className="h-12 w-12 flex-shrink-0 rounded-full bg-shade-33 object-cover"
             />
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-medium text-white">{found.title}</h3>
               {found.subscriber_count > 0 && (
-                <p className="text-xs text-[#999]">{t('{count} subscribers', { count: formatCount(found.subscriber_count) })}</p>
+                <p className="text-xs text-shade-99">{t('{count} subscribers', { count: formatCount(found.subscriber_count) })}</p>
               )}
               {found.description && (
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#aaa]">{found.description}</p>
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-shade-aa">{found.description}</p>
               )}
             </div>
           </div>
@@ -109,14 +109,14 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-full px-4 py-1.5 text-sm text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+            className="rounded-full px-4 py-1.5 text-sm text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
           >
             {t('Cancel')}
           </button>
           {found && (found.known ? (
             <button
               onClick={() => onAdded(found.youtube_id)}
-              className="rounded-full bg-[#272727] px-4 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a]"
+              className="rounded-full bg-shade-27 px-4 py-1.5 text-sm text-white transition-colors hover:bg-shade-3a"
             >
               {t('Already added — open it')}
             </button>
@@ -124,7 +124,7 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
             <button
               onClick={add}
               disabled={busy}
-              className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40"
+              className="rounded-full bg-white px-4 py-1.5 text-sm font-medium text-black transition-colors hover:bg-shade-dd disabled:opacity-40"
             >
               {busy ? t('Adding…') : t('Add channel')}
             </button>
@@ -134,7 +134,7 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
         {busy && found && (
           // The add awaits a first scan of the channel's uploads, so the page
           // you land on has videos on it rather than an empty grid.
-          <p className="mt-2 text-right text-xs text-[#999]">{t('Fetching its recent videos…')}</p>
+          <p className="mt-2 text-right text-xs text-shade-99">{t('Fetching its recent videos…')}</p>
         )}
       </div>
     </div>

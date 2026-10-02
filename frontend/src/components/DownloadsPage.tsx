@@ -65,12 +65,12 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
   if (totalCount === 0) {
     return (
       <div className="px-6 py-4">
-        <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
-          <svg className="w-12 h-12 text-[#999]" viewBox="0 0 24 24" fill="currentColor">
+        <div className="flex flex-col items-center justify-center h-64 gap-3 text-shade-aa">
+          <svg className="w-12 h-12 text-shade-99" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
           </svg>
           <p className="text-sm">{t('No downloads yet.')}</p>
-          <p className="text-xs text-[#999]">{t('Open a video\'s ⋮ menu and choose “Download” to save it here.')}</p>
+          <p className="text-xs text-shade-99">{t('Open a video\'s ⋮ menu and choose “Download” to save it here.')}</p>
         </div>
       </div>
     )
@@ -79,7 +79,7 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
   if (downloads.length === 0) {
     return (
       <div className="px-6 py-4">
-        <div className="flex items-center justify-center h-32 text-[#999] text-sm">
+        <div className="flex items-center justify-center h-32 text-shade-99 text-sm">
           {query.trim()
             ? t('No download matches “{q}” with the current filters.', { q: query.trim() })
             : t('No downloads match the current filters.')}
@@ -110,7 +110,7 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
           ) : (
             // Still downloading / failed — a lightweight status card (no preview yet).
             <div key={d.youtube_id} className="group">
-              <div className="relative aspect-video rounded-xl overflow-hidden bg-[#272727]">
+              <div data-theme="dark" className="relative aspect-video rounded-xl overflow-hidden bg-shade-27">
                 {d.thumbnail_url && (
                   <img src={d.thumbnail_url.replace('hqdefault', 'mqdefault')} alt={d.title} className="w-full h-full object-cover opacity-50" loading="lazy" />
                 )}
@@ -134,11 +134,11 @@ export default function DownloadsPage({ downloads, totalCount, onDelete, onRetry
               <div className="flex gap-3 mt-2">
                 <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-medium text-white line-clamp-2 leading-5">{d.title}</h3>
-                  <p className="text-xs text-[#aaaaaa] mt-0.5">{d.channel_name || t('Unknown')}</p>
-                  <p className="text-xs text-[#999] mt-0.5">{d.status === 'downloading' ? t('Downloading…') : t('Download failed')}</p>
+                  <p className="text-xs text-shade-aa mt-0.5">{d.channel_name || t('Unknown')}</p>
+                  <p className="text-xs text-shade-99 mt-0.5">{d.status === 'downloading' ? t('Downloading…') : t('Download failed')}</p>
                 </div>
                 <button
-                  className="flex-shrink-0 p-1.5 -mr-1 self-start rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors"
+                  className="flex-shrink-0 p-1.5 -mr-1 self-start rounded-full text-shade-aa hover:bg-white/10 hover:text-white transition-colors"
                   onClick={() => onDelete(d.youtube_id)}
                   title={t('Remove download')}
                   aria-label={t('Remove download')}

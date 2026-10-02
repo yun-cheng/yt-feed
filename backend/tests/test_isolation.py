@@ -312,7 +312,7 @@ async def test_the_page_is_told_which_switches_are_everyones(client, pair):
                     "archive_fill_enabled": "app",
                     # Everything a person can have an opinion about.
                     "youtube_history_sync": "user",
-                    "page_defaults": "user", "app_language": "user",
+                    "page_defaults": "user", "theme": "user", "app_language": "user",
                     "caption_lang": "user", "caption_lang2": "user",
                     "translate_lang": "user", "playback_speeds": "user",
                     "shortcuts": "user", "video_panel_tab": "user"}

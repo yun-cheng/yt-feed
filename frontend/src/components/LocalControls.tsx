@@ -606,7 +606,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               // gutter so the numbers line up whichever row is ticked.
               <div
                 role="menu"
-                className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-[#282828] py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
+                className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
               >
                 {playbackSpeeds().map((r) => (
                   <button

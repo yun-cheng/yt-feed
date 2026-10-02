@@ -100,7 +100,7 @@ describe('Sidebar — expanded', () => {
   it('highlights active page in nav', () => {
     render(<Sidebar {...defaultProps} page="channels" />)
     const channelsBtn = screen.getByRole('button', { name: /Channels/i })
-    expect(channelsBtn.className).toMatch(/bg-\[#272727\]/)
+    expect(channelsBtn.className).toMatch(/bg-shade-27\b/)
   })
 
   it('shows selected tags with active style', () => {
@@ -138,7 +138,7 @@ describe('Sidebar — a tag chip has two hit zones', () => {
 
   it('shows an excluded tag struck through and in the negative colour', () => {
     render(<Sidebar {...defaultProps} selectedTags={['-coding']} />)
-    expect(pill('coding').className).toMatch(/bg-\[#5c2626\]/)
+    expect(pill('coding').className).toMatch(/bg-tint-5c2626\b/)
     expect(screen.getByText('coding').className).toMatch(/line-through/)
   })
 
@@ -153,7 +153,7 @@ describe('Sidebar — a tag chip has two hit zones', () => {
     render(<Sidebar {...defaultProps} />)
     expect(body('coding').dataset.state).toBe('off')
     expect(minus('coding').dataset.exclude).toBe('off')
-    expect(pill('coding').className).toMatch(/bg-\[#272727\]/)
+    expect(pill('coding').className).toMatch(/bg-shade-27\b/)
   })
 
   it('is inert rather than broken when nothing handles exclusion', () => {
@@ -207,7 +207,7 @@ describe('Sidebar — Watch Later', () => {
   it('highlights Watch Later button when page=watchlater', () => {
     render(<Sidebar {...defaultProps} page="watchlater" />)
     const btn = screen.getByRole('button', { name: /Watch Later/i })
-    expect(btn.className).toMatch(/bg-\[#272727\]/)
+    expect(btn.className).toMatch(/bg-shade-27\b/)
   })
 
   it('renders Watch Later button in collapsed mode as "Later"', () => {

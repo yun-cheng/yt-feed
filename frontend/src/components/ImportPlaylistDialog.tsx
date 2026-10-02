@@ -121,15 +121,15 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-start justify-center bg-black/60 p-4 pt-20"
+      className="fixed inset-0 z-[70] flex items-start justify-center bg-scrim/60 p-4 pt-20"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl bg-[#212121] p-5 shadow-2xl ring-1 ring-white/10"
+        className="flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl bg-shade-21 p-5 shadow-2xl ring-1 ring-white/10"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-medium text-white">{t('Import from YouTube')}</h2>
-        <p className="mt-1 text-xs text-[#999]">
+        <p className="mt-1 text-xs text-shade-99">
           {t('Copies a playlist here and remembers where it came from. Re-syncing only ever adds — nothing you keep here is removed.')}
         </p>
 
@@ -140,12 +140,12 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
             onChange={(e) => { setRef(e.target.value); setFound(null); setError('') }}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); look() } }}
             placeholder={t('Paste any playlist link — including someone else\'s')}
-            className="min-w-0 flex-1 rounded-lg bg-[#121212] px-3 py-2 text-sm text-white placeholder-[#555] outline-none ring-1 ring-[#303030] focus:ring-[#3ea6ff]"
+            className="min-w-0 flex-1 rounded-lg bg-shade-12 px-3 py-2 text-sm text-white placeholder-shade-55 outline-none ring-1 ring-shade-30 focus:ring-tint-3ea6ff"
           />
           <button
             onClick={look}
             disabled={!ref.trim() || looking}
-            className="flex-shrink-0 rounded-full bg-[#272727] px-4 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a] disabled:opacity-40"
+            className="flex-shrink-0 rounded-full bg-shade-27 px-4 py-1.5 text-sm text-white transition-colors hover:bg-shade-3a disabled:opacity-40"
           >
             {looking ? '…' : t('Look up')}
           </button>
@@ -154,15 +154,15 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
         {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
 
         {found && (
-          <div className="mt-3 flex items-center gap-3 rounded-lg bg-[#181818] p-2 ring-1 ring-[#3ea6ff]/40">
-            <div className="h-11 w-20 flex-shrink-0 overflow-hidden rounded bg-[#272727]">
+          <div className="mt-3 flex items-center gap-3 rounded-lg bg-shade-18 p-2 ring-1 ring-tint-3ea6ff/40">
+            <div className="h-11 w-20 flex-shrink-0 overflow-hidden rounded bg-shade-27">
               {found.thumbnail_url && (
                 <img src={found.thumbnail_url} alt="" className="h-full w-full object-cover" />
               )}
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm text-white">{found.title}</h3>
-              <p className="truncate text-xs text-[#999]">
+              <p className="truncate text-xs text-shade-99">
                 {found.item_count} {found.item_count === 1 ? 'video' : 'videos'}
                 {found.channel_name ? ` · ${found.channel_name}` : ''}
               </p>
@@ -172,8 +172,8 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
               disabled={!!busy}
               className={
                 found.linked_id
-                  ? 'flex-shrink-0 rounded-full bg-[#272727] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#3a3a3a] disabled:opacity-40'
-                  : 'flex-shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40'
+                  ? 'flex-shrink-0 rounded-full bg-shade-27 px-3 py-1.5 text-xs text-white transition-colors hover:bg-shade-3a disabled:opacity-40'
+                  : 'flex-shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-shade-dd disabled:opacity-40'
               }
             >
               {busy === found.youtube_id ? '…' : found.linked_id ? t('Re-sync') : t('Import')}
@@ -181,25 +181,25 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
           </div>
         )}
 
-        <p className="mt-4 text-xs font-medium text-[#999]">{t('Playlists you made')}</p>
+        <p className="mt-4 text-xs font-medium text-shade-99">{t('Playlists you made')}</p>
 
         <div className="-mx-1 mt-2 min-h-0 flex-1 overflow-y-auto px-1">
           {lists === null ? (
-            <p className="py-6 text-center text-xs text-[#999]">{t('Asking YouTube…')}</p>
+            <p className="py-6 text-center text-xs text-shade-99">{t('Asking YouTube…')}</p>
           ) : lists.length === 0 ? (
-            !error && <p className="py-6 text-center text-xs text-[#999]">{t('No playlists on that account.')}</p>
+            !error && <p className="py-6 text-center text-xs text-shade-99">{t('No playlists on that account.')}</p>
           ) : (
             <ul className="space-y-2">
               {lists.map((p) => (
-                <li key={p.youtube_id} className="flex items-center gap-3 rounded-lg bg-[#181818] p-2 ring-1 ring-[#303030]">
-                  <div className="h-11 w-20 flex-shrink-0 overflow-hidden rounded bg-[#272727]">
+                <li key={p.youtube_id} className="flex items-center gap-3 rounded-lg bg-shade-18 p-2 ring-1 ring-shade-30">
+                  <div className="h-11 w-20 flex-shrink-0 overflow-hidden rounded bg-shade-27">
                     {p.thumbnail_url && (
                       <img src={p.thumbnail_url} alt="" className="h-full w-full object-cover" loading="lazy" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-sm text-white">{p.title}</h3>
-                    <p className="text-xs text-[#999]">
+                    <p className="text-xs text-shade-99">
                       {p.item_count} {p.item_count === 1 ? 'video' : 'videos'}
                     </p>
                   </div>
@@ -208,8 +208,8 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
                     disabled={!!busy}
                     className={
                       p.linked_id
-                        ? 'flex-shrink-0 rounded-full bg-[#272727] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#3a3a3a] disabled:opacity-40'
-                        : 'flex-shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[#ddd] disabled:opacity-40'
+                        ? 'flex-shrink-0 rounded-full bg-shade-27 px-3 py-1.5 text-xs text-white transition-colors hover:bg-shade-3a disabled:opacity-40'
+                        : 'flex-shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-black transition-colors hover:bg-shade-dd disabled:opacity-40'
                     }
                   >
                     {busy === p.youtube_id ? '…' : p.linked_id ? t('Re-sync') : t('Import')}
@@ -220,14 +220,14 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
           )}
         </div>
 
-        <p className="mt-4 border-t border-[#303030] pt-3 text-xs leading-relaxed text-[#999]">
+        <p className="mt-4 border-t border-shade-30 pt-3 text-xs leading-relaxed text-shade-99">
           {t('Only playlists you made can be listed — paste a link for anyone else\'s. Watch Later, Liked Videos and other people\'s private playlists can\'t be read this way at all; open one on youtube.com and use the extension\'s “Import to YT Feed” button, which reads the page as you.')}
         </p>
 
         <div className="mt-3 flex justify-end">
           <button
             onClick={onClose}
-            className="rounded-full px-4 py-1.5 text-sm text-[#aaa] transition-colors hover:bg-white/10 hover:text-white"
+            className="rounded-full px-4 py-1.5 text-sm text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
           >
             {t('Done')}
           </button>

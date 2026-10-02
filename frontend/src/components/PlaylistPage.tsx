@@ -133,10 +133,10 @@ export default function PlaylistPage({
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-[#aaaaaa]">{t('Loading...')}</div>
+    return <div className="flex items-center justify-center h-64 text-shade-aa">{t('Loading...')}</div>
   }
   if (notFound) {
-    return <div className="flex items-center justify-center h-64 text-[#aaaaaa]">{t('Playlist not found.')}</div>
+    return <div className="flex items-center justify-center h-64 text-shade-aa">{t('Playlist not found.')}</div>
   }
 
   return (
@@ -149,9 +149,9 @@ export default function PlaylistPage({
               the same number twice; both numbers appear only when a filter is
               hiding some, so a short list is never mistaken for a short
               playlist. */}
-          <p className="text-sm text-[#999] mt-1">
+          <p className="text-sm text-shade-99 mt-1">
             {shown.length < videos.length && t('{shown} of {total} videos', { shown: shown.length, total: videos.length })}
-            {syncNote && <span className="ml-2 text-[#3ea6ff]">{syncNote}</span>}
+            {syncNote && <span className="ml-2 text-tint-3ea6ff">{syncNote}</span>}
           </p>
         </div>
         {linked && (
@@ -159,7 +159,7 @@ export default function PlaylistPage({
             onClick={resync}
             disabled={syncing}
             title={t('Pull anything new from the YouTube playlist this came from')}
-            className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-[#aaa] hover:text-white hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
+            className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-shade-aa hover:text-white hover:bg-white/10 rounded-full transition-colors disabled:opacity-40"
           >
             <svg className={`w-4 h-4${syncing ? ' animate-spin' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 11a8 8 0 1 0-.6 4M20 4v6h-6" />
@@ -169,7 +169,7 @@ export default function PlaylistPage({
         )}
         <button
           onClick={deletePlaylist}
-          className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-[#aaa] hover:text-white hover:bg-white/10 rounded-full transition-colors"
+          className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 text-sm text-shade-aa hover:text-white hover:bg-white/10 rounded-full transition-colors"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />
@@ -179,11 +179,11 @@ export default function PlaylistPage({
       </div>
 
       {videos.length === 0 ? (
-        <div className="flex items-center justify-center h-32 text-[#aaaaaa] text-sm">
+        <div className="flex items-center justify-center h-32 text-shade-aa text-sm">
           {t('This playlist is empty.')}
         </div>
       ) : shown.length === 0 ? (
-        <div className="flex items-center justify-center h-32 text-[#999] text-sm">
+        <div className="flex items-center justify-center h-32 text-shade-99 text-sm">
           {q.trim()
             ? t('Nothing in this playlist matches “{q}” with the current filters.', { q: q.trim() })
             : t('No videos in this playlist match the current filters.')}

@@ -196,6 +196,21 @@ SPEC: tuple[Spec, ...] = (
         group="Connections",
     ),
     Spec(
+        key="theme",
+        type="choice",
+        # Applied by the frontend's lib/theme.ts, which also keeps a copy in the
+        # browser so the first paint of the next visit is already the right one.
+        options=(("dark", "Dark"), ("light", "Light"), ("system", "Match the system")),
+        default=lambda: "dark",
+        scope="user",
+        label="Theme",
+        description=(
+            "Light or dark pages. Matching the system follows your device, and "
+            "switches when it does. Thumbnails and the player stay dark in both."
+        ),
+        group="Appearance",
+    ),
+    Spec(
         key="app_language",
         type="choice",
         options=tuple(APP_LANG_OPTIONS),

@@ -27,7 +27,7 @@ const VideosIcon = () => (
 // container), leaving the icons, which is why each half carries its name as a
 // label and tooltip too.
 const ContentModeSwitch = ({ mode, onChange }: { mode: ContentMode; onChange: (m: ContentMode) => void }) => (
-  <div className="grid flex-shrink-0 grid-cols-2 rounded-full bg-[#272727] p-0.5 text-sm">
+  <div className="grid flex-shrink-0 grid-cols-2 rounded-full bg-shade-27 p-0.5 text-sm">
     {(['videos', 'shorts'] as const).map((m) => {
       const label = m === 'videos' ? t('Videos') : t('Shorts')
       return (
@@ -38,7 +38,7 @@ const ContentModeSwitch = ({ mode, onChange }: { mode: ContentMode; onChange: (m
           aria-label={label}
           title={label}
           className={`flex items-center justify-center gap-1.5 rounded-full px-3 py-[5px] font-medium transition-colors ${
-            mode === m ? 'bg-white text-black' : 'text-[#aaa] hover:text-white'
+            mode === m ? 'bg-white text-black' : 'text-shade-aa hover:text-white'
           }`}
         >
           {m === 'videos' ? <VideosIcon /> : <ShortsIcon />}
@@ -95,7 +95,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
   )
 
   return (
-    <header className="@container bg-[#0f0f0f]">
+    <header className="@container bg-shade-0f">
       {/* Row 1: (mobile menu button) + the Videos / Shorts switch at the left,
           the search centered in what's left */}
       <div className="flex items-center py-2">
@@ -105,7 +105,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
         <div className={`flex items-center gap-3 pl-4 flex-shrink-0 ${onContentModeChange ? '' : 'md:hidden'}`}>
           <button
             onClick={onToggleCollapse}
-            className="text-[#aaa] hover:text-white transition-colors flex-shrink-0 md:hidden"
+            className="text-shade-aa hover:text-white transition-colors flex-shrink-0 md:hidden"
             aria-label={t('Toggle sidebar')}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -116,7 +116,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
         </div>
 
         <div className="flex-1 flex justify-center min-w-0 px-2 md:px-4">
-          <div className="flex items-center w-full min-w-0 max-w-xl bg-[#121212] border border-[#303030] rounded-full focus-within:border-[#3ea6ff] transition-colors">
+          <div className="flex items-center w-full min-w-0 max-w-xl bg-shade-12 border border-shade-30 rounded-full focus-within:border-tint-3ea6ff transition-colors">
             <input
               value={searchQuery ?? ''}
               onChange={(e) => onSearchChange?.(e.target.value)}
@@ -124,7 +124,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               onKeyDown={(e) => { if (e.key === 'Escape' && searchQuery) { e.preventDefault(); onSearchChange?.('') } }}
               placeholder={t('Search')}
               aria-label={t('Search')}
-              className="flex-1 min-w-0 bg-transparent pl-4 pr-2 py-1.5 text-sm text-white placeholder-[#717171] outline-none"
+              className="flex-1 min-w-0 bg-transparent pl-4 pr-2 py-1.5 text-sm text-white placeholder-shade-71 outline-none"
             />
             {onScopeToggle && (
               /* One button, two states — the same words either way, because
@@ -138,7 +138,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
                 className={`flex items-center gap-1 mr-1 pl-1.5 pr-2 py-0.5 rounded-full text-xs transition-colors flex-shrink-0 ${
                   scoped
                     ? 'bg-white text-black font-medium'
-                    : 'bg-[#272727] text-[#aaa] hover:text-white hover:bg-[#3a3a3a]'
+                    : 'bg-shade-27 text-shade-aa hover:text-white hover:bg-shade-3a'
                 }`}
               >
                 <svg
@@ -155,14 +155,14 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
               <button
                 onClick={() => onSearchChange?.('')}
                 aria-label={t('Clear search')}
-                className="px-2 text-[#aaa] hover:text-white"
+                className="px-2 text-shade-aa hover:text-white"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             ) : (
-              <span className="px-3 text-[#999]">
+              <span className="px-3 text-shade-99">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -178,7 +178,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
           {onImport && (
             <button
               onClick={onImport}
-              className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a]"
+              className="flex items-center gap-1.5 rounded-full bg-shade-27 px-3 py-1.5 text-sm text-white transition-colors hover:bg-shade-3a"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />

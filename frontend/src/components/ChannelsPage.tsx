@@ -103,7 +103,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
   const addButton = (
     <button
       onClick={() => setAdding(true)}
-      className="flex items-center gap-1.5 rounded-full bg-[#272727] px-3 py-1.5 text-sm text-white transition-colors hover:bg-[#3a3a3a]"
+      className="flex items-center gap-1.5 rounded-full bg-shade-27 px-3 py-1.5 text-sm text-white transition-colors hover:bg-shade-3a"
     >
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m-7-7h14" />
@@ -114,7 +114,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64 text-[#aaaaaa]">
+      <div className="flex items-center justify-center h-64 text-shade-aa">
         {t('Loading channels...')}
       </div>
     )
@@ -124,7 +124,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
 
   if (channels.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaaaaa]">
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-shade-aa">
         <p className="text-sm">
           {trimmed ? t('No channels for “{q}”', { q: trimmed })
             : selectedTags.length > 0 ? t('No channels match the selected tags.')
@@ -141,9 +141,9 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-[#999]">
+        <p className="text-sm text-shade-99">
           {tn(channels.length, '{n} channel', '{n} channels')}
-          {hiddenCount > 0 && <span className="text-[#999]"> · {t('{n} hidden from home', { n: hiddenCount })}</span>}
+          {hiddenCount > 0 && <span className="text-shade-99"> · {t('{n} hidden from home', { n: hiddenCount })}</span>}
         </p>
         {addButton}
       </div>
@@ -156,7 +156,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
           <div
             key={ch.youtube_id}
             onClick={() => onSelectChannel(ch.youtube_id)}
-            className={`group relative bg-[#1a1a1a] rounded-xl p-4 border transition-colors cursor-pointer ${isHidden ? 'border-[#333] opacity-60 hover:opacity-100' : 'border-[#272727] hover:border-[#444]'}`}
+            className={`group relative bg-shade-1a rounded-xl p-4 border transition-colors cursor-pointer ${isHidden ? 'border-shade-33 opacity-60 hover:opacity-100' : 'border-shade-27 hover:border-shade-44'}`}
           >
             {/* Remove — only for the hand-added ones. A subscribed channel is
                 here because YouTube says you're subscribed, so deleting it
@@ -166,7 +166,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
                 onClick={(e) => { e.stopPropagation(); setConfirming(confirming === ch.youtube_id ? null : ch.youtube_id) }}
                 title={t('Remove channel')}
                 aria-label={t('Remove channel')}
-                className="absolute top-2 right-10 z-10 p-1.5 rounded-full text-[#aaa] hoverable:opacity-0 transition-colors hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100"
+                className="absolute top-2 right-10 z-10 p-1.5 rounded-full text-shade-aa hoverable:opacity-0 transition-colors hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100"
               >
                 <TrashIcon />
               </button>
@@ -176,7 +176,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
               onClick={(e) => { e.stopPropagation(); onToggleHidden(ch.youtube_id) }}
               title={isHidden ? t('Show on home') : t('Hide from home')}
               aria-label={isHidden ? t('Show on home') : t('Hide from home')}
-              className={`absolute top-2 right-2 z-10 p-1.5 rounded-full text-[#aaa] hover:bg-white/10 hover:text-white transition-colors ${isHidden ? '' : 'hoverable:opacity-0 hoverable:group-hover:opacity-100'}`}
+              className={`absolute top-2 right-2 z-10 p-1.5 rounded-full text-shade-aa hover:bg-white/10 hover:text-white transition-colors ${isHidden ? '' : 'hoverable:opacity-0 hoverable:group-hover:opacity-100'}`}
             >
               {isHidden ? <EyeOffIcon /> : <EyeIcon />}
             </button>
@@ -189,7 +189,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
               <img
                 src={ch.thumbnail_url}
                 alt={ch.title}
-                className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-[#333]"
+                className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-shade-33"
                 loading="lazy"
               />
               <div className="min-w-0 flex-1">
@@ -197,7 +197,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
                   {ch.title}
                 </h3>
                 {ch.subscriber_count > 0 && (
-                  <p className="text-xs text-[#999] mt-0.5">
+                  <p className="text-xs text-shade-99 mt-0.5">
                     {t('{count} subscribers', { count: formatCount(ch.subscriber_count) })}
                   </p>
                 )}
@@ -209,7 +209,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
                 {ch.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-2 py-0.5 text-[10px] bg-[#272727] text-[#999] rounded-full"
+                    className="px-2 py-0.5 text-[10px] bg-shade-27 text-shade-99 rounded-full"
                   >
                     {tag}
                   </span>
@@ -218,21 +218,21 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
             )}
 
             {ch.description && (
-              <p className="text-xs text-[#aaa] mt-2 line-clamp-2 leading-relaxed">
+              <p className="text-xs text-shade-aa mt-2 line-clamp-2 leading-relaxed">
                 {ch.description}
               </p>
             )}
 
             {confirming === ch.youtube_id && (
               <div
-                className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-[#2a1a1a] px-3 py-2 ring-1 ring-red-500/30"
+                className="mt-3 flex items-center justify-between gap-2 rounded-lg bg-tint-2a1a1a px-3 py-2 ring-1 ring-red-500/30"
                 onClick={(e) => e.stopPropagation()}
               >
-                <span className="text-xs text-[#ccc]">{t('Remove this channel and its videos?')}</span>
+                <span className="text-xs text-shade-cc">{t('Remove this channel and its videos?')}</span>
                 <div className="flex flex-shrink-0 gap-1">
                   <button
                     onClick={() => setConfirming(null)}
-                    className="rounded-full px-2 py-1 text-xs text-[#aaa] hover:bg-white/10 hover:text-white"
+                    className="rounded-full px-2 py-1 text-xs text-shade-aa hover:bg-white/10 hover:text-white"
                   >
                     {t('Cancel')}
                   </button>
