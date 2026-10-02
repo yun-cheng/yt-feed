@@ -1,8 +1,9 @@
 /**
- * The panel laid over the video — Info, Comments, Transcript and Ask AI in a
- * column down one side of the picture, to read while it plays without leaving
- * it for the details below. Opened with `g` or the button beside CC, on the tab
- * the `video_panel_tab` setting names (lib/videoPanel.ts).
+ * The panel laid over the video — Info, Chapters, Bookmarks, Comments,
+ * Transcript and Ask AI in a column down one side of the picture, to read while
+ * it plays without leaving it for the details below. Opened with `g` or the
+ * button beside CC, on the tab the `video_panel_tab` setting names
+ * (lib/videoPanel.ts).
  *
  * This is the frame: the tabs, the side it sits on, and the way out. What each
  * tab shows is the watch page's, passed in as `children` — the same data the
@@ -21,15 +22,15 @@
  * down for it.
  */
 import type { CSSProperties, ReactNode } from 'react'
-import type { VideoPanelTab } from '../lib/videoPanel'
+import type { PanelTabKey } from '../lib/videoPanel'
 import { t } from '../lib/i18n'
 
 type Props = {
   /** Closed, it stays mounted but hidden, so its tabs keep their state. */
   open: boolean
-  tabs: { key: VideoPanelTab; label: string; icon: ReactNode }[]
-  tab: VideoPanelTab
-  onTab: (tab: VideoPanelTab) => void
+  tabs: { key: PanelTabKey; label: string; icon: ReactNode }[]
+  tab: PanelTabKey
+  onTab: (tab: PanelTabKey) => void
   side: 'left' | 'right'
   onSwapSide: () => void
   onClose: () => void
@@ -47,8 +48,8 @@ type Props = {
  *  with the player the way the captions do (they're 2.5cqw), so fullscreen
  *  reads as well as the page does. The floor keeps a small player legible.
  *
- *  Everything in the panel hangs off it — type, spacing, icons, avatars, and
- *  the header that sets its narrowest (PANEL_WIDTH in WatchPage) — so it's the same panel at any size,
+ *  Everything in the panel hangs off it — type, spacing, icons, avatars, the
+ *  header, and its narrowest (PANEL_WIDTH in WatchPage) — so it's the same panel at any size,
  *  scaled, rather than bigger letters squeezed into the same column. That
  *  works because Tailwind's `text-xs` / `p-3` / `h-7` read theme variables
  *  (`--text-xs`, `--spacing`), which `.panel-type` in index.css redefines in

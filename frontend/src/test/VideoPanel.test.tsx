@@ -8,7 +8,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import VideoPanel, { PanelTab } from '../components/VideoPanel'
-import type { VideoPanelTab } from '../lib/videoPanel'
+import type { PanelTabKey } from '../lib/videoPanel'
 
 function Draft() {
   const [text, setText] = useState('')
@@ -17,7 +17,7 @@ function Draft() {
 
 function Harness() {
   const [open, setOpen] = useState(true)
-  const [tab, setTab] = useState<VideoPanelTab>('ask')
+  const [tab, setTab] = useState<PanelTabKey>('ask')
   return (
     <>
       <button onClick={() => setOpen((v) => !v)}>Toggle</button>

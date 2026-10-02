@@ -5,6 +5,11 @@
  */
 export type VideoPanelTab = 'info' | 'comments' | 'transcript' | 'ask'
 
+/** Every tab the panel can show. Chapters and Bookmarks are lists of moments in
+ *  this video, there to jump between, so they're picked on the video rather
+ *  than opened on. */
+export type PanelTabKey = VideoPanelTab | 'chapters' | 'bookmarks'
+
 const TABS: readonly VideoPanelTab[] = ['info', 'comments', 'transcript', 'ask']
 const FALLBACK: VideoPanelTab = 'comments'
 

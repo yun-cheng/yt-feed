@@ -483,7 +483,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
 
   return {
     bookmarks, loop, loops, others, loopStage, looping, markHere, flash,
-    toggleBookmarkHere, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop,
+    toggleBookmarkHere, removeBookmark, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop,
   }
 }
 

@@ -880,9 +880,9 @@ components/
   Comments.tsx                    the watch page's Comments tab, beside Info,
                                   and the panel over the video's — fetched
                                   only when you open one of them
-  VideoPanel.tsx                  the panel over the video: Info, Comments,
-                                  Transcript and Ask AI down one side of the
-                                  picture
+  VideoPanel.tsx                  the panel over the video: Info, Chapters,
+                                  Bookmarks, Comments, Transcript and Ask AI
+                                  down one side of the picture
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -1740,9 +1740,10 @@ keeps whichever scroller contains the column.
 
 ### The panel on the video (`VideoPanel.tsx`)
 
-A column laid over one side of the player with the same four tabs as the page —
-Info, Comments, Transcript, Ask AI — to read while the video plays without
-leaving it for the details below. The button right of CC (`panelControl`) or
+A column laid over one side of the player with six tabs — Info, Chapters,
+Bookmarks, Comments, Transcript, Ask AI: the page's four, and two of its own
+for jumping around the video — to read while it plays without leaving it for
+the details below. The button right of CC (`panelControl`) or
 `g` (the `videoPanel` shortcut) opens and closes it; the × in its header closes
 it too.
 
@@ -1753,7 +1754,9 @@ video. Transcript and Ask read the captions, so on a video that turns out to
 have none they leave the tab row and a panel set to open on either opens on
 **Info**, the one tab that costs nothing (`panelTabShown`); while the captions
 are still on their way it waits on the tab it was asked for rather than
-flashing through Comments and fetching them for nothing. It's off again for
+flashing through Comments and fetching them for nothing. Chapters joins the row
+once the video turns out to have some. Chapters and Bookmarks are lists to jump
+around in rather than somewhere to start, so the setting doesn't offer them. It's off again for
 every new video, for the Comments reason below.
 
 **Tabs keep their state.** A tab stays mounted from the first time it's opened
@@ -1771,13 +1774,17 @@ a tab opened here after its twin below fetches nothing twice:
 | tab | on the panel |
 |---|---|
 | Info | title, channel, views and age, the description (timestamps seek) |
+| Chapters | the chapters on the bar (see "Chapters"), each a time and its title; the one playing is lit |
+| Bookmarks | `marks.bookmarks`, the ticks on the bar as a list, the last one passed lit, each with a × to remove it. A row reads its note, else what's being said at that moment (the transcript row spanning it), else the chapter it's in — a bare timestamp says nothing about why you marked it. Empty, it says which key makes one |
 | Comments | `CommentList compact`, from the same `useComments` feed as the tab |
-| Transcript | `PanelTranscript`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
+| Transcript | `PanelRows`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
 | Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
 
 **Where it sits.** `PANEL_WIDTH`, 31.25% of the player (320px over a 1024px
-one), never less than the 12 panel units the header needs for four tabs and two
-buttons on one line — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
+one), never less than 12 panel units, so a phone-sized player's panel stays
+readable. Six tabs and two buttons need about 17 units on one line (20 on the
+left, where the back button takes the corner), so on a narrow player the tabs
+wrap onto a line of their own rather than squeeze — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
 player box, so it goes to fullscreen with it. It reaches the bottom edge while
 the controls are hidden; while they show it stops just above the progress bar
 (`panelBottom`): 4.5rem over our own bar, whose progress bar's hit area starts

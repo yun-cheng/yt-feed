@@ -44,8 +44,8 @@ real video (muted, with custom captions and scrubbing).
   switchable between English / Chinese / Japanese / Korean / Thai / Vietnamese
   when offered, with dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
   position and font size the embed's own captions would never give you; and a panel
-  laid over the video (`g`), down either side, with its info, comments,
-  transcript and Ask AI — which one it opens on is a setting
+  laid over the video (`g`), down either side, with its info, chapters,
+  bookmarks, comments, transcript and Ask AI — which one it opens on is a setting
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click the tick to jump back); `[` and `]` set a loop's ends and `\` stops it,
   so a passage replays until you're done with it. **One end is enough**: `[` alone

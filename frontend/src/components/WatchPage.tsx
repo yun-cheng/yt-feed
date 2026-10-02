@@ -16,10 +16,10 @@ import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
 import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
-import { videoPanelDefault } from '../lib/videoPanel'
+import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
-import type { Chapter } from '../lib/chapters'
+import { chapterAt, type Chapter } from '../lib/chapters'
 import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
 import { TITLE_RANK, useDocumentTitle } from '../lib/title'
@@ -202,8 +202,9 @@ function loadPanelSide(): PanelSide {
 }
 // The panel's width, in the one place: the panel draws at it and the captions
 // step aside by it. It scales with the player, as its type does (see
-// PANEL_UNIT): 320px over a 1024px player. The floor is what its header needs
-// for four tabs and two buttons in one line, which is in the panel's unit.
+// PANEL_UNIT): 320px over a 1024px player. The floor keeps a phone-sized
+// player's panel readable; below about 17 units its header's tabs wrap onto a
+// line of their own (VideoPanel) rather than the floor widening to fit them.
 const PANEL_WIDTH = `max(calc(12 * ${PANEL_UNIT}), 31.25%)`
 // The same width measured off the player box from anywhere inside it (it's the
 // size container), for the caption spacer below — a % there would be a share
@@ -445,8 +446,9 @@ const SyncIcon = () => (
   </svg>
 )
 
-// One icon per tab, shared by the switch under the video and the panel over it.
-const TAB_ICONS: Record<DetailsTab, ReactNode> = {
+// One icon per tab, shared by the switch under the video and the panel over it
+// (which alone has Chapters and Bookmarks).
+const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
   info: (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
       <circle cx="12" cy="12" r="9" />
@@ -463,6 +465,21 @@ const TAB_ICONS: Record<DetailsTab, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
     </svg>
   ),
+  // A list whose items start at points: a chapter is a title at a time.
+  chapters: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" d="M9 6h11M9 12h11M9 18h11" />
+      <circle cx="4.5" cy="6" r="1" fill="currentColor" />
+      <circle cx="4.5" cy="12" r="1" fill="currentColor" />
+      <circle cx="4.5" cy="18" r="1" fill="currentColor" />
+    </svg>
+  ),
+  // The bookmark button's own shape, outlined.
+  bookmarks: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinejoin="round" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />
+    </svg>
+  ),
   ask: (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
@@ -472,22 +489,29 @@ const TAB_ICONS: Record<DetailsTab, ReactNode> = {
 }
 
 /**
- * The transcript on the panel over the video: the same rows as the page's, in
- * the language picked there, following the play head in a box of its own.
+ * A list of moments on the panel over the video, following the play head in a
+ * box of its own — the transcript, the chapters, the bookmarks. Each row is a
+ * time and a line, and seeks there on click.
+ *
+ * The transcript's rows are the page's, in the language picked there.
  * Searching and picking a language stay on the page's — the panel is for
  * reading along, and its column is too narrow to do either well.
  *
- * Following works as the page's does: scrolling the active row out of view
- * stops it, and Sync to video (or clicking a row) starts it again.
+ * Following works as the page's transcript does: scrolling the active row out
+ * of view stops it, and Sync to video (or clicking a row) starts it again.
  */
-function PanelTranscript({ rows, activeRow, onSeek, busy }: {
+function PanelRows({ rows, activeRow, onSeek, busy = false, trailing, empty }: {
   rows: { start: number; text: string }[]
   activeRow: number
   onSeek: (seconds: number) => void
-  busy: boolean
+  busy?: boolean
+  /** Something to do to a row, beside it — a bookmark's remove button. */
+  trailing?: (i: number) => ReactNode
+  /** What the tab says while it has no rows. */
+  empty?: ReactNode
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
-  const rowRef = useRef<HTMLButtonElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
   const [following, setFollowing] = useState(true)
   // Centred in this box only — scrollIntoView would drag the page along too.
   const center = () => {
@@ -510,20 +534,28 @@ function PanelTranscript({ rows, activeRow, onSeek, busy }: {
     <div className="relative min-h-0 flex-1">
       <div ref={boxRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain px-1.5 pb-3">
         {rows.map((s, i) => (
-          <button
+          <div
             key={`${s.start}-${i}`}
             ref={i === activeRow ? rowRef : undefined}
-            onClick={() => { setFollowing(true); onSeek(s.start) }}
-            className={`flex w-full gap-2 rounded-lg px-1.5 py-1 text-left transition-colors ${
+            className={`flex items-start rounded-lg transition-colors ${
               i === activeRow ? 'bg-white/15' : 'hover:bg-white/10'
             }`}
           >
-            <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
-            <span className={`text-(length:--panel-body) leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
-              {s.text}
-            </span>
-          </button>
+            <button
+              onClick={() => { setFollowing(true); onSeek(s.start) }}
+              className="flex min-w-0 flex-1 gap-2 px-1.5 py-1 text-left"
+            >
+              <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
+              <span className={`text-(length:--panel-body) leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
+                {s.text}
+              </span>
+            </button>
+            {trailing?.(i)}
+          </div>
         ))}
+        {!rows.length && !busy && empty && (
+          <p className="px-1.5 py-2 text-(length:--panel-body) leading-snug text-shade-aa">{empty}</p>
+        )}
         {busy && <p className="px-1.5 py-2 text-xs text-shade-aa">{t('Translating…')}</p>}
       </div>
       {!following && (
@@ -658,12 +690,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // on would be fetched for every video you opened after it. Each video starts
   // it on the tab Settings names; a tab picked on a video lasts for that video.
   const [panelOnVideo, setPanelOnVideo] = useState(false)
-  const [panelTab, setPanelTab] = useState<DetailsTab>(videoPanelDefault)
+  const [panelTab, setPanelTab] = useState<PanelTabKey>(videoPanelDefault)
   // The panel's tabs opened so far on this video. Each stays mounted from its
   // first opening — hidden, not thrown away — so switching tabs or closing the
   // panel keeps where you'd scrolled to, the replies you'd opened, a half-typed
   // question. A new video starts over.
-  const [panelKept, setPanelKept] = useState<DetailsTab[]>([])
+  const [panelKept, setPanelKept] = useState<PanelTabKey[]>([])
   const [panelSide, setPanelSide] = useState<PanelSide>(loadPanelSide)
   useEffect(() => {
     try { localStorage.setItem(PANEL_SIDE_KEY, panelSide) } catch { /* private window: just this visit */ }
@@ -888,21 +920,30 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // video turns out to have none, a panel set to open on either opens on Info
   // — the one tab that costs nothing to show. While the captions are still on
   // their way it waits on the tab it was asked for rather than flashing past
-  // another (and, if that were Comments, fetching them for nothing).
-  const panelTabShown: DetailsTab = (panelTab === 'transcript' || panelTab === 'ask') && captions !== null && !hasCaptions
-    ? 'info' : panelTab
-  const panelShows = (tab: DetailsTab) => panelOnVideo && panelTabShown === tab
+  // another (and, if that were Comments, fetching them for nothing). Chapters
+  // is only ever picked once they've arrived, so it falls back only if the
+  // video had none after all.
+  const panelTabShown: PanelTabKey =
+    ((panelTab === 'transcript' || panelTab === 'ask') && captions !== null && !hasCaptions)
+      || (panelTab === 'chapters' && !chapters.length)
+      ? 'info' : panelTab
+  const panelShows = (tab: PanelTabKey) => panelOnVideo && panelTabShown === tab
   // Kept once shown. Read as "kept, or showing now" so a tab's first render
   // doesn't wait a frame for the effect that records it.
-  const panelKeeps = (tab: DetailsTab) => panelKept.includes(tab) || panelShows(tab)
+  const panelKeeps = (tab: PanelTabKey) => panelKept.includes(tab) || panelShows(tab)
   useEffect(() => {
     if (panelOnVideo && !panelKept.includes(panelTabShown)) setPanelKept((k) => [...k, panelTabShown])
   }, [panelOnVideo, panelTabShown])  // eslint-disable-line react-hooks/exhaustive-deps
-  // All four, whatever the page's own switch holds at this width. Transcript
-  // and Ask go once the video turns out to have no captions.
-  const panelTabs = [
-    { key: 'info' as const, label: t('Info'), icon: TAB_ICONS.info },
-    { key: 'comments' as const, label: t('Comments'), icon: TAB_ICONS.comments },
+  // Every tab, whatever the page's own switch holds at this width. Transcript
+  // and Ask go once the video turns out to have no captions; Chapters comes
+  // once it turns out to have some. Bookmarks is always there — empty, it says
+  // how to make one. The video's own map of itself and yours follow Info; what
+  // other people said, what's said in it, and asking about it come after.
+  const panelTabs: { key: PanelTabKey; label: string; icon: ReactNode }[] = [
+    { key: 'info', label: t('Info'), icon: TAB_ICONS.info },
+    ...(chapters.length ? [{ key: 'chapters' as const, label: t('Chapters'), icon: TAB_ICONS.chapters }] : []),
+    { key: 'bookmarks', label: t('Bookmarks'), icon: TAB_ICONS.bookmarks },
+    { key: 'comments', label: t('Comments'), icon: TAB_ICONS.comments },
     ...(captions === null || hasCaptions ? [
       { key: 'transcript' as const, label: t('Transcript'), icon: TAB_ICONS.transcript },
       { key: 'ask' as const, label: t('Ask AI'), icon: TAB_ICONS.ask },
@@ -914,6 +955,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // Likewise the transcript: its rows, and the play-head tick that moves its
   // highlight, are wanted while either place shows it.
   const transcriptWanted = showTranscript || panelShows('transcript')
+  // And the play head, for whichever list of moments is showing.
+  const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks')
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -1599,13 +1642,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // open transcript needs the same tick to follow along, at a lazier rate — its
   // highlight moves once a sentence, so 120ms would be ~8 renders per useful change.
   useEffect(() => {
-    if (!showCaptions && !transcriptWanted) return
+    if (!showCaptions && !timeWanted) return
     const id = window.setInterval(() => {
       const p = playerRef.current
       if (p) setCurTime(p.getCurrentTime())
     }, showCaptions ? 120 : 500)
     return () => window.clearInterval(id)
-  }, [showCaptions, transcriptWanted])
+  }, [showCaptions, timeWanted])
 
   // The AI-translated sentences as whole-line cues. Shared by whichever slot picked
   // AI (main or second): each translated sentence already covers its own span, and
@@ -1650,6 +1693,18 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       .map((c, i) => ({ start: c.start, end: i + 1 < src.length ? src[i + 1].start : Number.POSITIVE_INFINITY, text: c.text.trim() }))
       .filter((s) => s.text)
   }, [transcriptIsAI, aiTranscript, transcriptCues, captions])
+  // The panel's other two lists of moments. A chapter row is its title; a
+  // bookmark row is its note, or else what's being said there, or else which
+  // chapter it's in — a bare timestamp says nothing about why you marked it.
+  // Each lights the last row the play head has passed, as the transcript does.
+  const chapterRows = useMemo(() => chapters.map((c) => ({ start: c.start, text: c.title })), [chapters])
+  const activeChapter = chapters.indexOf(chapterAt(chapters, curTime) as Chapter)
+  const bookmarkRows = useMemo(() => marks.bookmarks.map((b) => {
+    const at = b.position_seconds
+    const said = transcript.find((s) => s.start <= at && at < s.end)?.text
+    return { id: b.id, start: at, text: b.note || said || chapterAt(chapters, at)?.title || '' }
+  }), [marks.bookmarks, transcript, chapters])
+  const activeBookmark = marks.bookmarks.reduce((last, b, i) => (b.position_seconds <= curTime + 0.05 ? i : last), -1)
   const activeRow = useMemo(() => {
     if (!transcriptWanted) return -1
     let i = -1
@@ -2215,9 +2270,36 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               </PanelScroll>
             </PanelTab>
           )}
+          {panelKeeps('chapters') && (
+            <PanelTab shown={panelTabShown === 'chapters'}>
+              <PanelRows rows={chapterRows} activeRow={activeChapter} onSeek={seekTo} />
+            </PanelTab>
+          )}
           {panelKeeps('transcript') && (
             <PanelTab shown={panelTabShown === 'transcript'}>
-              <PanelTranscript rows={transcript} activeRow={activeRow} onSeek={seekTo} busy={aiTranscriptBusy} />
+              <PanelRows rows={transcript} activeRow={activeRow} onSeek={seekTo} busy={aiTranscriptBusy} />
+            </PanelTab>
+          )}
+          {panelKeeps('bookmarks') && (
+            <PanelTab shown={panelTabShown === 'bookmarks'}>
+              <PanelRows
+                rows={bookmarkRows}
+                activeRow={activeBookmark}
+                onSeek={seekTo}
+                empty={t('No bookmarks yet. Press {key} to mark the moment you’re at.', { key: shortcutLabel('bookmark') })}
+                trailing={(i) => (
+                  <button
+                    onClick={() => marks.removeBookmark(bookmarkRows[i].id)}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
+                    title={t('Remove bookmark')}
+                    aria-label={t('Remove bookmark')}
+                  >
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
+                )}
+              />
             </PanelTab>
           )}
           {panelKeeps('ask') && (
