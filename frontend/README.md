@@ -1918,16 +1918,18 @@ The **volume boost** (`hooks/audioBoost.ts`) is the volume popup's second
 column, and deliberately not the same thing as the first. The shared volume is one level
 for everything you watch and stops at 100% — the loudest the file is. Some videos
 are simply mixed quiet, and turning the shared level up to compensate makes the
-*next* video shout. So the boost belongs to the video instead: 1× to 8× in
-quarter steps, multiplying the element's own volume, **reset whenever `src`
+*next* video shout. So the boost belongs to the video instead: 1× to 6× (+10) in
+half steps, multiplying the element's own volume, **reset whenever `src`
 changes**. The chain ends in a **limiter** (a `DynamicsCompressorNode` at −6dB,
 12:1, 3ms attack): plain gain on a track that already peaks near full scale
 clips rather than gets louder, so past about 4× the extra range is only worth
 having if the peaks are held down while the quiet parts keep climbing. The
-column's head is its multiplier, and a click on it toggles 1× ↔ 2×; the slider
-is the fine control. On the bar itself the multiplier shows only while it's
-above 1×, since there it would be a number that never moves next to one that
-does.
+column's head is its level, and a click on it toggles 1× ↔ 2×; the slider is
+the fine control. The level is counted in steps above normal — +0, +1, +2 for
+1×, 1.5×, 2× (`boostLabel`) — since a multiplier's halves read as more precision
+than a "louder, by this much" control has; the tooltip keeps the multiplier. On
+the bar itself it shows only while it's above +0, since there it would be a
+number that never moves next to one that does.
 
 - **It needs the audio**, so the page can only do this where we serve the file — a
   download or a local folder. The embed is a cross-origin iframe: its audio is

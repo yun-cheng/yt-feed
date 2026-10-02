@@ -7,7 +7,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
-import LocalControls, { localPlayer, playerIsLive, previewLeft } from '../components/LocalControls'
+import LocalControls, { boostLabel, localPlayer, playerIsLive, previewLeft } from '../components/LocalControls'
 import { DEFAULT_SPEEDS, setSpeedDefaults } from '../lib/playbackSpeeds'
 import type { PlayerApi } from '../components/LocalControls'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -510,7 +510,12 @@ describe('LocalControls — the per-video boost', () => {
     renderLocal()
     fireEvent.change(screen.getByLabelText('Volume boost'), { target: { value: '2.5' } })
     expect(gain.gain.value).toBe(2.5)
-    expect(screen.getByTestId('boost-readout')).toHaveTextContent('2.5×')
+    expect(screen.getByTestId('boost-readout')).toHaveTextContent('+3')
+    expect(screen.getByTestId('boost-button')).toHaveTextContent('+3')
+  })
+
+  it('counts the boost in steps above normal, not as the multiplier', () => {
+    expect([1, 1.5, 2, 2.5, 6].map(boostLabel)).toEqual(['+0', '+1', '+2', '+3', '+10'])
   })
 
   it('the button toggles between normal and 2×', () => {
@@ -600,7 +605,7 @@ describe('LocalControls — the boost over the embed', () => {
       { __ytFeed: 'boost', op: 'set', value: 2.5 },
       'https://www.youtube.com',
     )
-    expect(screen.getByTestId('boost-readout')).toHaveTextContent('2.5×')
+    expect(screen.getByTestId('boost-readout')).toHaveTextContent('+3')
   })
 
   it('takes the frame’s word for it when the boost did not happen', () => {

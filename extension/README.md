@@ -501,7 +501,7 @@ number crosses it.
 
 ```
 app  →  {__ytFeed:'boost', op:'ping'}            is anyone listening?
-     →  {__ytFeed:'boost', op:'set', value:1-8}  amplify by this much
+     →  {__ytFeed:'boost', op:'set', value:1-6}  amplify by this much
 here →  {__ytFeed:'boost', op:'ready'}           yes, and this browser can
      →  {__ytFeed:'boost', op:'result', ok, value}   what actually happened
 ```

@@ -14,7 +14,7 @@
  *
  * Protocol (both directions carry `__ytFeed: 'boost'`):
  *   app → here    {op: 'ping'}              is anyone listening?
- *                 {op: 'set', value: 1..8}  amplify by this much
+ *                 {op: 'set', value: 1..6}  amplify by this much
  *   here → app    {op: 'ready'}             yes, and this browser can do it
  *                 {op: 'result', ok, value} what actually happened
  *
@@ -28,7 +28,7 @@
   // reply and no gain, whatever it sends.
   const APP_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
   // Matches MAX_BOOST on the app side; the frame doesn't take its word for it.
-  const MAX = 8
+  const MAX = 6
 
   const Ctx = window.AudioContext || window.webkitAudioContext
   let graph = null  // { ctx, gain } once built; built at most once per frame

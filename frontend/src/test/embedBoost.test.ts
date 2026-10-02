@@ -132,7 +132,7 @@ describe('embed-boost — the gain', () => {
 
   it('clamps to the range the app offers', async () => {
     await send({ __ytFeed: 'boost', op: 'set', value: 99 })
-    expect(gain.gain.value).toBe(8)
+    expect(gain.gain.value).toBe(6)
     await send({ __ytFeed: 'boost', op: 'set', value: -5 })
     expect(gain.gain.value).toBe(1)
   })

@@ -26,9 +26,9 @@ import type { RefObject } from 'react'
 /** As loud as the boost goes. Plain gain runs out of headroom well before this —
  *  which is why the chain ends in a limiter (below) rather than stopping at the
  *  point where peaks start to clip. */
-export const MAX_BOOST = 8
+export const MAX_BOOST = 6
 /** The grain of the boost slider, in multiples. */
-export const BOOST_STEP = 0.25
+export const BOOST_STEP = 0.5
 
 type Ctor = typeof AudioContext
 

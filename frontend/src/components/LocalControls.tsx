@@ -139,6 +139,13 @@ function SliderColumn({ value, min, max, step, ticks, majorEvery, head, onChange
   )
 }
 
+/** The boost as you count it: steps above normal (+0, +1, +2 …) rather than
+ *  the multiplier, whose halves (1.5×, 2.5×) read as more precision than a
+ *  "louder, by this much" control has. The multiplier stays in the tooltip. */
+export function boostLabel(boost: number): string {
+  return `+${Math.round((boost - 1) / BOOST_STEP)}`
+}
+
 // Every 10%, long at every 20%.
 const VOLUME_TICKS = Array.from({ length: 11 }, (_, i) => i * 10)
 // Every half, long at each whole multiple — 1× (none) at the bottom.
@@ -637,7 +644,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
                       aria-label={t('Boost this video’s volume')}
                       data-testid="boost-button"
                     >
-                      {boost}×
+                      {boostLabel(boost)}
                     </button>
                   }
                   onChange={setBoost}
@@ -664,7 +671,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               data-testid="boost-readout"
               className="ml-1.5 hidden text-xs tabular-nums text-white/90 hoverable:inline"
             >
-              {boost}×
+              {boostLabel(boost)}
             </span>
           )}
         </div>
