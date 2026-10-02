@@ -10,8 +10,8 @@
  * fetches nothing twice.
  *
  * Narrow on purpose: it takes a column of the frame rather than a side of it,
- * so most of the video stays in view, and the captions move over to share
- * what's left. A backdrop rather than a panel: dark enough for the text,
+ * so most of the video stays in view, and the captions keep clear of it (see
+ * CaptionRow in WatchPage). A backdrop rather than a panel: dark enough for the text,
  * see-through enough that it still reads as part of the player. Flush with the
  * player's top and side edges, reaching down as far as the page says — it knows
  * where the progress bar is and whether it's showing.

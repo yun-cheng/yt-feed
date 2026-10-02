@@ -1777,8 +1777,12 @@ no pointer itself; only its progress bar and button row do (`takesPointer` in
 `LocalControls`). Otherwise the fade sat over the panel's last lines and
 swallowed every click on them. Its one
 rounded corner is the inner foot, when it stops short of the bottom. While it's
-open, the caption block's edge on that side moves in by `PANEL_WIDTH`, so the
-captions centre in what's left of the frame — and so does the Up next screen
+open, captions still centre on the whole picture, and a line too long for that
+slides away from the panel rather than under it (`CaptionRow`: the row stops at
+the panel's edge, and a panel-wide spacer at its far end is the only thing that
+shrinks). With the panel open both edges keep just 0.5rem
+(`CAPTION_PANEL_GAP`) instead of the usual 5%, and a caption wraps only once it
+has the whole row. The Up next screen takes the rest of the frame beside it
 when the video ends, which would otherwise black the panel out at the one moment
 there's time to read it.
 

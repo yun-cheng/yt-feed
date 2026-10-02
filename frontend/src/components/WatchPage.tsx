@@ -203,6 +203,14 @@ function loadPanelSide(): PanelSide {
 // step aside by it. The floor is what its header needs for four tabs and two
 // buttons in one line.
 const PANEL_WIDTH = 'clamp(12rem, 34%, 20rem)'
+// The same width measured off the player box from anywhere inside it (it's the
+// size container), for the caption spacer below — a % there would be a share
+// of the caption row, which the panel has already narrowed.
+const PANEL_WIDTH_CQ = 'clamp(12rem, 34cqw, 20rem)'
+// How far a caption keeps from either edge while the panel is open, in place of
+// the usual 5%: the panel has already taken a third of the frame, so the room
+// beside it goes to the words.
+const CAPTION_PANEL_GAP = '0.5rem'
 
 // The caption lines to show at `curTime` for one cue list. Auto-caption cues
 // overlap in time (the next line starts while the previous is still up), which
@@ -363,9 +371,13 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
   return (
     <div
       style={{
-        // Manual (centered) captions use the full width; word-by-word gets a
-        // fixed ≈40-char box so its left edge stays put as words append.
-        width: manual ? '100%' : 'min(90%, 20em)',
+        // Manual (centered) captions are as wide as their longest line, up to
+        // the row; word-by-word gets a fixed ≈40-char box so its left edge stays
+        // put as words append. Never shrunk by the row: it's the spacer beside
+        // it that gives way (see the caption overlay).
+        width: manual ? 'auto' : 'min(90%, 20em)',
+        maxWidth: '100%',
+        flexShrink: 0,
         // Measured from youtube.com's own player: 2.5%-of-width font, weight 400,
         // normal line-height, its exact font stack.
         fontFamily: '"YouTube Noto", Roboto, Arial, Helvetica, Verdana, "PT Sans Caption", sans-serif',
@@ -398,6 +410,25 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// One caption block's row, beside the panel when it's over the video.
+//
+// The row stops at the panel's edge, and a spacer as wide as the panel sits at
+// its far end: block and spacer centre together, which puts the block on the
+// centre of the WHOLE picture — where captions belong, panel or not. A block
+// too long for that gives the spacer up first (only the spacer shrinks), so the
+// caption slides away from the panel rather than under it, and only wraps once
+// it has the whole row.
+function CaptionRow({ panelSide, children }: { panelSide: PanelSide | null; children: ReactNode }) {
+  const spacer = panelSide && <div aria-hidden style={{ flex: `0 1 ${PANEL_WIDTH_CQ}`, minWidth: 0 }} />
+  return (
+    <div className="flex justify-center">
+      {panelSide === 'right' && spacer}
+      {children}
+      {panelSide === 'left' && spacer}
     </div>
   )
 }
@@ -2107,22 +2138,27 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           bar so new lines push the stack upward; see CaptionBlock for styling. */}
       {showCaptions && (captionLines.length > 0 || captionLines2.length > 0) && (
         <div
-          className="pointer-events-none absolute inset-x-0 z-10 flex flex-col items-center gap-[2px] px-[5%]"
+          className="pointer-events-none absolute inset-x-0 z-10 flex flex-col gap-[2px] px-[5%]"
           // Anchored to whichever edge the block was sent to. Bottom-anchored,
           // new lines push the stack upward; top-anchored it grows downward,
           // which is the same reading order either way.
-          // With the panel over one side, the captions centre in what's left of
-          // the frame rather than running underneath it.
           style={{
             ...(captionPos === 'top' ? { top: captionInset } : { bottom: captionInset }),
-            ...(panelOnVideo && { [panelSide]: PANEL_WIDTH }),
+            ...(panelOnVideo && {
+              [panelSide]: PANEL_WIDTH,
+              paddingLeft: CAPTION_PANEL_GAP,
+              paddingRight: CAPTION_PANEL_GAP,
+            }),
           }}
         >
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
               the pick — not the content — decides which reads on top. */}
-          {captionLines.length > 0 && <CaptionBlock lines={captionLines} size={captionSize} />}
-          {captionLines2.length > 0 && <CaptionBlock lines={captionLines2} size={captionSize} />}
+          {[captionLines, captionLines2].map((lines, i) => lines.length > 0 && (
+            <CaptionRow key={i} panelSide={panelOnVideo ? panelSide : null}>
+              <CaptionBlock lines={lines} size={captionSize} />
+            </CaptionRow>
+          ))}
         </div>
       )}
 
@@ -3204,8 +3240,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             related-video grid the embed puts up at the end, in place of a wall of
             other people's channels. Dismissing leaves the finished frame alone.
             With the panel over the video open, it takes the rest of the frame
-            beside it, as the captions do, rather than blacking the panel out
-            at the one moment there's time to read it. */}
+            beside it rather than blacking the panel out at the one moment
+            there's time to read it. */}
         {ended && nextUp && !nextDismissed && (
           <div
             data-testid="up-next"
