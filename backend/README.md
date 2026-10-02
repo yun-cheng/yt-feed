@@ -1287,6 +1287,17 @@ for: anything else stays `NULL` and is retried on the next render. Writing `[]`
 there made a transient failure permanent — `[]` is never re-labeled, only `NULL`
 is — and quietly stranded whole pages of videos with no topics.
 
+**Nor is a build with no videos to read.** A channel page opened in the seconds
+after subscribing asked for a build before the first scan had stored anything,
+and `build_channel_vocab` recorded the empty result as a finished vocabulary:
+`[]` at the current version, which reads as "this channel has no topics" and is
+never rebuilt. The videos arrived moments later and stayed `NULL`. Now a build
+over zero videos stores nothing, and the channel page waits out
+`channel.scanning` before asking. Channels already caught that way have one
+signature, an empty vocabulary over videos that are **all** `NULL` (a real
+build writes every video it read, `[]` for none), and `init_db` clears it
+(`_unstick_empty_label_builds`), so their next visit builds them.
+
 **`reasoning=False` is load-bearing here**, not a tuning knob. Matching 50 titles
 against a fixed list is mechanical, and with reasoning on the model spent its
 whole budget thinking and returned empty content (`finish_reason=length`) — most
@@ -2186,7 +2197,7 @@ no per-test decorator). What's covered:
 | `test_playlist_import.py` | the link that makes re-importing a re-sync, playlist order surviving the copy, add-only merge (a video pulled on YouTube stays in your copy), the owner-only guard, every shape `playlist_ref` accepts and rejects, looking up a playlist someone else owns, nothing written before YouTube answers (the write-lock deadlock), and the extension's path: no token, right owner, gaps filled without clobbering what the page already read |
 | `test_watch_later.py`, `test_hidden_channels.py` | idempotence, ordering, the bulk import, saving from an id alone, the saved-at stamp, the avatar filled in on save |
 | `test_add_channel.py` | every accepted channel reference (id, handle, vanity URL), lookup vs add, idempotence, removal — and that a resync leaves a hand-added channel alone |
-| `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization |
+| `test_video_labels.py` | match keys, stop words, the verbatim backstop, canonicalization; a build over no videos stays unbuilt, and startup unsticks only the channels caught that way |
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_video_length.py` | the runtime buckets: each boundary second belonging to the longer one, an unprobed duration belonging to none, both ways of meaning "any length", an unknown name dropped rather than refused, `total` counting what you'll be shown, and a channel page filtering the same way |
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |

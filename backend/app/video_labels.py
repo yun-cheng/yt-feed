@@ -343,9 +343,11 @@ async def build_channel_vocab(db, channel_id: str) -> list[str]:
         )
     ).all()
     if not rows:
-        channel.video_label_vocab = json.dumps([])
-        channel.video_label_version = LABEL_VERSION
-        await db.commit()
+        # Nothing to build from, and that says nothing about the channel's topics:
+        # it is a channel whose first scan hasn't landed yet. Stamped as built, it
+        # read as "this channel has no topics" for good, since the page only asks
+        # for a build while the vocabulary is missing. Left NULL, the next visit
+        # builds it.
         return []
 
     # Channel grounding (name + taxonomy themes) helps the model interpret titles.

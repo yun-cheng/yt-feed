@@ -116,6 +116,10 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
       setVocabReady(chan.label_vocab.length > 0)
       return
     }
+    // A channel added moments ago has no videos yet, and a build now would
+    // have nothing to read. The scan's own refetches come back through here,
+    // and the first one after it finishes starts the build.
+    if (chan.scanning) return
     if (labelBuildRef.current === channelId) return  // build already in flight
     labelBuildRef.current = channelId
     onBuildingChange?.(true)

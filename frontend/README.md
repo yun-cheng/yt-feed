@@ -679,6 +679,11 @@ page can only make because the server sends the flag. The poll re-arms off a
 tick counter: every refetch replaces `channel` with an equal-looking object, so
 nothing in the effect's deps would otherwise change.
 
+The topic build waits for the same flag. Asked for while the scan is still
+running, it would read a channel with no videos and settle on "no topics" for
+good, so `initChannelLabels` skips the build while `scanning` holds, and the
+first refetch after the scan finishes starts it.
+
 `apiFetch` gained `quietStatuses` for this: the channel page's 404 is now its own
 normal path (it's how the page learns the channel isn't ours), so it shouldn't
 raise an error toast, while everything else still does. That's the difference

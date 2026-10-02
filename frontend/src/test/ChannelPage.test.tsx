@@ -141,3 +141,46 @@ describe('ChannelPage — the length filter', () => {
     expect(params().has('length')).toBe(false)
   })
 })
+
+describe('the topic build of a channel added moments ago', () => {
+  /** The channel's first scan is running until this is false. */
+  let scanning: boolean
+  let builds: number
+
+  beforeEach(() => {
+    scanning = true; builds = 0
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      const json = async () => {
+        if (url.includes('/videos?')) {
+          videoCalls.push(url)
+          return { channel: { ...CHANNEL, label_vocab: null, scanning }, window: '0-all', sort: 'likes',
+                   videos: scanning ? [] : rows, total: scanning ? 0 : rows.length }
+        }
+        if (url.includes('/labels/build')) { builds++; return { status: 'started' } }
+        if (url.includes('/labels/status')) return { building: true, built: false }
+        if (url.includes('/archive')) {
+          return { held: 0, lifetime: 0, reachable: 0, capped_by_api: false, remaining: 0,
+                   oldest_held: null, exhausted: false, started: true, filling: false }
+        }
+        if (url.includes('/api/tags')) return []
+        return {}
+      }
+      return { ok: true, status: 200, json, clone: () => ({ text: async () => '' }) } as unknown as Response
+    }))
+  })
+  afterEach(() => { vi.useRealTimers() })
+
+  it('waits for the scan, since a build now would find no videos and settle on none', async () => {
+    show()
+    await waitFor(() => expect(videoCalls.length).toBe(1))
+    await vi.advanceTimersByTimeAsync(3000)
+    await waitFor(() => expect(videoCalls.length).toBe(2))
+    expect(builds).toBe(0)
+
+    scanning = false
+    await vi.advanceTimersByTimeAsync(3000)
+    await waitFor(() => expect(builds).toBe(1))
+  })
+})

@@ -6,10 +6,12 @@ is what keeps a wobbly labeller from producing wobbly chips.
 """
 
 import json
+from datetime import datetime
 
 import pytest
 
-from app.models import Channel
+from app.database import _unstick_empty_label_builds, async_session, engine
+from app.models import Channel, Video
 from app.video_labels import (
     LABEL_VERSION,
     MAX_LABELS,
@@ -20,6 +22,7 @@ from app.video_labels import (
     _labels_or_empty,
     _normalize,
     _verbatim,
+    build_channel_vocab,
     is_current,
 )
 
@@ -186,3 +189,53 @@ def test_is_current_only_when_built_at_this_version():
 )
 def test_labels_or_empty_never_raises(raw, expected):
     assert _labels_or_empty(raw) == expected
+
+
+# ── A build with nothing to read ─────────────────────────────────────
+
+
+async def _channel(cid, *, vocab=None, labels=()):
+    """A channel with one video per entry in `labels` (None = never labeled)."""
+    async with async_session() as s:
+        s.add(Channel(youtube_id=cid, title=cid, video_label_vocab=vocab,
+                      video_label_version=LABEL_VERSION if vocab is not None else None))
+        for i, lb in enumerate(labels):
+            s.add(Video(youtube_id=f"{cid}-v{i}", channel_id=cid, title=f"v{i}",
+                        thumbnail_url="", published_at=datetime.utcnow(),
+                        duration_seconds=60, view_count=1, like_count=1,
+                        is_short=False, title_labels=lb))
+        await s.commit()
+
+
+async def _vocab(cid):
+    async with async_session() as s:
+        return (await s.get(Channel, cid)).video_label_vocab
+
+
+async def test_a_build_before_the_first_scan_lands_stays_unbuilt():
+    """A page opened during a new channel's first scan asks for a build while
+    the channel holds no videos. Recording that as "no topics" kept it so after
+    the videos arrived, since the page only builds a missing vocabulary."""
+    await _channel("new")
+    async with async_session() as s:
+        assert await build_channel_vocab(s, "new") == []
+    assert await _vocab("new") is None
+
+
+async def test_startup_unsticks_a_channel_built_from_zero_videos():
+    await _channel("stuck", vocab="[]", labels=[None, None])
+    async with engine.begin() as conn:
+        await _unstick_empty_label_builds(conn)
+    assert await _vocab("stuck") is None
+
+
+@pytest.mark.parametrize("vocab,labels", [
+    ("[]", ["[]", "[]"]),            # built over its videos, and none had a topic
+    ('["MLB"]', [None, None]),       # built; these are new videos, labeled lazily
+    ("[]", []),                      # no videos to say otherwise
+])
+async def test_startup_leaves_a_real_build_alone(vocab, labels):
+    await _channel("ok", vocab=vocab, labels=labels)
+    async with engine.begin() as conn:
+        await _unstick_empty_label_builds(conn)
+    assert await _vocab("ok") == vocab

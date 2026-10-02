@@ -130,6 +130,26 @@ async def _assert_migrated(conn):
         )
 
 
+async def _unstick_empty_label_builds(conn):
+    """Forget topic builds that ran before the channel had any videos.
+
+    A channel page opened during a new channel's first scan used to build its
+    topics from zero videos and record the answer, "no topics", as final. The
+    videos arrived seconds later and were never labeled. That state has one
+    signature: an empty vocabulary over videos that are ALL unlabeled, since a
+    real build labels every video it saw (`[]` for none). Clearing the
+    vocabulary lets the next visit build it properly. Cheap and idempotent: it
+    matches nothing once those channels have rebuilt.
+    """
+    await conn.execute(text(
+        "UPDATE channels SET video_label_vocab = NULL"
+        " WHERE video_label_vocab = '[]'"
+        " AND EXISTS (SELECT 1 FROM videos v WHERE v.channel_id = channels.youtube_id)"
+        " AND NOT EXISTS (SELECT 1 FROM videos v WHERE v.channel_id = channels.youtube_id"
+        "                 AND v.title_labels IS NOT NULL)"
+    ))
+
+
 async def init_db(assert_migrated: bool = True):
     """Bring the schema up to date.
 
@@ -147,3 +167,4 @@ async def init_db(assert_migrated: bool = True):
             await _assert_migrated(conn)
         await conn.run_sync(Base.metadata.create_all)
         await _apply_column_migrations(conn)
+        await _unstick_empty_label_builds(conn)
