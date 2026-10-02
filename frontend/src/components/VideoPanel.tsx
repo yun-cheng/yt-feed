@@ -20,7 +20,7 @@
  * header's corner, so the header leaves it room rather than the panel moving
  * down for it.
  */
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import type { VideoPanelTab } from '../lib/videoPanel'
 import { t } from '../lib/i18n'
 
@@ -43,6 +43,19 @@ type Props = {
   children: ReactNode
 }
 
+/** The panel's own rem: 14px over a 1024px-wide player, growing and shrinking
+ *  with the player the way the captions do (they're 2.5cqw), so fullscreen
+ *  reads as well as the page does. The floor keeps a small player legible.
+ *
+ *  Everything in the panel hangs off it — type, spacing, icons, avatars, and
+ *  the header that sets its narrowest (PANEL_WIDTH in WatchPage) — so it's the same panel at any size,
+ *  scaled, rather than bigger letters squeezed into the same column. That
+ *  works because Tailwind's `text-xs` / `p-3` / `h-7` read theme variables
+ *  (`--text-xs`, `--spacing`), which `.panel-type` in index.css redefines in
+ *  terms of this. cqw here is a share of the player box: it's the size
+ *  container, and the nearest one to every use below. */
+export const PANEL_UNIT = 'max(12px, 1.375cqw)'
+
 const HEADER_BUTTON = 'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-shade-cc transition-colors hover:bg-white/10 hover:text-white'
 
 export default function VideoPanel({ open, tabs, tab, onTab, side, onSwapSide, onClose, width, bottom, children }: Props) {
@@ -52,10 +65,10 @@ export default function VideoPanel({ open, tabs, tab, onTab, side, onSwapSide, o
       // Rounded only where its foot stops short of the player's edge.
       className={`absolute top-0 ${side === 'right' ? 'right-0' : 'left-0'} ${
         bottom === '0px' ? '' : side === 'right' ? 'rounded-bl-xl' : 'rounded-br-xl'
-      } z-20 flex flex-col overflow-hidden bg-black/65 text-white shadow-lg backdrop-blur-sm transition-[bottom] duration-200`}
+      } z-20 flex flex-col overflow-hidden bg-black/65 text-white shadow-lg backdrop-blur-sm transition-[bottom] duration-200 panel-type`}
       // Hidden by visibility rather than display: a box taken out of layout can
       // come back scrolled to the top, which is the state this keeps.
-      style={{ width, bottom, visibility: open ? undefined : 'hidden' }}
+      style={{ width, bottom, visibility: open ? undefined : 'hidden', '--panel-unit': PANEL_UNIT } as CSSProperties}
       aria-hidden={!open}
       role="complementary"
       aria-label={t('Panel on the video')}

@@ -186,6 +186,11 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
 
   const busy = pending !== null
   const empty = loaded && !messages.length && !busy
+  // In the panel, the body size every other tab reads at (`--panel-body`, see
+  // .panel-type) and the same snug leading, so switching tabs doesn't change
+  // the size of the words. The page's tab keeps its roomier answer text.
+  const text = inPanel ? 'text-(length:--panel-body)' : 'text-sm'
+  const answer = `${inPanel ? `${text} leading-snug` : 'text-sm leading-relaxed'} text-shade-cc [overflow-wrap:anywhere]`
 
   return (
     <div className={`flex flex-col ${inPanel ? 'min-h-0 flex-1 px-3 pb-3' : fillsPane ? 'lg:min-h-0 lg:flex-1' : ''}`}>
@@ -215,15 +220,15 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
           <div
             key={i}
             className={m.role === 'user'
-              ? 'ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-shade-27 px-3 py-2 text-sm text-white [overflow-wrap:anywhere]'
-              : 'text-sm leading-relaxed text-shade-cc [overflow-wrap:anywhere]'}
+              ? `ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-shade-27 px-3 py-2 ${text} text-white [overflow-wrap:anywhere]`
+              : answer}
           >
             {m.role === 'assistant' ? renderMarkdown(m.content, onSeek) : m.content}
           </div>
         ))}
 
         {busy && (
-          <div className="text-sm leading-relaxed text-shade-cc [overflow-wrap:anywhere]">
+          <div className={answer}>
             {pending ? renderMarkdown(pending, onSeek) : <span className="text-shade-99">{t('Reading the transcript…')}</span>}
           </div>
         )}
@@ -248,7 +253,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
           }}
           rows={1}
           placeholder={t('Ask about this video')}
-          className="max-h-28 min-h-[2.25rem] flex-1 resize-none rounded-2xl bg-shade-12 px-3 py-2 text-sm text-white ring-1 ring-white/10 placeholder:text-shade-88 focus:outline-none focus:ring-white/25"
+          className={`max-h-28 min-h-9 flex-1 resize-none rounded-2xl bg-shade-12 px-3 py-2 ${text} text-white ring-1 ring-white/10 placeholder:text-shade-88 focus:outline-none focus:ring-white/25`}
         />
         <button
           onClick={() => void send(draft)}

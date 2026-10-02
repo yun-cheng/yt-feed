@@ -99,7 +99,7 @@ function CommentBody({ text, onSeek, videoId, compact }: { text: string; onSeek:
   return (
     <>
       <div
-        className={`whitespace-pre-wrap ${compact ? 'text-[13px] leading-snug' : 'text-sm leading-relaxed'} text-shade-f1 [overflow-wrap:anywhere]${
+        className={`whitespace-pre-wrap ${compact ? 'text-(length:--panel-body) leading-snug' : 'text-sm leading-relaxed'} text-shade-f1 [overflow-wrap:anywhere]${
           long && !open ? ' line-clamp-4' : ''
         }`}
       >

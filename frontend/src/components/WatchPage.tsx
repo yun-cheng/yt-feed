@@ -15,7 +15,7 @@ import { usePlayerMarks, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMar
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
-import VideoPanel, { PanelScroll, PanelTab } from './VideoPanel'
+import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import { videoPanelDefault } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -200,13 +200,14 @@ function loadPanelSide(): PanelSide {
   try { return localStorage.getItem(PANEL_SIDE_KEY) === 'left' ? 'left' : 'right' } catch { return 'right' }
 }
 // The panel's width, in the one place: the panel draws at it and the captions
-// step aside by it. The floor is what its header needs for four tabs and two
-// buttons in one line.
-const PANEL_WIDTH = 'clamp(12rem, 34%, 20rem)'
+// step aside by it. It scales with the player, as its type does (see
+// PANEL_UNIT): 320px over a 1024px player. The floor is what its header needs
+// for four tabs and two buttons in one line, which is in the panel's unit.
+const PANEL_WIDTH = `max(calc(12 * ${PANEL_UNIT}), 31.25%)`
 // The same width measured off the player box from anywhere inside it (it's the
 // size container), for the caption spacer below — a % there would be a share
 // of the caption row, which the panel has already narrowed.
-const PANEL_WIDTH_CQ = 'clamp(12rem, 34cqw, 20rem)'
+const PANEL_WIDTH_CQ = `max(calc(12 * ${PANEL_UNIT}), 31.25cqw)`
 // How far a caption keeps from either edge while the panel is open, in place of
 // the usual 5%: the panel has already taken a third of the frame, so the room
 // beside it goes to the words.
@@ -521,8 +522,8 @@ function PanelTranscript({ rows, activeRow, onSeek, busy }: {
               i === activeRow ? 'bg-white/15' : 'hover:bg-white/10'
             }`}
           >
-            <span className="shrink-0 pt-px font-mono text-[11px] tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
-            <span className={`text-[13px] leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
+            <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
+            <span className={`text-(length:--panel-body) leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
               {s.text}
             </span>
           </button>
@@ -2196,7 +2197,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   </div>
                 )}
                 {description && (
-                  <div className="mt-2 whitespace-pre-wrap text-[13px] leading-snug text-shade-dd [overflow-wrap:anywhere]">
+                  <div className="mt-2 whitespace-pre-wrap text-(length:--panel-body) leading-snug text-shade-dd [overflow-wrap:anywhere]">
                     {linkify(description, seekTo)}
                   </div>
                 )}

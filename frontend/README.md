@@ -1764,9 +1764,9 @@ a tab opened here after its twin below fetches nothing twice:
 | Transcript | `PanelTranscript`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
 | Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
 
-**Where it sits.** `PANEL_WIDTH`, `clamp(12rem, 34%, 20rem)` — the floor is what
-the header needs for four tabs and two buttons on one line — on a `bg-black/65`
-blurred backdrop, flush with the player's top and side edges. It's in the
+**Where it sits.** `PANEL_WIDTH`, 31.25% of the player (320px over a 1024px
+one), never less than the 12 panel units the header needs for four tabs and two
+buttons on one line — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
 player box, so it goes to fullscreen with it. It reaches the bottom edge while
 the controls are hidden; while they show it stops just above the progress bar
 (`panelBottom`): 4.5rem over our own bar, whose progress bar's hit area starts
@@ -1785,6 +1785,18 @@ shrinks). With the panel open both edges keep just 0.5rem
 has the whole row. The Up next screen takes the rest of the frame beside it
 when the video ends, which would otherwise black the panel out at the one moment
 there's time to read it.
+
+**Its size.** The panel scales with the player the way the captions do:
+everything in it — type, spacing, icons, avatars — is sized in `PANEL_UNIT`
+(`VideoPanel`), 14px over a 1024px-wide player and proportional to it from
+there (floored at 12px for a small one), and its width follows the player too.
+It needs no per-tab sizes because Tailwind's `text-xs` / `p-3` / `h-7` read
+theme variables (`--text-xs`, `--spacing`), which `.panel-type` in `index.css`
+redefines from `--panel-unit`. That unit is a registered `@property`, so its
+`cqw` resolves once, against the player box, rather than at each use. Every
+tab's body text — description, comments, transcript lines, Ask AI's answers and
+question box — reads at the one `--panel-body` size with snug leading, so
+switching tabs never changes the size of the words.
 
 A button in its header moves it between the right and left sides — whichever
 half the video isn't using — and that choice is remembered
@@ -1806,8 +1818,8 @@ is showing, or the panel is open on its Comments tab". Going back to Info and
 returning reads what was already fetched too.
 
 **On the video**, the comments are `CommentList` with `compact` on: smaller
-type and avatars than the tab, same threads, replies, seeking timestamps and
-Translate.
+avatars and tighter spacing than the tab, same threads, replies, seeking
+timestamps and Translate.
 
 Everything about it follows one rule: **nothing is fetched until you open it.**
 No hover prefetch, no warm-up while the video plays, and no remembered "open"

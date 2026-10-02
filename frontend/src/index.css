@@ -241,6 +241,26 @@ button, a, [role="button"] {
   cursor: pointer;
 }
 
+/* The panel over the video, sized in its own unit (VideoPanel's PANEL_UNIT,
+   set inline as --panel-unit) rather than the page's rem. Registered so it
+   resolves to px once, at the panel, against the player box — passed down
+   unresolved, a cqw would be measured at each use instead. Tailwind's type and
+   spacing utilities read these variables, so the tabs need no sizes of their
+   own; the two below are for the body text and timestamps the panel alone has. */
+@property --panel-unit {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 16px;
+}
+.panel-type {
+  --spacing: calc(var(--panel-unit) * 0.25);
+  --text-xs: calc(var(--panel-unit) * 0.8125);
+  --text-sm: calc(var(--panel-unit) * 0.9375);
+  --text-base: var(--panel-unit);
+  --panel-body: calc(var(--panel-unit) * 0.875);
+  --panel-time: calc(var(--panel-unit) * 0.75);
+}
+
 /* Volume slider (VideoCard hover control). Track background is set inline as a
    gradient so the filled portion tracks the current volume. */
 .vol-slider {
