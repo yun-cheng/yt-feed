@@ -48,6 +48,11 @@ npm test           # vitest run
 `main.tsx` mounts `<App/>` inside an `ErrorBoundary` and `StrictMode`, and pulls
 in `index.css` (Tailwind + a few custom keyframes/utilities).
 
+The tab icon is `public/favicon.svg`, the sidebar's `LogoMark` drawn the same:
+an emerald play button with a black triangle, not YouTube's red and white, so a
+tab of this app doesn't pass for a YouTube one. The colour lives in both files
+(`LOGO_COLOR` in `Sidebar.tsx`); change them together.
+
 ### `App.tsx` is the hub
 
 There is **no router library**. `App.tsx` holds essentially all page state and
