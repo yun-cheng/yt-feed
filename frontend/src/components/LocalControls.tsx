@@ -313,6 +313,9 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   const [rate, setRate] = useState(1)
   const [rateMenu, setRateMenu] = useState(false)
   const rateRef = useRef<HTMLDivElement>(null)
+  // Whether the pointer is over the speed control — the menu it opened by
+  // hovering shouldn't be shut by the click that follows.
+  const rateHoverRef = useRef(false)
   const [hoverRatio, setHoverRatio] = useState<number | null>(null)
   // The slider reads and writes the SHARED volume (the same store the previews
   // and the embed use), so a level set here follows you to the next video.
@@ -673,9 +676,19 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             nothing to speed up; slowing one down only walks you backwards off
             the live edge. */}
         {!live && (
-          <div ref={rateRef} className="relative">
+          /* Opens on hover where there's a pointer, like the volume beside it,
+             and on a tap where there isn't — the click still toggles it for
+             touch and the keyboard, except that a click on a menu the hover
+             already opened leaves it open. Centred on the button and flush
+             against it, for the same straight way up. */
+          <div
+            ref={rateRef}
+            className="relative"
+            onPointerEnter={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = true; setRateMenu(true) } }}
+            onPointerLeave={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = false; setRateMenu(false) } }}
+          >
             <button
-              onClick={() => setRateMenu((v) => !v)}
+              onClick={() => setRateMenu((v) => rateHoverRef.current || !v)}
               className={`${BAR_BUTTON} text-sm tabular-nums`}
               aria-haspopup="menu"
               aria-expanded={rateMenu}
@@ -690,9 +703,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               // gutter so the numbers line up whichever row is ticked.
               <div
                 role="menu"
-                className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
+                className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
               >
-                {playbackSpeeds().map((r) => (
+                {/* Fastest at the top, so up means more here as it does on the
+                    volume slider beside it. */}
+                {[...playbackSpeeds()].reverse().map((r) => (
                   <button
                     key={r}
                     role="menuitemradio"

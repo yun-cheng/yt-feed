@@ -160,6 +160,17 @@ describe('LocalControls — the speed menu', () => {
     expect(screen.getByRole('menuitemradio', { name: /0\.5\u00d7/ })).toBeChecked()
   })
 
+  it('opens while a pointer is over it, and a click there leaves it open', () => {
+    renderOverEmbed({})
+    const group = screen.getByTestId('speed-button').parentElement!
+    fireEvent.pointerEnter(group, { pointerType: 'mouse' })
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('speed-button'))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    fireEvent.pointerLeave(group, { pointerType: 'mouse' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
   it('closes on a click elsewhere, choosing nothing', () => {
     const setPlaybackRate = vi.fn()
     renderOverEmbed({}, { setPlaybackRate })
@@ -190,8 +201,8 @@ describe('LocalControls — the speed menu', () => {
     setSpeedDefaults([1, 3])
     renderOverEmbed()
     fireEvent.click(screen.getByTestId('speed-button'))
-    // The ticked row carries the check mark with it.
-    expect(screen.getAllByRole('menuitemradio').map((b) => b.textContent)).toEqual(['\u27131\u00d7', '3\u00d7'])
+    // Fastest first, and the ticked row carries the check mark with it.
+    expect(screen.getAllByRole('menuitemradio').map((b) => b.textContent)).toEqual(['3\u00d7', '\u27131\u00d7'])
     setSpeedDefaults(undefined)
   })
 

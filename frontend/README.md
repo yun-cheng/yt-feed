@@ -1952,7 +1952,10 @@ thing `controls=0` takes away from the embed that we hand straight back. It ship
 with YouTube's own eight rates (0.25× to 2× in quarter steps) and is a **setting**
 (`playback_speeds`, `lib/playbackSpeeds.ts`) — someone who wants 0.1 steps wants
 them here. A menu rather than a click-through cycle: too many to step past one at
-a time, and the button has to say which one you're on anyway.
+a time, and the button has to say which one you're on anyway. It opens the way
+the volume slider does — on hover where there's a pointer, centred on the button
+and flush against it — and on a tap where there isn't. Fastest at the top, so
+up means more there as it does on the volume slider.
 
 - **One list does both jobs** — the menu and the keyboard's step. A menu that
   couldn't reach the speed the keys just set would be lying about where you are.
