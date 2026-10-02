@@ -97,7 +97,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
         {loading ? (
           <div className="px-4 py-3 text-sm text-[#aaa]">{t('Loading…')}</div>
         ) : playlists.length === 0 ? (
-          <div className="px-4 py-3 text-sm text-[#777]">{t('No playlists yet')}</div>
+          <div className="px-4 py-3 text-sm text-[#999]">{t('No playlists yet')}</div>
         ) : (
           playlists.map((p) => (
             <button
@@ -110,7 +110,7 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-white truncate">{p.name}</div>
-                <div className="text-[11px] text-[#888]">{tn(p.item_count, '{n} video', '{n} videos')}</div>
+                <div className="text-[11px] text-[#999]">{tn(p.item_count, '{n} video', '{n} videos')}</div>
               </div>
               <BookmarkIcon filled={memberIds.has(p.id)} />
             </button>

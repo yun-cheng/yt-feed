@@ -82,7 +82,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
       <div className="flex items-center gap-2 mb-4">
         {group.icon && <span className="text-lg">{group.icon}</span>}
         <h2 className="text-lg font-semibold text-white">{group.name}</h2>
-        <span className="text-xs text-[#717171] ml-1">
+        <span className="text-xs text-[#999] ml-1">
           {(() => { const n = totalCount ?? group.videos.length; return tn(n, '{n} video', '{n} videos') })()}
         </span>
       </div>
@@ -116,7 +116,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
 
       {/* Sentinel for infinite scroll */}
       {canLoadMore && (
-        <div ref={sentinelRef} className="flex justify-center py-6 text-sm text-[#717171]">
+        <div ref={sentinelRef} className="flex justify-center py-6 text-sm text-[#999]">
           <div className="flex items-center gap-2">
             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

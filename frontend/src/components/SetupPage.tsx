@@ -79,7 +79,7 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
     }
   }
 
-  const field = 'w-full rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-white placeholder:text-[#555] disabled:opacity-50'
+  const field = 'w-full rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 font-mono text-xs text-white placeholder:text-[#888] disabled:opacity-50'
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-[#0f0f0f] px-6 py-10">
@@ -91,7 +91,7 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
 
         <div className="mt-6">
           <label className="text-sm font-medium text-white">{t('Setup token')}</label>
-          <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
+          <p className="mt-0.5 text-xs leading-relaxed text-[#999]">
             {t('Printed in the server’s log when it first started. With Docker: docker compose logs app | grep setup')}
           </p>
           <input
@@ -114,10 +114,10 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
 
         {showOauth ? (
           <div className="mt-6 rounded-xl border border-[#2a2a2a] bg-[#161616] px-4 py-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-[#777]">
+            <p className="text-xs font-medium uppercase tracking-wide text-[#999]">
               {t('Sign in with Google (optional)')}
             </p>
-            <p className="mt-1.5 text-xs leading-relaxed text-[#888]">
+            <p className="mt-1.5 text-xs leading-relaxed text-[#999]">
               {t('Needed only to import your YouTube subscriptions. Create an OAuth client (type: Web application) in the Google Cloud console, enable the YouTube Data API, and register this address + /api/auth/callback as a redirect URI. You can add this later in Settings.')}
             </p>
             <input
@@ -143,7 +143,7 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
         ) : (
           <button
             onClick={() => setShowOauth(true)}
-            className="mt-4 cursor-pointer text-xs text-[#777] underline underline-offset-4 hover:text-[#aaa]"
+            className="mt-4 cursor-pointer text-xs text-[#999] underline underline-offset-4 hover:text-white"
           >
             {t('Add a Google OAuth client too (optional)')}
           </button>
@@ -163,7 +163,7 @@ export default function SetupPage({ onClaimed }: { onClaimed: () => void }) {
           {busy ? t('Claiming…') : t('Claim this deployment')}
         </button>
 
-        <p className="mt-4 text-xs leading-relaxed text-[#666]">
+        <p className="mt-4 text-xs leading-relaxed text-[#999]">
           {t('Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.')}
         </p>
       </div>

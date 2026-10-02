@@ -216,7 +216,7 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
               {video.duration_seconds > 0 && <span>· {formatTime(video.duration_seconds)}</span>}
               {video.modified_at && <span>· {video.modified_at.slice(0, 10)}</span>}
             </div>
-            <p className="mt-3 break-all rounded-lg bg-[#121212] px-3 py-2 font-mono text-xs text-[#717171]">
+            <p className="mt-3 break-all rounded-lg bg-[#121212] px-3 py-2 font-mono text-xs text-[#999]">
               {folder ? `${folder.path}/${video.rel_path}` : video.rel_path}
             </p>
           </div>
@@ -246,7 +246,7 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="line-clamp-2 text-sm text-white">{s.title}</div>
-                      <div className="mt-0.5 text-xs text-[#717171]">{formatSize(s.filesize)}</div>
+                      <div className="mt-0.5 text-xs text-[#999]">{formatSize(s.filesize)}</div>
                     </div>
                   </button>
                 ))}

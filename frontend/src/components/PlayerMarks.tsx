@@ -676,7 +676,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
       role="menu"
       className="absolute bottom-full right-0 z-40 mb-2 min-w-[15rem] overflow-hidden rounded-xl bg-[#282828] py-1.5 shadow-2xl ring-1 ring-white/10"
     >
-      <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">
+      <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
         {t('Repeat')}
       </div>
       {/* The passages. Bounded here rather than on the panel, so the actions
@@ -698,14 +698,14 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
                 // Marked but not repeating — an end pinned the wrong side of the
                 // other, or a passage too short to be one. Said plainly, since
                 // the bar can't show a loop that isn't running.
-                <span className="ml-auto pl-2 text-xs text-white/40">{t('not looping')}</span>
+                <span className="ml-auto pl-2 text-xs text-white/60">{t('not looping')}</span>
               )}
             </button>
             <button
               onClick={() => onDrop(l.id)}
               title={t('Delete this passage')}
               aria-label={t('Delete passage {range}', { range: loopLabel(l) })}
-              className="mr-1 shrink-0 rounded p-1 text-white/40 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100"
+              className="mr-1 shrink-0 rounded p-1 text-white/60 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
@@ -714,7 +714,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
           </div>
         ))}
         {!loops.length && (
-          <div className="px-3 py-2 text-sm text-white/45">{t('Nothing marked yet.')}</div>
+          <div className="px-3 py-2 text-sm text-white/60">{t('Nothing marked yet.')}</div>
         )}
       </div>
       <div className="mt-1 border-t border-white/10 pt-1">
@@ -732,7 +732,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
               className="flex-1 rounded-lg px-2 py-1.5 text-sm text-white transition-colors hover:bg-white/10"
             >
               {end === 'a' ? t('Pin start') : t('Pin end')}
-              <span className="ml-1.5 text-white/40">{end === 'a' ? '[' : ']'}</span>
+              <span className="ml-1.5 text-white/60">{end === 'a' ? '[' : ']'}</span>
             </button>
           ))}
         </div>
@@ -748,7 +748,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
             {t('Stop repeating')}
-            <span className="ml-auto pl-2 text-white/40">\</span>
+            <span className="ml-auto pl-2 text-white/60">\</span>
           </button>
         )}
       </div>

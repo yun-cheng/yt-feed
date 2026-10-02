@@ -37,7 +37,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
       <div className="max-w-[900px]">
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-white">{t('Local folders')}</h2>
-          <p className="mt-1 text-sm text-[#717171]">
+          <p className="mt-1 text-sm text-[#999]">
             {t('Point this at a directory on the machine running the backend and its videos show up here as a feed. Files are only ever read — removing a folder from this list never touches what\'s on disk.')}
           </p>
         </div>
@@ -49,7 +49,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
             onKeyDown={(e) => { if (e.key === 'Enter') submit() }}
             placeholder="/Users/you/Movies/lessons"
             spellCheck={false}
-            className="flex-1 rounded-lg border border-[#303030] bg-[#121212] px-3 py-2 text-sm text-white placeholder:text-[#555] focus:border-[#3ea6ff] focus:outline-none"
+            className="flex-1 rounded-lg border border-[#303030] bg-[#121212] px-3 py-2 text-sm text-white placeholder:text-[#888] focus:border-[#3ea6ff] focus:outline-none"
           />
           <button
             onClick={submit}
@@ -63,7 +63,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
 
         {folders.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-16 text-[#aaa]">
-            <svg className="h-12 w-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="h-12 w-12 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
             <p className="text-sm">{t('No local folders yet.')}</p>
@@ -88,7 +88,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
                       </span>
                     )}
                   </div>
-                  <div className="truncate text-xs text-[#717171]" title={f.path}>{f.path}</div>
+                  <div className="truncate text-xs text-[#999]" title={f.path}>{f.path}</div>
                 </div>
                 <span className="flex-shrink-0 text-sm text-[#aaa]">
                   {tn(f.video_count, '{n} video', '{n} videos')}
@@ -96,7 +96,7 @@ export default function LocalPage({ folders, onOpen, onAdd, onRemove }: Props) {
                 <button
                   onClick={(e) => { e.stopPropagation(); onRemove(f.id) }}
                   title={t('Remove this folder from the app (the files stay)')}
-                  className="flex-shrink-0 rounded p-1.5 text-[#717171] hoverable:opacity-0 transition-all hover:bg-[#272727] hover:text-white hoverable:group-hover:opacity-100"
+                  className="flex-shrink-0 rounded p-1.5 text-[#999] hoverable:opacity-0 transition-all hover:bg-[#272727] hover:text-white hoverable:group-hover:opacity-100"
                 >
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

@@ -58,7 +58,7 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
   }, [me])
 
   if (me === null || needsSetup === null) {
-    return <div className="flex h-dvh items-center justify-center text-sm text-[#777]">{t('Loading…')}</div>
+    return <div className="flex h-dvh items-center justify-center text-sm text-[#999]">{t('Loading…')}</div>
   }
   if (me.resolved) return <>{children}</>
   if (needsSetup) return <SetupPage onClaimed={load} />
@@ -72,17 +72,17 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
         </p>
 
         <div className="mt-8 rounded-xl border border-[#2a2a2a] bg-[#161616] px-4 py-3 text-left">
-          <p className="text-xs font-medium uppercase tracking-wide text-[#777]">
+          <p className="text-xs font-medium uppercase tracking-wide text-[#999]">
             {t('No link?')}
           </p>
-          <p className="mt-1.5 text-xs leading-relaxed text-[#888]">
+          <p className="mt-1.5 text-xs leading-relaxed text-[#999]">
             {t('Ask whoever set this up to add you — Settings → People — and send you your link. It works on as many devices as you like.')}
           </p>
         </div>
 
         <a
           href="/api/auth/login"
-          className="mt-4 inline-block text-xs text-[#777] underline underline-offset-4 hover:text-[#aaa]"
+          className="mt-4 inline-block text-xs text-[#999] underline underline-offset-4 hover:text-white"
         >
           {t('Or sign in with Google (works on the server itself)')}
         </a>

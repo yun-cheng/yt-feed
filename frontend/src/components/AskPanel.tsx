@@ -224,12 +224,12 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
 
         {busy && (
           <div className="text-sm leading-relaxed text-[#ccc] [overflow-wrap:anywhere]">
-            {pending ? renderMarkdown(pending, onSeek) : <span className="text-[#888]">{t('Reading the transcript…')}</span>}
+            {pending ? renderMarkdown(pending, onSeek) : <span className="text-[#999]">{t('Reading the transcript…')}</span>}
           </div>
         )}
 
         {covered && (
-          <p className="text-xs text-[#888]">
+          <p className="text-xs text-[#999]">
             {t('This video is too long to read whole — the answer covers {from}–{to}.', { from: formatTime(covered[0]), to: formatTime(covered[1]) })}
           </p>
         )}
@@ -265,7 +265,7 @@ export default function AskPanel({ videoId, currentTime, onSeek, fillsPane, inPa
       {!!messages.length && !busy && (
         <button
           onClick={clear}
-          className="mt-1.5 self-start px-1 text-xs text-[#888] transition-colors hover:text-white"
+          className="mt-1.5 self-start px-1 text-xs text-[#999] transition-colors hover:text-white"
         >
           {t('Clear conversation')}
         </button>

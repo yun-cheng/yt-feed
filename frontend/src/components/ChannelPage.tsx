@@ -316,7 +316,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
             </button>
           }
         />
-        <p className="text-sm text-[#717171]">
+        <p className="text-sm text-[#999]">
           {addingUnknown
             ? t('Fetching its recent videos…')
             : t('You\'re not following this channel, so there\'s nothing of theirs here yet. Adding it fetches their recent uploads and keeps them coming.')}
@@ -352,7 +352,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
           <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white text-black font-medium">
             {labelFilter}
           </span>
-          <span className="text-[#555]">· {tn(total, '{n} video', '{n} videos')}</span>
+          <span className="text-[#999]">· {tn(total, '{n} video', '{n} videos')}</span>
         </div>
       )}
 
@@ -377,7 +377,7 @@ export default function ChannelPage({ channelId, age, sort, onSortChange, watchL
               offered when there IS more: a channel we hold in full is telling
               you something true. */}
           {!labelFilter && archive.status && !archive.status.exhausted && (
-            <span className="flex items-center gap-2 text-xs text-[#777]">
+            <span className="flex items-center gap-2 text-xs text-[#999]">
               {archive.status.oldest_held && (
                 <span>{t('Fetched back to {date}.', { date: new Date(archive.status.oldest_held)
                   .toLocaleDateString(locale(), { year: 'numeric', month: 'short' }) })}</span>

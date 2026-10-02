@@ -149,7 +149,7 @@ export default function PlaylistPage({
               the same number twice; both numbers appear only when a filter is
               hiding some, so a short list is never mistaken for a short
               playlist. */}
-          <p className="text-sm text-[#777] mt-1">
+          <p className="text-sm text-[#999] mt-1">
             {shown.length < videos.length && t('{shown} of {total} videos', { shown: shown.length, total: videos.length })}
             {syncNote && <span className="ml-2 text-[#3ea6ff]">{syncNote}</span>}
           </p>
@@ -183,7 +183,7 @@ export default function PlaylistPage({
           {t('This playlist is empty.')}
         </div>
       ) : shown.length === 0 ? (
-        <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
+        <div className="flex items-center justify-center h-32 text-[#999] text-sm">
           {q.trim()
             ? t('Nothing in this playlist matches “{q}” with the current filters.', { q: q.trim() })
             : t('No videos in this playlist match the current filters.')}

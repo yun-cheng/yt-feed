@@ -141,9 +141,9 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-[#777]">
+        <p className="text-sm text-[#999]">
           {tn(channels.length, '{n} channel', '{n} channels')}
-          {hiddenCount > 0 && <span className="text-[#666]"> · {t('{n} hidden from home', { n: hiddenCount })}</span>}
+          {hiddenCount > 0 && <span className="text-[#999]"> · {t('{n} hidden from home', { n: hiddenCount })}</span>}
         </p>
         {addButton}
       </div>
@@ -197,7 +197,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
                   {ch.title}
                 </h3>
                 {ch.subscriber_count > 0 && (
-                  <p className="text-xs text-[#777] mt-0.5">
+                  <p className="text-xs text-[#999] mt-0.5">
                     {t('{count} subscribers', { count: formatCount(ch.subscriber_count) })}
                   </p>
                 )}
@@ -218,7 +218,7 @@ export default function ChannelsPage({ selectedTags, query, onSelectChannel, sor
             )}
 
             {ch.description && (
-              <p className="text-xs text-[#555] mt-2 line-clamp-2 leading-relaxed">
+              <p className="text-xs text-[#aaa] mt-2 line-clamp-2 leading-relaxed">
                 {ch.description}
               </p>
             )}

@@ -63,7 +63,7 @@ export default function ShortcutsEditor({ value, onChange }: {
     <div className="mt-2">
       {groups.map((group) => (
         <div key={group} className="mb-2">
-          <div className="mb-1 text-[11px] uppercase tracking-wide text-[#666]">{t(group)}</div>
+          <div className="mb-1 text-[11px] uppercase tracking-wide text-[#999]">{t(group)}</div>
           <div className="flex flex-col">
             {ACTIONS.filter((a) => a.group === group).map((a) => {
               const moved = a.id in value
@@ -81,7 +81,7 @@ export default function ShortcutsEditor({ value, onChange }: {
                       onClick={() => { onChange({ ...value, [a.id]: '' }); setListening(null) }}
                       title={t('No key for this')}
                       aria-label={t('No key for {action}', { action: t(a.label) })}
-                      className="cursor-pointer px-1 text-xs text-[#777] hover:text-white"
+                      className="cursor-pointer px-1 text-xs text-[#999] hover:text-white"
                     >
                       ✕
                     </button>
@@ -95,7 +95,7 @@ export default function ShortcutsEditor({ value, onChange }: {
                       }}
                       title={t('Back to {key}', { key: keyLabel(a.key) })}
                       aria-label={t('Back to {key}', { key: keyLabel(a.key) })}
-                      className="cursor-pointer px-1 text-xs text-[#777] hover:text-white"
+                      className="cursor-pointer px-1 text-xs text-[#999] hover:text-white"
                     >
                       ↺
                     </button>
@@ -117,7 +117,7 @@ export default function ShortcutsEditor({ value, onChange }: {
           </div>
         </div>
       ))}
-      <p className="mt-1 text-xs text-[#777]">
+      <p className="mt-1 text-xs text-[#999]">
         {taken
           ? t('{action} is already on that key.', { action: label(taken) })
           : listening

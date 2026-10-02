@@ -63,7 +63,7 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-medium text-white">{t('Add a channel')}</h2>
-        <p className="mt-1 text-xs text-[#888]">
+        <p className="mt-1 text-xs text-[#999]">
           {t('Any channel, subscribed or not. Its videos join the feed and update with everything else.')}
         </p>
 
@@ -97,10 +97,10 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-medium text-white">{found.title}</h3>
               {found.subscriber_count > 0 && (
-                <p className="text-xs text-[#777]">{t('{count} subscribers', { count: formatCount(found.subscriber_count) })}</p>
+                <p className="text-xs text-[#999]">{t('{count} subscribers', { count: formatCount(found.subscriber_count) })}</p>
               )}
               {found.description && (
-                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#555]">{found.description}</p>
+                <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#aaa]">{found.description}</p>
               )}
             </div>
           </div>
@@ -134,7 +134,7 @@ export default function AddChannelDialog({ onClose, onAdded }: Props) {
         {busy && found && (
           // The add awaits a first scan of the channel's uploads, so the page
           // you land on has videos on it rather than an empty grid.
-          <p className="mt-2 text-right text-xs text-[#666]">{t('Fetching its recent videos…')}</p>
+          <p className="mt-2 text-right text-xs text-[#999]">{t('Fetching its recent videos…')}</p>
         )}
       </div>
     </div>

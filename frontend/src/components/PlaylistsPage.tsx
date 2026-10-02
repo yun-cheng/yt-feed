@@ -64,11 +64,11 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
   if (playlists.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
-        <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="w-12 h-12 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h7M15 15l5 3-5 3v-6z" />
         </svg>
         <p className="text-sm">{t('No playlists yet.')}</p>
-        <p className="text-xs text-[#555]">{t('Open a video\'s ⋮ menu → Save to playlist to create one.')}</p>
+        <p className="text-xs text-[#999]">{t('Open a video\'s ⋮ menu → Save to playlist to create one.')}</p>
         <div className="mt-1">{importButton(onImport)}</div>
         {dialog}
       </div>
@@ -79,7 +79,7 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
     <div className="p-6">
       {dialog}
       <div className="mb-4 flex items-center justify-between gap-3">
-        <p className="text-sm text-[#777]">{tn(playlists.length, '{n} playlist', '{n} playlists')}</p>
+        <p className="text-sm text-[#999]">{tn(playlists.length, '{n} playlist', '{n} playlists')}</p>
         {importButton(onImport)}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -89,7 +89,7 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
               {p.thumbnail_url ? (
                 <img src={p.thumbnail_url} alt="" className="w-full h-full object-cover" loading="lazy" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-[#555]">
+                <div className="w-full h-full flex items-center justify-center text-[#999]">
                   <svg className="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h10M4 18h7M15 15l5 3-5 3v-6z" />
                   </svg>
@@ -109,7 +109,7 @@ export default function PlaylistsPage({ playlists, onOpen, onDelete }: Props) {
                 onClick={(e) => { e.stopPropagation(); onDelete(p.id) }}
                 title={t('Delete playlist')}
                 aria-label={t('Delete playlist')}
-                className="flex-shrink-0 p-1 rounded-full text-[#888] hover:text-white hover:bg-white/10 hoverable:opacity-0 hoverable:group-hover:opacity-100 transition"
+                className="flex-shrink-0 p-1 rounded-full text-[#999] hover:text-white hover:bg-white/10 hoverable:opacity-0 hoverable:group-hover:opacity-100 transition"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 7h12M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-7 0v12a1 1 0 001 1h6a1 1 0 001-1V7" />

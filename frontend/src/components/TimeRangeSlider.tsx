@@ -33,7 +33,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
       <div className="mb-1.5 flex items-baseline gap-2">
         <span className="text-sm font-medium text-white">{rangeLabel(value)}</span>
         {count !== undefined && (
-          <span className="text-xs text-[#888]">{tn(count, '{n} video', '{n} videos', { n: count.toLocaleString() })}</span>
+          <span className="text-xs text-[#999]">{tn(count, '{n} video', '{n} videos', { n: count.toLocaleString() })}</span>
         )}
       </div>
 
@@ -88,7 +88,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
             <span
               key={label}
               style={style}
-              className={`absolute whitespace-nowrap text-[11px] ${inRange ? 'text-white' : 'text-[#717171]'}`}
+              className={`absolute whitespace-nowrap text-[11px] ${inRange ? 'text-white' : 'text-[#999]'}`}
             >
               {tickLabel(i)}
             </span>
@@ -98,7 +98,7 @@ export default function TimeRangeSlider({ value, onChange, count }: Props) {
               onClick={() => pick(i)}
               style={style}
               className={`absolute cursor-pointer whitespace-nowrap text-[11px] transition-colors hover:text-white ${
-                inRange ? 'text-white' : 'text-[#717171]'
+                inRange ? 'text-white' : 'text-[#999]'
               }`}
             >
               {tickLabel(i)}

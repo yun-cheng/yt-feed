@@ -2144,9 +2144,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     >
                       {meta.channel_name || t('Unknown')}
                     </a>
-                    <span className="text-[#666]">·</span>
+                    <span className="text-[#999]">·</span>
                     <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
-                    <span className="text-[#666]">·</span>
+                    <span className="text-[#999]">·</span>
                     <span>{timeAgo(meta.published_at)}</span>
                   </div>
                 )}
@@ -2240,7 +2240,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               { title: t('Second'), cur: curSecond, pick: pickSecond },
             ] as const).map((col, ci) => (
               <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
-                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{col.title}</div>
+                <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#999]">{col.title}</div>
                 {captionLangs.map((l) => {
                   const active = col.cur === l.code
                   // A word-segment track splits into two rows: the plain label for
@@ -2282,7 +2282,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   >
                     <span className="w-4 shrink-0">{col.cur === AI_ZH && '✓'}</span>
                     {t('Chinese')}
-                    <span className="ml-auto pl-2 text-xs text-[#888]">
+                    <span className="ml-auto pl-2 text-xs text-[#999]">
                       {col.cur === AI_ZH && translating ? t('Translating…') : 'AI'}
                     </span>
                   </button>
@@ -2295,7 +2295,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                is one we make. Progress is in seconds of audio because that is
                what the work is measured in, and the cues appear as they land. */
             <div className="min-w-[13rem] py-1">
-              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">
+              <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#999]">
                 {t('No captions on this video')}
               </div>
               <button
@@ -2308,7 +2308,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   : gen?.status === 'stalled' ? t('Resume transcribing')
                   : gen?.status === 'error' ? t('Try again')
                   : t('Generate captions')}
-                <span className="ml-auto pl-2 text-xs text-[#888]">
+                <span className="ml-auto pl-2 text-xs text-[#999]">
                   {gen?.status === 'running' ? `${genPct}%` : 'AI'}
                 </span>
               </button>
@@ -2330,7 +2330,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               captions are locked to the bottom and to a size chosen for a
               phone. Reset is greyed once there's nothing to undo. */}
           <div className="border-t border-white/10 py-1">
-            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#888]">{t('Display')}</div>
+            <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-[#999]">{t('Display')}</div>
             <div className="flex items-center gap-1.5 px-3 py-1">
               <span className="mr-auto pr-3 text-[#ccc]">{t('Position')}</span>
               {(['top', 'bottom'] as const).map((pos) => (
@@ -2685,13 +2685,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             >
               {meta.channel_name || t('Unknown')}
             </a>
-            <span className="text-[#444]">·</span>
+            <span className="text-[#999]">·</span>
             <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
-            <span className="text-[#444]">·</span>
+            <span className="text-[#999]">·</span>
             <span>{timeAgo(meta.published_at)}</span>
             {meta.view_count > 0 && (
               <>
-                <span className="text-[#444]">·</span>
+                <span className="text-[#999]">·</span>
                 <span>{t('{count} likes', { count: formatCount(meta.like_count) })}</span>
               </>
             )}
@@ -2754,7 +2754,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   >
                     <span className="w-3.5 text-[#3ea6ff]">{transcriptIsAI ? '✓' : ''}</span>
                     {t('Chinese')}
-                    <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#888]">AI</span>
+                    <span className="ml-auto pl-3 text-[10px] uppercase tracking-wide text-[#999]">AI</span>
                   </button>
                 )}
               </div>
@@ -2762,7 +2762,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           </div>
         )}
         <div className="relative flex-1">
-          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#888]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <circle cx="11" cy="11" r="7" />
             <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
           </svg>
@@ -2784,7 +2784,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             <button
               onClick={() => setTranscriptQuery('')}
               aria-label={t('Clear search')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#888] transition-colors hover:bg-white/10 hover:text-white"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-[#999] transition-colors hover:bg-white/10 hover:text-white"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
@@ -2820,12 +2820,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             </button>
           ))}
           {searching && !visibleRows.length && (
-            <p className="px-2 py-3 text-sm text-[#888]">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
+            <p className="px-2 py-3 text-sm text-[#999]">{t('No lines match “{q}”.', { q: transcriptQuery.trim() })}</p>
           )}
           {/* The AI transcript fills in batch by batch, so say so rather than
               letting a partial read look like the whole thing. */}
           {aiTranscriptBusy && (
-            <p className="px-2 py-3 text-sm text-[#888]">{t('Translating…')}</p>
+            <p className="px-2 py-3 text-sm text-[#999]">{t('Translating…')}</p>
           )}
         </div>
 

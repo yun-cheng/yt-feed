@@ -162,7 +162,7 @@ export default function TopBar({ variant = 'feed', age, onAgeChange, count, sort
                 </svg>
               </button>
             ) : (
-              <span className="px-3 text-[#717171]">
+              <span className="px-3 text-[#999]">
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 10a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>

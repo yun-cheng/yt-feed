@@ -62,7 +62,7 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
         {/* Hidden at zero rather than shown as "0 subscribers", which is a
             channel that hides its count, not one nobody watches. */}
         {channel.subscriber_count > 0 && (
-          <p className="text-sm text-[#777] mt-1">
+          <p className="text-sm text-[#999] mt-1">
             {t('{count} subscribers', { count: formatCount(channel.subscriber_count) })}
           </p>
         )}
@@ -71,14 +71,14 @@ export default function ChannelHeader({ channel, aside, children, actions }: Pro
           <div className="max-w-xl">
             <p
               ref={descRef}
-              className={`text-xs text-[#555] mt-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${expanded ? '' : 'line-clamp-2'}`}
+              className={`text-xs text-[#aaa] mt-2 leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere] ${expanded ? '' : 'line-clamp-2'}`}
             >
               {channel.description}
             </p>
             {(overflows || expanded) && (
               <button
                 onClick={() => setExpanded((v) => !v)}
-                className="mt-1 text-xs font-medium text-[#777] hover:text-[#aaa]"
+                className="mt-1 text-xs font-medium text-[#999] hover:text-white"
               >
                 {expanded ? t('Show less') : t('Show more')}
               </button>

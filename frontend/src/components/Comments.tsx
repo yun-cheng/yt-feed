@@ -420,7 +420,7 @@ export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compa
           {/* Not a button. The replies are already on their way; this
               only explains why reply counts appear a few seconds after the
               comments they belong to. */}
-          {deepening && <p className={`${compact ? 'mb-2' : 'mb-3'} px-3 text-xs text-[#717171]`}>{t('loading replies…')}</p>}
+          {deepening && <p className={`${compact ? 'mb-2' : 'mb-3'} px-3 text-xs text-[#999]`}>{t('loading replies…')}</p>}
 
           <div className={`${compact ? 'space-y-3' : 'space-y-5'} px-3`}>
             {threads.map((c) => (
@@ -429,7 +429,7 @@ export function CommentList({ videoId, feed, sort, onSeek, onChannelClick, compa
           </div>
 
           {data?.capped && (
-            <p className={`${compact ? 'mt-3' : 'mt-5'} px-3 text-xs text-[#717171]`}>
+            <p className={`${compact ? 'mt-3' : 'mt-5'} px-3 text-xs text-[#999]`}>
               {sort === 'top' ? t('The top {n} — the app doesn\'t page through the rest.', { n: threads.length }) : t('The newest {n} — the app doesn\'t page through the rest.', { n: threads.length })}
             </p>
           )}

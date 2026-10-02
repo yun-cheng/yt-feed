@@ -124,12 +124,12 @@ export function renderMarkdown(src: string, onSeek: (s: number) => void): ReactN
         className={`mt-2 space-y-1 pl-5 first:mt-0 ${b.ordered ? 'list-decimal' : 'list-disc'}`}
       >
         {b.items.map((it, j) => (
-          <li key={j} className="marker:text-[#666]">
+          <li key={j} className="marker:text-[#888]">
             {inline(it.text, `l${i}-${j}`, onSeek)}
             {!!it.children.length && (
               <ul className="mt-1 space-y-1 pl-4 list-disc">
                 {it.children.map((c, k) => (
-                  <li key={k} className="marker:text-[#666]">{inline(c, `l${i}-${j}-${k}`, onSeek)}</li>
+                  <li key={k} className="marker:text-[#888]">{inline(c, `l${i}-${j}-${k}`, onSeek)}</li>
                 ))}
               </ul>
             )}

@@ -2255,7 +2255,7 @@ export default function App() {
 
         {selectedTags.length > 0 && sidebarFilters.tags && (
           <div className="sticky z-10 px-4 py-2 border-b border-[#272727] bg-[#0d0d0d] flex items-center gap-2" style={{ top: isMobile ? 0 : topbarHeight }}>
-            <span className="text-xs text-[#555] font-medium">Filters:</span>
+            <span className="text-xs text-[#999] font-medium">Filters:</span>
             <div className="flex flex-wrap gap-1.5">
               {selectedTags.map((tag) => {
                 const name = tagName(tag)
@@ -2275,14 +2275,14 @@ export default function App() {
                   >
                     <span>{info?.icon || '🏷️'}</span>
                     <span className={not ? 'line-through decoration-2' : ''}>{name}</span>
-                    <span className={`ml-0.5 font-bold ${not ? 'text-white/40' : 'text-black/40'}`}>×</span>
+                    <span className={`ml-0.5 font-bold ${not ? 'text-white/60' : 'text-black/60'}`}>×</span>
                   </button>
                 )
               })}
             </div>
             <button
               onClick={clearFilter}
-              className="ml-1 text-xs text-[#555] hover:text-white transition-colors"
+              className="ml-1 text-xs text-[#999] hover:text-white transition-colors"
             >
               {t('Clear')}
             </button>
@@ -2381,11 +2381,11 @@ export default function App() {
           <div className="px-6 py-4">
             {watchLater.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 gap-3 text-[#aaa]">
-                <svg className="w-12 h-12 text-[#444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-12 h-12 text-[#999]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                 </svg>
                 <p className="text-sm">{t('No videos saved yet.')}</p>
-                <p className="text-xs text-[#555]">{t('Hover a video and click the bookmark icon to save it.')}</p>
+                <p className="text-xs text-[#999]">{t('Hover a video and click the bookmark icon to save it.')}</p>
               </div>
             ) : (() => {
               // Windowed by when you saved it, not when it was published.
@@ -2398,7 +2398,7 @@ export default function App() {
               result = filterByText(result, wlQuery)
               result = sortVideos(result, view.sort)
               return result.length === 0 ? (
-                <div className="flex items-center justify-center h-32 text-[#717171] text-sm">
+                <div className="flex items-center justify-center h-32 text-[#999] text-sm">
                   {wlQuery
                     ? t('Nothing saved matches “{q}” with the current filters.', { q: wlQuery })
                     : t('No saved videos match the current filters.')}

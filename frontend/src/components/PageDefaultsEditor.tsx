@@ -98,7 +98,7 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
                     delete next[page]
                     set(next)
                   }}
-                  className="ml-auto text-xs text-[#777] hover:text-white"
+                  className="ml-auto text-xs text-[#999] hover:text-white"
                 >
                   {t('Reset')}
                 </button>
@@ -131,13 +131,13 @@ export default function PageDefaultsEditor({ value, onChange }: Props) {
                     </button>
                   )
                 })}
-                <span className="ml-1 text-xs text-[#666]">
+                <span className="ml-1 text-xs text-[#999]">
                   {d.watch.length === 0 || d.watch.length >= options.length ? t('Shows everything') : ''}
                 </span>
               </div>
             )}
             {hasWatch && !ownWatch && (
-              <p className="text-xs text-[#666]">{t('Watch filter follows Home’s.')}</p>
+              <p className="text-xs text-[#999]">{t('Watch filter follows Home’s.')}</p>
             )}
           </div>
         )

@@ -194,7 +194,7 @@ const WatchStatusSection = ({
         className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
           allSelected
             ? 'text-white hover:bg-[#2a2a2a]'
-            : 'text-[#717171] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+            : 'text-[#999] hover:text-[#ccc] hover:bg-[#1e1e1e]'
         }`}
       >
         <span>👁️</span>
@@ -247,7 +247,7 @@ const LengthSection = ({
         className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
           allSelected
             ? 'text-white hover:bg-[#2a2a2a]'
-            : 'text-[#717171] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+            : 'text-[#999] hover:text-[#ccc] hover:bg-[#1e1e1e]'
         }`}
       >
         <span>⏳</span>
@@ -293,7 +293,7 @@ const SummarySection = ({ on, onToggle }: { on?: boolean; onToggle?: () => void 
   if (!onToggle) return null
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#717171] px-1 -mx-1">
+      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#999] px-1 -mx-1">
         <span>📝</span>
         <span>{t('Summary')}</span>
       </div>
@@ -352,7 +352,7 @@ const PresetSection = ({
 
   return (
     <div>
-      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#717171] px-1 -mx-1">
+      <div className="flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium text-[#999] px-1 -mx-1">
         <span>🔖</span>
         <span>{t('Presets')}</span>
         {onSave && !naming && (
@@ -425,8 +425,8 @@ const PresetSection = ({
                   arming
                     ? 'border-red-500 bg-red-600 text-white text-[11px]'
                     : active
-                      ? 'border-black/15 text-black/40 hover:bg-black/10 hover:text-black'
-                      : 'border-[#3a3a3a] text-[#666] hover:bg-white/10 hover:text-[#ddd]'
+                      ? 'border-black/15 text-black/60 hover:bg-black/10 hover:text-black'
+                      : 'border-[#3a3a3a] text-[#999] hover:bg-white/10 hover:text-[#ddd]'
                 }`}
               >
                 {arming ? 'delete?' : '×'}
@@ -468,7 +468,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('feed')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-              page === 'feed' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'feed' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <HomeIcon />
@@ -477,7 +477,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('channels')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-              page === 'channels' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'channels' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <ChannelsIcon />
@@ -486,7 +486,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('watchlater')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'watchlater' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'watchlater' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <WatchLaterIcon />
@@ -500,7 +500,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('downloads')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'downloads' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'downloads' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <DownloadsIcon />
@@ -514,7 +514,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('playlists')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'playlists' || page === 'playlist' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'playlists' || page === 'playlist' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <PlaylistsIcon />
@@ -528,7 +528,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('imported')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'imported' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'imported' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <ImportedIcon />
@@ -542,7 +542,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('local')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors relative ${
-              page === 'local' || page === 'localfolder' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'local' || page === 'localfolder' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <LocalIcon />
@@ -556,7 +556,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
           <button
             onClick={() => onPageChange('history')}
             className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-              page === 'history' ? 'text-white' : 'text-[#717171] hover:text-white'
+              page === 'history' ? 'text-white' : 'text-[#999] hover:text-white'
             }`}
           >
             <HistoryIcon />
@@ -567,7 +567,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
               onClick={onToggleShowHidden}
               title={showHidden ? t('Hiding hidden channels') : t('Show hidden channels')}
               className={`w-full flex flex-col items-center gap-0.5 py-3 transition-colors ${
-                showHidden ? 'text-white' : 'text-[#717171] hover:text-white'
+                showHidden ? 'text-white' : 'text-[#999] hover:text-white'
               }`}
             >
               <EyeIcon />
@@ -753,24 +753,24 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
             <SummarySection on={summarisedOnly} onToggle={onToggleSummarised} />
           )}
           <div>
-          <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#717171]">
+          <div className="flex items-center gap-1.5 mb-3 text-xs uppercase tracking-wider font-medium text-[#999]">
             <span>🏷️</span>
             <span>{t('Topics')}</span>
             {!!selectedLabel && (
               <button
                 onClick={() => onToggleLabel?.(selectedLabel)}
-                className="ml-auto text-[10px] normal-case tracking-normal font-normal text-[#717171] hover:text-white"
+                className="ml-auto text-[10px] normal-case tracking-normal font-normal text-[#999] hover:text-white"
               >
                 {t('clear')}
               </button>
             )}
           </div>
           {channelLabels === null || channelLabels === undefined ? (
-            <p className="text-xs text-[#555] animate-pulse">
+            <p className="text-xs text-[#999] animate-pulse">
               {channelLabelsBuilding ? t('Finding topics…') : t('Loading…')}
             </p>
           ) : channelLabels.length === 0 ? (
-            <p className="text-xs text-[#555]">
+            <p className="text-xs text-[#999]">
               {channelHasTopics ? t('No topics in this time range.') : t('No topics found for this channel.')}
             </p>
           ) : (
@@ -788,7 +788,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                     }`}
                   >
                     <span>{name}</span>
-                    <span className={`text-[10px] ${active ? 'text-black/50' : 'text-[#555]'}`}>
+                    <span className={`text-[10px] ${active ? 'text-black/60' : 'text-[#999]'}`}>
                       {count}
                     </span>
                   </button>
@@ -851,7 +851,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                     className={`flex items-center gap-1.5 mb-2 text-xs uppercase tracking-wider font-medium w-full text-left transition-colors rounded px-1 py-0.5 -mx-1 cursor-pointer ${
                       allSelected
                         ? 'text-white hover:bg-[#2a2a2a]'
-                        : 'text-[#717171] hover:text-[#ccc] hover:bg-[#1e1e1e]'
+                        : 'text-[#999] hover:text-[#ccc] hover:bg-[#1e1e1e]'
                     }`}
                   >
                     <span>{icon}</span>
@@ -899,7 +899,7 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                             reflows the whole group. */}
                         <span className={excluded ? 'line-through decoration-2' : ''}>{tag.name}</span>
                         <span className={`text-[10px] ${
-                          excluded ? 'text-white/40' : active ? 'text-black/50' : 'text-[#555]'
+                          excluded ? 'text-white/60' : active ? 'text-black/60' : 'text-[#999]'
                         }`}>
                           {count}
                         </span>
@@ -913,8 +913,8 @@ export default function Sidebar({ tags, selectedTags, onToggleTag, onExcludeTag,
                           excluded
                             ? 'border-white/25 text-white hover:bg-white/10'
                             : active
-                              ? 'border-black/15 text-black/40 hover:bg-black/10 hover:text-black'
-                              : 'border-[#3a3a3a] text-[#666] hover:bg-white/10 hover:text-[#ddd]'
+                              ? 'border-black/15 text-black/60 hover:bg-black/10 hover:text-black'
+                              : 'border-[#3a3a3a] text-[#999] hover:bg-white/10 hover:text-[#ddd]'
                         }`}
                       >
                         −

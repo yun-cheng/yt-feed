@@ -92,7 +92,7 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
             onClick={() => send(tag, 'DELETE')}
             disabled={busy === tag}
             title={`Remove ${tag}`}
-            className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[#777] hover:text-white hover:bg-[#444] transition-colors disabled:opacity-40"
+            className="w-3.5 h-3.5 flex items-center justify-center rounded-full text-[#999] hover:text-white hover:bg-[#444] transition-colors disabled:opacity-40"
           >
             ×
           </button>
@@ -105,18 +105,18 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
           onClick={() => send(tag, 'POST')}
           disabled={busy === tag}
           title={`Add ${tag}`}
-          className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-dashed border-[#444] text-[#777] hover:text-[#ccc] hover:border-[#666] transition-colors disabled:opacity-40"
+          className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded-full border border-dashed border-[#444] text-[#999] hover:text-[#ccc] hover:border-[#666] transition-colors disabled:opacity-40"
         >
           <span>{iconFor(tag)}</span>
           {tag}
-          <span className="text-[#555]">+</span>
+          <span className="text-[#999]">+</span>
         </button>
       ))}
 
       <div className="relative" ref={pickerRef}>
         <button
           onClick={() => setPickerOpen((o) => !o)}
-          className="px-2 py-0.5 text-[11px] rounded-full text-[#777] hover:text-[#ccc] hover:bg-[#272727] transition-colors"
+          className="px-2 py-0.5 text-[11px] rounded-full text-[#999] hover:text-[#ccc] hover:bg-[#272727] transition-colors"
         >
           {t('+ Add label')}
         </button>
@@ -128,14 +128,14 @@ export default function ChannelTags({ channelId, tags, suggested, onChange }: Pr
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('Search labels…')}
-              className="w-full mb-2 px-2 py-1 text-xs bg-[#272727] text-white rounded-lg outline-none placeholder:text-[#666]"
+              className="w-full mb-2 px-2 py-1 text-xs bg-[#272727] text-white rounded-lg outline-none placeholder:text-[#888]"
             />
             {grouped.length === 0 && (
-              <p className="px-1 py-2 text-[11px] text-[#666]">{t('No matching labels.')}</p>
+              <p className="px-1 py-2 text-[11px] text-[#999]">{t('No matching labels.')}</p>
             )}
             {grouped.map(([group, items]) => (
               <div key={group} className="mb-1.5">
-                <p className="px-1 mb-1 text-[10px] uppercase tracking-wider text-[#666]">{group}</p>
+                <p className="px-1 mb-1 text-[10px] uppercase tracking-wider text-[#999]">{group}</p>
                 <div className="flex flex-wrap gap-1">
                   {items.map((t) => (
                     <button

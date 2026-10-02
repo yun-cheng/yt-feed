@@ -1144,7 +1144,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           >
             {video.channel_name || t('Unknown')}
           </a>
-          <p className="text-xs text-[#717171] mt-0.5">
+          <p className="text-xs text-[#999] mt-0.5">
             {(() => {
               const likeRate = video.view_count > 0 ? (video.like_count / video.view_count) * 100 : null
               const stats: { key: string; label: string }[] = [
@@ -1158,7 +1158,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 const active = sort === key || (key === 'newest' && sort === 'oldest')
                 return (
                   <span key={key}>
-                    {i > 0 && <span className="text-[#444]"> · </span>}
+                    {i > 0 && <span className="text-[#999]"> · </span>}
                     <span className={active ? 'text-white font-medium' : ''}>{label}</span>
                   </span>
                 )

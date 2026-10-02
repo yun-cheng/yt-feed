@@ -92,11 +92,11 @@ export default function People() {
 
   return (
     <section className="mb-8">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#999]">
         {t('People')}
       </h3>
 
-      <p className="mb-3 text-xs leading-relaxed text-[#777]">
+      <p className="mb-3 text-xs leading-relaxed text-[#999]">
         {t('Everyone here keeps their own history, playlists, tags and saved videos. Channels and downloads are shared — one copy, fetched once.')}
       </p>
 
@@ -105,8 +105,8 @@ export default function People() {
           <div key={p.id} className="flex items-center gap-3 px-3 py-2.5">
             <div className="min-w-0 flex-1">
               <span className="text-sm text-white">{p.name}</span>
-              {p.is_you && <span className="ml-2 text-xs text-[#777]">{t('you')}</span>}
-              <p className="text-xs text-[#666]">
+              {p.is_you && <span className="ml-2 text-xs text-[#999]">{t('you')}</span>}
+              <p className="text-xs text-[#999]">
                 {p.google ? p.email || t('signs in with Google') : t('signs in with a link')}
               </p>
             </div>
@@ -159,7 +159,7 @@ export default function People() {
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') add() }}
           placeholder={t('Add someone — their name')}
-          className="min-w-0 flex-1 rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 text-sm text-white placeholder:text-[#666] focus:border-[#666] focus:outline-none"
+          className="min-w-0 flex-1 rounded-lg border border-[#3f3f3f] bg-[#1c1c1c] px-3 py-2 text-sm text-white placeholder:text-[#888] focus:border-[#666] focus:outline-none"
         />
         <button
           onClick={add}

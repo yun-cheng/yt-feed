@@ -101,7 +101,7 @@ export default function TimeSortControls({ variant = 'feed', age, onAgeChange, c
             className={`px-1 lg:px-2.5 py-1 text-xs whitespace-nowrap rounded-md transition-colors ${
               sort === opt.value
                 ? 'bg-[#272727] text-white font-medium'
-                : 'text-[#888] hover:text-white'
+                : 'text-[#999] hover:text-white'
             }`}
           >
             {tc('sort', opt.label)}

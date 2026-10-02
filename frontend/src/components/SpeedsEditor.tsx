@@ -64,7 +64,7 @@ export default function SpeedsEditor({ value, onChange }: {
           {t('Reset')}
         </button>
       </div>
-      <p className={`mt-1 text-xs ${bad ? 'text-[#e0a0a0]' : 'text-[#777]'}`}>
+      <p className={`mt-1 text-xs ${bad ? 'text-[#e0a0a0]' : 'text-[#999]'}`}>
         {bad
           ? t('Speeds are numbers, up to {max} of them — like 0.5, 1, 1.5, 2.', { max: MAX_SPEEDS })
           : t('Separated by commas. Normal speed is always in the list.')}

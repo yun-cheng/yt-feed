@@ -88,7 +88,7 @@ export default function ChannelArchive({
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-      <span className="text-[#777]">
+      <span className="text-[#999]">
         {exhausted ? (
           <>{t('Complete — all {n} videos', { n: held.toLocaleString() })}</>
         ) : reachable ? (
@@ -96,7 +96,7 @@ export default function ChannelArchive({
         ) : (
           <>{tn(held, '{n} video', '{n} videos', { n: held.toLocaleString() })}</>
         )}
-        {oldest_held && <span className="text-[#555]"> · {t('back to {date}', { date: shortDate(oldest_held) })}</span>}
+        {oldest_held && <span className="text-[#999]"> · {t('back to {date}', { date: shortDate(oldest_held) })}</span>}
       </span>
 
       {!exhausted && reachable != null && (
@@ -119,7 +119,7 @@ export default function ChannelArchive({
       {/* Said plainly rather than shown as a bar that can never fill: YouTube's
           uploads playlist stops at 20,000 however many videos exist. */}
       {capped_by_api && (
-        <span className="text-[#555]">{t('YouTube only serves the newest 20,000')}</span>
+        <span className="text-[#999]">{t('YouTube only serves the newest 20,000')}</span>
       )}
     </div>
   )

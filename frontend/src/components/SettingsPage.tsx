@@ -86,12 +86,12 @@ function ExtensionKey() {
 
   return (
     <section className="mb-8">
-      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
+      <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#999]">
         {t('Extension')}
       </h3>
       <div className="min-w-0">
         <label className="text-sm font-medium text-white">{t('Your API key')}</label>
-        <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
+        <p className="mt-0.5 text-xs leading-relaxed text-[#999]">
           {t('The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.')}
         </p>
         <div className="mt-2 flex items-center gap-2">
@@ -212,7 +212,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
     return <div className="px-6 py-8 text-sm text-[#aaa]">{error}</div>
   }
   if (!data) {
-    return <div className="px-6 py-8 text-sm text-[#777]">{t('Loading…')}</div>
+    return <div className="px-6 py-8 text-sm text-[#999]">{t('Loading…')}</div>
   }
 
   const groups = [...new Set(data.settings.map((s) => s.group))]
@@ -229,7 +229,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
 
       {groups.map((group) => (
         <section key={group} className="mb-8">
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#777]">
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-wide text-[#999]">
             {t(group)}
           </h3>
           <div className="flex flex-col gap-4">
@@ -249,12 +249,12 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
                       // fill spends one daily API quota for the whole machine —
                       // so changing them changes them for everybody. Worth
                       // saying before the click, not after.
-                      <span className="ml-2 rounded-full border border-[#3f3f3f] px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wide text-[#888]">
+                      <span className="ml-2 rounded-full border border-[#3f3f3f] px-1.5 py-0.5 align-middle text-[10px] font-normal uppercase tracking-wide text-[#999]">
                         {t('everyone')}
                       </span>
                     )}
                   </label>
-                  <p className="mt-0.5 text-xs leading-relaxed text-[#777]">
+                  <p className="mt-0.5 text-xs leading-relaxed text-[#999]">
                     {t(spec.description)}
                   </p>
                   {spec.status && (

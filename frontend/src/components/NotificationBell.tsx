@@ -106,7 +106,7 @@ export default function NotificationBell() {
             )}
           </div>
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-[#717171]">{t('Nothing yet.')}</p>
+            <p className="px-4 py-6 text-center text-xs text-[#999]">{t('Nothing yet.')}</p>
           ) : (
             <ul className="max-h-[60vh] overflow-y-auto">
               {items.map((n) => (
@@ -139,13 +139,13 @@ export default function NotificationBell() {
                     <span className="min-w-0">
                       <span className="block text-sm text-white">{t(n.title)}</span>
                       <span className="block truncate text-xs text-[#aaa]">{n.body}</span>
-                      <span className="block text-[11px] text-[#717171]">{ago(n.created_at)}</span>
+                      <span className="block text-[11px] text-[#999]">{ago(n.created_at)}</span>
                     </span>
                   </button>
                   <button
                     onClick={() => dismissNotification(n.id)}
                     aria-label={t('Dismiss notification')}
-                    className="mt-0.5 rounded-full p-1 text-[#717171] hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100 hoverable:focus:opacity-100"
+                    className="mt-0.5 rounded-full p-1 text-[#999] hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:group-hover:opacity-100 hoverable:focus:opacity-100"
                   >
                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />

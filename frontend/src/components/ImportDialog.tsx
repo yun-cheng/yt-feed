@@ -50,7 +50,7 @@ export default function ImportDialog({ onClose, onImport }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-medium text-white">{t('Import videos')}</h2>
-        <p className="mt-1 text-xs text-[#888]">
+        <p className="mt-1 text-xs text-[#999]">
           {t('Paste YouTube links — one per line. Works with watch, youtu.be, shorts and live URLs.')}
         </p>
 
@@ -73,7 +73,7 @@ export default function ImportDialog({ onClose, onImport }: Props) {
               <p className="text-green-400">{tn(result.added.length, 'Imported {n} video.', 'Imported {n} videos.')}</p>
             )}
             {result.skipped.length > 0 && (
-              <p className="text-[#888]">{t('{n} already imported.', { n: result.skipped.length })}</p>
+              <p className="text-[#999]">{t('{n} already imported.', { n: result.skipped.length })}</p>
             )}
             {result.failed.map((f) => (
               <p key={f.input} className="text-red-400 break-all">{f.input} — {f.error}</p>

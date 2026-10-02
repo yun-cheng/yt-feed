@@ -93,7 +93,7 @@ export default function SearchPage({
       {empty ? (
         <div className="flex flex-col items-center justify-center h-64 gap-2 text-[#aaa]">
           <p className="text-sm">{t('No results for “{q}”', { q: trimmed })}</p>
-          <p className="text-xs text-[#717171]">{t('Try fewer or different words.')}</p>
+          <p className="text-xs text-[#999]">{t('Try fewer or different words.')}</p>
         </div>
       ) : (
         <>

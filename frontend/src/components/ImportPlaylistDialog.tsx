@@ -129,7 +129,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-medium text-white">{t('Import from YouTube')}</h2>
-        <p className="mt-1 text-xs text-[#888]">
+        <p className="mt-1 text-xs text-[#999]">
           {t('Copies a playlist here and remembers where it came from. Re-syncing only ever adds — nothing you keep here is removed.')}
         </p>
 
@@ -162,7 +162,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm text-white">{found.title}</h3>
-              <p className="truncate text-xs text-[#777]">
+              <p className="truncate text-xs text-[#999]">
                 {found.item_count} {found.item_count === 1 ? 'video' : 'videos'}
                 {found.channel_name ? ` · ${found.channel_name}` : ''}
               </p>
@@ -181,13 +181,13 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
           </div>
         )}
 
-        <p className="mt-4 text-xs font-medium text-[#888]">{t('Playlists you made')}</p>
+        <p className="mt-4 text-xs font-medium text-[#999]">{t('Playlists you made')}</p>
 
         <div className="-mx-1 mt-2 min-h-0 flex-1 overflow-y-auto px-1">
           {lists === null ? (
-            <p className="py-6 text-center text-xs text-[#666]">{t('Asking YouTube…')}</p>
+            <p className="py-6 text-center text-xs text-[#999]">{t('Asking YouTube…')}</p>
           ) : lists.length === 0 ? (
-            !error && <p className="py-6 text-center text-xs text-[#666]">{t('No playlists on that account.')}</p>
+            !error && <p className="py-6 text-center text-xs text-[#999]">{t('No playlists on that account.')}</p>
           ) : (
             <ul className="space-y-2">
               {lists.map((p) => (
@@ -199,7 +199,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-sm text-white">{p.title}</h3>
-                    <p className="text-xs text-[#777]">
+                    <p className="text-xs text-[#999]">
                       {p.item_count} {p.item_count === 1 ? 'video' : 'videos'}
                     </p>
                   </div>
@@ -220,7 +220,7 @@ export default function ImportPlaylistDialog({ onClose, onImported }: Props) {
           )}
         </div>
 
-        <p className="mt-4 border-t border-[#303030] pt-3 text-xs leading-relaxed text-[#666]">
+        <p className="mt-4 border-t border-[#303030] pt-3 text-xs leading-relaxed text-[#999]">
           {t('Only playlists you made can be listed — paste a link for anyone else\'s. Watch Later, Liked Videos and other people\'s private playlists can\'t be read this way at all; open one on youtube.com and use the extension\'s “Import to YT Feed” button, which reads the page as you.')}
         </p>
 
