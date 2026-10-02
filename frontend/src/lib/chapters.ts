@@ -18,7 +18,7 @@ export function chapterAt(chapters: readonly Chapter[] | undefined, t: number): 
 }
 
 /** How wide the cut between two chapters is, in px. */
-export const CHAPTER_GAP = 2
+export const CHAPTER_GAP = 4
 
 /** A CSS mask that cuts the track at every chapter start after the first.
  *

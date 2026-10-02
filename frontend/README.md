@@ -1080,8 +1080,7 @@ Other details:
     doesn't run (`duration` of 0 is "ask me again", not a video of no length).
     Two consequences worth knowing: the tick also takes the player **ending** as
     reaching B, since a player can stop a hair short of the duration it reported
-    and then nothing ever passes it; and the bar dims for a one-ended loop like
-    any other, with one of the two veils coming out zero-width.
+    and then nothing ever passes it.
   - **`looping` and `loopStage` are different questions**, and the button asks
     both. `looping` is whether the video is actually repeating — true with one
     end pinned. `loopStage` is what the *next* press does. A one-ended loop is
@@ -1118,12 +1117,11 @@ Other details:
   - **The button still says how far along the pinning is** (`loopStage`: idle →
     arming → running). Armed, a small **A** or **B** names the end still open,
     which is the one thing the list can't tell you at a glance; repeating, the
-    caption button's underline. Both in white, since the loop wears no colour of
-    its own on the bar either.
-  - **On the bar, only the running passage dims.** The others draw their cuts
-    half as dark (`LOOP_EDGE_IDLE`) and take no clicks — switching is the menu's
-    job, and every hit area over the embed is a pixel of YouTube's own scrubber
-    taken. Several dimmed spans would turn the bar into a ladder of veils.
+    caption button's underline. Both in white, like the loop's markers on the
+    bar.
+  - **On the bar, the other passages are faint.** Their markers are drawn at
+    40% opacity and take no clicks — switching is the menu's job, and every hit
+    area over the embed is a pixel of YouTube's own scrubber taken.
   - **Clearing a bookmark** is the same button, which says which of the two it's
     about to do: it fills in and reads *Clear this bookmark* while the play head
     is standing on one (`markHere`, polled at 500ms against a 2s tolerance — the
@@ -1157,35 +1155,38 @@ Other details:
   - **Both live on the progress bar** (`MarkTrack`) — that's the axis they're
     positions on, and anywhere else you have to translate a timestamp back into a
     place in the video. But only one of the two is a **mark**, because a bookmark
-    is a **point** and a loop is a **mode**. The bookmark is a tick standing in the
-    track it's a position on, in **sky-400** — one hue worn everywhere it appears,
-    on the tick, on the button that made it and on the dot of the line confirming
-    the press.
-  - **The loop restyles the bar instead of marking it.** Its ends cut the track
-    (a dark 2px notch, like the gaps YouTube puts between chapters), and once
-    it's really running everything **outside** it dims back behind a black veil,
-    leaving the repeating stretch as the only part of the bar at full strength.
-    Nothing is drawn over the track for it, so there's no second colour to place
-    against the player's red and white, and the fill still reads *through* the
-    veil — dimming the played portion outside the loop is the point, that being
-    exactly the part you've stopped watching. The thumb and any bookmarks are
-    drawn after the veil and stay bright: the play head is never in question, and
-    a bookmark isn't the loop's business.
-  - **A half-set loop cuts but doesn't dim.** Dimming the rest of the video would
-    claim something is repeating when nothing is; a notch claims only that you
-    pinned this moment. It's also why the button carries the A/B letter — with no
-    region to look at yet, that's what tells you which end is which.
-  - Each mark is centred in a 12px hit area and **carries its own
-    `left-1/2`**: absolutely positioned with no `left`, it lands at that area's
-    left edge instead, drawing the mark 6px before the moment it stands for.
-  - **The tick grows inside that hit area** (5×14 → 8×18, `group/mark`), the way
-    the track thickens under the pointer. What grows is the tick, not the target
-    — over the embed these sit on YouTube's own scrubber, and every pixel of hit
-    area is a pixel of its bar we've taken. Growing on *approach* rather than on
-    a direct hit is the point: by the time the pointer is in the zone you've
-    committed to that mark, and the tick answering tells you you'll land it.
-    Being over the bar, the hover also raises the scrub preview of the exact
-    frame the bookmark holds.
+    is a **point** and a loop is a **mode**. The bookmark is a **pin**, drawn
+    the way PotPlayer draws its bookmarks (`BookmarkPin`): white,
+    square-shouldered with a point at the foot, centred on the track and taller
+    than it, so it stands out above and below the bar and shows over the red
+    fill and the bare track alike. 8×12px
+    (`BOOKMARK_WIDTH`, twice a chapter cut, so the two never read as each
+    other), with a hairline shadow against a bright frame. Off the bar a
+    bookmark wears **sky-400** — on the button that made it, the dot of the
+    line confirming the press, and each row of the menu.
+  - **The loop is bracketed, as PotPlayer brackets it** (`LoopMark`, taken
+    from PotPlayer's skin sprites): a white **▶** at A and **◀** at B, pointing
+    in at the passage. Each stands with its flat side on its moment and its
+    point in the passage, the bookmark pin's height (12px, 6px wide) and
+    hairline shadow, centred on the track. The bar itself is left alone — no
+    veil, no cuts — so the fill and the chapter cuts read the same with a loop
+    running as without. Markers and pins sit over the thumb (`z-10`), so a mark
+    stays visible while the play head stands on it.
+  - **Inside a running passage the red fill starts at A**, not at the start
+    of the video: what's been played is this pass through the passage, so the
+    bar reads as progress through it. Outside the passage, or with none
+    running, the fill is the whole video's (`fillFrom` in `LocalControls`).
+    Only our own bar does this — over a bare embed the fill is YouTube's.
+  - **A half-set loop shows its one marker**, from the first press: it claims
+    only that you pinned this moment. The button's A/B letter says which end is
+    still open.
+  - **The pin and its hit area are siblings**, both placed on the moment
+    against the track, so the pin centres on the track itself rather than on
+    the hit area. The hit area stays at 12px
+    wide though the pin is 8px — no wider, since over the embed
+    these sit on YouTube's own scrubber and every pixel of hit area is a pixel
+    of its bar we've taken. Being over the bar, the hover also
+    raises the scrub preview of the exact frame the bookmark holds.
   - **Every mark is clickable** and jumps to itself — on our own bar that beats
     the bar's own click, which would only land near the mark (the press stops
     propagating, so the bar doesn't also treat it as a scrub). Each tick sits in
@@ -1259,8 +1260,11 @@ Other details:
     with the description (`/api/feed/description`, yt-dlp's `chapters`). The cut
     is a CSS mask on the rail layer alone (`chapterMask` in `lib/chapters.ts`),
     so the track and fill stay single elements and the play head, hover line
-    and marks — drawn outside that layer — are never cut. Over a bare embed
-    YouTube's own bar already shows them, so only our bar draws them.
+    and marks — drawn outside that layer — are never cut. Each cut is 4px
+    (`CHAPTER_GAP`), twice YouTube's: what shows through it is the dark shading
+    behind the controls, and at 2px that read as a black line rather than a
+    break. Over a bare embed YouTube's own bar already shows them, so only our
+    bar draws them.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
   embed's own captions can't be positioned or styled). The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
@@ -2266,7 +2270,7 @@ problem.
 
 | File | Covers |
 |------|--------|
-| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the bookmark menu, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's tick, the loop's cuts and its veil |
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the bookmark menu, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |

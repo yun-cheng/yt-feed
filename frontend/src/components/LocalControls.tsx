@@ -17,7 +17,7 @@ import { formatTime } from '../lib/time'
 import { storyboardFrame, scaleToWidth } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
 import { qualityLabel, heightLabel } from '../lib/quality'
-import { MarkTrack } from './PlayerMarks'
+import { MarkTrack, loopBounds } from './PlayerMarks'
 import { chapterAt, chapterMask } from '../lib/chapters'
 import type { Chapter } from '../lib/chapters'
 import type { Bookmark, Loop } from './PlayerMarks'
@@ -307,7 +307,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // click it, which for a tick is the moment it marks.
   bookmarks?: Bookmark[]
   loop?: Loop
-  /** The video's other saved passages, drawn as quiet cuts (see MarkTrack). */
+  /** The video's other saved passages, drawn faint (see MarkTrack). */
   others?: Loop[]
   // The video's chapters: the track is cut at each one, and the scrub preview
   // names the one under the cursor.
@@ -454,6 +454,12 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // head can sit a hair past it (the two are measured a moment apart), so the
   // ratio needs a ceiling it never needed on a file.
   const progress = duration ? Math.min(1, time / duration) : 0
+  // Inside a running A-B repeat the red fill starts at A, not at the start of
+  // the video: what's been played is this pass through the passage, so the bar
+  // reads as progress through it. Outside the passage (or with none running)
+  // it's the whole video's, as ever.
+  const loopEnds = loop && duration ? loopBounds(loop, duration) : null
+  const fillFrom = loopEnds && time >= loopEnds.a && time <= loopEnds.b ? loopEnds.a / duration : 0
   // How far back in the stream you are. At the edge this is the buffer and
   // nothing more; further back it's where you scrubbed to.
   const behind = Math.max(0, duration - time)
@@ -567,7 +573,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             className="absolute inset-0 overflow-hidden rounded-full bg-white/30"
             style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
           >
-            <div className="absolute inset-y-0 left-0 bg-red-500" style={{ width: `${progress * 100}%` }} />
+            <div
+              data-testid="track-fill"
+              className="absolute inset-y-0 bg-red-500"
+              style={{ left: `${fillFrom * 100}%`, width: `${Math.max(0, progress - fillFrom) * 100}%` }}
+            />
           </div>
           {/* Bookmarks and the A–B loop, on the track they're positions on.
               Clicking a mark seeks to the exact moment it marks rather than to

@@ -47,14 +47,15 @@ real video (muted, with custom captions and scrubbing).
   laid over the video (`g`), down either side, with its info, chapters,
   bookmarks, comments, transcript and Ask AI — which one it opens on is a setting
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
-  click the tick to jump back); `[` and `]` set a loop's ends and `\` stops it,
+  click its pin to jump back); `[` and `]` set a loop's ends and `\` stops it,
   so a passage replays until you're done with it. **One end is enough**: `[` alone
   repeats from there to the end of the video, `]` alone from the start up to
   there. **A video keeps as many passages as you mark**, saved with it — the loop
   button's menu lists them, where you switch between them, delete one, or start a
-  new one from where you are. Both show on the progress bar —
-  a bookmark as a tick in the track, the loop as the bar itself: its ends notch
-  the track and everything outside the loop dims back. Both also have a **button
+  new one from where you are. Both show on the progress bar the way PotPlayer
+  draws them — a bookmark as a white pin, a passage as a ▶ and a ◀ bracketing it
+  — and while you're inside a running passage the red fill runs only from its
+  start. Both also have a **button
   in the control bar** that opens its menu on hover: a click on the loop's turns
   the repeat on or off, a click on the bookmark's marks the moment or clears the
   one you're standing on, and the bookmark's menu lists them all to jump to. It's

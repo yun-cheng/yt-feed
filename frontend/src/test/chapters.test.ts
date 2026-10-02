@@ -29,8 +29,8 @@ describe('chapterMask', () => {
   it('cuts once per chapter start after the first', () => {
     const mask = chapterMask(CH, 120)!
     expect(mask.match(/transparent calc/g)).toHaveLength(4)
-    expect(mask).toContain('calc(50.000% - 1px)')
-    expect(mask).toContain('calc(75.000% + 1px)')
+    expect(mask).toContain('calc(50.000% - 2px)')
+    expect(mask).toContain('calc(75.000% + 2px)')
   })
 
   it('draws no cut at either end, or before the duration is known', () => {

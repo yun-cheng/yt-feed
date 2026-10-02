@@ -19,10 +19,10 @@
  *
  * Marks belong ON the progress bar — that's the axis they're positions on, and
  * anywhere else makes you translate a timestamp back into a place in the video.
- * Bookmarks wear one colour everywhere they appear — the tick, the button that
- * made it, the line confirming the press — so those read as one thing. The loop
- * wears none: it restyles the bar rather than marking it (see below), which is
- * also why only the running passage dims and the rest are cuts alone.
+ * On the bar both are drawn as PotPlayer draws them, in white: a bookmark is a
+ * pin, a passage a pair of triangles pointing in at it from either end — the
+ * running passage solid, the others faint. Off the bar a bookmark wears sky
+ * blue, on the button that made it and the line confirming the press.
  * Over a file we play ourselves that's literally the bar (see LocalControls);
  * over the embed the bar lives inside the iframe, out of reach, so the rail is
  * laid over it at the same offset the embed draws its own scrubber at.
@@ -33,6 +33,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { apiFetch } from '../lib/api'
+import { CHAPTER_GAP } from '../lib/chapters'
 import { formatTime } from '../lib/time'
 import type { PlayerApi } from './LocalControls'
 import { t } from '../lib/i18n'
@@ -64,32 +65,66 @@ export function loopLabel(loop: Loop): string {
 }
 
 /**
- * The one colour a bookmark wears, everywhere it appears — the tick on the bar,
- * the button that made it, the dot on the line confirming the press.
+ * The colour a bookmark wears off the bar — the button that made it, the dot on
+ * the line confirming the press, the dot by each row of the menu — so those
+ * read as one feature.
  *
- * The player's own furniture is red (progress), white (track, buffered, the
- * scrub indicator) and black, and a mark of yours in any of those reads as part
- * of the bar rather than as something you put there — worst of all over the
- * embed, where it lands on YouTube's own near-white track. It keeps the dark
- * ring either way: these sit on video, which can be any colour at all.
+ * On the bar it's PotPlayer's white pin instead (BookmarkPin): there the shape
+ * is what says "yours", standing up out of a track that is otherwise flat.
  */
 const BOOKMARK_COLOR = 'bg-sky-400'
 
-// The loop gets no colour of its own, because it isn't a mark — it's a MODE the
-// bar is in. So the bar says it: the stretch that repeats is the bar, and
-// everything outside it is dimmed back. Nothing new is drawn over the track, the
-// red fill and the thumb stay readable through the veil, and the loop can't
-// clash with the player's own palette because it doesn't add to it.
-const LOOP_DIM = 'bg-black/50'
-// A cut through the track at each pinned end. Dark, like the gaps YouTube puts
-// between chapters — a boundary in a bar reads as a break in it, not as a thing
-// sitting on top of it.
-const LOOP_EDGE = 'bg-black/70'
-// A passage that's saved but not running gets the same cut, half as dark. It's
-// still a boundary in the bar rather than a thing on top of it — just a quieter
-// one, because it isn't what's happening right now. Only the running passage
-// dims, so several saved ones can't turn the bar into a ladder of veils.
-const LOOP_EDGE_IDLE = 'bg-black/35'
+/** A bookmark's pin on the bar: twice a chapter cut wide, so the two never read
+ *  as each other — the cut is a gap, the pin a thing — and half again as tall,
+ *  to stand up out of the track. */
+export const BOOKMARK_WIDTH = CHAPTER_GAP * 2
+export const BOOKMARK_HEIGHT = BOOKMARK_WIDTH * 1.5
+
+/** PotPlayer's bookmark marker: a white pin, square-shouldered with a point at
+ *  the foot, centred on the track — taller than the track, so it stands out
+ *  above and below it, and shows over the red fill and the bare track alike. A
+ *  hairline shadow keeps it apart from a bright frame, which is what's behind
+ *  the parts beyond the bar. Above the play head's circle (`z-10`, which the
+ *  circle lacks): a mark you made stays visible while you're standing on it. */
+function BookmarkPin({ left }: { left: string }) {
+  return (
+    <svg
+      data-testid="bookmark-pin"
+      className="pointer-events-none absolute top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 overflow-visible text-white drop-shadow-[0_0_1px_rgba(0,0,0,0.9)]"
+      style={{ left }}
+      width={BOOKMARK_WIDTH}
+      height={BOOKMARK_HEIGHT}
+      viewBox="0 0 8 12"
+      aria-hidden
+    >
+      <path fill="currentColor" d="M1.5 0h5A1.5 1.5 0 0 1 8 1.5V8l-4 4-4-4V1.5A1.5 1.5 0 0 1 1.5 0z" />
+    </svg>
+  )
+}
+
+/** PotPlayer's A-B repeat markers: a white triangle at each end, pointing in
+ *  at the passage — ▶ at A, ◀ at B — so between them they bracket what repeats.
+ *  Each stands with its flat side on the moment it marks and its point in the
+ *  passage, the bookmark pin's height and style, centred on the track and above
+ *  the play head's circle. A passage that's saved but not running gets the same
+ *  pair, faint: it's there to be picked from the menu, not what's happening. */
+function LoopMark({ end, left, idle = false }: { end: 'a' | 'b'; left: string; idle?: boolean }) {
+  return (
+    <svg
+      data-testid={idle ? 'loop-mark-idle' : `loop-mark-${end}`}
+      className={`pointer-events-none absolute top-1/2 z-10 -translate-y-1/2 overflow-visible text-white drop-shadow-[0_0_1px_rgba(0,0,0,0.9)] ${
+        end === 'b' ? '-translate-x-full' : ''
+      } ${idle ? 'opacity-40' : ''}`}
+      style={{ left }}
+      width={BOOKMARK_HEIGHT / 2}
+      height={BOOKMARK_HEIGHT}
+      viewBox="0 0 6 12"
+      aria-hidden
+    >
+      <path fill="currentColor" d={end === 'a' ? 'M0 0l6 6-6 6z' : 'M6 0 0 6l6 6z'} />
+    </svg>
+  )
+}
 
 /** How far along the pinning is on the passage that's running: nothing pinned,
  *  one end pinned, both. What the loop button's badge reads. */
@@ -511,21 +546,14 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
  *  is the cost of being able to click a mark at all — paid at the handful of x
  *  positions you put one on, and nowhere else.
  *
- *  Marks are drawn solid, with a dark ring: they land on video, which can be any
- *  colour at all, and a bright tick on a bright frame is no mark.
- *
- *  A bookmark is a POINT and a loop is a MODE, so only one of them is a mark. The
- *  bookmark is a tick standing in the track it's a position on. The loop is the
- *  bar itself: its ends cut the track, and once it's really running everything
- *  outside it dims back, leaving the repeating stretch as the only part at full
- *  strength. Nothing is added over the bar for it — no second colour to place
- *  against the player's red and white, and the fill and thumb read straight
- *  through the veil. */
+ *  Both are drawn the way PotPlayer draws them, in white over the track: a
+ *  bookmark is a pin (BookmarkPin), and a loop is a pair of triangles pointing
+ *  in at the passage from either end (LoopMark). */
 export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
   bookmarks: Bookmark[]
   loop: Loop
   /** The video's other saved passages — everything except the running one.
-   *  Drawn as cuts and nothing else: they aren't clickable, because switching
+   *  Drawn faint and nothing else: they aren't clickable, because switching
    *  passages is the menu's job and every hit area here is a pixel of YouTube's
    *  own scrubber taken. */
   others?: Loop[]
@@ -535,19 +563,12 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
   if (!duration) return null
   const pct = (t: number) => `${Math.max(0, Math.min(100, (t / duration) * 100))}%`
   const showLoop = loop.a !== null || loop.b !== null
-  // Where the repeat actually runs from and to — which, with one end pinned, is
-  // wider than what was pinned: the dim runs to the start or the end of the bar
-  // and one of the two veils comes out zero-width.
-  const bounds = loopBounds(loop, duration)
-  // A tick is narrower than anything is comfortable to aim at, so each sits in a
+  // A mark is narrower than anything is comfortable to aim at, so each sits in a
   // wider invisible hit area. `stopPropagation` on the press keeps our own
   // control bar from also treating it as a scrub — it sits inside that bar's
-  // drag handler.
-  //
-  // That hit area is also the "you're near it" zone: `group/mark` lets the tick
-  // grow inside it, the way the track thickens under the pointer. What grows is
-  // the tick, not the target — over the embed these sit on YouTube's own
-  // scrubber, and every pixel of hit area is a pixel of its bar we've taken.
+  // drag handler. No wider than that, though: over the embed these sit on
+  // YouTube's own scrubber, and every pixel of hit area is a pixel of its bar
+  // we've taken.
   //
   // Anything drawn INSIDE must carry `left-1/2` of its own. Without it the
   // browser lays it out at its static position — the hit area's LEFT EDGE — and
@@ -560,7 +581,7 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
       onClick={(e) => { e.stopPropagation(); onSeek(at) }}
       title={t('{label} — jump to {time}', { label, time: formatTime(at) })}
       aria-label={t('{label} at {time}', { label, time: formatTime(at) })}
-      className="group/mark absolute top-1/2 h-4 w-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
+      className="absolute top-1/2 h-4 w-3 -translate-x-1/2 -translate-y-1/2 cursor-pointer"
       style={{ left: pct(at) }}
     >
       {mark}
@@ -568,68 +589,30 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
   )
   return (
     <>
-      {/* Outside the loop, dimmed — the loop is the part of the bar still at full
-          strength. Only once it's really running: a dim covering the rest of the
-          video would claim something repeats when nothing does. With one end
-          pinned it IS running, so half the bar dims and the other veil is empty.
-
-          It veils the fill along with the track, which is the point — the played
-          portion outside the loop is exactly the part you're no longer watching.
-          The thumb is drawn after this, so the play head stays bright wherever
-          it is, and so do any bookmarks: those aren't the loop's business. */}
-      {bounds && (
-        <>
-          <div
-            data-testid="loop-dim"
-            className={`pointer-events-none absolute inset-y-0 left-0 rounded-l-full ${LOOP_DIM}`}
-            style={{ width: pct(bounds.a) }}
-          />
-          <div
-            data-testid="loop-dim"
-            className={`pointer-events-none absolute inset-y-0 right-0 rounded-r-full ${LOOP_DIM}`}
-            style={{ left: pct(bounds.b) }}
-          />
-        </>
-      )}
-      {/* The other passages, as cuts alone. Drawn first, so the running one's
-          darker cuts sit over them where two passages share a boundary. */}
-      {others.flatMap((other, i) => [other.a, other.b].map((end, j) => end === null ? null : (
-        <div
-          key={`other${i}-${j}`}
-          data-testid="loop-edge-idle"
-          className={`pointer-events-none absolute inset-y-0 w-[2px] -translate-x-1/2 ${LOOP_EDGE_IDLE}`}
-          style={{ left: pct(end) }}
-        />
+      {/* The other passages, faint. Drawn first, so the running one's
+          markers sit over them where two passages share a boundary. */}
+      {others.flatMap((other, i) => (['a', 'b'] as const).map((end) => other[end] === null ? null : (
+        <LoopMark key={`other${i}-${end}`} end={end} left={pct(other[end]!)} idle />
       )))}
-      {/* Each pinned end cuts the track. Shown from the first press, when there's
-          nothing to dim yet — a notch claims only "you pinned this moment",
-          which is all that's true until the pair makes sense. */}
-      {[loop.a, loop.b].map((end, i) => end === null ? null : (
-        <div
-          key={`edge${i}`}
-          data-testid="loop-edge"
-          className={`pointer-events-none absolute inset-y-0 w-[2px] -translate-x-1/2 ${LOOP_EDGE}`}
-          style={{ left: pct(end) }}
-        />
+      {/* The running passage's ends, from the first press — one marker claims
+          only "you pinned this moment", which is all that's true until there's
+          a pair. */}
+      {(['a', 'b'] as const).map((end) => loop[end] === null ? null : (
+        <LoopMark key={`end-${end}`} end={end} left={pct(loop[end]!)} />
       ))}
-      {/* The ends are clickable like any other mark, but the notch above IS the
-          mark — this is the hit area over it, and has nothing of its own to
-          draw. */}
+      {/* The ends are clickable like any other mark — this is the hit area
+          over each marker, and has nothing of its own to draw. */}
       {showLoop && [loop.a, loop.b].map((end, i) => end === null ? null : hit(
         `loop${i}`,
         end,
         i === 0 ? t('Loop start (A)') : t('Loop end (B)'),
         null
       ))}
-      {bookmarks.map((b) => hit(
-        b.id,
-        b.position_seconds,
-        t('Bookmark'),
-        // Grows on approach rather than on a direct hit: by the time the
-        // pointer is within the hit area you've already committed to this mark,
-        // and a tick that answers is one you can tell you'll actually land.
-        <div className={`pointer-events-none absolute left-1/2 top-1/2 h-3.5 w-[5px] -translate-x-1/2 -translate-y-1/2 rounded-sm ${BOOKMARK_COLOR} ring-1 ring-black/50 transition-all duration-100 group-hover/mark:h-[18px] group-hover/mark:w-[8px]`} />
-      ))}
+      {/* Drawn here, against the track, not inside its hit area, so it centres
+          on the track itself. */}
+      {bookmarks.map((b) => <BookmarkPin key={`pin${b.id}`} left={pct(b.position_seconds)} />)}
+      {/* And the hit area over each, wider than the pin is to aim at. */}
+      {bookmarks.map((b) => hit(b.id, b.position_seconds, t('Bookmark'), null))}
     </>
   )
 }

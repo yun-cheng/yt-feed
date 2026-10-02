@@ -789,40 +789,38 @@ describe('LocalControls — marks on the track', () => {
     expect(player.seekTo).not.toHaveBeenCalled()
   })
 
-  it('draws a running loop by dimming the bar either side of it', () => {
-    const { container } = renderOverEmbed({
+  it('draws a running loop as PotPlayer does: ▶ at A, ◀ at B, the bar itself untouched', () => {
+    renderOverEmbed({
       bookmarks: [],
       loop: { a: 150, b: 450 },   // a quarter and three quarters of the 600s player
     })
     act(() => { vi.advanceTimersByTime(300) })
-    const [before, after] = screen.getAllByTestId('loop-dim')
-    expect(before).toHaveStyle({ width: '25%' })
-    expect(after).toHaveStyle({ left: '75%' })
-    expect(container.querySelectorAll('[data-testid="loop-edge"]')).toHaveLength(2)
+    expect(screen.getByTestId('loop-mark-a')).toHaveStyle({ left: '25%' })
+    expect(screen.getByTestId('loop-mark-b')).toHaveStyle({ left: '75%' })
+    expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
   })
 
-  it('the loop’s veil dims the fill, and never the play head or a bookmark', () => {
-    // Everything in the track paints in document order, which is the whole
-    // reason the loop can be a veil at all: it goes over the fill (the part of
-    // the played bar you've stopped watching) and under the thumb and the marks
-    // (which answer questions the loop has nothing to do with). Reorder this
-    // JSX and the loop starts hiding the play head.
-    const { container } = renderOverEmbed({
-      bookmarks: [{ id: 1, position_seconds: 300, note: '' }],
-      loop: { a: 150, b: 450 },
-    })
+  it('inside a running A-B repeat, fills red only from A to the play head', () => {
+    // A quarter of the 600s player to three quarters, the head halfway.
+    renderOverEmbed({ bookmarks: [], loop: { a: 150, b: 450 } }, { getCurrentTime: () => 300 })
     act(() => { vi.advanceTimersByTime(300) })
-    // The fill lives in the rail (the layer chapters cut), the first child.
-    const rail = screen.getByTestId('track-rail')
-    const track = rail.parentElement as HTMLElement
-    const at = (el: Element | null) => [...track.children].indexOf(el as Element)
-    const thumbs = [...track.children].filter((el) => el.classList.contains('bg-red-500'))
-    const dims = screen.getAllByTestId('loop-dim')
+    expect(screen.getByTestId('track-fill')).toHaveStyle({ left: '25%', width: '25%' })
+  })
 
-    expect(rail.querySelector('.bg-red-500')).not.toBeNull()
-    expect(at(rail)).toBeLessThan(at(dims[0]))                           // fill under the veil
-    expect(at(dims[1])).toBeLessThan(at(thumbs[thumbs.length - 1]))      // thumb over it
-    expect(at(dims[1])).toBeLessThan(at(screen.getByLabelText('Bookmark at 5:00')))
+  it('outside the passage, or with none running, fills from the start as ever', () => {
+    const { unmount } = renderOverEmbed({ bookmarks: [], loop: { a: 150, b: 450 } }, { getCurrentTime: () => 60 })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('track-fill')).toHaveStyle({ left: '0%', width: '10%' })
+    unmount()
+    renderOverEmbed({ bookmarks: [], loop: { a: null, b: null } }, { getCurrentTime: () => 300 })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('track-fill')).toHaveStyle({ left: '0%', width: '50%' })
+  })
+
+  it('a loop that cannot run leaves the fill alone', () => {
+    renderOverEmbed({ bookmarks: [], loop: { a: 450, b: 150 } }, { getCurrentTime: () => 300 })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(screen.getByTestId('track-fill')).toHaveStyle({ left: '0%', width: '50%' })
   })
 
   it('draws no marks when it is given none', () => {

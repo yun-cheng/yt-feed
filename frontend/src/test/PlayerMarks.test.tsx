@@ -16,6 +16,8 @@ import {
 } from '../components/PlayerMarks'
 import type { Bookmark, Loop, SavedLoop } from '../components/PlayerMarks'
 import type { PlayerApi } from '../components/LocalControls'
+import { CHAPTER_GAP } from '../lib/chapters'
+import { BOOKMARK_HEIGHT, BOOKMARK_WIDTH } from '../components/PlayerMarks'
 
 // ── A stand-in player ────────────────────────────────────────────────
 
@@ -1020,68 +1022,95 @@ describe('MarkTrack', () => {
     expect(screen.getByRole('button')).toHaveStyle({ left: '100%' })
   })
 
-  it('centres a bookmark tick in its hit area rather than on its left edge', () => {
-    // jsdom does no layout, so this pins the class that does the centring: the
-    // tick is absolutely positioned inside a 12px-wide hit area, and without a
-    // `left` of its own it lands at that area's left edge — the mark drawn 6px
-    // before the moment it stands for.
+  it('puts a bookmark’s hit area over its pin, on the same moment', () => {
+    // jsdom does no layout, so this pins the classes that do the centring: both
+    // sit at the moment's `left` and pull back by half their own width.
     render(<MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={vi.fn()} />)
-    expect(screen.getByLabelText('Bookmark at 0:30').firstElementChild)
-      .toHaveClass('left-1/2', '-translate-x-1/2')
+    const area = screen.getByLabelText('Bookmark at 0:30')
+    const pin = screen.getAllByTestId('bookmark-pin')[0]
+    expect(area.style.left).toBe(pin.style.left)
+    expect(area).toHaveClass('-translate-x-1/2')
+    expect(pin).toHaveClass('-translate-x-1/2')
   })
 
-  it('grows the tick while the pointer is in its hit area', () => {
-    // jsdom has no :hover, so this pins the pairing that does it: the hit area
-    // is the named group, the tick reacts to it. What grows is the tick, not
-    // the target — over the embed it's YouTube's own scrubber we'd be taking.
-    render(<MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={vi.fn()} />)
-    const mark = screen.getByLabelText('Bookmark at 0:30')
-    expect(mark).toHaveClass('group/mark')
-    expect(mark.firstElementChild).toHaveClass('group-hover/mark:h-[18px]', 'group-hover/mark:w-[8px]')
-  })
-
-  it('gives bookmarks a colour of their own, and the loop none', () => {
-    // A bookmark is a mark, so it wears one hue everywhere it appears; the loop
-    // is a mode of the bar, and adding a second colour to red/white/black is
-    // what makes a player look like it has been drawn on.
+  it('draws a bookmark as PotPlayer does: a pin twice a chapter cut wide, centred on the track', () => {
+    // Against the track rather than inside the taller hit area, so it centres
+    // on the track.
     const { container } = render(
-      <MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />
+      <div className="relative"><MarkTrack bookmarks={marks} loop={noLoop} duration={120} onSeek={vi.fn()} /></div>
     )
-    expect(screen.getByLabelText('Bookmark at 0:30').firstElementChild).toHaveClass('bg-sky-400')
-    for (const el of container.querySelectorAll('[data-testid^="loop-"]')) {
-      expect(el.className).toMatch(/bg-black\//)
+    const pin = screen.getAllByTestId('bookmark-pin')[0]
+    expect(pin.parentElement).toBe(container.firstElementChild)
+    expect(pin).toHaveClass('top-1/2', '-translate-y-1/2', 'text-white', 'z-10')
+    expect(BOOKMARK_WIDTH).toBe(CHAPTER_GAP * 2)
+    expect(pin.getAttribute('width')).toBe(`${BOOKMARK_WIDTH}`)
+    expect(pin.style.left).toBe('25%')
+  })
+
+  it('adds no colour to the bar: the pin and the loop markers are white', () => {
+    // As PotPlayer draws them. The shapes say "yours"; adding a colour to the
+    // player's red and white is what makes a bar look drawn on.
+    render(<MarkTrack bookmarks={marks} loop={{ a: 60, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    expect(screen.getAllByTestId('bookmark-pin')[0]).toHaveClass('text-white')
+    expect(screen.getByTestId('loop-mark-a')).toHaveClass('text-white')
+    expect(screen.getByTestId('loop-mark-b')).toHaveClass('text-white')
+  })
+
+  it('brackets a passage as PotPlayer does: ▶ at A, ◀ at B, pointing in at it', () => {
+    // Each stands with its flat side on its moment and its point in the
+    // passage: A runs right from A, B is pulled back its own width from B.
+    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    const a = screen.getByTestId('loop-mark-a')
+    const b = screen.getByTestId('loop-mark-b')
+    expect(a).toHaveStyle({ left: '25%' })
+    expect(a).not.toHaveClass('-translate-x-full')
+    expect(a.querySelector('path')?.getAttribute('d')).toBe('M0 0l6 6-6 6z')
+    expect(b).toHaveStyle({ left: '75%' })
+    expect(b).toHaveClass('-translate-x-full')
+    expect(b.querySelector('path')?.getAttribute('d')).toBe('M6 0 0 6l6 6z')
+  })
+
+  it('centres them on the track, as tall as a bookmark pin and above the play head', () => {
+    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />)
+    const a = screen.getByTestId('loop-mark-a')
+    expect(a).toHaveClass('top-1/2', '-translate-y-1/2', 'z-10')
+    expect(a.getAttribute('height')).toBe(`${BOOKMARK_HEIGHT}`)
+  })
+
+  it('leaves the bar itself alone — no veil, no cuts', () => {
+    // PotPlayer marks the passage and nothing else; the fill and the chapter
+    // cuts read the same with a loop running as without.
+    const { container } = render(
+      <MarkTrack bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />
+    )
+    expect(container.querySelectorAll('svg')).toHaveLength(2)
+    expect(container.querySelectorAll('div')).toHaveLength(0)
+  })
+
+  it('marks a pinned end from the very first press', () => {
+    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
+    expect(screen.getByTestId('loop-mark-a')).toHaveStyle({ left: '25%' })
+    expect(screen.queryByTestId('loop-mark-b')).toBeNull()
+  })
+
+  it('marks a loop that cannot run all the same — you did pin those moments', () => {
+    for (const loop of [{ a: 30, b: 30.2 }, { a: 90, b: 30 }]) {
+      const { unmount } = render(<MarkTrack bookmarks={[]} loop={loop} duration={120} onSeek={vi.fn()} />)
+      expect(screen.getByTestId('loop-mark-a')).toBeInTheDocument()
+      expect(screen.getByTestId('loop-mark-b')).toBeInTheDocument()
+      unmount()
     }
   })
 
-  it('dims the track either side of a running loop, and nothing else', () => {
-    // The loop is the stretch left at full strength. The veil covers the fill
-    // too — the played part outside the loop is the part you've stopped
-    // watching — and the thumb and any bookmarks are drawn after it.
-    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />)
-    const [before, after] = screen.getAllByTestId('loop-dim')
-    expect(before).toHaveClass('left-0')
-    expect(before).toHaveStyle({ width: '25%' })
-    expect(after).toHaveClass('right-0')
-    expect(after).toHaveStyle({ left: '75%' })
-  })
-
-  it('cuts the track at each pinned end from the very first press', () => {
-    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
-    expect(screen.getByTestId('loop-edge')).toHaveStyle({ left: '25%' })
-  })
-
-  it('cuts the track for the other passages, more quietly', () => {
-    // Saved but not running: still a boundary in the bar, just not what's
-    // happening right now. Only the running one dims, so several passages can't
-    // turn the bar into a ladder of veils.
+  it('draws the other passages the same way, faint', () => {
     render(
       <MarkTrack bookmarks={[]} loop={{ a: 30, b: 60 }} others={[{ a: 90, b: 108 }]}
         duration={120} onSeek={vi.fn()} />
     )
-    expect(screen.getAllByTestId('loop-edge')).toHaveLength(2)
-    const idle = screen.getAllByTestId('loop-edge-idle')
-    expect(idle.map((e) => e.getAttribute('style'))).toEqual(['left: 75%;', 'left: 90%;'])
-    expect(screen.getAllByTestId('loop-dim')).toHaveLength(2)  // the running one only
+    const idle = screen.getAllByTestId('loop-mark-idle')
+    expect(idle.map((e) => e.style.left)).toEqual(['75%', '90%'])
+    for (const el of idle) expect(el).toHaveClass('opacity-40')
+    expect(screen.getByTestId('loop-mark-a')).not.toHaveClass('opacity-40')
   })
 
   it('the other passages take no clicks', () => {
@@ -1118,44 +1147,6 @@ describe('MarkTrack', () => {
     expect(screen.getByLabelText('Loop start (A) at 1:00')).toBeInTheDocument()
     expect(screen.getByLabelText('Loop end (B) at 1:30')).toBeInTheDocument()
     expect(screen.getByLabelText('Bookmark at 0:30')).toBeInTheDocument()
-  })
-
-  it('a loop that cannot run cuts the track but dims nothing', () => {
-    // Both ends pinned isn't enough — dimming for a loop that isn't repeating
-    // would claim it is. The cuts still show, since you did pin those moments.
-    for (const loop of [{ a: 30, b: 30.2 }, { a: 90, b: 30 }]) {
-      const { unmount } = render(
-        <MarkTrack bookmarks={[]} loop={loop} duration={120} onSeek={vi.fn()} />
-      )
-      expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
-      expect(screen.getAllByTestId('loop-edge')).toHaveLength(2)
-      unmount()
-    }
-  })
-
-  it('dims up to A when that is the only end pinned', () => {
-    // A on its own repeats to the end of the video, so the bar says so: the
-    // stretch from A onwards is what stays at full strength.
-    render(<MarkTrack bookmarks={[]} loop={{ a: 30, b: null }} duration={120} onSeek={vi.fn()} />)
-    const [before, after] = screen.getAllByTestId('loop-dim')
-    expect(before).toHaveStyle({ width: '25%' })
-    expect(after).toHaveStyle({ left: '100%' })  // nothing left to dim
-    expect(screen.getByLabelText('Loop start (A) at 0:30')).toBeInTheDocument()
-  })
-
-  it('and from B on when that is', () => {
-    render(<MarkTrack bookmarks={[]} loop={{ a: null, b: 90 }} duration={120} onSeek={vi.fn()} />)
-    const [before, after] = screen.getAllByTestId('loop-dim')
-    expect(before).toHaveStyle({ width: '0%' })
-    expect(after).toHaveStyle({ left: '75%' })
-  })
-
-  it('dims nothing for a pinned end with nothing to repeat', () => {
-    // A in the last half-second leaves no stretch to run; the notch claims only
-    // that you pinned this moment.
-    render(<MarkTrack bookmarks={[]} loop={{ a: 119.8, b: null }} duration={120} onSeek={vi.fn()} />)
-    expect(screen.queryAllByTestId('loop-dim')).toHaveLength(0)
-    expect(screen.getByTestId('loop-edge')).toBeInTheDocument()
   })
 
   it('a loop end jumps to itself too', () => {
@@ -1203,13 +1194,10 @@ describe('EmbedMarkRail', () => {
     expect(screen.getByLabelText('Loop start (A) at 0:30')).toBeInTheDocument()
   })
 
-  it('dims YouTube’s own bar either side of a running loop', () => {
-    // The rail is all we have over there — the track being dimmed is the
-    // embed's, laid under ours at the same offset.
+  it('brackets a running loop over YouTube’s own bar', () => {
     render(<EmbedMarkRail bookmarks={[]} loop={{ a: 30, b: 90 }} duration={120} onSeek={vi.fn()} />)
-    const [before, after] = screen.getAllByTestId('loop-dim')
-    expect(before).toHaveStyle({ width: '25%' })
-    expect(after).toHaveStyle({ left: '75%' })
+    expect(screen.getByTestId('loop-mark-a')).toHaveStyle({ left: '25%' })
+    expect(screen.getByTestId('loop-mark-b')).toHaveStyle({ left: '75%' })
   })
 
   it('the marks themselves stay clickable through the rail', () => {
