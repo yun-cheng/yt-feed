@@ -1172,6 +1172,16 @@ Other details:
     veil, no cuts — so the fill and the chapter cuts read the same with a loop
     running as without. Markers and pins sit over the thumb (`z-10`), so a mark
     stays visible while the play head stands on it.
+  - **Seeking out of a running passage stops the repeat**, keeping the passage
+    as `\` does. Clicking the bar past B or before A, a skip, a chapter or a
+    transcript line all mean "go there", and being thrown back to A would undo
+    it. The tick tells that apart from playback reaching B by how the head got
+    out: a step from inside of at most `PLAYED_STEP_SEC` (1.5s — one 200ms tick
+    at 5×, with room for a late timer) while playing, or the video ending, is
+    playback, and goes back to A; anything else from inside is a seek. A head
+    that was never inside (a video reopened past its B) is brought back to A, as
+    before, and a player rebuilt under the tick (a blocked autoplay does that)
+    starts its reading afresh rather than counting its 0:00 as a seek out.
   - **Inside a running passage the red fill starts at A**, not at the start
     of the video: what's been played is this pass through the passage, so the
     bar reads as progress through it. Outside the passage, or with none

@@ -829,6 +829,101 @@ describe('usePlayerMarks — the loop tick', () => {
     expect(p.seekTo).toHaveBeenCalledWith(10, true)
   })
 
+  it('still seeks back while the page re-renders faster than it ticks', async () => {
+    // The watch page re-renders every 120ms while captions are on (and while a
+    // panel list follows the play head). A tick restarted by every render never
+    // fires, and the loop plays straight through B.
+    const p = fakePlayer()
+    const { rerender } = await renderMarks(p)
+    setLoop(p, 10, 20)
+    act(() => { p._set(20.1) })
+    for (let i = 0; i < 10; i++) {
+      rerender(<Harness player={p} />)
+      act(() => { vi.advanceTimersByTime(100) })
+    }
+    expect(p.seekTo).toHaveBeenCalledWith(10, true)
+  })
+
+  it('loops back when playback carries the head into B', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    setLoop(p, 10, 20)
+    act(() => { p._set(19.9) })
+    act(() => { vi.advanceTimersByTime(250) })
+    act(() => { p._set(20.1) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(p.seekTo).toHaveBeenCalledWith(10, true)
+    expect(screen.getByTestId('looping')).toHaveTextContent('yes')
+  })
+
+  it('a click past B lets go of the repeat instead, and keeps the passage', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    setLoop(p, 10, 20)
+    act(() => { p._set(15) })
+    act(() => { vi.advanceTimersByTime(250) })
+    act(() => { p._set(90) })  // the bar, well past B
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(p.seekTo).not.toHaveBeenCalled()
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+    expect(screen.getByTestId('loops')).toHaveTextContent('10/20')
+    expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
+  })
+
+  it('and so does a click before A', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    setLoop(p, 10, 20)
+    act(() => { p._set(15) })
+    act(() => { vi.advanceTimersByTime(250) })
+    act(() => { p._set(3) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+  })
+
+  it('even a small step past B is a seek while paused — paused, nothing plays into it', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    setLoop(p, 10, 20)
+    act(() => { p.pauseVideo() })
+    act(() => { p._set(19.9) })
+    act(() => { vi.advanceTimersByTime(250) })
+    act(() => { p._set(20.5) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(p.seekTo).not.toHaveBeenCalled()
+    expect(screen.getByTestId('looping')).toHaveTextContent('no')
+  })
+
+  it('a player rebuilt under it, starting again at 0, is not a seek out', async () => {
+    const p = fakePlayer()
+    const ref = { current: p as PlayerApi | null }
+    function Rebuilt() {
+      const m = usePlayerMarks('vid1', ref)
+      return <div data-testid="looping2">{m.looping ? 'yes' : 'no'}</div>
+    }
+    render(<Rebuilt />)
+    await act(async () => {})
+    act(() => { p._set(10) }); act(() => key('['))
+    act(() => { p._set(20) }); act(() => key(']'))
+    act(() => { p._set(15) })
+    act(() => { vi.advanceTimersByTime(250) })
+    const fresh = fakePlayer()  // at 0
+    ref.current = fresh
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(screen.getByTestId('looping2')).toHaveTextContent('yes')
+  })
+
+  it('a click inside the passage keeps it repeating', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    setLoop(p, 10, 20)
+    act(() => { p._set(11) })
+    act(() => { vi.advanceTimersByTime(250) })
+    act(() => { p._set(18) })
+    act(() => { vi.advanceTimersByTime(250) })
+    expect(screen.getByTestId('looping')).toHaveTextContent('yes')
+  })
+
   it('leaves playback alone before B', async () => {
     const p = fakePlayer()
     await renderMarks(p)
@@ -865,6 +960,9 @@ describe('usePlayerMarks — the loop tick', () => {
     act(() => { p._set(500) })
     act(() => { vi.advanceTimersByTime(1000) })
     expect(p.seekTo).not.toHaveBeenCalled()  // 500 is not the end yet
+    // Played to the end, a tick at a time — a single jump there is a seek out.
+    act(() => { p._set(599.8) })
+    act(() => { vi.advanceTimersByTime(250) })
     act(() => { p._set(600) })
     act(() => { vi.advanceTimersByTime(250) })
     expect(p.seekTo).toHaveBeenCalledWith(10, true)

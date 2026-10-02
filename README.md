@@ -48,7 +48,8 @@ real video (muted, with custom captions and scrubbing).
   bookmarks, comments, transcript and Ask AI — which one it opens on is a setting
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click its pin to jump back); `[` and `]` set a loop's ends and `\` stops it,
-  so a passage replays until you're done with it. **One end is enough**: `[` alone
+  so a passage replays until you're done with it — seeking out of it, on the
+  bar or anywhere else, lets it go. **One end is enough**: `[` alone
   repeats from there to the end of the video, `]` alone from the start up to
   there. **A video keeps as many passages as you mark**, saved with it — the loop
   button's menu lists them, where you switch between them, delete one, or start a

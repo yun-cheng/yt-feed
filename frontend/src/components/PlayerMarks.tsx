@@ -145,6 +145,10 @@ const TOGGLE_TOLERANCE_SEC = 2
 const MIN_LOOP_SEC = 0.5
 
 const LOOP_TICK_MS = 200
+// The furthest one loop tick of playing can carry the head: a tick's worth of
+// time at the fastest speed (5×), with room for a late timer. A bigger step
+// past B is a seek out of the passage, not playback reaching its end.
+const PLAYED_STEP_SEC = 1.5
 const FLASH_MS = 1600
 
 // How often we ask where the play head is, to know whether it's standing on a
@@ -410,29 +414,66 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     showFlash('loop', t('Loop {end} · {time}', { end: end.toUpperCase(), time: formatTime(at) }))
   }, [editLoop, openLoop, showFlash])
 
-  // Send the play head back to A each time it reaches B. Runs on its own timer
-  // rather than the caption tick, which only exists while captions are on.
+  // Send the play head back to A each time it reaches B — and let it go when
+  // you leave. Runs on its own timer rather than the caption tick, which only
+  // exists while captions are on.
+  //
+  // Reaching B and leaving the passage both end with the head outside it; what
+  // tells them apart is how it got there. Playing into B is a small step from
+  // inside while playing (or the video ending on it), and goes back to A. Any
+  // other way out — a click on the bar past B or before A, a skip, a chapter or
+  // a transcript line — is a seek, and stops the repeat (keeping the passage,
+  // as `\\` does): you went somewhere else, and being thrown back would undo it.
+  // Only from inside, though: a head that was never in the passage (a video
+  // reopened past its B) is brought back to A, as it always was.
+  //
+  // Keyed on the two ends, not on `loop`: that's a fresh object every render,
+  // and the watch page re-renders every 120ms while captions are on — faster
+  // than this ticks — so a timer restarted with each one never fired, and the
+  // loop played straight through B.
+  const loopA = loop.a
+  const loopB = loop.b
   useEffect(() => {
-    if (loop.a === null && loop.b === null) return
+    if (loopA === null && loopB === null) return
+    let prev: number | null = null
+    // Whose position `prev` is. A player rebuilt under us (a blocked autoplay
+    // does that) starts again at 0, which from the old one's position inside
+    // the passage would read as a seek out of it.
+    let prevPlayer: PlayerApi | null = null
     const id = window.setInterval(() => {
       const p = playerRef.current
       if (!p) return
+      if (p !== prevPlayer) { prev = null; prevPlayer = p }
       // Resolved here, against the length the player reports NOW: an unpinned B
       // is the end of the video, and the player often doesn't know where that is
       // until a moment after the loop was pinned.
-      const ends = loopBounds(loop, p.getDuration())
-      if (!ends) return
+      const ends = loopBounds({ a: loopA, b: loopB }, p.getDuration())
+      if (!ends) { prev = null; return }
+      const now = p.getCurrentTime()
+      const before = prev
+      prev = now
       // A loop running to the end of the video is reached by the video ENDING as
       // much as by passing a timestamp — the player can stop a hair short of the
       // duration it reported, and then nothing ever passes B.
-      const ended = p.getPlayerState() === 0
-      if (p.getCurrentTime() < ends.b && !ended) return
+      const state = p.getPlayerState()
+      const ended = state === 0
+      if (now >= ends.a && now < ends.b && !ended) return
+      const wasInside = before !== null && before >= ends.a && before < ends.b
+      const playedIntoB = ended
+        || (now >= ends.b && state === 1 && before !== null && now - before <= PLAYED_STEP_SEC)
+      if (wasInside && !playedIntoB) {
+        prev = null
+        clearLoop()
+        return
+      }
+      if (now < ends.b && !ended) return
       p.seekTo(ends.a, true)
+      prev = ends.a
       // Seeking a finished player leaves it paused at A. Nudge it back to play.
       if (p.getPlayerState() !== 1) p.playVideo()
     }, LOOP_TICK_MS)
     return () => window.clearInterval(id)
-  }, [loop, playerRef])
+  }, [loopA, loopB, playerRef, clearLoop])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
