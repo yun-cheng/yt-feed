@@ -2229,9 +2229,16 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const genPct = gen && gen.duration > 0
     ? Math.min(100, Math.round((gen.covered / gen.duration) * 100)) : 0
 
+  // Hovering CC opens the menu and clicking it turns the captions on and off,
+  // the same as `c` — the speed control's arrangement. A touch has no hover, so
+  // a tap still opens the menu; so does a click while there's no track to turn
+  // on, since then the menu (and its offer to transcribe) is all there is.
+  const captionTapRef = useRef(false)
   const captionControl = (captionLangs.length > 0 || offerGenerate) && (
     <div
       ref={captionMenuRef}
+      onPointerEnter={(e) => { if (e.pointerType !== 'touch') setShowCaptionMenu(true) }}
+      onPointerLeave={(e) => { if (e.pointerType !== 'touch') setShowCaptionMenu(false) }}
       // The embed placement slots it into the iframe's own bottom-left button
       // row, whose buttons sit at a fixed offset.
       className={ownBar ? 'relative' : 'absolute bottom-[14px] left-[8.25rem] z-20'}
@@ -2241,7 +2248,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // video offers, plus the AI translation. No "Off" row — an empty slot
         // is off (toggle by clicking the active row). The same track can't sit
         // in both columns; picking it in the other slot moves/swaps it.
-        <div className="absolute bottom-full left-0 mb-2 overflow-hidden rounded-lg bg-shade-28 text-sm text-white shadow-2xl ring-1 ring-white/10">
+        // On our bar the button sits in the right-hand group, so the menu opens
+        // leftwards from its right edge; over the embed it's at the far left.
+        <div className={`absolute bottom-full ${ownBar ? 'right-0' : 'left-0'} overflow-hidden rounded-lg bg-shade-28 text-sm text-white shadow-2xl ring-1 ring-white/10`}>
           {captionLangs.length > 0 ? (
           <div className="flex">
             {([
@@ -2391,7 +2400,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         </div>
       )}
       <button
-        onClick={() => setShowCaptionMenu((o) => !o)}
+        onPointerDown={(e) => { captionTapRef.current = e.pointerType === 'touch' }}
+        onClick={() => {
+          if (captionTapRef.current || captionLangs.length === 0) setShowCaptionMenu((o) => !o)
+          else setShowCaptions((v) => !v)
+          captionTapRef.current = false
+        }}
         // In our row it IS a bar button — the same BAR_BUTTON as play, mute and
         // fullscreen, including its hover pill. Only the floating placement over
         // YouTube's own chrome keeps a bespoke box, because there it has to line
@@ -2399,7 +2413,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         className={ownBar
           ? `group relative ${BAR_BUTTON}`
           : 'group relative flex h-11 w-11 items-center justify-center text-white'}
-        title={t('Subtitles / captions')}
+        title={t('Captions on / off ({key})', { key: shortcutLabel('captions') })}
         aria-pressed={showCaptions}
       >
         {/* Floating placement only: BAR_BUTTON brings its own hover pill. */}
@@ -3066,7 +3080,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu}
               onFullscreen={toggleFullscreen}
               nextControl={nextButton}
-              leftControls={<>{captionControl}{panelControl}{marksControls}</>}
+              leftControls={marksControls}
+              rightControls={<>{captionControl}{panelControl}</>}
               extraControls={youtubeButton}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
@@ -3154,7 +3169,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             hovering={chromeUp}
             onFullscreen={toggleFullscreen}
             nextControl={nextButton}
-            leftControls={<>{captionControl}{panelControl}{marksControls}</>}
+            leftControls={marksControls}
+            rightControls={<>{captionControl}{panelControl}</>}
             extraControls={youtubeButton}
             bookmarks={marks.bookmarks}
             loop={marks.loop}

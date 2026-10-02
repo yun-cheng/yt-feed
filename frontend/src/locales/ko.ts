@@ -412,7 +412,7 @@ export const ko: Record<string, string> = {
   'Smaller captions': '자막 축소',
   'Bigger': '확대',
   'Bigger captions': '자막 확대',
-  'Subtitles / captions': '자막',
+  'Captions on / off ({key})': '자막 켜기/끄기({key})',
   'Panel on the video': '동영상 위 패널',
   'Hide the panel': '패널 숨기기',
   'Hide the panel ({key})': '패널 숨기기({key})',

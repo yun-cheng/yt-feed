@@ -1051,9 +1051,10 @@ Other details:
     a shortcut is one you have to have been told about — and these are the only
     marks on the bar you can't otherwise put there. The hook hands the buttons
     the same actions the key handler calls, so the two ways of asking can't
-    drift apart. They sit right of the panel button, which sits right of the
-    caption button, in both placements: in our row when we own the bar,
-    floating over YouTube's chrome when we don't.
+    drift apart. In our row they follow the clock, while the caption and panel
+    buttons open the right-hand group, where YouTube keeps CC (`rightControls`;
+    the caption menu opens leftwards from there). Floating over YouTube's
+    chrome, all four sit in a row on the left: caption, panel, then these.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
     of the video and an unpinned B means the end of it, which is what each key
     reads as on its own: `[` is "repeat from here", `]` is "repeat up to here".
@@ -1252,9 +1253,14 @@ Other details:
   tracks reveal word-by-word from the per-word timing and roll two lines
   (overlapping cues), pinned left so words don't shift; manual subs appear whole,
   centered, full-width.
-- **Caption menu (two columns)**: a CC button sits in the player's bottom-left row,
-  as a third button next to the embed's built-in share / watch-later, and opens a
-  **two-column** picker — **Main** | **Second**. Each column lists every language
+- **Caption menu (two columns)**: a CC button sits at the head of our bar's
+  right-hand group — or, over a bare embed, in its bottom-left row next to the
+  built-in share / watch-later. Hovering it opens the picker (flush above the
+  button, so the pointer can climb into it); clicking it turns the captions on
+  and off, the same as `c`. A touch has no hover, so a tap opens the menu
+  instead — as does a click on a video with no track yet, where the menu's offer
+  to transcribe is all there is. The picker is **two columns** — **Main** |
+  **Second**. Each column lists every language
   this video actually **provides** among English / 中文 / 日本語 / 한국어 / ไทย /
   Tiếng Việt (`/api/feed/caption-langs`) — uploaded subs or the original ASR track, not
   YouTube's on-the-fly auto-translations — plus the AI translation (below). There's

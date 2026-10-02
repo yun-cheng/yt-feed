@@ -412,7 +412,7 @@ export const vi: Record<string, string> = {
   'Smaller captions': 'Thu nhỏ phụ đề',
   'Bigger': 'Lớn hơn',
   'Bigger captions': 'Phóng to phụ đề',
-  'Subtitles / captions': 'Phụ đề',
+  'Captions on / off ({key})': 'Bật / tắt phụ đề ({key})',
   'Panel on the video': 'Bảng trên video',
   'Hide the panel': 'Ẩn bảng',
   'Hide the panel ({key})': 'Ẩn bảng ({key})',

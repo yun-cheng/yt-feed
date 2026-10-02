@@ -412,7 +412,7 @@ export const ja: Record<string, string> = {
   'Smaller captions': '字幕を縮小',
   'Bigger': '拡大',
   'Bigger captions': '字幕を拡大',
-  'Subtitles / captions': '字幕',
+  'Captions on / off ({key})': '字幕のオン／オフ（{key}）',
   'Panel on the video': '動画上のパネル',
   'Hide the panel': 'パネルを非表示',
   'Hide the panel ({key})': 'パネルを非表示（{key}）',

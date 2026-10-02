@@ -412,7 +412,7 @@ export const th: Record<string, string> = {
   'Smaller captions': 'ย่อคำบรรยาย',
   'Bigger': 'ใหญ่ขึ้น',
   'Bigger captions': 'ขยายคำบรรยาย',
-  'Subtitles / captions': 'คำบรรยาย',
+  'Captions on / off ({key})': 'เปิด / ปิดคำบรรยาย ({key})',
   'Panel on the video': 'แผงบนวิดีโอ',
   'Hide the panel': 'ซ่อนแผง',
   'Hide the panel ({key})': 'ซ่อนแผง ({key})',

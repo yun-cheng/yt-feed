@@ -413,7 +413,7 @@ export const zhHant: Record<string, string> = {
   'Smaller captions': '縮小字幕',
   'Bigger': '放大',
   'Bigger captions': '放大字幕',
-  'Subtitles / captions': '字幕',
+  'Captions on / off ({key})': '字幕開／關（{key}）',
   'Panel on the video': '影片上的面板',
   'Hide the panel': '隱藏面板',
   'Hide the panel ({key})': '隱藏面板（{key}）',

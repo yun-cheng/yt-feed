@@ -276,7 +276,7 @@ export const LIVE_EDGE_SEC = 10
  *  watch page keeps YouTube's controls and never renders this bar over an embed
  *  (see EMBED_OWN_CONTROLS in WatchPage), so the bar can look the same in both
  *  modes — there is no leftover chrome for it to paint over. */
-export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, embedHost, nextControl, leftControls, extraControls, bookmarks, loop, others, chapters }: {
+export default function LocalControls({ videoRef, player, src, storyboard, hovering, onFullscreen, embedHost, nextControl, leftControls, rightControls, extraControls, bookmarks, loop, others, chapters }: {
   // One of these two. `videoRef` + `src` give the scrub preview its frames
   // directly; over the embed, `storyboard` supplies them instead.
   videoRef?: RefObject<HTMLVideoElement | null>
@@ -296,9 +296,11 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // knows what comes next.
   nextControl?: ReactNode
   // Controls the page owns, placed in the row instead of floating over the
-  // video: captions on the left (after the clock, as YouTube has it), the rest
-  // in the right-hand group.
+  // video: `leftControls` after the clock; `rightControls` opening the
+  // right-hand group, where YouTube keeps CC; `extraControls` after the
+  // resolution.
   leftControls?: ReactNode
+  rightControls?: ReactNode
   extraControls?: ReactNode
   // Drawn on the track: bookmarks as ticks, the A–B loop as a span (MarkTrack).
   // They need no click handling here — the bar already seeks to wherever you
@@ -810,6 +812,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
             BAR_BUTTON), which spaces the row evenly and keeps the hit targets
             full-size. */}
         <div className="ml-auto flex items-center">
+          {rightControls}
           {/* What you're actually watching. Read-only: YouTube's working quality
               setter isn't reachable from outside the iframe (see lib/quality),
               so offering a click here would be offering something we can't do.
