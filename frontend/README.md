@@ -37,6 +37,7 @@ The dev server proxies `/api` → `http://localhost:8000` (see
 npm run build      # tsc typecheck, then vite build → dist/
 npm run preview    # serve the production build
 npm test           # vitest run
+npm run test:e2e   # Playwright in headless Chrome, on its own app (see Tests)
 ```
 
 ---
@@ -936,6 +937,8 @@ locales/
   zh-Hant.ts                      繁體中文, keyed by the English it replaces
   ja.ts, ko.ts, th.ts, vi.ts      日本語, 한국어, ไทย, Tiếng Việt — the same keys
   dynamic.ts                      keys that reach t() through a variable
+e2e/                              the Playwright suite and the scratch app it
+                                  runs against (see Tests → End-to-end)
 ```
 
 ---
@@ -2379,3 +2382,37 @@ The general form: **wait for the state the next step depends on, not for the
 request that will eventually produce it.** A test that waits on the wrong signal
 doesn't fail — it quietly tests the other path, and reports that as a pass.
 
+### End-to-end (`e2e/`, Playwright)
+
+`npm run test:e2e` drives a real browser through the real app, for what jsdom
+can't do at all: play a video, grab its frames onto a canvas, lay out a page.
+`clamp()` above is one case — the up-next card's position is set with it, and
+here it can be measured.
+
+It runs against an app of its own. `e2e/serve.sh` builds the frontend and serves
+it from a backend on port 8765, over a data directory (`e2e/.run`, wiped on every
+start) that `e2e/seed.py` fills with a few channels whose videos are all
+**downloaded** — test-pattern files ffmpeg makes on the spot, so the watch page
+plays a file rather than the embed, the same way every run. Nothing reaches the
+real app or the outside: the search index points at a dead port, outbound
+requests go through a dead proxy, the OpenRouter key is blank, and the server's
+`HOME` is its own so it can't find the real OAuth client. Sign-in is the real
+first-run claim (`global-setup.ts`): the setup token from the data directory,
+posted to `/api/setup/claim`, and the cookie kept for every spec.
+
+What only YouTube knows — description and chapters, captions, comments — is
+answered in the browser by `fixtures.ts`, per video, so a spec states what its
+video has. Any request for another host is refused there too.
+
+It uses the installed **Google Chrome** (`channel: 'chrome'`), headless. Playwright's
+own Chromium can't decode H.264, and Chrome needs no download.
+
+| Spec | Covers |
+|------|--------|
+| `marks.spec.ts` | a bookmark made with `b` shows a frame of its moment in the panel's Bookmarks tab and is there again when the video is reopened; the Chapters tab lists the description's chapters, each with its frame, and a click seeks; captions follow the play head |
+| `loop.spec.ts` | a passage pinned with `[` and `]` plays round more than once without running past its end, until `\` lets go |
+| `upnext.spec.ts` | the channel's next video is offered when one ends and opens on a click; Dismiss; and with the panel open on either side, the card stays centred on the whole frame, at full width, clear of the panel |
+
+Each spec has a channel to itself (see `seed.py`), and the marks specs clear
+their video's bookmarks and passages first, so the order they run in doesn't
+matter and `--repeat-each` passes. One worker: the specs share one account.

@@ -374,7 +374,17 @@ cd backend && pip install -r requirements-dev.txt && pytest
 The backend suite runs against a temp SQLite file, never your real feed, and
 makes no network calls. See each side's README for what's covered.
 
-There is a third, for the seam neither suite can reach — an image, a volume, and
+The frontend also has an end-to-end suite, in a real browser:
+
+```bash
+cd frontend && npm run test:e2e
+```
+
+It drives your installed Google Chrome, headless, against a backend of its own
+on port 8765 over a scratch feed of generated videos — never your feed, your
+search index, or YouTube.
+
+And one more, for the seam neither suite can reach — an image, a volume, and
 a process that has never run before:
 
 ```bash

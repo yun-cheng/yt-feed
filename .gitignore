@@ -26,3 +26,8 @@ backend/.coverage
 data/secret_key
 data/setup-token
 data/config/
+
+# The e2e suite's scratch app: data, build and home (e2e/serve.sh), and reports
+frontend/e2e/.run/
+frontend/test-results/
+frontend/playwright-report/

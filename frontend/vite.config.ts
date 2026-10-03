@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -18,6 +19,8 @@ export default defineConfig({
     // reads the theme tokens out of this one.
     css: { include: [/index\.css/] },
     setupFiles: ['./src/test/setup.ts'],
+    // e2e/ is Playwright's (npm run test:e2e), run in a real browser.
+    exclude: [...configDefaults.exclude, 'e2e/**'],
     coverage: {
       // `all` so a file with no test at all still shows as 0% rather than
       // vanishing — an absent row reads as nothing to report.
