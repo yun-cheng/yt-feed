@@ -2,7 +2,7 @@
  * Breaking a long caption into display-sized pieces when it has no per-word
  * timing — an AI-translated sentence, which arrives with only its own start and
  * end. A word-timed track is broken on its tokens instead (see toSentences in
- * WatchPage), where each piece gets the exact time of its first word.
+ * captionLines), where each piece gets the exact time of its first word.
  *
  * Here the times are a guess: each piece gets the share of the sentence's span
  * that its share of the characters is. A translation reorders clauses, so no

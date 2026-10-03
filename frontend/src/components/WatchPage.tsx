@@ -25,7 +25,9 @@ import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
 import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { captionDefaults } from '../lib/captionDefaults'
-import { CJK, MAX_CJK_LINE_CHARS, MAX_LINE_CHARS, splitTimed } from '../lib/captionSplit'
+import { splitTimed } from '../lib/captionSplit'
+import { linesAt, sentenceLinesAt, toSentences, type CaptionLine, type Cue } from '../lib/captionLines'
+import { CAPTION_DISPLAY_DEFAULTS, CAPTION_PREFS_KEY, CAPTION_SIZE_MAX, CAPTION_SIZE_MIN, CAPTION_SIZE_STEP, loadCaptionPrefs, roundSize, type CaptionPrefs } from '../lib/captionPrefs'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
 // same one a downloaded file gets.
@@ -79,12 +81,6 @@ type Props = {
   downloadsKnown: boolean
 }
 
-// A timed caption cue from /feed/captions. `words` carries per-word timing (for
-// auto-generated tracks) so we can reveal a line word-by-word; manual subs get a
-// single word = the whole line.
-type CaptionWord = { t: number; text: string }
-type Cue = { start: number; dur: number; text: string; words?: CaptionWord[] }
-
 /** A transcript line with the searched-for text marked. */
 function highlight(text: string, query: string): ReactNode {
   const q = query.trim()
@@ -94,10 +90,6 @@ function highlight(text: string, query: string): ReactNode {
     i % 2 ? <mark key={i} className="rounded bg-tint-3ea6ff/30 px-0.5 text-white">{p}</mark> : p
   )
 }
-
-// A rendered caption line: its text and whether it came from a word-by-word
-// (auto) track — which drives left-alignment vs centering.
-type CaptionLine = { text: string; wordByWord: boolean }
 
 // A local transcription job. `covered`/`duration` are seconds of audio, which is
 // the only honest progress bar available: the work is measured in audio, not in
@@ -148,52 +140,6 @@ const RESUME_CONFIRM_TRIES = 40
 // is a property read on an object we already hold.
 const END_POLL_MS = 500
 
-// How captions look persists in localStorage so it carries across videos and
-// sessions — the watch overlay remounts per video, re-reading these on mount.
-// Which LANGUAGE they're in is not here: every video opens on your default
-// caption languages (the caption_lang settings, lib/captionDefaults), and a
-// language picked on a video lasts for that video.
-const CAPTION_PREFS_KEY = 'ytfeed:caption-prefs'
-// How the caption block is drawn, as opposed to which track it draws. Size is a
-// multiplier on YouTube's own 2.5%-of-player-width, so 1 is "the same size
-// YouTube would have drawn it". YouTube's own ladder jumps 100 → 150 → 200; on a
-// player this wide those are different decisions rather than adjustments, so this
-// steps by 10% and lets you stop where it actually looks right.
-const CAPTION_SIZE_MIN = 0.5
-const CAPTION_SIZE_MAX = 3
-const CAPTION_SIZE_STEP = 0.1
-// Every size passes through here, so a tenth stays a tenth instead of drifting
-// into 1.2000000000000002 and printing as 120.00000000000001%.
-const roundSize = (n: number) =>
-  Math.round(Math.min(CAPTION_SIZE_MAX, Math.max(CAPTION_SIZE_MIN, n)) * 10) / 10
-const CAPTION_DISPLAY_DEFAULTS = { pos: 'bottom' as const, size: 1 }
-type CaptionPrefs = {
-  on: boolean
-  mode: 'word' | 'sentence'
-  pos: 'top' | 'bottom'
-  size: number
-}
-function loadCaptionPrefs(): CaptionPrefs {
-  try {
-    const p = JSON.parse(localStorage.getItem(CAPTION_PREFS_KEY) || '{}')
-    return {
-      on: p.on === true,
-      // 'line' is the old name for this mode — keep reading it so a saved
-      // preference doesn't silently reset.
-      mode: p.mode === 'sentence' || p.mode === 'line' ? 'sentence' : 'word',
-      pos: p.pos === 'top' ? 'top' : 'bottom',
-      // Clamped rather than rejected: a size saved by an older build (the first
-      // version of this stepped 50/75/100/150/200/300) is still a size someone
-      // chose, and every one of those lands inside the range anyway.
-      size: typeof p.size === 'number' && Number.isFinite(p.size)
-        ? roundSize(p.size)
-        : CAPTION_DISPLAY_DEFAULTS.size,
-    }
-  } catch {
-    return { on: false, mode: 'word', ...CAPTION_DISPLAY_DEFAULTS }
-  }
-}
-
 // Which side of the player the panel over the video sits on. A layout choice,
 // so unlike whether it's ON it does carry over: remembering it fetches nothing.
 const PANEL_SIDE_KEY = 'ytfeed:video-panel-side'
@@ -215,148 +161,6 @@ const PANEL_WIDTH_CQ = `max(calc(12 * ${PANEL_UNIT}), 31.25cqw)`
 // the usual 5%: the panel has already taken a third of the frame, so the room
 // beside it goes to the words.
 const CAPTION_PANEL_GAP = '0.5rem'
-
-// The caption lines to show at `curTime` for one cue list. Auto-caption cues
-// overlap in time (the next line starts while the previous is still up), which
-// is how YouTube's rolling 2-line effect is encoded — so we show EVERY cue
-// spanning curTime, oldest first. Each cue reveals its words up to the play head
-// (a hair of lookahead hides the 120ms poll lag); a cue without per-word timing
-// (manual subs) shows its whole line at once. Shared by the main + second tracks.
-function linesAt(cues: Cue[] | null, curTime: number): CaptionLine[] {
-  if (!cues?.length) return []
-  return cues
-    .filter((c) => c.start <= curTime && curTime < c.start + c.dur)
-    .sort((a, b) => a.start - b.start)
-    .map((c) => {
-      // Reveal word-by-word only when the track carries per-word timing (auto
-      // captions); manual/translated subs are one "word" = the whole cue.
-      const wordByWord = !!c.words && c.words.length > 1
-      const text = wordByWord
-        ? c.words!.filter((w) => w.t <= curTime + 0.15).map((w) => w.text).join('').trim()
-        : c.text
-      return { text, wordByWord }
-    })
-    .filter((l) => l.text)
-}
-
-// A token whose text ends a sentence (Latin or CJK terminals, optional closing quote).
-const SENTENCE_END = /[.!?。！？][")'”’」』]?\s*$/
-// Where a too-long sentence may be broken; how long "too long" is lives with
-// splitTimed, which breaks the lines that have no word timing to break on.
-const BREAK_AFTER = /[,;:，、；：][")'”’」』]?\s*$/
-
-/** Append one token to a running string, spacing Latin but not CJK. */
-function appendToken(s: string, t: string): string {
-  if (!t) return s
-  if (!s) return t
-  // Auto-word tokens carry their own leading space; add one only when neither
-  // side already has whitespace and it isn't a CJK boundary (which needs none).
-  const gap = !/\s$/.test(s) && !/^\s/.test(t) && !(CJK.test(s.slice(-1)) && CJK.test(t[0]))
-  return s + (gap ? ' ' + t : t)
-}
-
-/** Join tokens [from, to) into one string, spacing Latin but not CJK. */
-function joinTokens(toks: { t: number; text: string }[], from: number, to: number): string {
-  let s = ''
-  for (let i = from; i < to; i++) s = appendToken(s, toks[i].text)
-  return s.trim()
-}
-// Group a cue list into whole SENTENCES for "Whole sentence" mode. Sentence ends fall
-// *mid-cue* (tracks break lines at phrase boundaries, and rolling auto captions
-// pack several phrases per cue), so we segment on the WORD stream, not on cues.
-// Cue order is reading order and word times run sequentially even though the
-// display cues overlap (the rolling 2-line effect), so flattening is safe. Each
-// sentence shows until the next one begins. Memoize per cue list.
-// `chunk` splits an over-long sentence into display-sized pieces — right for an
-// on-video caption block, wrong for the transcript panel, which reads better as
-// whole sentences and has the width to hold them.
-function toSentences(cues: Cue[] | null, chunk = true): { start: number; end: number; text: string }[] {
-  if (!cues?.length) return []
-  // Does this track even use sentence punctuation? Chinese ASR often has none, so
-  // there's nothing to merge on — showing one line per cue (each is already a
-  // short phrase) beats collapsing the whole video into one block. Latin tracks
-  // split sentences across cues, so they cross this bar and get merged below.
-  const punctuated = cues.reduce((n, c) => n + (/[.!?。！？]/.test(c.text) ? 1 : 0), 0) / cues.length >= 0.05
-  if (!punctuated) {
-    return cues
-      .map((c, i) => ({ start: c.start, end: i + 1 < cues.length ? cues[i + 1].start : Number.POSITIVE_INFINITY, text: c.text.trim() }))
-      .filter((s) => s.text)
-  }
-
-  const toks: { t: number; text: string }[] = []
-  for (const c of cues) {
-    if (c.words && c.words.length) for (const w of c.words) toks.push({ t: w.t, text: w.text })
-    else toks.push({ t: c.start, text: c.text })  // manual sub = one token (whole cue)
-  }
-
-  const sents: { start: number; text: string }[] = []
-  let buf: { t: number; text: string }[] = []
-
-  const flush = () => {
-    if (!buf.length) return
-    // A stitched sentence can run far longer than is readable in one block, so
-    // break it into display-sized pieces. Only word-segment tracks reach here with
-    // real tokens, so each piece takes an exact start from its own token.
-    //
-    // Pieces are sized EVENLY rather than greedily filled to the cap. Greedy
-    // filling breaks at the last comma before the cap, which emits a runt whenever
-    // the sentence's only comma sits near the start ("She woke up," + a full line)
-    // and leaves a stray few words as the tail. So: decide up front how many
-    // pieces are needed, then put each break as near its ideal length as possible,
-    // treating a comma as a preference (a scoring bonus) rather than a command.
-    const whole = joinTokens(buf, 0, buf.length)
-    if (!chunk) {
-      if (whole) sents.push({ start: buf[0].t, text: whole })
-      buf = []
-      return
-    }
-    const limit = CJK.test(whole) ? MAX_CJK_LINE_CHARS : MAX_LINE_CHARS
-    const pieces = Math.ceil(whole.length / limit)
-    const target = whole.length / pieces
-
-    let from = 0
-    for (let p = 1; p < pieces && from < buf.length; p++) {
-      let best = -1
-      let bestScore = Infinity
-      let s = ''
-      for (let i = from; i < buf.length - 1; i++) {
-        s = appendToken(s, buf[i].text)
-        const len = s.trim().length
-        if (len > limit) break
-        // Distance from the ideal length, with a comma worth a modest discount —
-        // enough to prefer a nearby comma, not enough to accept a bad one.
-        const score = Math.abs(len - target) - (BREAK_AFTER.test(buf[i].text) ? target * 0.25 : 0)
-        if (score < bestScore) { bestScore = score; best = i }
-      }
-      if (best < 0) break
-      const piece = joinTokens(buf, from, best + 1)
-      if (piece) sents.push({ start: buf[from].t, text: piece })
-      from = best + 1
-    }
-    const tail = joinTokens(buf, from, buf.length)
-    if (tail) sents.push({ start: buf[from].t, text: tail })
-    buf = []
-  }
-
-  for (const w of toks) {
-    buf.push(w)
-    if (SENTENCE_END.test(w.text)) flush()
-  }
-  flush()  // trailing run with no terminal punctuation
-
-  return sents.map((s, i) => ({
-    start: s.start,
-    end: i + 1 < sents.length ? sents[i + 1].start : Number.POSITIVE_INFINITY,
-    text: s.text,
-  }))
-}
-
-// The whole-sentence line(s) to show now — one centered block per active sentence.
-function sentenceLinesAt(sentences: { start: number; end: number; text: string }[], curTime: number): CaptionLine[] {
-  return sentences
-    .filter((s) => s.start <= curTime && curTime < s.end)
-    .map((s) => ({ text: s.text, wordByWord: false }))
-}
 
 // One language's caption block, cloning youtube.com's rolling captions: per-line
 // rgba(8,8,8,.75) box hugging the text, white sans-serif scaled to the player,
@@ -504,7 +308,7 @@ const PANEL_THUMB_W = 96
  * Following works as the page's transcript does: scrolling the active row out
  * of view stops it, and Sync to video (or clicking a row) starts it again.
  */
-function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trailing, empty }: {
+export function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trailing, empty }: {
   rows: { start: number; text: string }[]
   activeRow: number
   onSeek: (seconds: number) => void

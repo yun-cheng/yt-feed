@@ -917,8 +917,12 @@ lib/
                                   moments: bookmark, passage and chapter pictures
   chapters.ts                     a video's chapters: which one a moment is in,
                                   and the mask that cuts the track between them
+  captionLines.ts                 which caption lines are up at a moment: word
+                                  by word, or stitched into whole sentences
   captionSplit.ts                 a long caption with no word timing (the AI
                                   translation) cut into timed pieces
+  captionPrefs.ts                 how captions look (on, mode, place, size),
+                                  kept across videos
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   i18n.ts                         t / tn / tc and the current language (see "Language")
   captionDefaults.ts              the caption languages every video opens with
@@ -1411,12 +1415,12 @@ Other details:
   Whole-cue tracks (manual / translated subs, word-less ASR) and the AI translation
   stay a single row — they're already whole lines, so word-by-word would do nothing.
 
-  Whole-sentence mode stitches cues: `toSentences` flattens them to a word stream
-  (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`, centered, each shown
-  until the next begins. A stitched sentence can run far past what's readable in one
-  block (183 characters over 11s, in one measured case), so an over-long one is
-  chunked to roughly two subtitle lines' worth (~84 Latin / ~36 CJK, since CJK is
-  much denser).
+  Whole-sentence mode stitches cues: `toSentences` (`lib/captionLines.ts`) flattens
+  them to a word stream (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`,
+  centered, each shown until the next begins. A stitched sentence can run far past
+  what's readable in one block (183 characters over 11s, in one measured case), so
+  an over-long one is chunked to roughly two subtitle lines' worth (~84 Latin / ~36
+  CJK, since CJK is much denser).
 
   Pieces are sized **evenly**, not greedily filled to the cap. Greedy filling breaks
   at the last comma before the cap, which emits a runt whenever a sentence's only
@@ -2283,7 +2287,7 @@ Component/behavior tests live in `src/test/` and run under Vitest + jsdom
 (`npm test`). `src/test/setup.ts` wires up `@testing-library/jest-dom`, plus the
 two shims Radix's slider needs to mount at all (below).
 
-`npm run test:coverage` reports about 43% of `src/` by line, and the shape of
+`npm run test:coverage` reports about 47% of `src/` by line, and the shape of
 that number matters more than the number. `lib/` is at **98%** and `hooks/` at
 **95%** — the window, the sorts, the URL round-trip, the shortcut table, the
 stores, undo — because anything worth pinning has been lifted out of a component
@@ -2314,6 +2318,9 @@ problem.
 | `touchReveal.test.ts` | that no control is hidden behind a hover a phone can't perform — and that the reveal which brings it back is prefixed to outrank the rule that hides it |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
+| `captionLines.test.ts` | which caption lines are up: the rolling two lines oldest first, the word-by-word reveal and its lookahead, sentences stitched across cues and broken mid-cue, CJK joined without spaces, a track with no punctuation kept one line per cue, and a long sentence cut into **even** pieces rather than a runt at its only comma — but left whole for the transcript |
+| `captionPrefs.test.ts` | the saved caption look: the defaults, the old `'line'` name for whole-sentence mode, an older build's size clamped rather than dropped, and a tenth staying a tenth |
+| `PanelRows.test.tsx` | the list behind the panel's Transcript, Chapters and Bookmarks tabs: a row seeks, the active one is marked, a picture sits inside the row's seek button while its remove button sits beside it, the empty line gives way to *Translating…*, and following stops when the active row is scrolled away until Sync to video or a click resumes it |
 | `frameGrab.test.tsx` | `useFileFrames` against a stand-in video and canvas: the moments grabbed in turn, each once, kept for the session, the last stopping short of the end, and nothing without a file |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
@@ -2371,3 +2378,4 @@ pressing twice should use.
 The general form: **wait for the state the next step depends on, not for the
 request that will eventually produce it.** A test that waits on the wrong signal
 doesn't fail — it quietly tests the other path, and reports that as a pass.
+
