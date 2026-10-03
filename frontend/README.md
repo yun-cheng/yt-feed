@@ -1845,9 +1845,12 @@ slides away from the panel rather than under it (`CaptionRow`: the row stops at
 the panel's edge, and a panel-wide spacer at its far end is the only thing that
 shrinks). With the panel open both edges keep just 0.5rem
 (`CAPTION_PANEL_GAP`) instead of the usual 5%, and a caption wraps only once it
-has the whole row. The Up next screen takes the rest of the frame beside it
-when the video ends, which would otherwise black the panel out at the one moment
-there's time to read it.
+has the whole row. The Up next screen's shade takes the rest of the frame beside
+it when the video ends, which would otherwise black the panel out at the one
+moment there's time to read it; its card stays centred on the whole frame, a
+pad on the far side balancing the panel. On a player too small for that at the
+card's full width, the pad gives way and the card slides off the panel rather
+than shrinking.
 
 **Its size.** The panel scales with the player the way the captions do:
 everything in it — type, spacing, icons, avatars — is sized in `PANEL_UNIT`

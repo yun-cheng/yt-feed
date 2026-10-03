@@ -3391,14 +3391,22 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             something still playing — which also means it lands on top of the
             related-video grid the embed puts up at the end, in place of a wall of
             other people's channels. Dismissing leaves the finished frame alone.
-            With the panel over the video open, it takes the rest of the frame
-            beside it rather than blacking the panel out at the one moment
-            there's time to read it. */}
+            With the panel over the video open, its shade takes the rest of the
+            frame beside it rather than blacking the panel out at the one moment
+            there's time to read it — but the card keeps to the middle of the
+            whole frame, as the captions do, so opening the panel doesn't shove
+            it aside. A pad on the far side balances the panel; on a player too
+            small for that and the card's full width, the pad gives way and the
+            card slides off the panel instead of shrinking. */}
         {ended && nextUp && !nextDismissed && (
           <div
             data-testid="up-next"
             className="absolute inset-0 z-20 flex items-center justify-center bg-black/85 px-4"
-            style={panelOnVideo ? { [panelSide]: PANEL_WIDTH } : undefined}
+            style={panelOnVideo ? {
+              [panelSide]: PANEL_WIDTH,
+              [panelSide === 'left' ? 'paddingRight' : 'paddingLeft']:
+                `clamp(1rem, calc(100% - ${PANEL_WIDTH} - 23rem), calc(${PANEL_WIDTH} + 1rem))`,
+            } : undefined}
           >
             <div className="w-full max-w-[22rem] text-center">
               <p className="mb-3 text-xs font-medium uppercase tracking-wide text-shade-aa">
