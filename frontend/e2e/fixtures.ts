@@ -78,6 +78,11 @@ export async function seek(page: Page, seconds: number) {
   }, seconds)
 }
 
+/** A sidebar entry. Its name carries a count when there's something in it
+ *  ("Watch Later 1"). */
+export const nav = (page: Page, name: string) =>
+  page.getByRole('button', { name: new RegExp(`^${name}( \\d+)?$`) }).first()
+
 export const pause = (page: Page) => player(page).evaluate((v: HTMLVideoElement) => v.pause())
 export const currentTime = (page: Page) => player(page).evaluate((v: HTMLVideoElement) => v.currentTime)
 

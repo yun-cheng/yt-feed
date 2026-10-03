@@ -26,6 +26,8 @@ mkdir -p "$RUN/data"
 (cd "$FRONTEND" && npx vite build --outDir "$RUN/dist" --emptyOutDir --logLevel error)
 
 export DATA_DIR="$RUN/data"
+# The folder the local-folders spec adds, filled by seed.py.
+export E2E_MEDIA_DIR="$RUN/media"
 export SPA_DIR="$RUN/dist"
 export SKIP_CONFIG_ADOPTION=1
 export OPENROUTER_API_KEY=""

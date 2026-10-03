@@ -1,0 +1,60 @@
+import { test, expect, nav } from './fixtures'
+import type { Page } from '@playwright/test'
+
+// What you keep: Watch Later, playlists, downloads. Each is server-side, so
+// every check here is made after leaving the page that made the change — and
+// each test first clears what an earlier run of it left behind.
+
+/** The card a video title is on: the innermost block holding the title and its menu. */
+const card = (page: Page, title: string) =>
+  page.locator('div')
+    .filter({ has: page.getByRole('link', { name: title, exact: true }) })
+    .filter({ has: page.getByRole('button', { name: 'More actions' }) })
+    .last()
+
+test('Save to Watch Later, then find it there', async ({ page }) => {
+  await page.request.delete('/api/watch-later/e2eLibOne00')
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Library one', exact: true }).first().hover()
+  await page.getByRole('button', { name: 'Save to Watch Later' }).click()
+
+  await nav(page, 'Watch Later').click()
+  await expect(page.getByRole('link', { name: 'Library one', exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Library two', exact: true })).toHaveCount(0)
+})
+
+test('a new playlist made from a card holds the video, and a removal can be undone', async ({ page }) => {
+  for (const p of await (await page.request.get('/api/playlists')).json()) {
+    if (p.name === 'E2E list') await page.request.delete(`/api/playlists/${p.id}`)
+  }
+  await page.goto('/')
+  await card(page, 'Library two').getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: 'Save to playlist' }).click()
+  await page.getByRole('button', { name: 'New playlist' }).click()
+  await page.getByPlaceholder('Playlist name').fill('E2E list')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+
+  await nav(page, 'Playlists').click()
+  await page.getByText('E2E list').first().click()
+  await expect(page.getByRole('link', { name: 'Library two', exact: true }).first()).toBeVisible()
+
+  await card(page, 'Library two').getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: 'Remove from playlist' }).click()
+  await expect(page.getByRole('link', { name: 'Library two', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByRole('link', { name: 'Library two', exact: true }).first()).toBeVisible()
+})
+
+test('Downloads lists the files, and the search box narrows them', async ({ page }) => {
+  await page.goto('/')
+  await nav(page, 'Downloads').click()
+  await expect(page.getByText('Marks video').first()).toBeVisible()
+  await expect(page.getByText('Library one').first()).toBeVisible()
+
+  // Scoped to this page, the search filters what's listed rather than asking
+  // the search index (which the e2e app doesn't run).
+  await page.getByPlaceholder('Search').fill('Library')
+  await page.getByRole('button', { name: 'Search only downloads' }).click()
+  await expect(page.getByText('Library one').first()).toBeVisible()
+  await expect(page.getByText('Marks video')).toHaveCount(0)
+})

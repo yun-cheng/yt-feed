@@ -2391,9 +2391,11 @@ here it can be measured.
 
 It runs against an app of its own. `e2e/serve.sh` builds the frontend and serves
 it from a backend on port 8765, over a data directory (`e2e/.run`, wiped on every
-start) that `e2e/seed.py` fills with a few channels whose videos are all
-**downloaded** — test-pattern files ffmpeg makes on the spot, so the watch page
-plays a file rather than the embed, the same way every run. Nothing reaches the
+start) that `e2e/seed.py` fills with a channel or two per spec, followed by the
+account the claim creates. Every video a spec opens is **downloaded** — a
+test-pattern file ffmpeg makes on the spot — so the watch page plays a file
+rather than the embed, the same way every run; the feed's own two are only
+listed. It also makes a folder of loose files for the local-folders spec. Nothing reaches the
 real app or the outside: the search index points at a dead port, outbound
 requests go through a dead proxy, the OpenRouter key is blank, and the server's
 `HOME` is its own so it can't find the real OAuth client. Sign-in is the real
@@ -2412,7 +2414,22 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `marks.spec.ts` | a bookmark made with `b` shows a frame of its moment in the panel's Bookmarks tab and is there again when the video is reopened; the Chapters tab lists the description's chapters, each with its frame, and a click seeks; captions follow the play head |
 | `loop.spec.ts` | a passage pinned with `[` and `]` plays round more than once without running past its end, until `\` lets go |
 | `upnext.spec.ts` | the channel's next video is offered when one ends and opens on a click; Dismiss; and with the panel open on either side, the card stays centred on the whole frame, at full width, clear of the panel |
+| `feed.spec.ts` | the followed channels' videos from the last 3 days, a wider window bringing in an older one, and the sort deciding the order and surviving a reload |
+| `history.spec.ts` | a video reopens where it was left, one left near its end starts over, and History lists it and gives it back after a removal is undone |
+| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; Downloads listing the files, and its page-scoped search narrowing them |
+| `local.spec.ts` | a folder added by path lists its files with the lengths ffprobe read, and plays one |
+| `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows |
+| `settings.spec.ts` | the app language and the light theme taking over the page and holding across a reload — then put back, since the whole suite shares one account |
+| `mobile.spec.ts` | at 375px wide, the feed, Settings, History, Downloads and the watch page never scroll sideways, the watch page's Back stays on screen, and the sidebar opens from its button |
 
-Each spec has a channel to itself (see `seed.py`), and the marks specs clear
-their video's bookmarks and passages first, so the order they run in doesn't
-matter and `--repeat-each` passes. One worker: the specs share one account.
+Each spec has a channel to itself (see `seed.py`), and a spec that leaves
+something behind clears it first — bookmarks and passages, Watch Later, its
+playlist — or puts it back after, as the settings do. So the order they run in
+doesn't matter and `--repeat-each` passes. One worker: the specs share one
+account.
+
+Two things the app does that a spec has to allow for. The Downloads search
+reaches the list only once it's scoped to the page ("In downloads"); unscoped
+it asks the search index, which this app doesn't run. And the watch page's
+Back is the browser's: on a page opened cold at `/watch/…` there is nothing
+behind it, so a spec that goes on to the sidebar loads `/` first.
