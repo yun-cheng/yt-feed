@@ -78,6 +78,31 @@ async def test_containing_powers_the_save_to_menu(client):
     assert (await client.get("/api/playlists/containing/other")).json() == []
 
 
+async def test_memberships_power_the_cards_badge(client):
+    """One map for every card: each saved video's playlists, newest playlist
+    first, and nothing at all for a video in none."""
+    a, b = await make(client, "A"), await make(client, "B")
+    await add(client, a, "vid1")
+    await add(client, b, "vid1")
+    await add(client, a, "vid2")
+    got = (await client.get("/api/playlists/memberships")).json()
+    assert got == {
+        "vid1": [{"id": b, "name": "B"}, {"id": a, "name": "A"}],
+        "vid2": [{"id": a, "name": "A"}],
+    }
+
+
+async def test_memberships_follow_a_rename_and_a_removal(client):
+    pid = await make(client, "Old")
+    await add(client, pid, "vid1")
+    await client.patch(f"/api/playlists/{pid}", json={"name": "New"})
+    assert (await client.get("/api/playlists/memberships")).json() == {
+        "vid1": [{"id": pid, "name": "New"}],
+    }
+    await client.delete(f"/api/playlists/{pid}/items/vid1")
+    assert (await client.get("/api/playlists/memberships")).json() == {}
+
+
 async def test_remove_item(client):
     pid = await make(client)
     await add(client, pid, "keep")

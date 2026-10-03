@@ -225,6 +225,10 @@ async def test_the_save_to_menu_only_sees_your_playlists(client, pair):
             ).json() == [made["id"]]
     assert (await client.get("/api/playlists/containing/vid1", headers=theirs)
             ).json() == []
+    assert (await client.get("/api/playlists/memberships", headers=mine)
+            ).json() == {"vid1": [{"id": made["id"], "name": "Mine"}]}
+    assert (await client.get("/api/playlists/memberships", headers=theirs)
+            ).json() == {}
 
 
 # ── Channel tags ─────────────────────────────────────────────────────

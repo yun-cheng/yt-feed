@@ -2143,6 +2143,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/tags/auto-assign` | background LLM re-tag of every channel; poll `/api/tags/auto-assign/status` |
 | POST/DELETE | `/api/tags/{channel_id}/tag/{tag}` | apply / remove one label on a channel (accept a suggestion / reject an auto tag) |
 | GET/POST | `/api/watch-later`, `/api/playlists`, `/api/downloads` | resource CRUD. All three list most-recently-added first and report `created_at` — the date the Watch Later and Downloads pages order *and* window by, since a video's publish date says nothing about when it became yours |
+| GET | `/api/playlists/memberships` | every saved video's playlists, `{youtube_id: [{id, name}]}`, newest playlist first — one map for the cards' playlist badge rather than a question per card |
 | GET | `/api/playlists/youtube` | the connected account's YouTube playlists, each with the local copy it already has (`linked_id`). Owner only — see "One YouTube connection" |
 | GET | `/api/playlists/youtube/lookup?ref=` | preview any **public** playlist by link or id, including one you don't own — what covers the playlists YouTube won't enumerate. Accepts a playlist URL, a watch URL carrying `list=`, or a bare id. Owner only |
 | POST | `/api/playlists/import` | copy one YouTube playlist here and remember where it came from. Importing one already imported re-syncs that copy rather than making a second. Owner only |

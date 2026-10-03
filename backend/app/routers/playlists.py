@@ -182,6 +182,32 @@ async def playlists_containing(
     return [r[0] for r in rows]
 
 
+@router.get("/memberships")
+async def playlist_memberships(
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every saved video's playlists, keyed by video id — the cards' badge.
+
+    One map for the whole library rather than a question per card: a feed page
+    draws dozens of cards, and nearly all of them are in no playlist at all.
+    Each video's playlists come newest-first, the order the Playlists page
+    lists them in.
+    """
+    rows = (await db.execute(
+        select(PlaylistItem.youtube_id, Playlist.id, Playlist.name)
+        .join(Playlist, Playlist.id == PlaylistItem.playlist_id)
+        .where(Playlist.user_id == user.id)
+        .order_by(Playlist.created_at.desc(), Playlist.id.desc())
+    )).all()
+    out: dict[str, list[dict]] = {}
+    for vid, pid, name in rows:
+        lists = out.setdefault(vid, [])
+        if not any(p["id"] == pid for p in lists):
+            lists.append({"id": pid, "name": name})
+    return out
+
+
 # --- Importing from YouTube -------------------------------------------------
 #
 # Three ways in, because they reach different things.
