@@ -1340,7 +1340,7 @@ describe('LoopMenu', () => {
   ]
   const open = (over: Partial<Parameters<typeof LoopMenu>[0]> = {}) => {
     const props = {
-      loops: passages, duration: 120, stage: 'arming' as const,
+      loops: passages, duration: 120, stage: 'arming' as const, tapped: true,
       onPin: vi.fn(), onUse: vi.fn(), onDrop: vi.fn(),
       onStop: vi.fn(), onNew: vi.fn(), onClose: vi.fn(),
       ...over,
@@ -1421,6 +1421,11 @@ describe('LoopMenu', () => {
     expect(screen.getByText('Nothing marked yet.')).toBeInTheDocument()
   })
 
+  it('and only when a tap opened it: with a mouse, the button stops it', () => {
+    open({ tapped: false })
+    expect(screen.queryByRole('menuitem', { name: /Stop repeating/ })).toBeNull()
+  })
+
   it('closes on Escape', () => {
     const props = open()
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -1472,6 +1477,11 @@ describe('BookmarkMenu', () => {
     cleanup()
     open({ markHere: true })
     expect(screen.getByRole('menuitem', { name: /Clear this bookmark/ })).toBeInTheDocument()
+  })
+
+  it('has no foot without onToggleHere, as when a hover opened it', () => {
+    open({ onToggleHere: undefined })
+    expect(screen.queryByRole('menuitem', { name: /Bookmark this moment/ })).not.toBeInTheDocument()
   })
 
   it('says so when there are none', () => {

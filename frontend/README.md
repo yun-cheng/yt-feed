@@ -1065,11 +1065,13 @@ Other details:
     click turns the repeat on or off (`toggleRepeat`): off stops the running
     passage and keeps it, as `\` does; on resumes the newest passage you marked,
     from its top, or starts one here when there are none. A touch has no hover,
-    so there a tap opens the menu, and the menus' own rows — the bookmark menu's
-    foot is *Bookmark this moment* / *Clear this bookmark* — do what the click
-    would. Both menus sit flush on their buttons, with no gap for the pointer to
-    fall through on the way up, and treat their button as inside, so pressing it
-    doesn't shut a menu that hover opened.
+    so there a tap opens the menu, and the menus' own rows do what the click
+    would. The row that repeats the button's click — the bookmark menu's
+    *Bookmark this moment* / *Clear this bookmark*, the repeat menu's *Stop
+    repeating* — appears only when a tap opened the menu. Both menus sit flush
+    on their buttons, with no gap for the pointer to fall through on the way
+    up, and treat their button as inside, so pressing it doesn't shut a menu
+    that hover opened.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
     of the video and an unpinned B means the end of it, which is what each key
     reads as on its own: `[` is "repeat from here", `]` is "repeat up to here".
@@ -1098,10 +1100,10 @@ Other details:
       *opens* a passage, so a video you've never looped behaves as it always did,
       and every press after that moves that passage's ends rather than piling up
       new ones.
-    - **Stopping is not deleting.** `\` and the menu's *Stop repeating* set
-      `active: false` and keep the passage — it's work, and the key that turns
-      the repeat off shouldn't throw it away. The × in the menu deletes, and
-      promotes nothing in its place.
+    - **Stopping is not deleting.** `\`, the repeat button and the running
+      passage's row set `active: false` and keep the passage — it's work, and
+      the key that turns the repeat off shouldn't throw it away. The × in the
+      menu deletes, and promotes nothing in its place.
     - **The menu closes when you choose a passage to work on** (switching to one,
       or starting a new one) and stays open otherwise: once you've picked one you
       want to hear it and the panel sits over the video, but pinning, deleting

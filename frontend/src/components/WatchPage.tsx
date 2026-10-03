@@ -667,6 +667,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // same way the caption menu does — see chromeUp.
   const [showLoopMenu, setShowLoopMenu] = useState(false)
   const [showBookmarkMenu, setShowBookmarkMenu] = useState(false)
+  // Opened by a tap rather than a hover: only then do the menus carry the row
+  // that does what the button's click does — bookmark here, stop repeating —
+  // a tap having opened the menu instead.
+  const [bookmarkMenuByTap, setBookmarkMenuByTap] = useState(false)
+  const [loopMenuByTap, setLoopMenuByTap] = useState(false)
   // The transcript panel beside the video's details — closed until asked for,
   // since it's a long read most visits don't want.
   // The right-hand panel holds one of two things at a time. A single state
@@ -2606,11 +2611,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   })
   const marksControls = (
     <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[13.75rem] z-20 flex items-center'}>
-      <div ref={bookmarkMenuRef} className="relative" {...hoverMenu(setShowBookmarkMenu)}>
+      <div ref={bookmarkMenuRef} className="relative" {...hoverMenu((open) => { setShowBookmarkMenu(open); setBookmarkMenuByTap(false) })}>
       <button
         onPointerDown={(e) => { bookmarkTapRef.current = e.pointerType === 'touch' }}
         onClick={() => {
-          if (bookmarkTapRef.current) setShowBookmarkMenu((o) => !o)
+          if (bookmarkTapRef.current) { setShowBookmarkMenu((o) => !o); setBookmarkMenuByTap(true) }
           else marks.toggleBookmarkHere()
           bookmarkTapRef.current = false
         }}
@@ -2650,17 +2655,17 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           markHere={marks.markHere}
           onSeek={seekTo}
           onRemove={marks.removeBookmark}
-          onToggleHere={marks.toggleBookmarkHere}
+          onToggleHere={bookmarkMenuByTap ? marks.toggleBookmarkHere : undefined}
           onClose={() => setShowBookmarkMenu(false)}
           within={bookmarkMenuRef}
         />
       )}
       </div>
-      <div ref={loopMenuRef} className="relative" {...hoverMenu(setShowLoopMenu)}>
+      <div ref={loopMenuRef} className="relative" {...hoverMenu((open) => { setShowLoopMenu(open); setLoopMenuByTap(false) })}>
       <button
         onPointerDown={(e) => { loopTapRef.current = e.pointerType === 'touch' }}
         onClick={() => {
-          if (loopTapRef.current) setShowLoopMenu((o) => !o)
+          if (loopTapRef.current) { setShowLoopMenu((o) => !o); setLoopMenuByTap(true) }
           else marks.toggleRepeat()
           loopTapRef.current = false
         }}
@@ -2719,6 +2724,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           onNew={marks.newLoop}
           onClose={() => setShowLoopMenu(false)}
           within={loopMenuRef}
+          tapped={loopMenuByTap}
         />
       )}
       </div>

@@ -699,14 +699,15 @@ export type BookmarkRow = { id: number; start: number; text: string }
 
 /** The video's bookmarks, from the bookmark button: each jumps to its moment,
  *  and its × clears it. Jumping leaves the menu open — you hop through marks
- *  to find the one you meant — and the foot does what the button's own press
- *  does, for a touch screen, where a tap opens this instead. */
+ *  to find the one you meant. The foot, given `onToggleHere`, does what the
+ *  button's own press does: it's for a touch screen, where a tap opens this
+ *  instead, and with a mouse the button's click already does it. */
 export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, onClose, within }: {
   rows: BookmarkRow[]
   markHere: boolean
   onSeek: (seconds: number) => void
   onRemove: (id: number) => void
-  onToggleHere: () => void
+  onToggleHere?: () => void
   onClose: () => void
   within?: RefObject<HTMLElement | null>
 }) {
@@ -749,7 +750,7 @@ export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, o
           <div className="px-3 py-2 text-sm text-white/60">{t('Nothing marked yet.')}</div>
         )}
       </div>
-      <div className="mt-1 border-t border-white/10 pt-1">
+      {onToggleHere && <div className="mt-1 border-t border-white/10 pt-1">
         <button role="menuitem" onClick={onToggleHere} className={row}>
           <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             {markHere
@@ -759,12 +760,12 @@ export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, o
           {markHere ? t('Clear this bookmark') : t('Bookmark this moment')}
           <span className="ml-auto pl-2 text-white/60">{shortcutLabel('bookmark')}</span>
         </button>
-      </div>
+      </div>}
     </div>
   )
 }
 
-export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop, onNew, onClose, within }: {
+export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop, onNew, onClose, within, tapped = false }: {
   loops: SavedLoop[]
   duration: number
   stage: LoopStage
@@ -775,6 +776,10 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
   onNew: () => void
   onClose: () => void
   within?: RefObject<HTMLElement | null>
+  /** Opened by a tap, on a touch screen: only then does the foot carry a Stop
+   *  row. With a mouse the button's click stops it, and the running passage's
+   *  row does anywhere — but without a tooltip nothing says so. */
+  tapped?: boolean
 }) {
   const box = useRef<HTMLDivElement | null>(null)
   useDismiss(box, onClose, within)
@@ -860,7 +865,7 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
           </svg>
           {t('New passage from here')}
         </button>
-        {stage !== 'idle' && (
+        {tapped && stage !== 'idle' && (
           <button role="menuitem" onClick={onStop} className={row}>
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <rect x="6" y="6" width="12" height="12" rx="2" />
