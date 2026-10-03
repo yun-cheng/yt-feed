@@ -21,7 +21,9 @@ if "e2e" not in os.environ.get("DATA_DIR", ""):
 
 from app.config import settings  # noqa: E402
 from app.database import async_session, init_db  # noqa: E402
-from app.models import Channel, Download, UserChannel, Video  # noqa: E402
+from app.models import (  # noqa: E402
+    Channel, ChannelTag, Download, SummaryJob, UserChannel, Video, WatchHistory,
+)
 
 # Days ago, so a seeded video is inside the feed's default time window (the
 # last 3 days) whenever the suite runs — all but the one feed.spec widens to.
@@ -59,8 +61,27 @@ FEED = [
     ("UCe2eFeed00000000000000", "Feed Channel", [
         ("e2eFeedPop0", "Popular but older", 60, ago(5), 900_000, False),
         ("e2eFeedNew0", "Newer but quiet", 60, ago(1), 50, False),
+        ("e2eShort000", "A short one", 30, ago(1), 100, False),
+    ]),
+    ("UCe2eCooking00000000000", "Cooking Channel", [
+        ("e2eSoup0000", "Soup in ten minutes", 400, ago(1), 5000, False),
+        ("e2eSeen0000", "Seen it already", 120, ago(1), 100, False),
+    ]),
+    ("UCe2eHideable0000000000", "Hideable Channel", [
+        ("e2eHideMe00", "Hide me", 60, ago(1), 100, False),
     ]),
 ]
+
+# Vertical short-form: the Shorts feed, kept out of the Videos one.
+SHORTS = {"e2eShort000"}
+
+# The filters' material. A tag per channel for the sidebar's tag chips, the
+# watch statuses (watched, in progress, and by omission unwatched — Home hides
+# the watched by default, so only one video is), and one finished summary for
+# the Summarised chip.
+TAGS = {"UCe2eFeed00000000000000": "music", "UCe2eCooking00000000000": "food"}
+HISTORY = {"e2eSeen0000": (120, True), "e2eSoup0000": (100, False)}  # position, watched
+SUMMARISED = {"e2eSoup0000"}
 
 # Loose files for the local-folders spec: a directory the app is pointed at,
 # not downloads it knows about.
@@ -90,12 +111,28 @@ async def main() -> None:
             # Followed by user 1, whom the setup claim creates: the database
             # has no users yet, and SQLite doesn't hold the row to its key.
             db.add(UserChannel(user_id=1, channel_id=channel_id))
+            if channel_id in TAGS:
+                db.add(ChannelTag(user_id=1, channel_id=channel_id, tag_name=TAGS[channel_id]))
             for video_id, title, seconds, published, views, downloaded in videos:
                 db.add(Video(
                     youtube_id=video_id, channel_id=channel_id, title=title,
                     published_at=published, duration_seconds=seconds,
                     view_count=views, like_count=views // 20,
+                    is_short=video_id in SHORTS,
                 ))
+                if video_id in HISTORY:
+                    position, watched = HISTORY[video_id]
+                    db.add(WatchHistory(
+                        user_id=1, youtube_id=video_id, position_seconds=position,
+                        duration_seconds=seconds, watched=watched, title=title,
+                        channel_id=channel_id, channel_name=channel_title,
+                        published_at=published.isoformat(),
+                    ))
+                if video_id in SUMMARISED:
+                    db.add(SummaryJob(
+                        user_id=1, video_id=video_id, status="done", length="short",
+                        finished_at=datetime.utcnow(),
+                    ))
                 if not downloaded:
                     continue
                 db.add(Download(

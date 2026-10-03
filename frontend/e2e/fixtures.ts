@@ -5,17 +5,19 @@ import { test as base, expect, type Page } from '@playwright/test'
  *
  * The seeded videos are files on disk (seed.py), so playing them needs nothing
  * from YouTube — but the watch page still asks the backend for what only
- * YouTube knows: the description and its chapters, the captions, the comments.
- * Those are answered here, per video, so a spec says what the video has rather
- * than hoping the network agrees. Anything else leaving the machine is
+ * YouTube knows (the description and its chapters, the captions, the
+ * comments) and for Ask AI, which needs the model. Those are answered here,
+ * per video, so a spec says what the video has rather than hoping the network
+ * agrees. Anything else leaving the machine is
  * refused, which is the browser's half of the dead proxy in serve.sh.
  */
 
 type Cue = { start: number; dur: number; text: string }
 type Chapter = { start: number; end: number; title: string }
+type Comment = { author: string; text: string }
 
 /** What each seeded video "has on YouTube". A video not listed has nothing. */
-export const YOUTUBE: Record<string, { chapters?: Chapter[]; cues?: Cue[] }> = {
+export const YOUTUBE: Record<string, { chapters?: Chapter[]; cues?: Cue[]; comments?: Comment[] }> = {
   e2eMarks000: {
     chapters: [
       { start: 0, end: 7, title: 'Opening' },
@@ -26,8 +28,13 @@ export const YOUTUBE: Record<string, { chapters?: Chapter[]; cues?: Cue[] }> = {
       { start: 0, dur: 4, text: 'The first caption.' },
       { start: 4, dur: 4, text: 'The second caption.' },
     ],
+    comments: [{ author: '@viewer', text: 'Skip to 0:12 for the good part.' }],
   },
 }
+
+/** What Ask AI answers, whatever it's asked: streamed as the server streams
+ *  it, in two pieces, with a timestamp that seeks. */
+export const ASK_ANSWER = ['It starts at 0:06, ', 'where the second caption comes in.']
 
 async function stubYouTube(page: Page) {
   const idOf = (url: string) => new URL(url).pathname.split('/').pop() || ''
@@ -45,8 +52,27 @@ async function stubYouTube(page: Page) {
   await page.route('**/api/feed/captions-generate/*', (route) =>
     route.fulfill(json({ status: 'none', covered: 0, duration: 0, lang: '', error: '', supported: false })))
   await page.route('**/api/feed/storyboard/*', (route) => route.fulfill(json({})))
-  await page.route('**/api/feed/comments/*', (route) =>
-    route.fulfill(json({ disabled: false, fetched: 0, capped: false, has_replies: true, threads: [] })))
+  await page.route('**/api/feed/comments/*', (route) => {
+    const threads = (YOUTUBE[idOf(route.request().url())]?.comments ?? []).map((c, i) => ({
+      id: `c${i}`, text: c.text, author: c.author, author_id: '', author_thumbnail: '',
+      author_is_uploader: false, author_is_verified: false, is_pinned: false, hearted: false,
+      like_count: 0, timestamp: null, time_text: '1 day ago', replies: [],
+    }))
+    return route.fulfill(json({ disabled: false, fetched: threads.length, capped: false, has_replies: true, threads }))
+  })
+  // Ask AI talks to the model through the backend; the thread it keeps is
+  // answered empty, and a question gets ASK_ANSWER as server-sent events.
+  await page.route('**/api/ask/*', (route) => {
+    const method = route.request().method()
+    if (method === 'GET') return route.fulfill(json({ messages: [] }))
+    if (method === 'DELETE') return route.fulfill(json({}))
+    const frames = [...ASK_ANSWER.map((delta) => ({ delta })), { done: true }]
+    return route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join(''),
+    })
+  })
 }
 
 export const test = base.extend({
@@ -95,5 +121,17 @@ export async function clearMarks(page: Page, videoId: string) {
   }
   for (const l of await (await api.get(`/api/bookmarks/${videoId}/loops`)).json()) {
     await api.delete(`/api/bookmarks/${videoId}/loops/id/${l.id}`)
+  }
+}
+
+/** Note the account's current values for `keys`, and hand back what puts them
+ *  back — for a spec that changes a setting every other spec relies on. */
+export async function keepSettings(page: Page, keys: string[]) {
+  const { values } = await (await page.request.get('/api/settings')).json()
+  return async () => {
+    const res = await page.request.put('/api/settings', {
+      data: { values: Object.fromEntries(keys.map((k) => [k, values[k]])) },
+    })
+    expect(res.ok()).toBe(true)
   }
 }

@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures'
+import { test, expect, keepSettings } from './fixtures'
 import type { Page } from '@playwright/test'
 
 // Settings that change the whole app, saved to the account: they hold across
@@ -8,10 +8,9 @@ import type { Page } from '@playwright/test'
 const choice = (page: Page, label: string) =>
   page.locator('div').filter({ has: page.getByText(label, { exact: true }) }).filter({ has: page.locator('select') }).last().locator('select')
 
-test.afterEach(async ({ page }) => {
-  const res = await page.request.put('/api/settings', { data: { values: { app_language: 'auto', theme: 'dark' } } })
-  expect(res.ok()).toBe(true)
-})
+let restore: () => Promise<void>
+test.beforeEach(async ({ page }) => { restore = await keepSettings(page, ['app_language', 'theme']) })
+test.afterEach(async () => { await restore() })
 
 test('the app language switches every label, and holds across a reload', async ({ page }) => {
   await page.goto('/settings')

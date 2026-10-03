@@ -2394,17 +2394,24 @@ it from a backend on port 8765, over a data directory (`e2e/.run`, wiped on ever
 start) that `e2e/seed.py` fills with a channel or two per spec, followed by the
 account the claim creates. Every video a spec opens is **downloaded** — a
 test-pattern file ffmpeg makes on the spot — so the watch page plays a file
-rather than the embed, the same way every run; the feed's own two are only
-listed. It also makes a folder of loose files for the local-folders spec. Nothing reaches the
-real app or the outside: the search index points at a dead port, outbound
-requests go through a dead proxy, the OpenRouter key is blank, and the server's
-`HOME` is its own so it can't find the real OAuth client. Sign-in is the real
+rather than the embed, the same way every run; the rest are only listed. The
+seed also gives the filters their material (channel tags, Shorts, watch
+history, a finished summary) and makes a folder of loose files for the
+local-folders spec.
+
+Nothing reaches the real app or the outside. Search gets a Meilisearch of its
+own, on port 7709 over a database in `e2e/.run`, indexed from the seed when the
+app starts (without the `meilisearch` binary the index points at a dead port and
+`search.spec.ts` skips). Outbound requests go through a dead proxy, the
+OpenRouter key is blank, and the server's `HOME` is its own so it can't find the
+real OAuth client. Sign-in is the real
 first-run claim (`global-setup.ts`): the setup token from the data directory,
 posted to `/api/setup/claim`, and the cookie kept for every spec.
 
 What only YouTube knows — description and chapters, captions, comments — is
 answered in the browser by `fixtures.ts`, per video, so a spec states what its
-video has. Any request for another host is refused there too.
+video has; so is Ask AI, whose answer arrives as the server streams one. Any
+request for another host is refused there too.
 
 It uses the installed **Google Chrome** (`channel: 'chrome'`), headless. Playwright's
 own Chromium can't decode H.264, and Chrome needs no download.
@@ -2421,15 +2428,28 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows |
 | `settings.spec.ts` | the app language and the light theme taking over the page and holding across a reload — then put back, since the whole suite shares one account |
 | `mobile.spec.ts` | at 375px wide, the feed, Settings, History, Downloads and the watch page never scroll sideways, the watch page's Back stays on screen, and the sidebar opens from its button |
+| `filters.spec.ts` | Shorts as a feed of its own; the watched hidden until Watched is picked; a length chip; a tag chip and its − exclusion; Summarised |
+| `presets.spec.ts` | a selection saved as a preset and put back with one click |
+| `search.spec.ts` | a title found by a word in it, and by a misspelt one |
+| `channels.spec.ts` | the followed channels and their scoped search, a channel's page listing its own videos, and Hide channel taking a channel's videos off the feed across a reload |
+| `watch.spec.ts` | a card opening its video in the app and Back returning to the feed; the panel's Comments, its Transcript as sentences that seek, Ask AI streaming an answer whose time seeks, and the panel changing sides |
+| `preferences.spec.ts` | a shortcut moved to another key answering there and not on the old one, the speed list setting the steps `.` takes, Home opening on the window set under Pages, and the panel opening on the tab Settings names |
 
 Each spec has a channel to itself (see `seed.py`), and a spec that leaves
 something behind clears it first — bookmarks and passages, Watch Later, its
-playlist — or puts it back after, as the settings do. So the order they run in
+playlist, a preset, a hidden channel — or puts it back after, as the two
+settings specs do (`keepSettings` in `fixtures.ts`). So the order they run in
 doesn't matter and `--repeat-each` passes. One worker: the specs share one
 account.
 
-Two things the app does that a spec has to allow for. The Downloads search
-reaches the list only once it's scoped to the page ("In downloads"); unscoped
-it asks the search index, which this app doesn't run. And the watch page's
-Back is the browser's: on a page opened cold at `/watch/…` there is nothing
-behind it, so a spec that goes on to the sidebar loads `/` first.
+Three things the app does that a spec has to allow for:
+
+- **The Downloads search** reaches the list only once it's scoped to the page
+  ("In downloads"); unscoped, it asks the search index.
+- **The watch page's Back is the browser's.** On a page opened cold at
+  `/watch/…` there is nothing behind it, so a spec that goes on to the sidebar
+  loads `/` first.
+- **Ask AI loads the thread so far when its tab opens**, and that answer
+  replaces whatever the panel holds. A question sent before it lands is wiped
+  when it does — out of reach of anyone typing, but not of a test, which waits
+  for the suggestions an empty thread shows.
