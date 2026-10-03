@@ -1873,9 +1873,8 @@ a tab opened here after its twin below fetches nothing twice:
 
 **Where it sits.** `PANEL_WIDTH`, 31.25% of the player (320px over a 1024px
 one), never less than 12 panel units, so a phone-sized player's panel stays
-readable. Eight tabs and two buttons need about 21 units on one line (24 on the
-left, where the back button takes the corner), so on a narrow player the tabs
-wrap onto a line of their own rather than squeeze — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
+readable. Eight tabs and two buttons need about 21 units on one line, so on a
+narrow player the tabs wrap onto a line of their own rather than squeeze — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
 player box, so it goes to fullscreen with it. It reaches the bottom edge while
 the controls are hidden; while they show it stops just above the progress bar
 (`panelBottom`): 4.5rem over our own bar, whose progress bar's hit area starts
@@ -1913,9 +1912,8 @@ switching tabs never changes the size of the words.
 A button in its header moves it between the right and left sides — whichever
 half the video isn't using — and that choice is remembered
 (`ytfeed:video-panel-side` in localStorage; a layout preference fetches nothing,
-so it may carry over). On the left, the back button (which never fades) lands in
-the header's corner, so the header leaves it room; at the narrowest widths that
-puts the tabs and the two buttons on separate lines.
+so it may carry over). At the narrowest widths the tabs and the two buttons go
+on separate lines.
 
 
 ### Notes on a video (`NotesPanel.tsx`)
@@ -2305,12 +2303,11 @@ small screen on four of the nine destinations, a door the drawer already has.
 Picking anything from the drawer closes it; a filter click inside it does not.
 `Sidebar.test.tsx` holds that line.
 
-**Leaving a video.** The watch overlay is `z-[60]` — above the sidebar — so a
-back button in the player's top-left corner is the only
-way out that isn't the browser's own (`onClose`, which calls `history.back()`).
-`LocalWatchPage` has always had one in the same corner; `WatchPage` now matches
-it. It never fades with the rest of the chrome: the way out of a page can't be
-something you have to wake the player to find.
+**Leaving a video.** The watch overlay is `z-[60]` — above the sidebar — and
+opening a video pushes a history entry, so the way out is the browser's own:
+its Back button, the mouse's back button, Alt+← / ⌘[, or a phone's swipe back.
+The player keeps no back button of its own over the picture. `LocalWatchPage`
+also closes on Esc.
 
 **Hover is not a thing a phone has.** Tailwind gates `hover:` — and so
 `group-hover:` — behind `@media (hover: hover)`, which makes

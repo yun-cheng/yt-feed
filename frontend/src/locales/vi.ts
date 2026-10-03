@@ -524,7 +524,6 @@ export const vi: Record<string, string> = {
   'Focus mode — keep the bar down unless the cursor is on the video': 'Chế độ tập trung — giữ thanh điều khiển ẩn trừ khi con trỏ ở trên video',
   'Fullscreen ({key})': 'Toàn màn hình ({key})',
   // Local watch page
-  'Back to the folder (Esc)': 'Quay lại thư mục (Esc)',
   'More in this folder': 'Video khác trong thư mục này',
   // Ask AI
   'This video is too long to read whole — the answer covers {from}–{to}.': 'Video này quá dài để đọc toàn bộ — câu trả lời chỉ bao gồm {from}–{to}.',

@@ -16,10 +16,6 @@
  * see-through enough that it still reads as part of the player. Flush with the
  * player's top and side edges, reaching down as far as the page says — it knows
  * where the progress bar is and whether it's showing.
- *
- * On the left, the player's back button (which never fades) lands in the
- * header's corner, so the header leaves it room rather than the panel moving
- * down for it.
  */
 import type { CSSProperties, ReactNode } from 'react'
 import type { PanelTabKey } from '../lib/videoPanel'
@@ -74,9 +70,9 @@ export default function VideoPanel({ open, tabs, tab, onTab, side, onSwapSide, o
       role="complementary"
       aria-label={t('Panel on the video')}
     >
-      {/* Wraps rather than squeezes: at its narrowest, on the left where the
-          back button takes the corner, the tabs drop to a line of their own. */}
-      <div className={`flex shrink-0 flex-wrap items-center gap-1 py-1.5 pr-1 ${side === 'left' ? 'min-h-[3.25rem] pl-14' : 'pl-2'}`}>
+      {/* Wraps rather than squeezes: at its narrowest the tabs drop to a line
+          of their own. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1 py-1.5 pl-2 pr-1">
         <div role="tablist" className="mr-auto flex rounded-full bg-white/10 p-0.5">
           {tabs.map(({ key, label, icon }) => (
             <button

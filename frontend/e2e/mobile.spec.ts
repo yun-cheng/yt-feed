@@ -17,10 +17,9 @@ for (const path of ['/', '/settings', '/history', '/downloads']) {
   })
 }
 
-test('the watch page fits, and its way out is on screen', async ({ page }) => {
+test('the watch page fits', async ({ page }) => {
   await watch(page, 'e2ePlayer00')
   expect(await overflow(page)).toBeLessThanOrEqual(0)
-  await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport()
 })
 
 test('the sidebar opens from its button', async ({ page }) => {

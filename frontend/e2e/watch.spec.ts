@@ -11,13 +11,13 @@ async function openTab(page: Page, tab: string) {
   await panel(page).getByRole('tab', { name: tab }).click()
 }
 
-test('a card opens its video in the app, and Back returns to the feed', async ({ page }) => {
+test('a card opens its video in the app, and the browser’s Back returns to the feed', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'Library one', exact: true }).last().click()
   await expect(page).toHaveURL(/\/watch\/e2eLibOne00/)
   await expect(player(page)).toHaveAttribute('src', /\/api\/downloads\/e2eLibOne00\/file/)
 
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await page.goBack()
   await expect(page).toHaveURL(/\/$/)
   await expect(player(page)).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Library two', exact: true }).first()).toBeVisible()

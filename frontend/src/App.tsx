@@ -2514,7 +2514,6 @@ export default function App() {
             startAt={startAt}
             initialPanel={watchPanel}
             onChannelClick={selectChannelFromWatch}
-            onClose={() => history.back()}
             onDownload={startDownload}
             isDownloaded={downloadIds.has(selectedVideoId)}
             hasLocalFile={readyDownloadIds.has(selectedVideoId)}

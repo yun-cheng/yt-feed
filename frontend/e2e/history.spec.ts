@@ -10,7 +10,7 @@ const VIDEO = 'e2eHist0000'  // 60 seconds
  *  out — and wait for the server to have it. */
 async function leaveAt(page: Page, seconds: number) {
   await seek(page, seconds)
-  await page.getByRole('button', { name: 'Back', exact: true }).click()
+  await page.goBack()
   await expect.poll(async () => (await (await page.request.get(`/api/history/${VIDEO}`)).json()).position_seconds)
     .toBeCloseTo(seconds, 0)
 }

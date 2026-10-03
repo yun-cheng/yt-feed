@@ -524,7 +524,6 @@ export const ja: Record<string, string> = {
   'Focus mode — keep the bar down unless the cursor is on the video': '集中モード：カーソルが動画上にない限りバーを非表示',
   'Fullscreen ({key})': '全画面表示（{key}）',
   // Local watch page
-  'Back to the folder (Esc)': 'フォルダに戻る（Esc）',
   'More in this folder': 'このフォルダ内の他の動画',
   // Ask AI
   'This video is too long to read whole — the answer covers {from}–{to}.': 'この動画は長すぎて全体を読み込めません。回答は {from}–{to} の範囲です。',

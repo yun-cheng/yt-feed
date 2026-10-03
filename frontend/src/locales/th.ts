@@ -524,7 +524,6 @@ export const th: Record<string, string> = {
   'Focus mode — keep the bar down unless the cursor is on the video': 'โหมดโฟกัส — ซ่อนแถบควบคุมเว้นแต่เคอร์เซอร์อยู่บนวิดีโอ',
   'Fullscreen ({key})': 'เต็มหน้าจอ ({key})',
   // Local watch page
-  'Back to the folder (Esc)': 'กลับไปที่โฟลเดอร์ (Esc)',
   'More in this folder': 'วิดีโออื่นๆ ในโฟลเดอร์นี้',
   // Ask AI
   'This video is too long to read whole — the answer covers {from}–{to}.': 'วิดีโอนี้ยาวเกินกว่าจะอ่านทั้งหมด — คำตอบครอบคลุม {from}–{to}',

@@ -525,7 +525,6 @@ export const zhHant: Record<string, string> = {
   'Focus mode — keep the bar down unless the cursor is on the video': '專注模式：除非游標在影片上，否則收起控制列',
   'Fullscreen ({key})': '全螢幕（{key}）',
   // Local watch page
-  'Back to the folder (Esc)': '回到資料夾（Esc）',
   'More in this folder': '這個資料夾中的其他影片',
   // Ask AI
   'This video is too long to read whole — the answer covers {from}–{to}.': '這部影片太長，無法整部讀完；回答只涵蓋 {from}–{to}。',

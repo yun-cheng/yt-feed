@@ -195,15 +195,6 @@ export default function LocalWatchPage({ video, folder, siblings, onClose, onSel
           hovering={hovering}
           onFullscreen={toggleFullscreen}
         />
-        <button
-          onClick={onClose}
-          className="absolute left-2 top-2 z-30 rounded-full bg-black/60 p-2 text-white transition-colors hover:bg-black/80"
-          title={t('Back to the folder (Esc)')}
-        >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-          </svg>
-        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

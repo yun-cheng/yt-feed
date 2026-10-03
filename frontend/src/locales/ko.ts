@@ -524,7 +524,6 @@ export const ko: Record<string, string> = {
   'Focus mode — keep the bar down unless the cursor is on the video': '집중 모드 — 커서가 동영상 위에 있을 때만 컨트롤 바 표시',
   'Fullscreen ({key})': '전체화면 ({key})',
   // Local watch page
-  'Back to the folder (Esc)': '폴더로 돌아가기 (Esc)',
   'More in this folder': '이 폴더의 다른 동영상',
   // Ask AI
   'This video is too long to read whole — the answer covers {from}–{to}.': '이 동영상은 너무 길어서 전체를 읽을 수 없습니다. 답변은 {from}–{to} 구간만 다룹니다.',
