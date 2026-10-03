@@ -199,6 +199,7 @@ export default function PlaylistPage({
           downloadIds={downloadIds}
           onHideChannel={onHideChannel}
           onRemoveFromPlaylist={removeFromPlaylist}
+          playlistId={playlistId}
         />
       )}
     </div>

@@ -7,6 +7,7 @@ import type { Preset } from './lib/presets'
 import Toaster from './components/Toaster'
 import { startNotificationPolling } from './hooks/notificationStore'
 import { loadSummaries, useSummarisedIds } from './hooks/summaryStore'
+import { loadPlaylistMemberships } from './hooks/playlistStore'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
@@ -941,6 +942,7 @@ export default function App() {
     setPlaylists(prev => prev.filter(p => p.id !== id))
     try { await apiFetch(`/api/playlists/${id}`, { method: 'DELETE' }) } catch { /* ignore */ }
     fetchPlaylists()
+    loadPlaylistMemberships()
   }, [fetchPlaylists])
 
   // ── Downloads (server-side offline library) ───────────
@@ -1318,6 +1320,7 @@ export default function App() {
   useEffect(() => {
     startNotificationPolling()
     loadSummaries()
+    loadPlaylistMemberships()
   }, [])
 
   // ── Auto-refresh via Page Visibility API ────────────────

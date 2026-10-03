@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import VideoCard from '../components/VideoCard'
 import type { VideoItem } from '../App'
 import { loadSummaries, _resetSummaries } from '../hooks/summaryStore'
+import { loadPlaylistMemberships, _resetPlaylistMemberships } from '../hooks/playlistStore'
 
 const mockVideo: VideoItem = {
   youtube_id: 'abc123',
@@ -306,5 +307,62 @@ describe('VideoCard summaries', () => {
     render(card())
     expect(screen.queryByText('Summarised')).not.toBeInTheDocument()
     expect(screen.queryByText('Summarising')).not.toBeInTheDocument()
+  })
+})
+
+function serveMemberships(map: Record<string, { id: number; name: string }[]>) {
+  const fn = vi.fn(async () => ({
+    ok: true, status: 200, json: async () => map,
+    clone: () => ({ text: async () => '' }),
+  }))
+  globalThis.fetch = fn as unknown as typeof fetch
+  return fn
+}
+
+describe('VideoCard — playlist badge', () => {
+  afterEach(() => { _resetPlaylistMemberships(); vi.restoreAllMocks() })
+
+  it('names the playlist the video is saved in', async () => {
+    serveMemberships({ abc123: [{ id: 1, name: 'Cooking' }] })
+    render(card())
+    await act(async () => { await loadPlaylistMemberships() })
+    expect(screen.getByTestId('playlist-badge')).toHaveTextContent('Cooking')
+  })
+
+  it('names the first and counts the rest, all of them in its tooltip', async () => {
+    serveMemberships({ abc123: [{ id: 1, name: 'Cooking' }, { id: 2, name: 'Later' }, { id: 3, name: 'Best' }] })
+    render(card())
+    await act(async () => { await loadPlaylistMemberships() })
+    const badge = screen.getByTestId('playlist-badge')
+    expect(badge).toHaveTextContent('Cooking+2')
+    expect(badge).toHaveAttribute('title', 'Cooking\nLater\nBest')
+  })
+
+  it('has none for a video in no playlist', async () => {
+    serveMemberships({ other: [{ id: 1, name: 'Cooking' }] })
+    render(card())
+    await act(async () => { await loadPlaylistMemberships() })
+    expect(screen.queryByTestId('playlist-badge')).toBeNull()
+  })
+
+  it('leaves out the playlist whose page the card is on', async () => {
+    serveMemberships({ abc123: [{ id: 1, name: 'Cooking' }, { id: 2, name: 'Later' }] })
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} playlistId={1} />)
+    await act(async () => { await loadPlaylistMemberships() })
+    expect(screen.getByTestId('playlist-badge')).toHaveTextContent('Later')
+    expect(screen.getByTestId('playlist-badge')).not.toHaveTextContent('Cooking')
+  })
+
+  it('follows a change made anywhere in the app', async () => {
+    serveMemberships({})
+    render(card())
+    await act(async () => { await loadPlaylistMemberships() })
+    expect(screen.queryByTestId('playlist-badge')).toBeNull()
+    serveMemberships({ abc123: [{ id: 1, name: 'Cooking' }] })
+    await act(async () => {
+      window.dispatchEvent(new Event('playlists-changed'))
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    expect(screen.getByTestId('playlist-badge')).toHaveTextContent('Cooking')
   })
 })

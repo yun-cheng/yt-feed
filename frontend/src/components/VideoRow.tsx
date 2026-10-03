@@ -16,6 +16,8 @@ type Props = {
   downloadIds?: Set<string>
   onHideChannel?: (channelId: string) => void
   onRemoveFromPlaylist?: (video: VideoItem) => void
+  // The playlist page this row is on (see VideoCard's playlistId).
+  playlistId?: number
   onRemoveImported?: (video: VideoItem) => void
   onRemoveHistory?: (video: VideoItem) => void
   // Watch positions by video id — draws the red resume bar on each card.
@@ -28,7 +30,7 @@ type Props = {
   totalCount?: number
 }
 
-export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onRemoveFromPlaylist, onRemoveImported, onRemoveHistory, progressById, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
+export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, onToggleWatchLater, onDownload, downloadIds, onHideChannel, onRemoveFromPlaylist, playlistId, onRemoveImported, onRemoveHistory, progressById, onLoadMore, hasMore: hasMoreProp, totalCount }: Props) {
   const serverMode = typeof onLoadMore === 'function'
   const [visibleCount, setVisibleCount] = useState(INITIAL_COUNT)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -107,6 +109,7 @@ export default function VideoRow({ group, onChannelClick, sort, watchLaterIds, o
             isDownloaded={downloadIds?.has(video.youtube_id)}
             onHideChannel={onHideChannel}
             onRemoveFromPlaylist={onRemoveFromPlaylist}
+            playlistId={playlistId}
             onRemoveImported={onRemoveImported}
             onRemoveHistory={onRemoveHistory}
             watchProgress={progressById?.get(video.youtube_id)}

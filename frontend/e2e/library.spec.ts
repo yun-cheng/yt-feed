@@ -45,6 +45,43 @@ test('a new playlist made from a card holds the video, and a removal can be undo
   await expect(page.getByRole('link', { name: 'Library two', exact: true }).first()).toBeVisible()
 })
 
+test('a card names the playlists its video is saved in', async ({ page }) => {
+  for (const p of await (await page.request.get('/api/playlists')).json()) {
+    if (p.name === 'E2E badge') await page.request.delete(`/api/playlists/${p.id}`)
+  }
+  await page.goto('/')
+  // The whole card, thumbnail and all — the badge sits on the thumbnail.
+  const badge = page.locator('div')
+    .filter({ has: page.getByRole('img', { name: 'Library one' }) })
+    .filter({ has: page.getByRole('button', { name: 'More actions' }) })
+    .last()
+    .getByTestId('playlist-badge')
+  await expect(page.getByRole('link', { name: 'Library one', exact: true }).first()).toBeVisible()
+  await expect(badge).toHaveCount(0)
+
+  await card(page, 'Library one').getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: 'Save to playlist' }).click()
+  await page.getByRole('button', { name: 'New playlist' }).click()
+  await page.getByPlaceholder('Playlist name').fill('E2E badge')
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
+  // Shown on a card at rest: hovering one turns it into the player.
+  await page.keyboard.press('Escape')
+  await page.mouse.move(0, 0)
+  await expect(badge).toHaveText('E2E badge')
+
+  // Its own playlist's page leaves it off: every card there would say it.
+  await nav(page, 'Playlists').click()
+  await page.getByText('E2E badge').first().click()
+  await expect(page.getByRole('link', { name: 'Library one', exact: true }).first()).toBeVisible()
+  await expect(badge).toHaveCount(0)
+
+  await card(page, 'Library one').getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: 'Remove from playlist' }).click()
+  await page.goto('/')
+  await expect(page.getByRole('link', { name: 'Library one', exact: true }).first()).toBeVisible()
+  await expect(badge).toHaveCount(0)
+})
+
 test('Downloads lists the files, and the search box narrows them', async ({ page }) => {
   await page.goto('/')
   await nav(page, 'Downloads').click()

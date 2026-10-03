@@ -7,6 +7,7 @@ import { storyboardFrame } from '../lib/storyboard'
 import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useSummaryStatus, startSummary } from '../hooks/summaryStore'
+import { usePlaylistsOf } from '../hooks/playlistStore'
 import type { SummaryLength } from '../hooks/summaryStore'
 import { formatCount } from '../lib/richText'
 import { t } from '../lib/i18n'
@@ -124,6 +125,9 @@ type Props = {
   onRemoveFromPlaylist?: (video: VideoItem) => void  // when set (playlist page), the menu shows "remove from playlist"
   onRemoveImported?: (video: VideoItem) => void  // when set (imported page), the menu shows "remove from imported"
   onRemoveHistory?: (video: VideoItem) => void  // when set (history page), the menu shows "remove from history"
+  // The playlist whose page this card is on: left off the playlist badge,
+  // which on that page would say the same thing on every card.
+  playlistId?: number
   // How far into this video you got, if at all — draws the resume bar.
   watchProgress?: WatchProgress
   onHideChannel?: (channelId: string) => void    // when set, the menu shows "hide channel from home"
@@ -159,7 +163,7 @@ const ccPrefByVideo = new Map<string, boolean>()
 // idle players (and their audio) don't linger.
 const PLAYER_IDLE_TEARDOWN_MS = 600
 
-export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onRemoveImported, onRemoveHistory, watchProgress, onHideChannel, localSrc, localOnly }: Props) {
+export default function VideoCard({ video, isHovered, onHover, onChannelClick, sort, isWatchLater, onToggleWatchLater, onDownload, isDownloaded, onOpen, onRemoveDownload, onRemoveFromPlaylist, onRemoveImported, onRemoveHistory, playlistId, watchProgress, onHideChannel, localSrc, localOnly }: Props) {
   const videoUrl = `https://www.youtube.com/watch?v=${video.youtube_id}`
   // Shorts render as a vertical (9:16) card — YouTube's native Shorts ratio —
   // instead of 16:9 landscape.
@@ -226,6 +230,11 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const displayMuted = actualMuted ?? true
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
   const summary = useSummaryStatus(video.youtube_id)
+  const savedIn = usePlaylistsOf(video.youtube_id)
+  const playlists = useMemo(
+    () => (savedIn ?? []).filter((p) => p.id !== playlistId),
+    [savedIn, playlistId],
+  )
   const [menuOpen, setMenuOpen] = useState(false)   // title "more actions" menu
   const [showSavePanel, setShowSavePanel] = useState(false)  // "save to playlist" sub-panel
   const menuRef = useRef<HTMLDivElement>(null)
@@ -1059,8 +1068,9 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             it back to wherever you are now, and a video abandoned at 95% looks
             the same as one seen through. Summarising/Summarised, because the
             summary is written somewhere you aren't and the card is where you
-            come back to look for it. */}
-        {!isHovered && (watchProgress?.watched || summary) && (
+            come back to look for it. The playlists it's saved in, because
+            otherwise only the save-to menu says. */}
+        {!isHovered && (watchProgress?.watched || summary || playlists.length > 0) && (
           <div className="absolute left-1 top-1 z-[6] flex flex-col items-start gap-1">
             {watchProgress?.watched && (
               <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
@@ -1068,6 +1078,19 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
                 {t('Watched')}
+              </span>
+            )}
+            {playlists.length > 0 && (
+              <span
+                data-testid="playlist-badge"
+                title={playlists.map((p) => p.name).join('\n')}
+                className="flex max-w-[14rem] items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white"
+              >
+                <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
+                </svg>
+                <span className="truncate">{playlists[0].name}</span>
+                {playlists.length > 1 && <span className="flex-shrink-0">+{playlists.length - 1}</span>}
               </span>
             )}
             {summary?.status === 'running' && (

@@ -339,6 +339,12 @@ The pieces that aren't obvious:
   can't say it: a rewatch pulls the bar back to wherever you are now, and a
   video abandoned at 95% looks identical to one seen through. Idle-only, like
   the bar.
+- **A saved video names its playlists** under the same corner, in the same
+  badge: the first by name, the rest as `+N`, all of them in its tooltip.
+  `playlistStore` holds one map for the whole library
+  (`GET /api/playlists/memberships`), fetched at start and again on every
+  `playlists-changed`. On a playlist's own page that playlist is left off,
+  since every card there would say it.
 - **The page obeys the global controls**, like the feed does: the Videos/Shorts
   switch and the sidebar's tag selection, plus its own watch-status selection
   (see below). Both are applied
@@ -896,6 +902,8 @@ hooks/
   summaryStore.ts                 which videos have a long summary, and which
                                   are having one written — polled only while
                                   something is running
+  playlistStore.ts                which playlists each video is saved in —
+                                  the cards' playlist badge
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
   title.ts                        useDocumentTitle — the browser tab's title:
@@ -2424,7 +2432,7 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `upnext.spec.ts` | the channel's next video is offered when one ends and opens on a click; Dismiss; and with the panel open on either side, the card stays centred on the whole frame, at full width, clear of the panel |
 | `feed.spec.ts` | the followed channels' videos from the last 3 days, a wider window bringing in an older one (from a button, and by dragging the window's far edge), the sort deciding the order and surviving a reload, and each of Views, Hot, Likes and Like% putting its own video first |
 | `history.spec.ts` | a video reopens where it was left, one left near its end starts over, and History lists it and gives it back after a removal is undone |
-| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; Imported listing its videos, with a removal undone; and the page-scoped search on Downloads, History, Watch Later and Imported narrowing each list |
+| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; the card's playlist badge appearing on a save, left off on that playlist's own page, and gone after a removal; Imported listing its videos, with a removal undone; and the page-scoped search on Downloads, History, Watch Later and Imported narrowing each list |
 | `local.spec.ts` | a folder added by path lists its files with the lengths ffprobe read, and plays one |
 | `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows; the volume boost switching on without an error from its WebAudio graph and gone on coming back; and focus mode keeping the bar down while paused until the pointer is over the video, and holding across a reload |
 | `settings.spec.ts` | the app language and the light theme taking over the page and holding across a reload — then put back, since the whole suite shares one account |
