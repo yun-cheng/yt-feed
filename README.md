@@ -71,6 +71,10 @@ real video (muted, with custom captions and scrubbing).
   Bookmarks and Repeat tabs, which list them too. It's
   our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
+- **A chapter button, as YouTube has** — on our own bar, after the clock and
+  the mark buttons, it names the chapter playing; hover it to list the
+  chapters with their pictures and jump to one, click it to open the panel on
+  Chapters
 - **Up next, in the channel's own order** — when a video ends, the card offered
   is the same channel's **next one forward in time**, which is the order YouTube's
   own up-next never gives you and the one that lets you work through a backlog.

@@ -29,7 +29,7 @@
  * It talks to the player through PlayerApi, so it works the same over a YouTube
  * embed, a downloaded file, or a local one.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { apiFetch } from '../lib/api'
 import { CHAPTER_GAP } from '../lib/chapters'
@@ -938,6 +938,82 @@ export function BookmarkMenu({ rows, storyboard, markHere, onSeek, onRemove, onN
           <span className="ml-auto pl-2 text-white/60">{shortcutLabel('bookmark')}</span>
         </button>
       </div>}
+    </div>
+  )
+}
+
+// What the chapter menu leaves clear above it, inside the player.
+const MENU_ROOM_MARGIN = 12
+
+/** One chapter as the chapter menu reads it. */
+export type ChapterRow = { start: number; text: string; frame?: string }
+
+/** The video's chapters, from the chapter button: each jumps to its start, the
+ *  one playing is lit, and it opens scrolled to that one. Jumping leaves the
+ *  menu open, as the bookmark menu does — you skim through to the one you
+ *  meant. Nothing to write or remove: chapters are the video's, not yours. */
+export function ChapterMenu({ rows, active, storyboard, onSeek, onClose, within, room }: {
+  rows: ChapterRow[]
+  /** The playing chapter's index, or -1. */
+  active: number
+  storyboard?: StoryboardInfo | null
+  onSeek: (seconds: number) => void
+  onClose: () => void
+  within?: RefObject<HTMLElement | null>
+  /** The box it must fit inside — the player — when that's shorter than
+   *  seven rows. */
+  room?: RefObject<HTMLElement | null>
+}) {
+  const box = useRef<HTMLDivElement | null>(null)
+  const list = useRef<HTMLDivElement | null>(null)
+  useDismiss(box, onClose, within)
+  // On opening only: no taller than the player leaves room for; then scrolled
+  // to the playing one. Following along as it plays would pull the list out
+  // from under the pointer.
+  useLayoutEffect(() => {
+    const menu = box.current
+    const rows = list.current
+    const top = room?.current?.getBoundingClientRect().top
+    if (!menu || !rows) return
+    if (top !== undefined) {
+      const fits = rows.offsetHeight - (top + MENU_ROOM_MARGIN - menu.getBoundingClientRect().top)
+      if (fits < rows.offsetHeight) rows.style.maxHeight = `${Math.max(fits, 0)}px`
+    }
+    // Centred, so what came before it shows too. The list is `relative`, so a
+    // row's offsetTop is measured from its top.
+    const el = rows.children[active] as HTMLElement | undefined
+    if (el) rows.scrollTop = el.offsetTop - (rows.clientHeight - el.offsetHeight) / 2
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div
+      ref={box}
+      data-testid="chapter-menu"
+      role="menu"
+      // Flush with its button, opening rightwards like the bookmark menu.
+      className="absolute bottom-full left-0 z-40 w-[18rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
+    >
+      <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
+        {t('Chapters')}
+      </div>
+      {/* Seven rows before it scrolls — chapters run to dozens where marks run
+          to a few — and a sliver of the eighth to say there's more. */}
+      <div ref={list} className="relative max-h-[26.25rem] overflow-y-auto">
+        {rows.map((c, i) => (
+          <button
+            key={c.start}
+            role="menuitem"
+            onClick={() => onSeek(c.start)}
+            aria-current={i === active || undefined}
+            className={`${MENU_ROW} !items-start ${i === active ? 'bg-white/10' : ''}`}
+          >
+            <MomentThumb time={c.start} width={MENU_THUMB_W} frame={c.frame} storyboard={storyboard} />
+            <span className="flex min-w-0 flex-col">
+              <span className="whitespace-nowrap tabular-nums">{formatTime(c.start)}</span>
+              <span className="line-clamp-2 text-xs leading-snug text-white/70">{c.text}</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

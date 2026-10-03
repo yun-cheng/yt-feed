@@ -1213,8 +1213,8 @@ Other details:
   - **Each moment shows its picture** (`MomentThumb`): a bookmark in its menu
     (80px) and the panel's Bookmarks tab (96px), a passage — its start, or the
     top of the video when A is open — in the repeat menu (80px) and the panel's
-    Repeat tab (96px), and a chapter
-    in the panel's Chapters tab (96px). Off a file it's the exact frame:
+    Repeat tab (96px), and a chapter in the chapter menu (80px) and the
+    panel's Chapters tab (96px). Off a file it's the exact frame:
     `useFileFrames` (`lib/frameGrab.ts`) walks one detached `<video>` through
     the moments, draws each to a canvas and keeps it as a small JPEG for the
     session — only once the menu or the tab is showing, and keyed on the moments
@@ -1336,6 +1336,21 @@ Other details:
     behind the controls, and at 2px that read as a black line rather than a
     break. Over a bare embed YouTube's own bar already shows them, so only our
     bar draws them.
+  - **The chapter button** sits after the bookmark and repeat buttons, as
+    YouTube puts it after the clock: `• the chapter playing ›`, truncated to
+    the room left in the row. A click opens the panel on Chapters, or closes it
+    when it's already there; hovering lists the chapters (`ChapterMenu`), each
+    its picture, time and title, the playing one lit and centred on
+    opening. It shows seven rows where the other menus show four — chapters
+    run to dozens where marks run to a few — or fewer in a player too short
+    for that, stopping 12px short of its top (`room`); a row jumps there and leaves the menu open, as the bookmark menu
+    does. It keeps its own half-second tick (`barChapter`) that sets state
+    only when the chapter changes, rather than waking the page's play-head
+    tick, which would redraw the whole page twice a second for a label that
+    moves a few times a video; hovering reads the play head afresh, so the
+    list opens on a chapter just sought to. Our bar only, like the cuts, and
+    only once the bar is 50rem wide (a container query on it, `@container/controls`):
+    narrower, the clock and the buttons leave the title a few pixels.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
   embed's own captions can't be positioned or styled). The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
@@ -2378,7 +2393,7 @@ problem.
 
 | File | Covers |
 |------|--------|
-| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the two menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), notes on both kinds of mark (written in a menu, kept on Enter or a press outside, left on Escape, sent once a fresh mark is saved), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the chapter menu (lists, lights the playing one, jumps without closing, Escape or a press outside closes it), the menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), notes on both kinds of mark (written in a menu, kept on Enter or a press outside, left on Escape, sent once a fresh mark is saved), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |

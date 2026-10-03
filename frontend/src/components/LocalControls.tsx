@@ -486,8 +486,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // lands on the video beneath, the way it does on any player.
   const takesPointer = show ? 'pointer-events-auto' : ''
   return (
+    // A container, so what the page puts in the row can drop out when the
+    // player is too narrow for it (the chapter button does).
     <div
-      className={`pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
+      className={`@container/controls pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
         show ? 'opacity-100' : 'opacity-0'
       }`}
     >
@@ -813,7 +815,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
           </div>
         ) : (
           /* 14px and 8px of padding, both YouTube's. */
-          <span className="px-2 text-sm tabular-nums text-white/90">
+          <span className="whitespace-nowrap px-2 text-sm tabular-nums text-white/90">
             {formatTime(time)} / {formatTime(duration)}
           </span>
         )}

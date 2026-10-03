@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useRef } from 'react'
 import {
   BookmarkMenu,
+  ChapterMenu,
   NoteBox,
   MomentThumb,
   PIN_ICON,
@@ -1594,6 +1595,35 @@ describe('LoopMenu', () => {
     expect(props.onClose).not.toHaveBeenCalled()
     fireEvent.mouseDown(document.body)
     expect(props.onClose).toHaveBeenCalled()
+  })
+})
+
+describe('ChapterMenu', () => {
+  const rows = [
+    { start: 0, text: 'Opening' },
+    { start: 70, text: 'Middle' },
+    { start: 140, text: 'Close' },
+  ]
+  const open = (active = 1) => {
+    const props = { rows, active, onSeek: vi.fn(), onClose: vi.fn() }
+    render(<ChapterMenu {...props} />)
+    return props
+  }
+
+  it('lists the chapters, lights the playing one, and jumps without closing', () => {
+    const props = open()
+    expect(screen.getByRole('menuitem', { name: /Middle/ })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('menuitem', { name: /Opening/ })).not.toHaveAttribute('aria-current')
+    fireEvent.click(screen.getByRole('menuitem', { name: /Close/ }))
+    expect(props.onSeek).toHaveBeenCalledWith(140)
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes on Escape and on a press outside', () => {
+    const props = open()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    fireEvent.mouseDown(document.body)
+    expect(props.onClose).toHaveBeenCalledTimes(2)
   })
 })
 

@@ -11,7 +11,7 @@ import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalCon
 import { nextSpeed } from '../lib/playbackSpeeds'
 import { actionFor, shortcutLabel } from '../lib/shortcuts'
 import type { PlayerApi } from './LocalControls'
-import { usePlayerMarks, BookmarkMenu, NoteBox, EmbedMarkRail, LoopMenu, MomentThumb, PIN_ICON, LOOP_START_ICON, PENCIL_ICON, loopActive, loopLabel } from './PlayerMarks'
+import { usePlayerMarks, BookmarkMenu, ChapterMenu, NoteBox, EmbedMarkRail, LoopMenu, MomentThumb, PIN_ICON, LOOP_START_ICON, PENCIL_ICON, loopActive, loopLabel } from './PlayerMarks'
 import { useFileFrames } from '../lib/frameGrab'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
@@ -550,6 +550,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // same way the caption menu does — see chromeUp.
   const [showLoopMenu, setShowLoopMenu] = useState(false)
   const [showBookmarkMenu, setShowBookmarkMenu] = useState(false)
+  const [showChapterMenu, setShowChapterMenu] = useState(false)
   // The bookmark, or the passage, whose note is being written in the panel, by id.
   const [notingBookmark, setNotingBookmark] = useState<number | null>(null)
   const [notingLoop, setNotingLoop] = useState<number | null>(null)
@@ -727,7 +728,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // be absurd for a button to fade out from under the menu it opened — and with
   // our own bar the menu goes with it, so the menu faded out from under the
   // pointer that was working it.
-  const chromeUp = chromeAwake || showCaptionMenu || showLoopMenu || showBookmarkMenu
+  const chromeUp = chromeAwake || showCaptionMenu || showLoopMenu || showBookmarkMenu || showChapterMenu
 
   // Whether the controls under the video are OURS — either because it's a file
   // we play ourselves, or because we turned YouTube's off. The caption button and
@@ -1547,6 +1548,20 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     }, showCaptions ? 120 : 500)
     return () => window.clearInterval(id)
   }, [showCaptions, timeWanted])
+  // The chapter button's own tick: the playing chapter, set only when it
+  // changes, so the page isn't redrawn twice a second for a label that moves
+  // a few times a video.
+  const [barChapter, setBarChapter] = useState(-1)
+  const readBarChapter = () => {
+    const p = playerRef.current
+    if (p) setBarChapter(chapters.indexOf(chapterAt(chapters, p.getCurrentTime()) as Chapter))
+  }
+  useEffect(() => {
+    if (!ownBar || !chapters.length) return
+    readBarChapter()
+    const id = window.setInterval(readBarChapter, 500)
+    return () => window.clearInterval(id)
+  }, [ownBar, chapters])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // The AI-translated sentences as whole-line cues. Shared by whichever slot picked
   // AI (main or second): each translated sentence already covers its own span, and
@@ -1602,7 +1617,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const momentFrame = useFileFrames(playLocal ? localSrc : null, [
     ...(showBookmarkMenu || panelShows('bookmarks') ? marks.bookmarks.map((b) => b.position_seconds) : []),
     ...(showLoopMenu || panelShows('loops') ? marks.loops.map((l) => l.a ?? 0) : []),
-    ...(panelShows('chapters') ? chapters.map((c) => c.start) : []),
+    ...(showChapterMenu || panelShows('chapters') ? chapters.map((c) => c.start) : []),
   ])
   const chapterRows = useMemo(
     () => chapters.map((c) => ({ start: c.start, text: c.title, frame: momentFrame(c.start) })),
@@ -2610,8 +2625,55 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     onPointerEnter: (e: ReactPointerEvent) => { if (e.pointerType !== 'touch') set(true) },
     onPointerLeave: (e: ReactPointerEvent) => { if (e.pointerType !== 'touch') set(false) },
   })
+  const chapterMenuRef = useRef<HTMLDivElement>(null)
+  // The chapter playing, as YouTube shows it after the clock: pressed, it
+  // opens the panel on Chapters (or, already open there, closes it); hovered,
+  // it lists them, the way the bookmark button does. Only on our own bar —
+  // over the plain embed, YouTube's bar has its own — and only where the bar
+  // is wide enough to say more than "• ›" (under 50rem, the clock and the
+  // buttons leave it a few pixels).
+  // Hovering reads the play head afresh, so the list opens on the chapter
+  // just sought to rather than the one the tick last saw.
+  const shownChapter = chapters[barChapter] ?? chapters[0]
+  const chapterControl = ownBar && shownChapter && (
+    <div ref={chapterMenuRef} className="relative hidden min-w-0 items-center @[50rem]/controls:flex" {...hoverMenu((open) => {
+      if (open) readBarChapter()
+      setShowChapterMenu(open)
+    })}>
+      <button
+        onClick={() => {
+          setShowChapterMenu(false)
+          if (panelShows('chapters')) setPanelOnVideo(false)
+          else { setPanelTab('chapters'); setPanelOnVideo(true) }
+        }}
+        aria-haspopup="menu"
+        aria-expanded={showChapterMenu}
+        aria-pressed={panelShows('chapters')}
+        aria-label={t('Chapters')}
+        data-testid="chapter-button"
+        className="flex h-10 min-w-0 items-center gap-1 rounded-full px-2 text-sm text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+      >
+        <span aria-hidden>•</span>
+        <span className="truncate">{shownChapter.title}</span>
+        <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+      {showChapterMenu && (
+        <ChapterMenu
+          rows={chapterRows}
+          active={barChapter}
+          storyboard={storyboard}
+          onSeek={seekTo}
+          onClose={() => setShowChapterMenu(false)}
+          within={chapterMenuRef}
+          room={playerBoxRef}
+        />
+      )}
+    </div>
+  )
   const marksControls = (
-    <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[13.75rem] z-20 flex items-center'}>
+    <div className={ownBar ? 'flex min-w-0 items-center' : 'absolute bottom-[14px] left-[13.75rem] z-20 flex items-center'}>
       <div ref={bookmarkMenuRef} className="relative" {...hoverMenu((open) => {
         if (!open && menuNoteOpen.current) return
         setShowBookmarkMenu(open)
@@ -2740,6 +2802,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         />
       )}
       </div>
+      {chapterControl}
     </div>
   )
 
@@ -3251,7 +3314,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             <LocalControls
               videoRef={videoRef}
               src={localSrc}
-              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu || showBookmarkMenu}
+              hovering={(pointerOverPlayer && !chromeIdle) || showCaptionMenu || showLoopMenu || showBookmarkMenu || showChapterMenu}
               onFullscreen={toggleFullscreen}
               nextControl={nextButton}
               leftControls={marksControls}
