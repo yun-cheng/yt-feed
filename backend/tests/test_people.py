@@ -197,6 +197,22 @@ async def test_someone_elses_playlist_items_go_too(client, owner, db):
     )).scalar_one() == 0
 
 
+async def test_their_notes_go_too(client, owner, db):
+    from app.models import VideoNote
+
+    made = (await client.post("/api/users", json={"name": "Sister"})).json()
+    await client.get(f"/api/users/join/{made['login_token']}")
+    await client.put("/api/notes/video/vid1", json={"note": "theirs"})
+    await client.post("/api/auth/logout")
+
+    headers = {"Authorization": f"Bearer {owner.api_key}"}
+    await client.delete(f"/api/users/{made['id']}", headers=headers)
+
+    assert (await db.execute(
+        select(func.count()).select_from(VideoNote)
+    )).scalar_one() == 0
+
+
 # ── The single YouTube token, and who owns it ────────────────────────
 #
 # There is one `config/youtube_oauth_token.json`, read by the scan, the archive

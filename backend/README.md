@@ -89,6 +89,7 @@ app/
     imported.py    videos added by pasting a YouTube link (metadata via yt-dlp)
     local.py       local folders: scan a directory, serve its files, remember positions
     settings.py    app settings, served with the spec the UI renders from
+    notes.py       what you write about a video: labels, fields, a note
     ask.py         questions about a video, answered from its transcript (streamed)
     summaries.py   the same answer, written in the background from a card
     notifications.py  the bell: what finished while you were on another page
@@ -855,6 +856,30 @@ A preset carries no page, no sort and no window — see the frontend README for
 why, and for what happens to a filter the page you're on doesn't offer.
 
 ---
+
+## Notes (`routers/notes.py`)
+
+What a person writes about a video in the watch page's Notes tab: **labels**, a
+list; **fields**, each a name holding several values (`[{"name": "Actors",
+"values": ["Ann", "Bo"]}]`, in the order they were added); and a **note**, free
+text. One `video_notes` row per (user, video), `video_id` opaque like a
+bookmark's, so a local file can carry notes too.
+
+- **Saved whole.** `PUT /api/notes/video/{id}` replaces the row with what was
+  sent and answers with what was kept. The tab already holds all of it, and a
+  save that restates everything can't leave the row half-written by a request
+  that arrived out of order. Emptied of everything, the row goes.
+- **Tidied here**, so suggestions are built from clean rows: values trimmed and
+  inner whitespace collapsed, blanks dropped, and the first spelling of each
+  kept where another case repeats it. Two fields of one name become one, their
+  values joined. A field with no values is kept — it was made on purpose.
+- **Suggestions** (`GET /api/notes/suggestions`) read every row of yours:
+  labels and field names most used first, each under the spelling used most,
+  and for each field the values it has held, most used first. One request for
+  the tab, not one per keystroke.
+- **Per person**, like bookmarks, and removed with the person.
+
+`/video/` sits in the path so a video id can never be read as `suggestions`.
 
 ## Ask (`routers/ask.py`)
 
@@ -1794,6 +1819,7 @@ worker posts from a `youtube.com` page context and a cookie would need
 | `watch_history` | how far **each user** got in each video, and whether they finished it |
 | `bookmarks` | moments one user marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
 | `filter_presets` | one user's named sidebar selections — the filters as an opaque JSON blob, the name unique per user so a re-save overwrites |
+| `video_notes` | what one user wrote about a video — labels and fields as JSON, and a note; one row per (user, video), gone once emptied. See "Notes" |
 | `video_loops` | the passages of a video one user marked to repeat — many per video, at most one `active`, either end nullable (one end pinned still repeats) |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
@@ -2159,6 +2185,8 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | GET/POST/DELETE | `/api/presets` | saved filter presets: list / save (re-using a name overwrites) / `DELETE /api/presets/{id}` |
 | GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
+| GET/PUT | `/api/notes/video/{video_id}` | one video's notes, `{labels, fields: [{name, values}], note, updated_at}` — empty when nothing's written; PUT replaces them whole and answers with what was kept |
+| GET | `/api/notes/suggestions` | labels, field names and each field's values from all your notes, most used first |
 | GET/POST | `/api/bookmarks/{video_id}/loops` | that video's saved passages, as `{id, a, b, active}`; POST marks a new one, which becomes the running one. `PATCH`/`DELETE .../loops/id/{n}` move an end or switch to it / drop it |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
 | GET | `/api/local/folders/{id}/videos` | that folder's videos (`?rescan=false` = cached listing, used by the scanning poll) |
@@ -2213,6 +2241,7 @@ no per-test decorator). What's covered:
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
+| `test_notes.py` | notes saved whole and read back, each video its own, a save replacing rather than adding, tidying (trim, blanks, case, one field per name), an unfilled field kept, an emptied row gone, suggestions most used first under the commonest spelling, and non-Latin text intact |
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
 | `test_llm_stream.py` | how a streamed reply ends: whole when the model stops, and as an error after the text when the token cap cuts it off |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer; translating one comment (the target in the prompt, the title as context, one model call per text and target, what's refused, a failure not cached) |

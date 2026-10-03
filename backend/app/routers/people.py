@@ -145,7 +145,8 @@ async def remove_person(
     """
     from app.models import (
         Bookmark, ChannelTag, ChannelTagRejection, HiddenChannel, Playlist,
-        PlaylistItem, UserChannel, UserImport, UserSetting, WatchHistory, WatchLater,
+        PlaylistItem, UserChannel, UserImport, UserSetting, VideoNote, WatchHistory,
+        WatchLater,
     )
     from sqlalchemy import delete as sa_delete
 
@@ -167,7 +168,7 @@ async def remove_person(
         )
     for model in (
         WatchHistory, WatchLater, Bookmark, HiddenChannel, Playlist, ChannelTag,
-        ChannelTagRejection, UserChannel, UserImport, UserSetting,
+        ChannelTagRejection, UserChannel, UserImport, UserSetting, VideoNote,
     ):
         await db.execute(sa_delete(model).where(model.user_id == user_id))
     await db.delete(person)

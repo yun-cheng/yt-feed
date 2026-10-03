@@ -625,6 +625,35 @@ class VideoLoop(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+class VideoNote(Base):
+    """What a person has written about a video: labels, fields and a note.
+
+    `video_id` is opaque for the same reason Bookmark's is — a YouTube video, a
+    downloaded copy and a local file all open in the same watch page.
+
+    One row per (user, video), saved whole by the Notes tab: the three parts are
+    edited together, read together, and only ever by their owner, so a table
+    each would be three writes for one keystroke's worth of change. Labels and
+    fields are JSON for the same reason; what reads across videos (the
+    suggestions) reads every row anyway.
+
+    `labels`: ["comedy", "rewatch"]. `fields`: [{"name": "Actors", "values":
+    ["Ann", "Bo"]}], in the order they were added — a field with no values yet
+    is kept, since it was made on purpose and is waiting for them.
+    """
+    __tablename__ = "video_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True, nullable=False, default=1)
+    video_id = Column(String, nullable=False, index=True)
+    labels = Column(Text, nullable=False, default="[]")
+    fields = Column(Text, nullable=False, default="[]")
+    note = Column(Text, nullable=False, default="")
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "video_id", name="uq_video_note_user_video"),)
+
+
 class ChatMessage(Base):
     """One turn of the Ask conversation about a video.
 

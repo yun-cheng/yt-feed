@@ -231,6 +231,20 @@ async def test_the_save_to_menu_only_sees_your_playlists(client, pair):
             ).json() == {}
 
 
+async def test_notes_are_kept_per_person(client, pair):
+    mine, theirs, *_ = pair
+    await client.put("/api/notes/video/vid1", headers=mine,
+                     json={"labels": ["mine"], "fields": [{"name": "Actors", "values": ["Ann"]}], "note": "private"})
+
+    assert (await client.get("/api/notes/video/vid1", headers=mine)).json()["note"] == "private"
+    assert (await client.get("/api/notes/video/vid1", headers=theirs)).json()["note"] == ""
+    assert (await client.get("/api/notes/suggestions", headers=theirs)).json() == {"labels": [], "fields": {}}
+
+    # Theirs is a row of its own, and leaves mine alone.
+    await client.put("/api/notes/video/vid1", headers=theirs, json={"labels": ["theirs"]})
+    assert (await client.get("/api/notes/video/vid1", headers=mine)).json()["labels"] == ["mine"]
+
+
 # ── Channel tags ─────────────────────────────────────────────────────
 
 

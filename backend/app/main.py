@@ -16,7 +16,7 @@ from app import bootstrap, users
 from app.config import settings
 from app.database import async_session, init_db
 from app.models import User
-from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local, bookmarks, people, ask, summaries, notifications, presets
+from app.routers import feed, channels, subscriptions, downloads, hidden, imported, history, local, bookmarks, people, ask, summaries, notifications, presets, notes
 from app.routers import search as search_router
 from app.routers import settings as settings_router
 from app.routers import setup as setup_router
@@ -264,6 +264,7 @@ app.include_router(imported.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(local.router, prefix="/api")
 app.include_router(bookmarks.router, prefix="/api")
+app.include_router(notes.router, prefix="/api")
 app.include_router(ask.router, prefix="/api")
 app.include_router(summaries.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
