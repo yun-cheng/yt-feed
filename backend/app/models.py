@@ -621,6 +621,8 @@ class VideoLoop(Base):
     # trouble here, and the invariant only has to hold at the one place that
     # writes it.
     active = Column(Boolean, nullable=False, default=False)
+    # What the passage is — "the hard run in bar 12" — written in the menu.
+    note = Column(String, nullable=False, default="")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 

@@ -29,6 +29,10 @@ from app.models import Bookmark, User, VideoLoop
 
 router = APIRouter(prefix="/bookmarks")
 
+# A note on a bookmark or a passage is a line or a paragraph about why you
+# marked it — bounded only so a paste can't make every listing heavy.
+MAX_NOTE = 2000
+
 
 async def get_db():
     async with async_session() as session:
@@ -43,15 +47,26 @@ class BookmarkCreate(BaseModel):
     note: str = ""
 
 
+class BookmarkEdit(BaseModel):
+    note: str
+
+
+def _clean_note(note: str) -> str:
+    # Inner line breaks are kept: a note can be a list of what happens there.
+    return note.strip()[:MAX_NOTE]
+
+
 class LoopPayload(BaseModel):
     """Seconds, or null for an end that isn't pinned.
 
     `active` is optional on a PATCH so that moving an end and switching passages
     are separate edits — pinning `[` on the running loop shouldn't have to
-    restate that it's the running one."""
+    restate that it's the running one. `note` likewise: writing one touches
+    nothing else."""
     a: float | None = None
     b: float | None = None
     active: bool | None = None
+    note: str | None = None
 
 
 def _serialize_loop(row: VideoLoop) -> dict:
@@ -60,6 +75,7 @@ def _serialize_loop(row: VideoLoop) -> dict:
         "a": row.a_seconds,
         "b": row.b_seconds,
         "active": bool(row.active),
+        "note": row.note or "",
     }
 
 
@@ -134,6 +150,7 @@ async def add_loop(
         a_seconds=p.a,
         b_seconds=p.b,
         active=True if p.active is None else p.active,
+        note=_clean_note(p.note or ""),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -153,7 +170,8 @@ async def edit_loop(
     user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
-    """Move an end, or switch to this passage — the two edits the page makes.
+    """Move an end, switch to this passage, or write what it is — the edits
+    the page makes.
 
     PATCH rather than PUT because they're independent: `[` moves an end on the
     running loop without restating that it's running, and picking a passage out
@@ -165,6 +183,8 @@ async def edit_loop(
         row.a_seconds = p.a
     if "b" in fields:
         row.b_seconds = p.b
+    if "note" in fields and p.note is not None:
+        row.note = _clean_note(p.note)
     if "active" in fields and p.active is not None:
         row.active = p.active
         if p.active:
@@ -218,10 +238,35 @@ async def add_bookmark(
         user_id=user.id,
         video_id=p.video_id,
         position_seconds=max(0.0, p.position_seconds),
-        note=p.note.strip(),
+        note=_clean_note(p.note),
         created_at=datetime.utcnow(),
     )
     db.add(b)
+    await db.commit()
+    return _serialize(b)
+
+
+async def _owned_bookmark(db: AsyncSession, user: User, bookmark_id: int) -> Bookmark:
+    b = await db.get(Bookmark, bookmark_id)
+    # Somebody else's bookmark is "no such bookmark" rather than a refusal —
+    # a 403 would confirm the id exists, which is more than the asker should learn.
+    if b is None or b.user_id != user.id:
+        raise HTTPException(status_code=404, detail="No such bookmark")
+    return b
+
+
+@router.patch("/id/{bookmark_id}")
+async def edit_bookmark(
+    bookmark_id: int,
+    p: BookmarkEdit,
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Write what a bookmark says — the panel's note on a row. The moment
+    itself doesn't move: a bookmark somewhere else is a new bookmark. An empty
+    note clears it, and the row goes back to saying what's said there."""
+    b = await _owned_bookmark(db, user, bookmark_id)
+    b.note = _clean_note(p.note)
     await db.commit()
     return _serialize(b)
 
@@ -235,11 +280,7 @@ async def remove_bookmark(
     """Prefixed with /id/ so it can't be read as a video id — the GET above takes
     one of those in the same slot, and a bare {bookmark_id} would shadow nothing
     but would leave the two routes looking interchangeable when they aren't."""
-    b = await db.get(Bookmark, bookmark_id)
-    # Somebody else's bookmark is "no such bookmark" rather than a refusal —
-    # a 403 would confirm the id exists, which is more than the asker should learn.
-    if b is None or b.user_id != user.id:
-        raise HTTPException(status_code=404, detail="No such bookmark")
+    await _owned_bookmark(db, user, bookmark_id)
     await db.execute(delete(Bookmark).where(Bookmark.id == bookmark_id))
     await db.commit()
     return {"status": "ok"}

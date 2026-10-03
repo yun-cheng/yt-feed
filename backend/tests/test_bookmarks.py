@@ -70,6 +70,33 @@ async def test_note_is_trimmed(client):
     assert b["note"] == "spaced"
 
 
+async def test_a_note_can_be_written_later(client):
+    b = await add(client, "vid1", 5)
+    r = await client.patch(f"/api/bookmarks/id/{b['id']}", json={"note": "  the reveal\nand after  "})
+    assert r.status_code == 200, r.text
+    assert r.json()["note"] == "the reveal\nand after"
+    assert r.json()["position_seconds"] == 5
+    listed = (await client.get("/api/bookmarks/vid1")).json()
+    assert listed[0]["note"] == "the reveal\nand after"
+
+
+async def test_an_empty_note_clears_it(client):
+    b = await add(client, "vid1", 5, note="old")
+    r = await client.patch(f"/api/bookmarks/id/{b['id']}", json={"note": "   "})
+    assert r.json()["note"] == ""
+
+
+async def test_a_note_is_bounded(client):
+    b = await add(client, "vid1", 5)
+    r = await client.patch(f"/api/bookmarks/id/{b['id']}", json={"note": "x" * 5000})
+    assert len(r.json()["note"]) == 2000
+
+
+async def test_editing_a_missing_bookmark_is_404(client):
+    r = await client.patch("/api/bookmarks/id/9999", json={"note": "hi"})
+    assert r.status_code == 404
+
+
 async def test_delete_removes_only_that_bookmark(client):
     keep = await add(client, "vid1", 10)
     drop = await add(client, "vid1", 20)
@@ -182,7 +209,23 @@ async def test_moving_an_end_leaves_the_rest_alone(client):
     """`[` on the running loop shouldn't have to restate that it's running."""
     made = await add_loop(client, "vid1", a=10.0, b=20.0)
     r = await client.patch(f"/api/bookmarks/vid1/loops/id/{made['id']}", json={"b": 30.0})
-    assert r.json() == {"id": made["id"], "a": 10.0, "b": 30.0, "active": True}
+    assert r.json() == {"id": made["id"], "a": 10.0, "b": 30.0, "active": True, "note": ""}
+
+
+async def test_a_passage_can_say_what_it_is(client):
+    made = await add_loop(client, "vid1", a=10.0, b=20.0)
+    r = await client.patch(f"/api/bookmarks/vid1/loops/id/{made['id']}", json={"note": "  bar 12, the run  "})
+    # Only the note: the ends and the running state stay as they were.
+    assert r.json() == {"id": made["id"], "a": 10.0, "b": 20.0, "active": True, "note": "bar 12, the run"}
+    assert (await loops(client, "vid1"))[0]["note"] == "bar 12, the run"
+    # And moving an end afterwards keeps it.
+    r = await client.patch(f"/api/bookmarks/vid1/loops/id/{made['id']}", json={"a": 12.0})
+    assert r.json()["note"] == "bar 12, the run"
+
+
+async def test_a_passage_can_be_made_with_its_note(client):
+    made = await add_loop(client, "vid1", a=10.0, note="chorus")
+    assert made["note"] == "chorus"
 
 
 async def test_an_end_can_be_unpinned_on_its_own(client):

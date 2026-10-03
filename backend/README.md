@@ -786,8 +786,8 @@ about the extension, and a shared gate would turn off more than was asked.
 Moments in a video, marked with `b` while it plays. Server-side for the same
 reason as history: the mark is about the video, not the browser that made it.
 
-Deliberately thinner than history — add, list, delete, no upsert. Two decisions
-carry all of it:
+Deliberately thinner than history — add, list, write a note, delete, no upsert.
+Two decisions carry all of it:
 
 - **Many rows per video**, ordered by position. A bookmark is an event, not a
   state, and keeping several is the whole point.
@@ -799,9 +799,14 @@ carry all of it:
 
 "Press `b` again at the same spot to remove it" is the **client's** rule (±2s),
 not this router's: the page already holds the list, so it can answer instantly
-instead of asking — and it's the only way to remove one, since the marks live on
-the progress bar rather than in a list with delete buttons. Delete is `/api/bookmarks/id/{n}` — the `/id/` segment keeps
+instead of asking. Delete is `/api/bookmarks/id/{n}` — the `/id/` segment keeps
 it from reading as the video id that the GET takes in the same slot.
+
+**A note says why you marked it.** `PATCH /api/bookmarks/id/{n}` with `{note}`
+writes it — trimmed, line breaks kept, cut at 2,000 characters (`MAX_NOTE`,
+bounded only so a paste can't make every listing heavy); empty clears it. The
+moment itself never moves: a bookmark somewhere else is a new bookmark.
+Someone else's bookmark is a 404 here too.
 
 **Saved loops live here too** — `/api/bookmarks/{video_id}/loops`, rows in
 `video_loops`. They share the file because they share the key: one video id,
@@ -828,10 +833,12 @@ Four things about the shape:
   menu's ×. Deleting promotes nothing in its place: which passage runs next is
   the page's call, and usually the answer is none.
 
-`PATCH` rather than `PUT` because moving an end and switching passages are
-independent edits: `[` on the running loop shouldn't have to restate that it's
-running, and picking one out of the menu shouldn't have to restate where its ends
-are. Only the fields sent are touched, so an explicit null still unpins an end.
+`PATCH` rather than `PUT` because moving an end, switching passages and writing
+a passage's `note` are independent edits: `[` on the running loop shouldn't have
+to restate that it's running, and picking one out of the menu shouldn't have to
+restate where its ends are. Only the fields sent are touched, so an explicit
+null still unpins an end, and moving one keeps the note. The note is a
+bookmark's, cleaned the same way (`_clean_note`).
 
 ---
 
@@ -1821,10 +1828,10 @@ worker posts from a `youtube.com` page context and a cookie would need
 | `hidden_channels` | channels one user hid from their home feed |
 | `imported_videos` | metadata for videos the feed doesn't hold: ones added by URL, plus (under `source="youtube"`) ones opened via the extension's button. A shared cache — `user_imports` says whose page each appears on |
 | `watch_history` | how far **each user** got in each video, and whether they finished it |
-| `bookmarks` | moments one user marked with `b` while watching — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
+| `bookmarks` | moments one user marked with `b` while watching, each with an optional note — many rows per video, one untyped `video_id` covering YouTube ids and local ones alike |
 | `filter_presets` | one user's named sidebar selections — the filters as an opaque JSON blob, the name unique per user so a re-save overwrites |
 | `video_notes` | what one user wrote about a video — labels and fields as JSON, and a note; one row per (user, video), gone once emptied. See "Notes" |
-| `video_loops` | the passages of a video one user marked to repeat — many per video, at most one `active`, either end nullable (one end pinned still repeats) |
+| `video_loops` | the passages of a video one user marked to repeat, each with an optional note — many per video, at most one `active`, either end nullable (one end pinned still repeats) |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
 | `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
@@ -2188,11 +2195,11 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/history/by-id/{id}` | report a position for a video we're given nothing but the id of — what the extension posts while you watch on youtube.com. Metadata is resolved here |
 | GET/POST/DELETE | `/api/hidden-channels` | list / hide / un-hide channels from home |
 | GET/POST/DELETE | `/api/presets` | saved filter presets: list / save (re-using a name overwrites) / `DELETE /api/presets/{id}` |
-| GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
+| GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `PATCH /api/bookmarks/id/{n}` writes its note; `DELETE` removes it |
 | GET/PUT | `/api/notes/video/{video_id}` | one video's notes, `{labels, fields: [{name, values}], note, updated_at}` — empty when nothing's written; PUT replaces them whole and answers with what was kept |
 | GET | `/api/notes` | every video's labels and filled fields, `{video_id: {labels, fields}}` — the cards' badges; the note itself isn't included |
 | GET | `/api/notes/suggestions` | labels, field names and each field's values from all your notes, most used first |
-| GET/POST | `/api/bookmarks/{video_id}/loops` | that video's saved passages, as `{id, a, b, active}`; POST marks a new one, which becomes the running one. `PATCH`/`DELETE .../loops/id/{n}` move an end or switch to it / drop it |
+| GET/POST | `/api/bookmarks/{video_id}/loops` | that video's saved passages, as `{id, a, b, active, note}`; POST marks a new one, which becomes the running one. `PATCH`/`DELETE .../loops/id/{n}` move an end, switch to it or write its note / drop it |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
 | GET | `/api/local/folders/{id}/videos` | that folder's videos (`?rescan=false` = cached listing, used by the scanning poll) |
 | DELETE | `/api/local/folders/{id}` | forget a folder — our rows and thumbnails only, never the files |
@@ -2230,7 +2237,7 @@ no per-test decorator). What's covered:
 | `test_quota.py` | the quota-day boundary (incl. DST), the ledger, and telling an exhausted allowance from a stale token |
 | `test_ranking.py` | age ranges, the sort modes, the hot-score burn-in, like% shrinkage |
 | `test_history.py` | `is_watched` at both rules' boundaries, upsert, the sticky `watched` flag, the snapshot, reporting from an id alone (resolved once rather than every ten seconds, one row shared with the app), and undo: the receipt a removal hands back, a restore that is verbatim and keeps its place, and one that leaves a row you have since watched alone |
-| `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup — and saved loops: several per video, only one active at a time, a half-set one kept as it is, stopping keeping the passage where deleting drops it |
+| `test_bookmarks.py` | ordering, per-video scoping, the toggle's clamp, `/id/` not shadowing the video lookup, a note written later (trimmed, cleared by empty, bounded) — and saved loops: several per video, only one active at a time, a half-set one kept as it is, stopping keeping the passage where deleting drops it, a note that touches nothing else and survives moving an end |
 | `test_next_video.py` | the up-next walk: the immediate successor rather than the newest, nothing ahead of the channel's latest, shorts and long-form as separate sequences, videos sharing a timestamp staying reachable — and the channel page's filters narrowing which videos are eligible without touching the order |
 | `test_local.py` | the directory walk, path-escape refusal, rescan reconcile, resume |
 | `test_playlists.py` | counts, covers, item ordering, cascade on delete, adding by id alone (the extension's menu), and a removed item restored to its position rather than to the top |
@@ -2254,7 +2261,7 @@ no per-test decorator). What's covered:
 | `test_imported.py` | every accepted link shape, the Shorts heuristic, publish-date fallbacks, the `source` split (and promotion), resolving an unknown video, avatar lookup, and a restore that keeps its place on the page and never fetches |
 | `test_users.py` | seeding the person already here, the one-time channel backfill (incl. carrying `source` across), which row a Google account lands on (adoption, its guard, the session claim that keeps the owner from being stranded), the old token file, and the startup migration guard in both directions |
 | `test_auth.py` | who is admitted: closed by default, `OPEN_SIGNUP` putting the LAN behaviour back, the allowlist as the whole answer where it's set, an account surviving being trimmed off that list, and the owner linking Google to the row they claimed with. Plus reading the caller from a cookie or an API key, the whole sign-in end to end against a stubbed Google, and a saved YouTube token keeping the scopes it was granted rather than today's wider list (plus no token file being nobody, not a crash) |
-| `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist or bookmark, the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
+| `test_isolation.py` | two accounts through the real API, one question per personal table: history, watch-later, bookmarks, hidden channels, playlists, tags, settings, imports and the extension's endpoint — plus 404-not-403 on someone else's playlist, bookmark or passage (deleting one or writing its note), the feed/channels/statistics narrowing, and the search filter (including that following nothing searches nothing rather than everything) |
 | `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account, and the three guards around the single YouTube token |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
 | `test_presets.py` | saved sidebar selections: a preset coming back whole, the defaults filling in what wasn't sent, a re-used name overwriting rather than doubling, a name trimmed (blank refused, overlong cut) and an unknown key refused, the order they were made in, a blob that won't parse filtering nothing instead of 500ing the list, and one account's presets staying theirs |

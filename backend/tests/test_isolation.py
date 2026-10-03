@@ -140,6 +140,16 @@ async def test_someone_elses_bookmark_cannot_be_deleted(client, pair):
     assert len((await client.get("/api/bookmarks/vid1", headers=mine)).json()) == 1
 
 
+async def test_someone_elses_bookmark_cannot_be_written_on(client, pair):
+    mine, theirs, *_ = pair
+    made = (await client.post("/api/bookmarks", headers=mine,
+                              json={"video_id": "vid1", "position_seconds": 30.0, "note": "mine"})).json()
+
+    r = await client.patch(f"/api/bookmarks/id/{made['id']}", headers=theirs, json={"note": "theirs"})
+    assert r.status_code == 404
+    assert (await client.get("/api/bookmarks/vid1", headers=mine)).json()[0]["note"] == "mine"
+
+
 async def test_loops_are_not_shared(client, pair):
     """Two people can be working on different passages of the same video."""
     mine, theirs, *_ = pair
@@ -147,6 +157,16 @@ async def test_loops_are_not_shared(client, pair):
 
     assert len((await client.get("/api/bookmarks/vid1/loops", headers=mine)).json()) == 1
     assert (await client.get("/api/bookmarks/vid1/loops", headers=theirs)).json() == []
+
+
+async def test_someone_elses_loop_cannot_be_written_on(client, pair):
+    mine, theirs, *_ = pair
+    made = (await client.post("/api/bookmarks/vid1/loops", headers=mine,
+                              json={"a": 10.0, "b": 20.0})).json()
+
+    r = await client.patch(f"/api/bookmarks/vid1/loops/id/{made['id']}", headers=theirs, json={"note": "theirs"})
+    assert r.status_code == 404
+    assert (await client.get("/api/bookmarks/vid1/loops", headers=mine)).json()[0]["note"] == ""
 
 
 async def test_someone_elses_loop_cannot_be_deleted(client, pair):

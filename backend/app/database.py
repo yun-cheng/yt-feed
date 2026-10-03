@@ -77,6 +77,9 @@ _COLUMN_MIGRATIONS = [
     # Which of the two summaries a job asked for. "long" is the correct backfill
     # as well as the default: it was the only one that existed.
     ("summary_jobs", "length", "VARCHAR NOT NULL DEFAULT 'long'"),
+    # A saved passage's note. Empty is the correct backfill: nothing could
+    # write one before this column existed.
+    ("video_loops", "note", "VARCHAR NOT NULL DEFAULT ''"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the
