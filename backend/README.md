@@ -877,6 +877,10 @@ bookmark's, so a local file can carry notes too.
   labels and field names most used first, each under the spelling used most,
   and for each field the values it has held, most used first. One request for
   the tab, not one per keystroke.
+- **The cards' map** (`GET /api/notes`): every video's labels and fields,
+  keyed by video id, for each card's badges — one request for the
+  library. The note stays out (it's the watch page's, and can be long), and so
+  does a field with no values yet.
 - **Per person**, like bookmarks, and removed with the person.
 
 `/video/` sits in the path so a video id can never be read as `suggestions`.
@@ -2186,6 +2190,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET/POST/DELETE | `/api/presets` | saved filter presets: list / save (re-using a name overwrites) / `DELETE /api/presets/{id}` |
 | GET/POST | `/api/bookmarks` | `GET /api/bookmarks/{video_id}` = one video's marked moments, in playback order; POST adds one. `DELETE /api/bookmarks/id/{n}` removes one |
 | GET/PUT | `/api/notes/video/{video_id}` | one video's notes, `{labels, fields: [{name, values}], note, updated_at}` — empty when nothing's written; PUT replaces them whole and answers with what was kept |
+| GET | `/api/notes` | every video's labels and filled fields, `{video_id: {labels, fields}}` — the cards' badges; the note itself isn't included |
 | GET | `/api/notes/suggestions` | labels, field names and each field's values from all your notes, most used first |
 | GET/POST | `/api/bookmarks/{video_id}/loops` | that video's saved passages, as `{id, a, b, active}`; POST marks a new one, which becomes the running one. `PATCH`/`DELETE .../loops/id/{n}` move an end or switch to it / drop it |
 | GET/POST | `/api/local/folders` | list local folders / add one by path (scans it) |
@@ -2241,7 +2246,7 @@ no per-test decorator). What's covered:
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
-| `test_notes.py` | notes saved whole and read back, each video its own, a save replacing rather than adding, tidying (trim, blanks, case, one field per name), an unfilled field kept, an emptied row gone, suggestions most used first under the commonest spelling, and non-Latin text intact |
+| `test_notes.py` | notes saved whole and read back, each video its own, a save replacing rather than adding, tidying (trim, blanks, case, one field per name), an unfilled field kept, an emptied row gone, suggestions most used first under the commonest spelling, non-Latin text intact, and the cards' map holding labels and filled fields only |
 | `test_ask.py` | what the model is allowed to see: the timestamped lines, the window that follows the play head on an overlong transcript and admits it was trimmed — plus the streamed reply, a failure that stays an HTTP status, a partial that is kept, and one person's conversation staying theirs |
 | `test_llm_stream.py` | how a streamed reply ends: whole when the model stops, and as an error after the text when the token cap cuts it off |
 | `test_comments.py` | nesting yt-dlp's flat list into threads, the two field names it gets wrong (`comment_count` is our cap, not the video's total; disabled vs empty), the sort allow-list, and one cache entry per (video, sort, depth) so the replies walk can't be served the shallow answer; translating one comment (the target in the prompt, the title as context, one model call per text and target, what's refused, a failure not cached) |

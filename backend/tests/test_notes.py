@@ -86,3 +86,14 @@ async def test_non_latin_text_survives(client):
     got = await put(client, labels=["喜劇"], fields=[{"name": "演員", "values": ["周星馳"]}], note="好看")
     assert got["labels"] == ["喜劇"]
     assert got["fields"] == [{"name": "演員", "values": ["周星馳"]}]
+
+
+async def test_the_cards_map_holds_labels_and_filled_fields_only(client):
+    await put(client, "v1", labels=["comedy"], fields=[{"name": "Cities", "values": ["Oslo"]}], note="long text")
+    await put(client, "v2", fields=[{"name": "Actors", "values": []}], note="only a note and an empty field")
+    await put(client, "v3", labels=["rewatch"])
+    got = (await client.get("/api/notes")).json()
+    assert got == {
+        "v1": {"labels": ["comedy"], "fields": [{"name": "Cities", "values": ["Oslo"]}]},
+        "v3": {"labels": ["rewatch"], "fields": []},
+    }

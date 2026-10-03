@@ -239,6 +239,7 @@ async def test_notes_are_kept_per_person(client, pair):
     assert (await client.get("/api/notes/video/vid1", headers=mine)).json()["note"] == "private"
     assert (await client.get("/api/notes/video/vid1", headers=theirs)).json()["note"] == ""
     assert (await client.get("/api/notes/suggestions", headers=theirs)).json() == {"labels": [], "fields": {}}
+    assert (await client.get("/api/notes", headers=theirs)).json() == {}
 
     # Theirs is a row of its own, and leaves mine alone.
     await client.put("/api/notes/video/vid1", headers=theirs, json={"labels": ["theirs"]})

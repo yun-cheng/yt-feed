@@ -100,6 +100,28 @@ async def _row(db: AsyncSession, user: User, video_id: str) -> VideoNote | None:
     )).scalar_one_or_none()
 
 
+@router.get("")
+async def all_notes(
+    user: User = Depends(auth.account),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every video's labels and fields, keyed by video id — what the cards
+    show. One map for the whole library, like the playlist badges'. The note
+    itself stays out: it's the watch page's to show, and can be long."""
+    rows = (await db.execute(
+        select(VideoNote.video_id, VideoNote.labels, VideoNote.fields)
+        .where(VideoNote.user_id == user.id)
+    )).all()
+    out = {}
+    for video_id, labels_json, fields_json in rows:
+        labels = json.loads(labels_json or "[]")
+        # A field still waiting for its values has nothing to show.
+        fields = [f for f in json.loads(fields_json or "[]") if f.get("values")]
+        if labels or fields:
+            out[video_id] = {"labels": labels, "fields": fields}
+    return out
+
+
 @router.get("/suggestions")
 async def suggestions(
     user: User = Depends(auth.account),
