@@ -623,4 +623,17 @@ export const vi: Record<string, string> = {
   'Claiming…': 'Đang nhận…',
   'Claim this deployment': 'Nhận bản triển khai này',
   'Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.': 'Mọi thứ khác — khóa OpenRouter cho các tính năng AI, cookie YouTube, tìm kiếm — được đặt trong Cài đặt → Kết nối sau khi bạn vào.',
+  // The panel's Notes tab (NotesPanel).
+  'Notes': 'Ghi chú',
+  'Labels': 'Nhãn',
+  'Add a label': 'Thêm nhãn',
+  'Fields': 'Trường',
+  'Add a field': 'Thêm trường',
+  'Add a field, like Actors': 'Thêm trường, ví dụ Diễn viên',
+  'Add to {name}': 'Thêm vào {name}',
+  'Remove {name}': 'Xóa {name}',
+  'Remove the field {name}': 'Xóa trường {name}',
+  'Note': 'Ghi chú',
+  'Write anything about this video…': 'Viết bất cứ điều gì về video này…',
+  'Saving…': 'Đang lưu…',
 }

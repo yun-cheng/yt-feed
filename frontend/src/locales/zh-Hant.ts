@@ -624,4 +624,17 @@ export const zhHant: Record<string, string> = {
   'Claiming…': '認領中…',
   'Claim this deployment': '認領這個部署',
   'Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.': '其他的——AI 功能用的 OpenRouter 金鑰、YouTube cookies、搜尋——進去之後在「設定 → 連線」設定。',
+  // The panel's Notes tab (NotesPanel).
+  'Notes': '筆記',
+  'Labels': '標籤',
+  'Add a label': '新增標籤',
+  'Fields': '欄位',
+  'Add a field': '新增欄位',
+  'Add a field, like Actors': '新增欄位，例如「演員」',
+  'Add to {name}': '新增到 {name}',
+  'Remove {name}': '移除 {name}',
+  'Remove the field {name}': '移除欄位 {name}',
+  'Note': '筆記',
+  'Write anything about this video…': '寫下關於這部影片的任何事…',
+  'Saving…': '儲存中…',
 }

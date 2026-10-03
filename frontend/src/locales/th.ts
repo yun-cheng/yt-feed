@@ -623,4 +623,17 @@ export const th: Record<string, string> = {
   'Claiming…': 'กำลังขอเป็นเจ้าของ…',
   'Claim this deployment': 'ขอเป็นเจ้าของการติดตั้งนี้',
   'Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.': 'ส่วนที่เหลือ — คีย์ OpenRouter สำหรับฟีเจอร์ AI, คุกกี้ YouTube, การค้นหา — ตั้งได้ที่ การตั้งค่า → การเชื่อมต่อ เมื่อเข้ามาแล้ว',
+  // The panel's Notes tab (NotesPanel).
+  'Notes': 'บันทึก',
+  'Labels': 'ป้ายกำกับ',
+  'Add a label': 'เพิ่มป้ายกำกับ',
+  'Fields': 'ช่องข้อมูล',
+  'Add a field': 'เพิ่มช่องข้อมูล',
+  'Add a field, like Actors': 'เพิ่มช่องข้อมูล เช่น นักแสดง',
+  'Add to {name}': 'เพิ่มใน {name}',
+  'Remove {name}': 'นำ {name} ออก',
+  'Remove the field {name}': 'นำช่องข้อมูล {name} ออก',
+  'Note': 'บันทึก',
+  'Write anything about this video…': 'เขียนอะไรก็ได้เกี่ยวกับวิดีโอนี้…',
+  'Saving…': 'กำลังบันทึก…',
 }

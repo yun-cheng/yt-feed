@@ -623,4 +623,17 @@ export const ja: Record<string, string> = {
   'Claiming…': '取得中…',
   'Claim this deployment': 'このデプロイを取得する',
   'Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.': 'ほかのもの——AI 機能用の OpenRouter キー、YouTube の cookie、検索——は、入ったあと「設定 → 接続」で設定します。',
+  // The panel's Notes tab (NotesPanel).
+  'Notes': 'メモ',
+  'Labels': 'ラベル',
+  'Add a label': 'ラベルを追加',
+  'Fields': '項目',
+  'Add a field': '項目を追加',
+  'Add a field, like Actors': '項目を追加（例：出演者）',
+  'Add to {name}': '{name} に追加',
+  'Remove {name}': '{name} を削除',
+  'Remove the field {name}': '項目 {name} を削除',
+  'Note': 'メモ',
+  'Write anything about this video…': 'この動画について自由に書く…',
+  'Saving…': '保存中…',
 }

@@ -888,8 +888,10 @@ components/
                                   and the panel over the video's — fetched
                                   only when you open one of them
   VideoPanel.tsx                  the panel over the video: Info, Chapters,
-                                  Bookmarks, Comments, Transcript and Ask AI
-                                  down one side of the picture
+                                  Bookmarks, Notes, Comments, Transcript and
+                                  Ask AI down one side of the picture
+  NotesPanel.tsx                  the panel's Notes tab: labels, fields of
+                                  several values, and a note, saved as you type
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -1800,10 +1802,10 @@ keeps whichever scroller contains the column.
 
 ### The panel on the video (`VideoPanel.tsx`)
 
-A column laid over one side of the player with six tabs — Info, Chapters,
-Bookmarks, Comments, Transcript, Ask AI: the page's four, and two of its own
-for jumping around the video — to read while it plays without leaving it for
-the details below. The button right of CC (`panelControl`) or
+A column laid over one side of the player with seven tabs — Info, Chapters,
+Bookmarks, Notes, Comments, Transcript, Ask AI: the page's four, two of its own
+for jumping around the video, and one for writing about it — to read while it
+plays without leaving it for the details below. The button right of CC (`panelControl`) or
 `g` (the `videoPanel` shortcut) opens and closes it; the × in its header closes
 it too.
 
@@ -1816,7 +1818,8 @@ have none they leave the tab row and a panel set to open on either opens on
 are still on their way it waits on the tab it was asked for rather than
 flashing through Comments and fetching them for nothing. Chapters joins the row
 once the video turns out to have some. Chapters and Bookmarks are lists to jump
-around in rather than somewhere to start, so the setting doesn't offer them. It's off again for
+around in, and Notes is somewhere to write, rather than somewhere to start, so
+the setting doesn't offer them. It's off again for
 every new video, for the Comments reason below.
 
 **Tabs keep their state.** A tab stays mounted from the first time it's opened
@@ -1836,13 +1839,14 @@ a tab opened here after its twin below fetches nothing twice:
 | Info | title, channel, views and age, the description (timestamps seek) |
 | Chapters | the chapters on the bar (see "Chapters"), each its picture (`MomentThumb`), time and title; the one playing is lit |
 | Bookmarks | `marks.bookmarks`, the ticks on the bar as a list, the last one passed lit, each with its picture (`MomentThumb`) and a × to remove it. A row reads its note, else what's being said at that moment (the transcript row spanning it), else the chapter it's in — a bare timestamp says nothing about why you marked it. Empty, it says which key makes one |
+| Notes | `NotesPanel`, its own fetch — see "Notes on a video" below |
 | Comments | `CommentList compact`, from the same `useComments` feed as the tab |
 | Transcript | `PanelRows`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
 | Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
 
 **Where it sits.** `PANEL_WIDTH`, 31.25% of the player (320px over a 1024px
 one), never less than 12 panel units, so a phone-sized player's panel stays
-readable. Six tabs and two buttons need about 17 units on one line (20 on the
+readable. Seven tabs and two buttons need about 19 units on one line (22 on the
 left, where the back button takes the corner), so on a narrow player the tabs
 wrap onto a line of their own rather than squeeze — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
 player box, so it goes to fullscreen with it. It reaches the bottom edge while
@@ -1885,6 +1889,37 @@ half the video isn't using — and that choice is remembered
 so it may carry over). On the left, the back button (which never fades) lands in
 the header's corner, so the header leaves it room; at the narrowest widths that
 puts the tabs and the two buttons on separate lines.
+
+
+### Notes on a video (`NotesPanel.tsx`)
+
+The panel's Notes tab, for what you want to remember about a video: **labels**
+(comedy, rewatch), **fields** that each hold several values (Actors: Ann, Bo),
+and a free-text **note**. Yours alone, like bookmarks, and kept by the server
+(`/api/notes`, see the backend README), so they're on every device.
+
+- **Saved as you go.** Every change schedules one `PUT` of the whole tab, 700ms
+  after the last one (`SAVE_DELAY_MS`), and the foot of the tab says Saving… /
+  Saved. Leaving the video, or the page (`pagehide`), sends whatever is still
+  waiting, with `keepalive`. Nothing is sent before the video's notes have
+  arrived, so an empty tab can't overwrite them, and opening the tab alone
+  saves nothing. Keyed by the video, so a new one starts fresh.
+- **Entry boxes.** Enter or a comma adds what's typed (not mid-IME, where Enter
+  picks the characters); Backspace in an empty box takes back the last chip;
+  leaving the box adds what's in it. A new field takes the cursor straight to
+  its values. Escape gives the keyboard back to the player, as in Ask — and
+  while you're typing, the player's shortcuts stay out of it (they ignore keys
+  from inputs and textareas), so "k" in a note is a letter.
+- **Suggestions** come from your other videos (`/api/notes/suggestions`), most
+  used first: labels for the label box, field names for the new-field box, and
+  for each field the values that field has held — matched by name in any case,
+  so the second video's "actors" offers the first one's "Actors". Shown through
+  the browser's own `<datalist>`, minus what's already there; a pick from the
+  list adds it whole.
+- **Tidy by the server's rules.** The same label in another case is the same
+  label, here and on the server, which also trims, drops blanks and folds two
+  fields of one name into one. A field with no values yet is kept: it was made
+  on purpose and is waiting for them.
 
 ### Comments (`Comments.tsx`)
 
@@ -2337,6 +2372,7 @@ problem.
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
+| `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, and Escape handing the keyboard back |
 | `VideoPanel.test.tsx` | that the panel over the video keeps a tab's state when you switch away and back, and when you close and reopen it, and that closed it's out of reach |
 | `Comments.test.tsx` | that nothing is fetched before the tab opens, that the panel on the video and the tab share one fetch and the panel's side button moves it, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing; plus the three calls behind the row, where an unreachable server has to read as "no presets" and a refused save as nothing added |
@@ -2441,7 +2477,7 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `presets.spec.ts` | a selection saved as a preset and put back with one click |
 | `search.spec.ts` | a title found by a word in it, and by a misspelt one |
 | `channels.spec.ts` | the followed channels and their scoped search, a channel's page listing its own videos, its topics narrowing that page, and Hide channel taking a channel's videos off the feed across a reload |
-| `watch.spec.ts` | a card opening its video in the app and Back returning to the feed; the panel's Comments, its Transcript as sentences that seek, Ask AI streaming an answer whose time seeks, and the panel changing sides |
+| `watch.spec.ts` | a card opening its video in the app and Back returning to the feed; the panel's Comments, its Transcript as sentences that seek, Ask AI streaming an answer whose time seeks, Notes keeping labels, a field of several values and a note across a reload — with typed letters never reaching the player — and offering them on another video, and the panel changing sides |
 | `visual.spec.ts` | how features look, against screenshots (below): the progress bar's pins, passage markers and chapter gaps; the bookmark and repeat menus with their pictures; a caption line, and captions centred beside the panel; the up-next card; a tag chip off, picked and left out; a card in the light theme |
 | `preferences.spec.ts` | a shortcut moved to another key answering there and not on the old one, the speed list setting the steps `.` takes, Home opening on the window set under Pages, and the panel opening on the tab Settings names |
 

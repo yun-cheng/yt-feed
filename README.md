@@ -45,7 +45,11 @@ real video (muted, with custom captions and scrubbing).
   when offered, with dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
   position and font size the embed's own captions would never give you; and a panel
   laid over the video (`g`), down either side, with its info, chapters,
-  bookmarks, comments, transcript and Ask AI — which one it opens on is a setting
+  bookmarks, notes, comments, transcript and Ask AI — which one it opens on is a setting
+- **Notes on a video** — the panel's Notes tab holds what you want to remember
+  about it: labels, fields that each hold several values (Actors: Ann, Bo), and
+  a free-text note. Saved as you type, kept server-side per person, and the
+  boxes suggest the labels, fields and values you've used on other videos
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click its pin to jump back); `[` and `]` set a loop's ends and `\` stops it,
   so a passage replays until you're done with it — seeking out of it, on the

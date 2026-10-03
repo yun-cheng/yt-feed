@@ -54,6 +54,55 @@ test.describe('the panel', () => {
     await expect.poll(() => currentTime(page)).toBeCloseTo(6, 0)
   })
 
+  test('Notes keeps labels, a field of several values and a note, and typing stays out of the player', async ({ page }) => {
+    const empty = { labels: [], fields: [], note: '' }
+    await page.request.put('/api/notes/video/e2eMarks000', { data: empty })
+    await page.request.put('/api/notes/video/e2eLibOne00', { data: empty })
+    await page.reload()
+    await pause(page)
+
+    await openTab(page, 'Notes')
+    const notes = panel(page)
+    const add = async (box: string, text: string) => {
+      await notes.getByLabel(box).fill(text)
+      await notes.getByLabel(box).press('Enter')
+    }
+    await add('Add a label', 'comedy')
+    await add('Add a label', 'rewatch')
+    await add('Add a field', 'Actors')
+    await expect(notes.getByLabel('Add to Actors')).toBeFocused()
+    await add('Add to Actors', 'Ann')
+    await add('Add to Actors', 'Bo')
+    // "k" is play/pause, "f" fullscreen: written here, they're just letters.
+    await notes.getByRole('textbox', { name: 'Note', exact: true }).pressSequentially('keep for the funny part')
+    expect(await player(page).evaluate((v: HTMLVideoElement) => v.paused)).toBe(true)
+    const saved = page.waitForResponse((r) => r.url().endsWith('/api/notes/video/e2eMarks000') && r.request().method() === 'PUT')
+    await saved
+    await expect(notes.getByText('Saved')).toBeVisible()
+
+    await page.reload()
+    await pause(page)
+    await openTab(page, 'Notes')
+    await expect(notes.getByText('comedy', { exact: true })).toBeVisible()
+    await expect(notes.getByText('rewatch', { exact: true })).toBeVisible()
+    await expect(notes.getByTestId('note-field')).toHaveCount(1)
+    await expect(notes.getByTestId('note-field').getByText('Ann', { exact: true })).toBeVisible()
+    await expect(notes.getByTestId('note-field').getByText('Bo', { exact: true })).toBeVisible()
+    await expect(notes.getByRole('textbox', { name: 'Note', exact: true })).toHaveValue('keep for the funny part')
+
+    // Another video offers what this one used.
+    await watch(page, 'e2eLibOne00')
+    await pause(page)
+    await openTab(page, 'Notes')
+    const offered = async (box: string) => {
+      const id = await notes.getByLabel(box).getAttribute('list')
+      return page.locator(`datalist[id="${id}"] option`).evaluateAll((os) => os.map((o) => o.getAttribute('value')))
+    }
+    expect(await offered('Add a label')).toEqual(expect.arrayContaining(['comedy', 'rewatch']))
+    await add('Add a field', 'Actors')
+    expect(await offered('Add to Actors')).toEqual(expect.arrayContaining(['Ann', 'Bo']))
+  })
+
   test('it moves to the other side and back', async ({ page }) => {
     await page.keyboard.press('g')
     const x = async () => (await panel(page).boundingBox())!.x

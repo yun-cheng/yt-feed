@@ -17,6 +17,7 @@ import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
 import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
+import NotesPanel from './NotesPanel'
 import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -283,6 +284,12 @@ const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
   bookmarks: (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
       <path strokeLinejoin="round" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />
+    </svg>
+  ),
+  // A page with a pencil: what you write about the video.
+  notes: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 8.5-8.5z" />
     </svg>
   ),
   ask: (
@@ -754,12 +761,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // Every tab, whatever the page's own switch holds at this width. Transcript
   // and Ask go once the video turns out to have no captions; Chapters comes
   // once it turns out to have some. Bookmarks is always there — empty, it says
-  // how to make one. The video's own map of itself and yours follow Info; what
-  // other people said, what's said in it, and asking about it come after.
+  // how to make one, and so is Notes. The video's own map of itself, yours, and
+  // what you've written about it follow Info; what other people said, what's
+  // said in it, and asking about it come after.
   const panelTabs: { key: PanelTabKey; label: string; icon: ReactNode }[] = [
     { key: 'info', label: t('Info'), icon: TAB_ICONS.info },
     ...(chapters.length ? [{ key: 'chapters' as const, label: t('Chapters'), icon: TAB_ICONS.chapters }] : []),
     { key: 'bookmarks', label: t('Bookmarks'), icon: TAB_ICONS.bookmarks },
+    { key: 'notes', label: t('Notes'), icon: TAB_ICONS.notes },
     { key: 'comments', label: t('Comments'), icon: TAB_ICONS.comments },
     ...(captions === null || hasCaptions ? [
       { key: 'transcript' as const, label: t('Transcript'), icon: TAB_ICONS.transcript },
@@ -2138,6 +2147,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   </button>
                 )}
               />
+            </PanelTab>
+          )}
+          {panelKeeps('notes') && (
+            <PanelTab shown={panelTabShown === 'notes'}>
+              <NotesPanel key={videoId} videoId={videoId} />
             </PanelTab>
           )}
           {panelKeeps('ask') && (

@@ -623,4 +623,17 @@ export const ko: Record<string, string> = {
   'Claiming…': '등록 중…',
   'Claim this deployment': '이 배포 등록하기',
   'Everything else — the OpenRouter key for AI features, YouTube cookies, search — is set from Settings → Connections once you’re in.': '나머지 — AI 기능용 OpenRouter 키, YouTube 쿠키, 검색 — 은 들어간 뒤 설정 → 연결에서 설정합니다.',
+  // The panel's Notes tab (NotesPanel).
+  'Notes': '메모',
+  'Labels': '라벨',
+  'Add a label': '라벨 추가',
+  'Fields': '항목',
+  'Add a field': '항목 추가',
+  'Add a field, like Actors': '항목 추가 (예: 출연진)',
+  'Add to {name}': '{name}에 추가',
+  'Remove {name}': '{name} 삭제',
+  'Remove the field {name}': '{name} 항목 삭제',
+  'Note': '메모',
+  'Write anything about this video…': '이 동영상에 대해 자유롭게 적어 보세요…',
+  'Saving…': '저장 중…',
 }
