@@ -435,8 +435,6 @@ export const ja: Record<string, string> = {
   'Search transcript': '文字起こしを検索',
   'Sync to video': '動画に同期',
   // Player marks
-  'Bookmark removed · {time}': 'ブックマークを削除しました · {time}',
-  'New passage · from {time}': '新しい区間 · {time} から',
   '{label} — jump to {time}': '{label}：{time} にジャンプ',
   '{label} at {time}': '{label}、{time}',
   'start': '開始',
@@ -448,8 +446,6 @@ export const ja: Record<string, string> = {
   'Pin end': '終了点を設定',
   'Stop repeating ({key})': 'リピートを停止（{key}）',
   // Player marks
-  'Passage deleted': '区間を削除しました',
-  'Repeat off': 'リピートを停止しました',
   'Loop end (B)': 'ループ終了点（B）',
   'Loop start (A)': 'ループ開始点（A）',
   'Bookmark': 'ブックマーク',
@@ -559,11 +555,6 @@ export const ja: Record<string, string> = {
   // Request errors
   '{where} — network error': '{where}：ネットワークエラー',
   '{where} failed ({status})': '{where} が失敗しました（{status}）',
-  // Player marks
-  'Bookmarked · {time}': 'ブックマーク済み · {time}',
-  // Player marks
-  'Loop {end} · {time}': 'ループ {end} · {time}',
-  'Repeating · {range}': 'リピート中 · {range}',
   // Time window
   'Time window': '期間',
   'Newest edge': '新しい方の端',

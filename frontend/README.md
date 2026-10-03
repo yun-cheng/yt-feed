@@ -1163,9 +1163,10 @@ Other details:
     than it, so it stands out above and below the bar and shows over the red
     fill and the bare track alike. 8×12px
     (`BOOKMARK_WIDTH`, twice a chapter cut, so the two never read as each
-    other), with a hairline shadow against a bright frame. Off the bar a
-    bookmark wears **sky-400** — on the button that made it, the dot of the
-    line confirming the press, and each row of the menu.
+    other), with a hairline shadow against a bright frame. The bookmark menu
+    draws the same pin by each row, so a row and the mark it jumps to read as
+    one thing. Everything the marks wear is white; the bookmark button says
+    you're standing on one by filling in.
   - **The loop is bracketed, as PotPlayer brackets it** (`LoopMark`, taken
     from PotPlayer's skin sprites): a white **▶** at A and **◀** at B, pointing
     in at the passage. Each stands with its flat side on its moment and its
@@ -1980,8 +1981,8 @@ last rule is what makes the bar keep painting itself back over a video you're
 steering by keyboard: every `k`, every arrow. In focus mode only the pointer
 raises it, pausing included.
 
-- **The overlays that answer a keypress are untouched** — the volume HUD, the
-  bookmark flash, the captions. Those *are* the feedback for what you pressed;
+- **The overlays that answer a keypress are untouched** — the volume HUD and
+  the captions. Those *are* the feedback for what you pressed;
   hiding them would leave the key doing nothing visible at all. It's the bar
   that stays down.
 - **The cursor is the way back in**, which is also how you reach the button to

@@ -10,7 +10,7 @@
  * Focus mode drops the other two and keeps the pointer. Move the mouse over the
  * video and the bar is there; do anything else — pause, seek, skip — and the
  * picture stays clean. The overlays that answer a keypress directly (the volume
- * HUD, the bookmark flash, captions) are untouched: those ARE the feedback for
+ * HUD, captions) are untouched: those ARE the feedback for
  * what you just pressed, and hiding them would leave the key doing nothing
  * visible at all.
  *

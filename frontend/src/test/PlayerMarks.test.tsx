@@ -9,7 +9,6 @@ import {
   EmbedMarkRail,
   LoopMenu,
   MarkTrack,
-  MarksFlash,
   loopActive,
   loopBounds,
   usePlayerMarks,
@@ -101,7 +100,6 @@ function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: st
       <div data-testid="stage">{m.loopStage}</div>
       <div data-testid="looping">{m.looping ? 'yes' : 'no'}</div>
       <div data-testid="here">{m.markHere ? 'yes' : 'no'}</div>
-      <div data-testid="flash">{m.flash?.text ?? ''}</div>
       {/* The control bar's button and the menu it opens, standing in for the
           real ones: what they get from the hook is exactly these actions. */}
       <button onClick={m.toggleBookmarkHere}>bookmark</button>
@@ -310,14 +308,6 @@ describe('usePlayerMarks — bookmarks', () => {
     expect(deleted).toEqual([])
   })
 
-  it('confirms each press on screen', async () => {
-    const p = fakePlayer()
-    await renderMarks(p)
-    await markAt(p, 65)
-    expect(screen.getByTestId('flash')).toHaveTextContent('Bookmarked · 1:05')
-    act(() => key('b'))
-    expect(screen.getByTestId('flash')).toHaveTextContent('Bookmark removed · 1:05')
-  })
 
   it('starts over when the video changes', async () => {
     const p = fakePlayer()
@@ -406,7 +396,6 @@ describe('usePlayerMarks — A–B repeat', () => {
     act(() => key('\\'))
     expect(screen.getByTestId('loop')).toHaveTextContent('-/-')
     expect(screen.getByTestId('loops')).toHaveTextContent('10/20')
-    expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
   })
 
   it('and then [ opens a new one, since nothing is running', async () => {
@@ -418,14 +407,6 @@ describe('usePlayerMarks — A–B repeat', () => {
     expect(screen.getByTestId('loops')).toHaveTextContent('10/- *300/-')
   })
 
-  it('confirms which end was set', async () => {
-    const p = fakePlayer()
-    await renderMarks(p)
-    act(() => { p._set(65) }); act(() => key('['))
-    expect(screen.getByTestId('flash')).toHaveTextContent('Loop A · 1:05')
-    act(() => key(']'))
-    expect(screen.getByTestId('flash')).toHaveTextContent('Loop B · 1:05')
-  })
 
   it('each video has its own passages', async () => {
     const p = fakePlayer()
@@ -450,7 +431,6 @@ describe('usePlayerMarks — several passages', () => {
     p._set(300)
     await act(async () => { press('new') })
     expect(screen.getByTestId('loops')).toHaveTextContent('10/20 *300/-')
-    expect(screen.getByTestId('flash')).toHaveTextContent('New passage · from 5:00')
   })
 
   it('only one repeats at a time', async () => {
@@ -475,7 +455,6 @@ describe('usePlayerMarks — several passages', () => {
     await act(async () => { press('use 10') })
     expect(p.seekTo).toHaveBeenCalledWith(10, true)
     expect(screen.getByTestId('loops')).toHaveTextContent('*10/- 300/-')
-    expect(screen.getByTestId('flash')).toHaveTextContent('Repeating · 0:10 – end')
   })
 
   it('switching to one with no start pinned goes to the top of the video', async () => {
@@ -497,7 +476,6 @@ describe('usePlayerMarks — several passages', () => {
 
     await act(async () => { press('drop 10') })
     expect(screen.getByTestId('loops')).toHaveTextContent('*300/-')
-    expect(screen.getByTestId('flash')).toHaveTextContent('Passage deleted')
   })
 
   it('dropping the running one stops the repeat and promotes nothing', async () => {
@@ -708,15 +686,6 @@ describe('usePlayerMarks — the control bar’s buttons', () => {
     expect(screen.getByTestId('stage')).toHaveTextContent('running')
   })
 
-  it('confirms a button press on screen, the same as a keypress', async () => {
-    const p = fakePlayer()
-    p._set(65)
-    await renderMarks(p)
-    await act(async () => { press('pin a') })
-    expect(screen.getByTestId('flash')).toHaveTextContent('Loop A · 1:05')
-    await act(async () => { press('stop') })
-    expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
-  })
 
   it('the repeat button, with nothing marked, starts a passage here', async () => {
     const p = fakePlayer()
@@ -752,8 +721,10 @@ describe('usePlayerMarks — the control bar’s buttons', () => {
   it('stopping with nothing running does nothing at all', async () => {
     const p = fakePlayer()
     await renderMarks(p)
+    const calls = vi.mocked(fetch).mock.calls.length
     await act(async () => { press('stop') })
-    expect(screen.getByTestId('flash')).toBeEmptyDOMElement()
+    expect(vi.mocked(fetch).mock.calls.length).toBe(calls)
+    expect(screen.getByTestId('stage')).toHaveTextContent('idle')
   })
 })
 
@@ -867,7 +838,6 @@ describe('usePlayerMarks — the loop tick', () => {
     expect(p.seekTo).not.toHaveBeenCalled()
     expect(screen.getByTestId('looping')).toHaveTextContent('no')
     expect(screen.getByTestId('loops')).toHaveTextContent('10/20')
-    expect(screen.getByTestId('flash')).toHaveTextContent('Repeat off')
   })
 
   it('and so does a click before A', async () => {
@@ -1307,29 +1277,6 @@ describe('EmbedMarkRail', () => {
     expect(onSeek).toHaveBeenCalledWith(30)
   })
 })
-
-// ── MarksFlash ───────────────────────────────────────────────────────
-
-describe('MarksFlash', () => {
-  it('shows nothing when there is nothing to say', () => {
-    const { container } = render(<MarksFlash flash={null} />)
-    expect(container).toBeEmptyDOMElement()
-  })
-
-  it('shows the message', () => {
-    render(<MarksFlash flash={{ kind: 'bookmark', text: 'Bookmarked · 1:05' }} />)
-    expect(screen.getByText('Bookmarked · 1:05')).toBeInTheDocument()
-  })
-
-  it('marks which feature just spoke', () => {
-    const { container, rerender } = render(<MarksFlash flash={{ kind: 'bookmark', text: 'Bookmarked · 1:05' }} />)
-    expect(container.querySelector('span')).toHaveClass('bg-sky-400')
-    // The loop's is the bar's own white, since that's all the loop ever wears.
-    rerender(<MarksFlash flash={{ kind: 'loop', text: 'Loop cleared' }} />)
-    expect(container.querySelector('span')).toHaveClass('bg-white/70')
-  })
-})
-
 
 // ── LoopMenu ─────────────────────────────────────────────────────────
 

@@ -435,8 +435,6 @@ export const vi: Record<string, string> = {
   'Search transcript': 'Tìm trong bản ghi',
   'Sync to video': 'Đồng bộ với video',
   // Player marks
-  'Bookmark removed · {time}': 'Đã xóa dấu trang · {time}',
-  'New passage · from {time}': 'Đoạn mới · từ {time}',
   '{label} — jump to {time}': '{label} — nhảy đến {time}',
   '{label} at {time}': '{label} tại {time}',
   'start': 'điểm đầu',
@@ -448,8 +446,6 @@ export const vi: Record<string, string> = {
   'Pin end': 'Đặt điểm cuối',
   'Stop repeating ({key})': 'Dừng lặp lại ({key})',
   // Player marks
-  'Passage deleted': 'Đã xóa đoạn',
-  'Repeat off': 'Đã tắt lặp lại',
   'Loop end (B)': 'Điểm cuối lặp (B)',
   'Loop start (A)': 'Điểm đầu lặp (A)',
   'Bookmark': 'Dấu trang',
@@ -559,11 +555,6 @@ export const vi: Record<string, string> = {
   // Request errors
   '{where} — network error': '{where} — lỗi mạng',
   '{where} failed ({status})': '{where} thất bại ({status})',
-  // Player marks
-  'Bookmarked · {time}': 'Đã đánh dấu · {time}',
-  // Player marks
-  'Loop {end} · {time}': 'Lặp {end} · {time}',
-  'Repeating · {range}': 'Đang lặp · {range}',
   // Time window
   'Time window': 'Khoảng thời gian',
   'Newest edge': 'Mốc mới nhất',

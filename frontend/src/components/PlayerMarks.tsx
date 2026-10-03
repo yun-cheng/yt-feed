@@ -15,14 +15,13 @@
  *  - LoopMenu, the video's saved passages and everything you can do to one
  *  - MarkTrack, the marks themselves, drawn along a time axis
  *  - EmbedMarkRail, which puts a MarkTrack on the YouTube embed's progress bar
- *  - MarksFlash, the one-line confirmation of what a keypress just did
  *
  * Marks belong ON the progress bar — that's the axis they're positions on, and
  * anywhere else makes you translate a timestamp back into a place in the video.
  * On the bar both are drawn as PotPlayer draws them, in white: a bookmark is a
  * pin, a passage a pair of triangles pointing in at it from either end — the
- * running passage solid, the others faint. Off the bar a bookmark wears sky
- * blue, on the button that made it and the line confirming the press.
+ * running passage solid, the others faint. The bookmark menu draws the same pin
+ * by each row, so a row and the mark it jumps to read as one thing.
  * Over a file we play ourselves that's literally the bar (see LocalControls);
  * over the embed the bar lives inside the iframe, out of reach, so the rail is
  * laid over it at the same offset the embed draws its own scrubber at.
@@ -64,21 +63,13 @@ export function loopLabel(loop: Loop): string {
   return `${loop.a === null ? t('start') : formatTime(loop.a)} – ${loop.b === null ? t('end') : formatTime(loop.b)}`
 }
 
-/**
- * The colour a bookmark wears off the bar — the button that made it, the dot on
- * the line confirming the press, the dot by each row of the menu — so those
- * read as one feature.
- *
- * On the bar it's PotPlayer's white pin instead (BookmarkPin): there the shape
- * is what says "yours", standing up out of a track that is otherwise flat.
- */
-const BOOKMARK_COLOR = 'bg-sky-400'
-
 /** A bookmark's pin on the bar: twice a chapter cut wide, so the two never read
  *  as each other — the cut is a gap, the pin a thing — and half again as tall,
  *  to stand up out of the track. */
 export const BOOKMARK_WIDTH = CHAPTER_GAP * 2
 export const BOOKMARK_HEIGHT = BOOKMARK_WIDTH * 1.5
+// The pin's outline, in an 8×12 box: on the bar, and by each row of the menu.
+const PIN_PATH = 'M1.5 0h5A1.5 1.5 0 0 1 8 1.5V8l-4 4-4-4V1.5A1.5 1.5 0 0 1 1.5 0z'
 
 /** PotPlayer's bookmark marker: a white pin, square-shouldered with a point at
  *  the foot, centred on the track — taller than the track, so it stands out
@@ -97,7 +88,7 @@ function BookmarkPin({ left }: { left: string }) {
       viewBox="0 0 8 12"
       aria-hidden
     >
-      <path fill="currentColor" d="M1.5 0h5A1.5 1.5 0 0 1 8 1.5V8l-4 4-4-4V1.5A1.5 1.5 0 0 1 1.5 0z" />
+      <path fill="currentColor" d={PIN_PATH} />
     </svg>
   )
 }
@@ -130,10 +121,6 @@ function LoopMark({ end, left, idle = false }: { end: 'a' | 'b'; left: string; i
  *  one end pinned, both. What the loop button's badge reads. */
 export type LoopStage = 'idle' | 'arming' | 'running'
 
-/** A line confirming what the last press did, and which feature it was about —
- *  the dot on it is drawn in that feature's colour. */
-export type Flash = { kind: 'bookmark' | 'loop'; text: string }
-
 // How close `b` has to land to an existing bookmark to mean "remove that one"
 // rather than "add another". Wide enough that pressing it twice while playing
 // undoes the first press, narrow enough that two marks a few seconds apart —
@@ -149,7 +136,6 @@ const LOOP_TICK_MS = 200
 // time at the fastest speed (5×), with room for a late timer. A bigger step
 // past B is a seek out of the passage, not playback reaching its end.
 const PLAYED_STEP_SEC = 1.5
-const FLASH_MS = 1600
 
 // How often we ask where the play head is, to know whether it's standing on a
 // bookmark. Half a second against a 2s tolerance: the answer only changes as you
@@ -186,16 +172,6 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   // Every passage marked in this video, oldest first. At most one is active —
   // the router holds that invariant, and so does every write below.
   const [loops, setLoops] = useState<SavedLoop[]>([])
-  // A brief line confirming what a keypress just did — pressing `b` is otherwise
-  // silent, and a shortcut you can't tell fired is a shortcut you stop trusting.
-  const [flash, setFlash] = useState<Flash | null>(null)
-  const flashTimer = useRef<number | undefined>(undefined)
-  const showFlash = useCallback((kind: Flash['kind'], text: string) => {
-    setFlash({ kind, text })
-    if (flashTimer.current) window.clearTimeout(flashTimer.current)
-    flashTimer.current = window.setTimeout(() => setFlash(null), FLASH_MS)
-  }, [])
-  useEffect(() => () => { if (flashTimer.current) window.clearTimeout(flashTimer.current) }, [])
 
   // The key handler is bound once and must see the current values; state alone
   // would leave it holding whatever was there when it was bound. The loop gets
@@ -366,8 +342,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     if (id < 0) return  // never reached the server; the POST will clean it up
     apiFetch(`/api/bookmarks/${videoId}/loops/id/${id}`, { method: 'DELETE', quiet: true })
       .catch(() => { /* gone from view either way */ })
-    showFlash('loop', t('Passage deleted'))
-  }, [videoId, writeLoops, showFlash])
+  }, [videoId, writeLoops])
 
   /** Stop repeating, keeping the passage. `\\` and the menu's own row.
    *
@@ -377,8 +352,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     const running = loopsRef.current.find((l) => l.active)
     if (!running) return
     editLoop(running.id, { active: false })
-    showFlash('loop', t('Repeat off'))
-  }, [editLoop, showFlash])
+  }, [editLoop])
 
   // The three things a keypress or a button press can do, in one place so the
   // two ways of asking behave identically.
@@ -392,15 +366,13 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       .find((bm) => Math.abs(bm.position_seconds - at) <= TOGGLE_TOLERANCE_SEC)
     if (hit) {
       removeBookmark(hit.id)
-      showFlash('bookmark', t('Bookmark removed · {time}', { time: formatTime(hit.position_seconds) }))
     } else {
       addBookmark(at)
-      showFlash('bookmark', t('Bookmarked · {time}', { time: formatTime(at) }))
     }
     // Ahead of the poll: a button that stays on "remove" for half a second after
     // it removed something reads as a press that didn't take.
     setMarkHere(!hit)
-  }, [addBookmark, removeBookmark, showFlash])
+  }, [addBookmark, removeBookmark])
 
   /** Pin one end of the loop here. Either end can be set first and either can be
    *  moved afterwards, and one end on its own already repeats — from the start
@@ -411,8 +383,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     // one — so `[` on a video you've never looped behaves as it always did.
     if (running) editLoop(running.id, { [end]: at })
     else openLoop(end, at)
-    showFlash('loop', t('Loop {end} · {time}', { end: end.toUpperCase(), time: formatTime(at) }))
-  }, [editLoop, openLoop, showFlash])
+  }, [editLoop, openLoop])
 
   // Send the play head back to A each time it reaches B — and let it go when
   // you leave. Runs on its own timer rather than the caption tick, which only
@@ -533,8 +504,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     const p = playerRef.current
     if (!p) return
     openLoop('a', p.getCurrentTime())
-    showFlash('loop', t('New passage · from {time}', { time: formatTime(p.getCurrentTime()) }))
-  }, [playerRef, openLoop, showFlash])
+  }, [playerRef, openLoop])
 
   /** Switch to a saved passage: it starts repeating, and the play head goes to
    *  the top of it. Seeking is the point — you picked it to hear it, and a
@@ -546,8 +516,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     editLoop(id, { active: true })
     const p = playerRef.current
     if (p) p.seekTo(target.a ?? 0, true)
-    showFlash('loop', t('Repeating · {range}', { range: loopLabel(target) }))
-  }, [editLoop, playerRef, showFlash])
+  }, [editLoop, playerRef])
 
   /** Bookmark (or clear) wherever the play head is, for the bar's button — the
    *  keyboard's `b` with the position read for you. Clicking a mark on the track
@@ -571,7 +540,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   }, [clearLoop, useLoop, newLoop])
 
   return {
-    bookmarks, loop, loops, others, loopStage, looping, markHere, flash,
+    bookmarks, loop, loops, others, loopStage, looping, markHere,
     toggleBookmarkHere, removeBookmark, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop, toggleRepeat,
   }
 }
@@ -730,7 +699,9 @@ export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, o
         {rows.map((b) => (
           <div key={b.id} className="group/row flex items-center">
             <button role="menuitem" onClick={() => onSeek(b.start)} className={row}>
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${BOOKMARK_COLOR}`} />
+              <svg className="h-3 w-2 shrink-0 text-white/70" viewBox="0 0 8 12" aria-hidden>
+                <path fill="currentColor" d={PIN_PATH} />
+              </svg>
               <span className="shrink-0 tabular-nums">{formatTime(b.start)}</span>
               {b.text && <span className="min-w-0 truncate text-white/70">{b.text}</span>}
             </button>
@@ -913,17 +884,3 @@ export function EmbedMarkRail({ bookmarks, loop, others = [], duration, onSeek }
   )
 }
 
-/** What the last keypress did. A shortcut you can't tell fired is one you stop
- *  trusting — and now that the marks live on the bar, which the embed hides
- *  while playing, this is often the only acknowledgement you get. */
-export function MarksFlash({ flash }: { flash: Flash | null }) {
-  if (!flash) return null
-  return (
-    <div className="pointer-events-none absolute left-4 top-4 z-20 flex items-center gap-2 rounded-full bg-black/75 px-3 py-1.5 text-sm font-medium text-white shadow-lg">
-      {/* Which feature just spoke: a bookmark in its own colour, the loop in the
-          bar's own white, since that's all the loop ever wears. */}
-      <span className={`h-2 w-2 shrink-0 rounded-full ${flash.kind === 'loop' ? 'bg-white/70' : BOOKMARK_COLOR}`} />
-      {flash.text}
-    </div>
-  )
-}

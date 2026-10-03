@@ -435,8 +435,6 @@ export const th: Record<string, string> = {
   'Search transcript': 'ค้นหาบทถอดเสียง',
   'Sync to video': 'ซิงค์กับวิดีโอ',
   // Player marks
-  'Bookmark removed · {time}': 'ลบบุ๊กมาร์กแล้ว · {time}',
-  'New passage · from {time}': 'ช่วงใหม่ · เริ่มจาก {time}',
   '{label} — jump to {time}': '{label} — ข้ามไปที่ {time}',
   '{label} at {time}': '{label} ที่ {time}',
   'start': 'จุดเริ่มต้น',
@@ -448,8 +446,6 @@ export const th: Record<string, string> = {
   'Pin end': 'ตั้งจุดสิ้นสุด',
   'Stop repeating ({key})': 'หยุดเล่นซ้ำ ({key})',
   // Player marks
-  'Passage deleted': 'ลบช่วงแล้ว',
-  'Repeat off': 'ปิดการเล่นซ้ำแล้ว',
   'Loop end (B)': 'จุดสิ้นสุดลูป (B)',
   'Loop start (A)': 'จุดเริ่มต้นลูป (A)',
   'Bookmark': 'บุ๊กมาร์ก',
@@ -559,11 +555,6 @@ export const th: Record<string, string> = {
   // Request errors
   '{where} — network error': '{where} — เครือข่ายขัดข้อง',
   '{where} failed ({status})': '{where} ล้มเหลว ({status})',
-  // Player marks
-  'Bookmarked · {time}': 'บุ๊กมาร์กแล้ว · {time}',
-  // Player marks
-  'Loop {end} · {time}': 'วนซ้ำ {end} · {time}',
-  'Repeating · {range}': 'กำลังวนซ้ำ · {range}',
   // Time window
   'Time window': 'ช่วงเวลา',
   'Newest edge': 'ขอบใหม่สุด',

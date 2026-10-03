@@ -11,7 +11,7 @@ import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalCon
 import { nextSpeed } from '../lib/playbackSpeeds'
 import { actionFor, shortcutLabel } from '../lib/shortcuts'
 import type { PlayerApi } from './LocalControls'
-import { usePlayerMarks, BookmarkMenu, EmbedMarkRail, LoopMenu, MarksFlash } from './PlayerMarks'
+import { usePlayerMarks, BookmarkMenu, EmbedMarkRail, LoopMenu } from './PlayerMarks'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
@@ -2061,9 +2061,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       // it only writes a ref.
       //
       // Not in focus mode, where the whole point is that steering by keyboard
-      // doesn't paint the bar back over the picture. The overlays that answer a
-      // keypress directly — the volume HUD, the bookmark flash — are separate
-      // and still show; it's the bar that stays down.
+      // doesn't paint the bar back over the picture. The volume HUD, which
+      // answers a keypress directly, is separate and still shows; it's the bar
+      // that stays down.
       if (!focusModeRef.current) wakeChrome()
       // What the key means, not which key it is: the binding is a setting
       // (lib/shortcuts.ts), so this handler asks the table rather than
@@ -2188,10 +2188,6 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // the fullscreen target, so they show in both windowed and fullscreen modes.
   const overlays = (
     <>
-      {/* Not part of chromeUp below: a keypress has to be acknowledged even
-          when the chrome is down — that's usually exactly when you pressed it. */}
-      <MarksFlash flash={marks.flash} />
-
       {/* Caption overlay — the main track, plus the optional second (dual-
           subtitle) track stacked beneath it. Bottom-anchored above the control
           bar so new lines push the stack upward; see CaptionBlock for styling. */}
@@ -2621,12 +2617,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         }}
         aria-haspopup="menu"
         aria-expanded={showBookmarkMenu}
-        // In the bookmarks' own colour while you're standing on one, so the
-        // button, the tick on the bar and the line that confirmed the press are
-        // visibly one feature. `!` beats the `text-white` both placements bring
-        // — between two colours of the same specificity it's stylesheet order
-        // that decides, which is not something to leave to chance.
-        className={`${ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT} ${marks.markHere ? '!text-sky-400' : ''}`}
+        className={ownBar ? BAR_BUTTON : MARK_BUTTON_FLOAT}
         // The one press both makes a bookmark and clears it, so it says which
         // one it's about to do. Standing on a mark is a thing you arrive at by
         // clicking its tick, which seeks exactly to it — so clearing one is

@@ -436,8 +436,6 @@ export const zhHant: Record<string, string> = {
   'Search transcript': '搜尋逐字稿',
   'Sync to video': '同步到影片位置',
   // Player marks
-  'Bookmark removed · {time}': '已移除書籤 · {time}',
-  'New passage · from {time}': '新段落 · 從 {time} 開始',
   '{label} — jump to {time}': '{label}：跳到 {time}',
   '{label} at {time}': '{label}，位於 {time}',
   'start': '起點',
@@ -449,8 +447,6 @@ export const zhHant: Record<string, string> = {
   'Pin end': '設定終點',
   'Stop repeating ({key})': '停止重播（{key}）',
   // Player marks
-  'Passage deleted': '已刪除段落',
-  'Repeat off': '已停止重播',
   'Loop end (B)': '重播終點（B）',
   'Loop start (A)': '重播起點（A）',
   'Bookmark': '書籤',
@@ -560,11 +556,6 @@ export const zhHant: Record<string, string> = {
   // Request errors
   '{where} — network error': '{where}：網路錯誤',
   '{where} failed ({status})': '{where} 失敗（{status}）',
-  // Player marks
-  'Bookmarked · {time}': '已加上書籤 · {time}',
-  // Player marks
-  'Loop {end} · {time}': '重播 {end} 點 · {time}',
-  'Repeating · {range}': '重播中 · {range}',
   // Time window
   'Time window': '時間範圍',
   'Newest edge': '較新的一端',

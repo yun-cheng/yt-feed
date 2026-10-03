@@ -435,8 +435,6 @@ export const ko: Record<string, string> = {
   'Search transcript': '스크립트 검색',
   'Sync to video': '동영상과 동기화',
   // Player marks
-  'Bookmark removed · {time}': '북마크 삭제됨 · {time}',
-  'New passage · from {time}': '새 구간 · {time}부터 시작',
   '{label} — jump to {time}': '{label} — {time}로 이동',
   '{label} at {time}': '{label}, {time} 위치',
   'start': '시작',
@@ -448,8 +446,6 @@ export const ko: Record<string, string> = {
   'Pin end': '끝점 설정',
   'Stop repeating ({key})': '반복 중지 ({key})',
   // Player marks
-  'Passage deleted': '구간 삭제됨',
-  'Repeat off': '반복 해제됨',
   'Loop end (B)': '반복 끝점 (B)',
   'Loop start (A)': '반복 시작점 (A)',
   'Bookmark': '북마크',
@@ -559,11 +555,6 @@ export const ko: Record<string, string> = {
   // Request errors
   '{where} — network error': '{where} — 네트워크 오류',
   '{where} failed ({status})': '{where} 실패 ({status})',
-  // Player marks
-  'Bookmarked · {time}': '북마크됨 · {time}',
-  // Player marks
-  'Loop {end} · {time}': '반복 {end} 지점 · {time}',
-  'Repeating · {range}': '반복 재생 중 · {range}',
   // Time window
   'Time window': '기간',
   'Newest edge': '최신 끝',
