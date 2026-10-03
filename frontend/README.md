@@ -913,6 +913,8 @@ lib/
   quality.ts                      YouTube's quality names → "1080p"
   local.ts                        local-folder types + fetch helpers
   storyboard.ts                   YouTube's scrub sprite sheets → one frame
+  frameGrab.ts                    useFileFrames — stills from a file at given
+                                  moments: bookmark, passage and chapter pictures
   chapters.ts                     a video's chapters: which one a moment is in,
                                   and the mask that cuts the track between them
   captionSplit.ts                 a long caption with no word timing (the AI
@@ -1059,18 +1061,18 @@ Other details:
     chrome, all four sit in a row on the left: caption, panel, then these.
   - **Each opens its menu on hover and acts on a click**, the way CC does. The
     bookmark button's click marks or clears this moment; its menu
-    (`BookmarkMenu`) lists the video's bookmarks, each with the line the panel's
-    Bookmarks tab gives it, to jump to (the menu stays open — you hop through
-    marks to find the one you meant) or clear with its ×. The repeat button's
-    click turns the repeat on or off (`toggleRepeat`): off stops the running
-    passage and keeps it, as `\` does; on resumes the newest passage you marked,
-    from its top, or starts one here when there are none. A touch has no hover,
-    so there a tap opens the menu, and the menus' own rows do what the click
-    would. The row that repeats the button's click — the bookmark menu's
-    *Bookmark this moment* / *Clear this bookmark*, the repeat menu's *Stop
-    repeating* — appears only when a tap opened the menu. Both menus sit flush
-    on their buttons, with no gap for the pointer to fall through on the way
-    up, and treat their button as inside, so pressing it doesn't shut a menu
+    (`BookmarkMenu`) lists the video's bookmarks, each with its picture and the
+    line the panel's Bookmarks tab gives it, to jump to (the menu stays open —
+    you hop through marks to find the one you meant) or clear with its ×. The
+    repeat button's click turns the repeat on or off (`toggleRepeat`): off stops
+    the running passage and keeps it, as `\` does; on resumes the newest passage
+    you marked, from its top, or starts one here when there are none. A touch
+    has no hover, so there a tap opens the menu, and the menus' own rows do what
+    the click would. The row that repeats the button's click — the bookmark
+    menu's *Bookmark this moment* / *Clear this bookmark*, the repeat menu's
+    *Stop repeating* — appears only when a tap opened the menu. Both menus sit
+    flush on their buttons, with no gap for the pointer to fall through on the
+    way up, and treat their button as inside, so pressing it doesn't shut a menu
     that hover opened.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
     of the video and an unpinned B means the end of it, which is what each key
@@ -1163,10 +1165,21 @@ Other details:
     than it, so it stands out above and below the bar and shows over the red
     fill and the bare track alike. 8×12px
     (`BOOKMARK_WIDTH`, twice a chapter cut, so the two never read as each
-    other), with a hairline shadow against a bright frame. The bookmark menu
-    draws the same pin by each row, so a row and the mark it jumps to read as
-    one thing. Everything the marks wear is white; the bookmark button says
-    you're standing on one by filling in.
+    other), with a hairline shadow against a bright frame. Everything the marks
+    wear is white; the bookmark button says you're standing on one by filling
+    in.
+  - **Each moment shows its picture** (`MomentThumb`): a bookmark in its menu
+    (80px) and the panel's Bookmarks tab (96px), a passage — its start, or the
+    top of the video when A is open — in the repeat menu (80px), and a chapter
+    in the panel's Chapters tab (96px). Off a file it's the exact frame:
+    `useFileFrames` (`lib/frameGrab.ts`) walks one detached `<video>` through
+    the moments, draws each to a canvas and keeps it as a small JPEG for the
+    session — only once the menu or the tab is showing, and keyed on the moments
+    asked for, so each frame grabbed doesn't restart the walk. Streamed, it's
+    the storyboard tile nearest the moment, the scrub popup's own source;
+    `/api/feed/storyboard` is fetched for a video with any of the three even
+    where the bar isn't ours. With neither, the mark it wears on the bar stands
+    in — the pin, the ▶ — or, for a chapter, an empty tile.
   - **The loop is bracketed, as PotPlayer brackets it** (`LoopMark`, taken
     from PotPlayer's skin sprites): a white **▶** at A and **◀** at B, pointing
     in at the passage. Each stands with its flat side on its moment and its
@@ -1267,7 +1280,9 @@ Other details:
     is seeked directly; the embed's frames aren't ours to seek, so YouTube's
     **storyboard** sprite sheets stand in — the same `/api/feed/storyboard` the
     cards use, scaled to the popup's width so the two look identical. A video
-    with no storyboards falls back to the timestamp alone.
+    with no storyboards falls back to the timestamp alone. The same sheets are
+    the pictures of bookmarks, passages and chapters, so a video with any of
+    those fetches them even over YouTube's own bar.
   - **Chapters** cut the track into segments, YouTube-style, and the scrub
     preview names the chapter under the cursor above its timestamp. They arrive
     with the description (`/api/feed/description`, yt-dlp's `chapters`). The cut
@@ -1804,8 +1819,8 @@ a tab opened here after its twin below fetches nothing twice:
 | tab | on the panel |
 |---|---|
 | Info | title, channel, views and age, the description (timestamps seek) |
-| Chapters | the chapters on the bar (see "Chapters"), each a time and its title; the one playing is lit |
-| Bookmarks | `marks.bookmarks`, the ticks on the bar as a list, the last one passed lit, each with a × to remove it. A row reads its note, else what's being said at that moment (the transcript row spanning it), else the chapter it's in — a bare timestamp says nothing about why you marked it. Empty, it says which key makes one |
+| Chapters | the chapters on the bar (see "Chapters"), each its picture (`MomentThumb`), time and title; the one playing is lit |
+| Bookmarks | `marks.bookmarks`, the ticks on the bar as a list, the last one passed lit, each with its picture (`MomentThumb`) and a × to remove it. A row reads its note, else what's being said at that moment (the transcript row spanning it), else the chapter it's in — a bare timestamp says nothing about why you marked it. Empty, it says which key makes one |
 | Comments | `CommentList compact`, from the same `useComments` feed as the tab |
 | Transcript | `PanelRows`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
 | Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
@@ -2283,7 +2298,7 @@ problem.
 
 | File | Covers |
 |------|--------|
-| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the bookmark menu, the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the two menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
@@ -2296,6 +2311,7 @@ problem.
 | `touchReveal.test.ts` | that no control is hidden behind a hover a phone can't perform — and that the reveal which brings it back is prefixed to outrank the rule that hides it |
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
+| `frameGrab.test.tsx` | `useFileFrames` against a stand-in video and canvas: the moments grabbed in turn, each once, kept for the session, the last stopping short of the end, and nothing without a file |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |

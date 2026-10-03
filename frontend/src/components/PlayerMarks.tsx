@@ -20,8 +20,8 @@
  * anywhere else makes you translate a timestamp back into a place in the video.
  * On the bar both are drawn as PotPlayer draws them, in white: a bookmark is a
  * pin, a passage a pair of triangles pointing in at it from either end — the
- * running passage solid, the others faint. The bookmark menu draws the same pin
- * by each row, so a row and the mark it jumps to read as one thing.
+ * running passage solid, the others faint. In the menus a moment shows its
+ * picture instead (MomentThumb), the bar's mark standing in where there's none.
  * Over a file we play ourselves that's literally the bar (see LocalControls);
  * over the embed the bar lives inside the iframe, out of reach, so the rail is
  * laid over it at the same offset the embed draws its own scrubber at.
@@ -34,6 +34,8 @@ import type { ReactNode, RefObject } from 'react'
 import { apiFetch } from '../lib/api'
 import { CHAPTER_GAP } from '../lib/chapters'
 import { formatTime } from '../lib/time'
+import { scaleToWidth, storyboardFrame } from '../lib/storyboard'
+import type { StoryboardInfo } from '../lib/storyboard'
 import type { PlayerApi } from './LocalControls'
 import { t } from '../lib/i18n'
 import { actionFor, shortcutLabel } from '../lib/shortcuts'
@@ -68,7 +70,8 @@ export function loopLabel(loop: Loop): string {
  *  to stand up out of the track. */
 export const BOOKMARK_WIDTH = CHAPTER_GAP * 2
 export const BOOKMARK_HEIGHT = BOOKMARK_WIDTH * 1.5
-// The pin's outline, in an 8×12 box: on the bar, and by each row of the menu.
+// The pin's outline, in an 8×12 box: on the bar, and standing in for a
+// bookmark's picture where there's none to show.
 const PIN_PATH = 'M1.5 0h5A1.5 1.5 0 0 1 8 1.5V8l-4 4-4-4V1.5A1.5 1.5 0 0 1 1.5 0z'
 
 /** PotPlayer's bookmark marker: a white pin, square-shouldered with a point at
@@ -662,17 +665,77 @@ function useDismiss(box: RefObject<HTMLDivElement | null>, onClose: () => void, 
   }, [box, onClose, within])
 }
 
+// How wide a moment's picture is in the menus.
+const MENU_THUMB_W = 80
+
 /** One bookmark as the menu reads it: where it is, and a line saying what's
- *  there (the watch page picks it — the note, what's said, the chapter). */
-export type BookmarkRow = { id: number; start: number; text: string }
+ *  there (the watch page picks it — the note, what's said, the chapter).
+ *  `frame` is the picture grabbed from the file at that moment, when there is
+ *  one (see useFileFrames). */
+export type BookmarkRow = { id: number; start: number; text: string; frame?: string }
+
+/** A moment's picture, `width` px across — a bookmark's, a passage's start, a
+ *  chapter's: the frame grabbed from the file when there is one, else YouTube's
+ *  storyboard tile nearest the moment (the same pictures the scrub popup
+ *  shows), else `children` on a dark tile — the mark the moment wears on the
+ *  bar, where it has one. */
+export function MomentThumb({ time, width, frame, storyboard, children }: {
+  time: number
+  width: number
+  frame?: string
+  storyboard?: StoryboardInfo | null
+  children?: ReactNode
+}) {
+  const height = Math.round((width * 9) / 16)
+  const box = 'shrink-0 overflow-hidden rounded bg-black/60'
+  if (frame) {
+    return <img data-testid="moment-thumb" src={frame} alt="" className={`${box} object-cover`} style={{ width, height }} />
+  }
+  if (storyboard) {
+    const f = storyboardFrame(storyboard, time, scaleToWidth(storyboard, width))
+    return (
+      <div
+        data-testid="moment-thumb"
+        className={box}
+        style={{
+          width: f.fw,
+          height: f.fh,
+          backgroundImage: `url(${f.url})`,
+          backgroundPosition: `${f.bgX}px ${f.bgY}px`,
+          backgroundSize: `${f.sheetW}px ${f.sheetH}px`,
+        }}
+      />
+    )
+  }
+  return (
+    <div data-testid="moment-thumb" className={`${box} flex items-center justify-center`} style={{ width, height }}>
+      {children}
+    </div>
+  )
+}
+
+/** The pin, as a stand-in for a bookmark's picture. */
+export const PIN_ICON = (
+  <svg className="h-3 w-2 text-white/70" viewBox="0 0 8 12" aria-hidden>
+    <path fill="currentColor" d={PIN_PATH} />
+  </svg>
+)
+
+/** The ▶ that marks a passage's start, as a stand-in for its picture. */
+const LOOP_START_ICON = (
+  <svg className="h-3 w-1.5 text-white/70" viewBox="0 0 6 12" aria-hidden>
+    <path fill="currentColor" d="M0 0l6 6-6 6z" />
+  </svg>
+)
 
 /** The video's bookmarks, from the bookmark button: each jumps to its moment,
  *  and its × clears it. Jumping leaves the menu open — you hop through marks
  *  to find the one you meant. The foot, given `onToggleHere`, does what the
  *  button's own press does: it's for a touch screen, where a tap opens this
  *  instead, and with a mouse the button's click already does it. */
-export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, onClose, within }: {
+export function BookmarkMenu({ rows, storyboard, markHere, onSeek, onRemove, onToggleHere, onClose, within }: {
   rows: BookmarkRow[]
+  storyboard?: StoryboardInfo | null
   markHere: boolean
   onSeek: (seconds: number) => void
   onRemove: (id: number) => void
@@ -695,15 +758,16 @@ export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, o
       <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
         {t('Bookmarks')}
       </div>
-      <div className="max-h-56 overflow-y-auto">
+      {/* Four rows of pictures before it scrolls. */}
+      <div className="max-h-[15.5rem] overflow-y-auto">
         {rows.map((b) => (
           <div key={b.id} className="group/row flex items-center">
-            <button role="menuitem" onClick={() => onSeek(b.start)} className={row}>
-              <svg className="h-3 w-2 shrink-0 text-white/70" viewBox="0 0 8 12" aria-hidden>
-                <path fill="currentColor" d={PIN_PATH} />
-              </svg>
-              <span className="shrink-0 tabular-nums">{formatTime(b.start)}</span>
-              {b.text && <span className="min-w-0 truncate text-white/70">{b.text}</span>}
+            <button role="menuitem" onClick={() => onSeek(b.start)} className={`${row} !items-start`}>
+              <MomentThumb time={b.start} width={MENU_THUMB_W} frame={b.frame} storyboard={storyboard}>{PIN_ICON}</MomentThumb>
+              <span className="flex min-w-0 flex-col">
+                <span className="tabular-nums">{formatTime(b.start)}</span>
+                {b.text && <span className="line-clamp-2 text-xs leading-snug text-white/70">{b.text}</span>}
+              </span>
             </button>
             <button
               onClick={() => onRemove(b.id)}
@@ -736,9 +800,12 @@ export function BookmarkMenu({ rows, markHere, onSeek, onRemove, onToggleHere, o
   )
 }
 
-export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop, onNew, onClose, within, tapped = false }: {
+export function LoopMenu({ loops, duration, stage, storyboard, frameAt, onPin, onUse, onDrop, onStop, onNew, onClose, within, tapped = false }: {
   loops: SavedLoop[]
   duration: number
+  /** Where each passage's picture comes from — see MomentThumb. */
+  storyboard?: StoryboardInfo | null
+  frameAt?: (time: number) => string | undefined
   stage: LoopStage
   onPin: (end: 'a' | 'b') => void
   onUse: (id: number) => void
@@ -768,14 +835,14 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
       role="menu"
       // Flush with its button, with no gap: it opens on hover, and a gap is
       // somewhere the pointer leaves both on its way across.
-      className="absolute bottom-full right-0 z-40 min-w-[15rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
+      className="absolute bottom-full right-0 z-40 min-w-[17rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
     >
       <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
         {t('Repeat')}
       </div>
       {/* The passages. Bounded here rather than on the panel, so the actions
-          below stay put however many you've marked. */}
-      <div className="max-h-56 overflow-y-auto">
+          below stay put however many you've marked — four rows of pictures. */}
+      <div className="max-h-[15.5rem] overflow-y-auto">
         {loops.map((l) => (
           <div key={l.id} className={`group/row flex items-center ${l.active ? 'bg-white/10' : ''}`}>
             <button
@@ -784,6 +851,10 @@ export function LoopMenu({ loops, duration, stage, onPin, onUse, onDrop, onStop,
               title={l.active ? t('Stop repeating ({key})', { key: shortcutLabel('loopClear') }) : t('Repeat this passage')}
               className={row}
             >
+              {/* The picture at its start: the top of the video when A is open. */}
+              <MomentThumb time={l.a ?? 0} width={MENU_THUMB_W} frame={frameAt?.(l.a ?? 0)} storyboard={storyboard}>
+                {LOOP_START_ICON}
+              </MomentThumb>
               {/* Whether this is the one running. In white, like everything the
                   loop wears: it takes no colour of its own here either. */}
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${l.active ? 'bg-white' : 'bg-white/25'}`} />

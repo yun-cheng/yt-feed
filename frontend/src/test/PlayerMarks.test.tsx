@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useRef } from 'react'
 import {
   BookmarkMenu,
+  MomentThumb,
+  PIN_ICON,
   EmbedMarkRail,
   LoopMenu,
   MarkTrack,
@@ -17,6 +19,7 @@ import type { Bookmark, Loop, SavedLoop } from '../components/PlayerMarks'
 import type { PlayerApi } from '../components/LocalControls'
 import { CHAPTER_GAP } from '../lib/chapters'
 import { BOOKMARK_HEIGHT, BOOKMARK_WIDTH } from '../components/PlayerMarks'
+import type { StoryboardInfo } from '../lib/storyboard'
 
 // ── A stand-in player ────────────────────────────────────────────────
 
@@ -1278,6 +1281,40 @@ describe('EmbedMarkRail', () => {
   })
 })
 
+
+// ── MomentThumb ──────────────────────────────────────────────────────
+
+const SB: StoryboardInfo = {
+  rows: 5, cols: 5, frame_width: 160, frame_height: 90,
+  fragment_urls: ['https://sb/0.jpg', 'https://sb/1.jpg'], fragment_duration: 250,
+}
+
+describe('MomentThumb', () => {
+  it('shows the frame grabbed from the file', () => {
+    render(<MomentThumb time={30} width={80} frame="blob:x" storyboard={SB} />)
+    const img = screen.getByTestId('moment-thumb')
+    expect(img).toHaveAttribute('src', 'blob:x')
+    expect(img.style.width).toBe('80px')
+    expect(img.style.height).toBe('45px')
+  })
+
+  it('else the storyboard tile for that moment, at the width asked', () => {
+    // 10s a tile: 30s is the fourth tile of the first sheet, at half size.
+    render(<MomentThumb time={30} width={80} storyboard={SB} />)
+    const tile = screen.getByTestId('moment-thumb')
+    expect(tile.style.backgroundImage).toContain('https://sb/0.jpg')
+    expect(tile.style.backgroundPosition).toBe('-240px 0px')
+    expect(tile.style.backgroundSize).toBe('400px 225px')
+    expect(tile.style.width).toBe('80px')
+  })
+
+  it('else the mark it wears on the bar, on a dark tile', () => {
+    render(<MomentThumb time={30} width={80}>{PIN_ICON}</MomentThumb>)
+    const box = screen.getByTestId('moment-thumb')
+    expect(box.querySelector('path')?.getAttribute('d')).toMatch(/^M1\.5 0h5/)
+  })
+})
+
 // ── LoopMenu ─────────────────────────────────────────────────────────
 
 describe('LoopMenu', () => {
@@ -1319,6 +1356,16 @@ describe('LoopMenu', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /Pin start/ }))
     fireEvent.click(screen.getByRole('menuitem', { name: /Stop repeating/ }))
     expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('draws each passage with the picture at its start', () => {
+    // The top of the video for one whose A is open.
+    const frameAt = vi.fn((t: number) => (t === 30 ? 'blob:a' : undefined))
+    open({ storyboard: SB, frameAt })
+    const thumbs = screen.getAllByTestId('moment-thumb')
+    expect(thumbs[0]).toHaveAttribute('src', 'blob:a')
+    expect(thumbs[1].style.backgroundImage).toContain(SB.fragment_urls[0])
+    expect(frameAt).toHaveBeenCalledWith(90)
   })
 
   it('picking the one already running stops it instead', () => {
@@ -1409,6 +1456,15 @@ describe('BookmarkMenu', () => {
     fireEvent.click(screen.getByText('1:35'))
     expect(props.onSeek).toHaveBeenCalledWith(95)
     expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('draws each row with its picture', () => {
+    render(<BookmarkMenu rows={[{ ...rows[0], frame: 'blob:one' }, rows[1]]} storyboard={SB} markHere={false} onSeek={vi.fn()} onRemove={vi.fn()} onClose={vi.fn()} />)
+    const thumbs = screen.getAllByTestId('moment-thumb')
+    expect(thumbs).toHaveLength(2)
+    // A frame grabbed from the file beats the storyboard's tile.
+    expect(thumbs[0]).toHaveAttribute('src', 'blob:one')
+    expect(thumbs[1].style.backgroundImage).toContain(SB.fragment_urls[0])
   })
 
   it('clears one from its ×', () => {

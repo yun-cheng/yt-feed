@@ -52,14 +52,15 @@ real video (muted, with custom captions and scrubbing).
   bar or anywhere else, lets it go. **One end is enough**: `[` alone
   repeats from there to the end of the video, `]` alone from the start up to
   there. **A video keeps as many passages as you mark**, saved with it — the loop
-  button's menu lists them, where you switch between them, delete one, or start a
-  new one from where you are. Both show on the progress bar the way PotPlayer
+  button's menu lists them, each with a picture of its start, where you switch
+  between them, delete one, or start a new one from where you are. Both show on the progress bar the way PotPlayer
   draws them — a bookmark as a white pin, a passage as a ▶ and a ◀ bracketing it
   — and while you're inside a running passage the red fill runs only from its
   start. Both also have a **button
   in the control bar** that opens its menu on hover: a click on the loop's turns
   the repeat on or off, a click on the bookmark's marks the moment or clears the
-  one you're standing on, and the bookmark's menu lists them all to jump to. It's
+  one you're standing on, and the bookmark's menu lists them all to jump to,
+  each with a picture of its moment. It's
   our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
 - **Up next, in the channel's own order** — when a video ends, the card offered

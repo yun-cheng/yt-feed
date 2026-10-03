@@ -11,7 +11,8 @@ import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalCon
 import { nextSpeed } from '../lib/playbackSpeeds'
 import { actionFor, shortcutLabel } from '../lib/shortcuts'
 import type { PlayerApi } from './LocalControls'
-import { usePlayerMarks, BookmarkMenu, EmbedMarkRail, LoopMenu } from './PlayerMarks'
+import { usePlayerMarks, BookmarkMenu, EmbedMarkRail, LoopMenu, MomentThumb, PIN_ICON } from './PlayerMarks'
+import { useFileFrames } from '../lib/frameGrab'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
@@ -488,6 +489,9 @@ const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
   ),
 }
 
+// How wide a moment's picture is in the panel's Chapters and Bookmarks tabs.
+const PANEL_THUMB_W = 96
+
 /**
  * A list of moments on the panel over the video, following the play head in a
  * box of its own — the transcript, the chapters, the bookmarks. Each row is a
@@ -500,11 +504,13 @@ const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
  * Following works as the page's transcript does: scrolling the active row out
  * of view stops it, and Sync to video (or clicking a row) starts it again.
  */
-function PanelRows({ rows, activeRow, onSeek, busy = false, trailing, empty }: {
+function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trailing, empty }: {
   rows: { start: number; text: string }[]
   activeRow: number
   onSeek: (seconds: number) => void
   busy?: boolean
+  /** Something drawn ahead of a row's time — a bookmark's picture. */
+  leading?: (i: number) => ReactNode
   /** Something to do to a row, beside it — a bookmark's remove button. */
   trailing?: (i: number) => ReactNode
   /** What the tab says while it has no rows. */
@@ -545,6 +551,7 @@ function PanelRows({ rows, activeRow, onSeek, busy = false, trailing, empty }: {
               onClick={() => { setFollowing(true); onSeek(s.start) }}
               className="flex min-w-0 flex-1 gap-2 px-1.5 py-1 text-left"
             >
+              {leading?.(i)}
               <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
               <span className={`text-(length:--panel-body) leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
                 {s.text}
@@ -1315,23 +1322,26 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     return () => { cancelled = true }
   }, [videoId])
 
-  // Scrub-preview frames for the embed. Only fetched where they can be shown:
-  // our own bar, over a video we're streaming rather than playing off disk (a
-  // file seeks its own frames, which are better and free). Hovering the card is
-  // almost always how you got here and warms the same server-side cache, so this
-  // is usually a hit rather than another yt-dlp extraction. An empty object
-  // means the video has no storyboards — the popup falls back to the timestamp.
+  // Scrub-preview frames for the embed, which are also the pictures of its
+  // bookmarks, passages and chapters. Only fetched where they can be shown: our
+  // own bar, or a video with any of those, while we're streaming rather than
+  // playing off disk (a file grabs its own frames, which are better and free).
+  // Hovering the card is almost always how you got here and warms the same
+  // server-side cache, so this is usually a hit rather than another yt-dlp
+  // extraction. An empty object means the video has no storyboards — the popup
+  // falls back to the timestamp, a picture to the mark it wears on the bar.
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
+  const storyboardWanted = EMBED_OWN_CONTROLS || marks.bookmarks.length > 0 || marks.loops.length > 0 || chapters.length > 0
   useEffect(() => {
     setStoryboard(null)
-    if (!EMBED_OWN_CONTROLS || playLocal || !downloadsKnown) return
+    if (!storyboardWanted || playLocal || !downloadsKnown) return
     let cancelled = false
     apiFetch(`/api/feed/storyboard/${videoId}`, { quiet: true })
       .then((r) => r.json())
       .then((d) => { if (!cancelled && d?.fragment_urls?.length) setStoryboard(d) })
       .catch(() => { /* timestamp-only preview */ })
     return () => { cancelled = true }
-  }, [videoId, playLocal, downloadsKnown])
+  }, [videoId, playLocal, downloadsKnown, storyboardWanted])
 
   // Prefetch the transcript so `c` toggles instantly. [] = no captions available.
   // Refetches when the chosen language changes; the response's `lang` is the base
@@ -1703,13 +1713,23 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // bookmark row is its note, or else what's being said there, or else which
   // chapter it's in — a bare timestamp says nothing about why you marked it.
   // Each lights the last row the play head has passed, as the transcript does.
-  const chapterRows = useMemo(() => chapters.map((c) => ({ start: c.start, text: c.title })), [chapters])
+  // Off a file, each picture is grabbed from the file itself — only once the
+  // list it's in is showing, and then kept. A passage's picture is its start.
+  const momentFrame = useFileFrames(playLocal ? localSrc : null, [
+    ...(showBookmarkMenu || panelShows('bookmarks') ? marks.bookmarks.map((b) => b.position_seconds) : []),
+    ...(showLoopMenu ? marks.loops.map((l) => l.a ?? 0) : []),
+    ...(panelShows('chapters') ? chapters.map((c) => c.start) : []),
+  ])
+  const chapterRows = useMemo(
+    () => chapters.map((c) => ({ start: c.start, text: c.title, frame: momentFrame(c.start) })),
+    [chapters, momentFrame],
+  )
   const activeChapter = chapters.indexOf(chapterAt(chapters, curTime) as Chapter)
   const bookmarkRows = useMemo(() => marks.bookmarks.map((b) => {
     const at = b.position_seconds
     const said = transcript.find((s) => s.start <= at && at < s.end)?.text
-    return { id: b.id, start: at, text: b.note || said || chapterAt(chapters, at)?.title || '' }
-  }), [marks.bookmarks, transcript, chapters])
+    return { id: b.id, start: at, text: b.note || said || chapterAt(chapters, at)?.title || '', frame: momentFrame(at) }
+  }), [marks.bookmarks, transcript, chapters, momentFrame])
   const activeBookmark = marks.bookmarks.reduce((last, b, i) => (b.position_seconds <= curTime + 0.05 ? i : last), -1)
   const activeRow = useMemo(() => {
     if (!transcriptWanted) return -1
@@ -2274,7 +2294,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           )}
           {panelKeeps('chapters') && (
             <PanelTab shown={panelTabShown === 'chapters'}>
-              <PanelRows rows={chapterRows} activeRow={activeChapter} onSeek={seekTo} />
+              <PanelRows
+                rows={chapterRows}
+                activeRow={activeChapter}
+                onSeek={seekTo}
+                leading={(i) => (
+                  <MomentThumb time={chapterRows[i].start} width={PANEL_THUMB_W} frame={chapterRows[i].frame} storyboard={storyboard} />
+                )}
+              />
             </PanelTab>
           )}
           {panelKeeps('transcript') && (
@@ -2288,6 +2315,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 rows={bookmarkRows}
                 activeRow={activeBookmark}
                 onSeek={seekTo}
+                leading={(i) => (
+                  <MomentThumb time={bookmarkRows[i].start} width={PANEL_THUMB_W} frame={bookmarkRows[i].frame} storyboard={storyboard}>
+                    {PIN_ICON}
+                  </MomentThumb>
+                )}
                 empty={t('No bookmarks yet. Press {key} to mark the moment you’re at.', { key: shortcutLabel('bookmark') })}
                 trailing={(i) => (
                   <button
@@ -2643,6 +2675,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       {showBookmarkMenu && (
         <BookmarkMenu
           rows={bookmarkRows}
+          storyboard={storyboard}
           markHere={marks.markHere}
           onSeek={seekTo}
           onRemove={marks.removeBookmark}
@@ -2708,6 +2741,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           loops={marks.loops}
           duration={meta?.duration_seconds ?? 0}
           stage={marks.loopStage}
+          storyboard={storyboard}
+          frameAt={momentFrame}
           onPin={marks.pinLoopEnd}
           onUse={marks.useLoop}
           onDrop={marks.dropLoop}
