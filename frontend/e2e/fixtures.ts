@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { test as base, expect, type Page } from '@playwright/test'
 
 /**
@@ -36,11 +37,15 @@ export const YOUTUBE: Record<string, { chapters?: Chapter[]; cues?: Cue[]; comme
  *  it, in two pieces, with a timestamp that seeks. */
 export const ASK_ANSWER = ['It starts at 0:06, ', 'where the second caption comes in.']
 
+const THUMB = fileURLToPath(new URL('./.run/thumb.jpg', import.meta.url))
+
 async function stubYouTube(page: Page) {
   const idOf = (url: string) => new URL(url).pathname.split('/').pop() || ''
   const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
 
   await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort())
+  // Thumbnails are the exception: one picture (seed.py) stands in for all.
+  await page.route(/^https:\/\/i\.ytimg\.com\//, (route) => route.fulfill({ path: THUMB }))
   await page.route('**/api/feed/description/*', (route) =>
     route.fulfill(json({ description: '', chapters: YOUTUBE[idOf(route.request().url())]?.chapters ?? [] })))
   await page.route('**/api/feed/captions/*', (route) =>

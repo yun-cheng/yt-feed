@@ -30,6 +30,8 @@ mkdir -p "$RUN/data"
 export DATA_DIR="$RUN/data"
 # The folder the local-folders spec adds, filled by seed.py.
 export E2E_MEDIA_DIR="$RUN/media"
+# Every card's thumbnail, made by seed.py and served by fixtures.ts.
+export E2E_THUMB="$RUN/thumb.jpg"
 export SPA_DIR="$RUN/dist"
 export SKIP_CONFIG_ADOPTION=1
 export OPENROUTER_API_KEY=""

@@ -383,7 +383,9 @@ cd frontend && npm run test:e2e
 It drives your installed Google Chrome, headless, against a backend of its own
 on port 8765 over a scratch feed of generated videos, with a Meilisearch of its
 own on 7709 when the binary is installed — never your feed, your search index,
-or YouTube.
+or YouTube. Among its specs are screenshot tests of single features (the
+progress bar's marks, the menus, the captions), whose baselines belong to the
+machine that made them; see the frontend README.
 
 And one more, for the seam neither suite can reach — an image, a volume, and
 a process that has never run before:

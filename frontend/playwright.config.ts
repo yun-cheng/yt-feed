@@ -12,7 +12,24 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   timeout: 30_000,
-  expect: { timeout: 10_000 },
+  expect: {
+    timeout: 10_000,
+    // visual.spec.ts: one feature per picture, compared against a baseline
+    // made on this machine. A pixel counts as changed at a small colour
+    // difference — the default (0.2) let the caption box go from 75% to 50%
+    // opaque unnoticed — and a small share of changed pixels absorbs
+    // antialiasing.
+    toHaveScreenshot: {
+      animations: 'disabled',
+      threshold: 0.05,
+      maxDiffPixelRatio: 0.01,
+      scale: 'css',
+      stylePath: './e2e/screenshot.css',
+    },
+  },
+  // In e2e/__screenshots__, named for the feature, with the platform: a
+  // baseline is only good for the system (and Chrome) that drew it.
+  snapshotPathTemplate: '{testDir}/__screenshots__/{arg}-{platform}{ext}',
   reporter: process.env.CI ? 'github' : 'list',
   globalSetup: './e2e/global-setup.ts',
   use: {

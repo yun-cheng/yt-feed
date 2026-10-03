@@ -2410,8 +2410,9 @@ posted to `/api/setup/claim`, and the cookie kept for every spec.
 
 What only YouTube knows — description and chapters, captions, comments — is
 answered in the browser by `fixtures.ts`, per video, so a spec states what its
-video has; so is Ask AI, whose answer arrives as the server streams one. Any
-request for another host is refused there too.
+video has; so is Ask AI, whose answer arrives as the server streams one.
+Thumbnails get one generated picture for all of them, so cards look as they do
+in use. Any other request for another host is refused.
 
 It uses the installed **Google Chrome** (`channel: 'chrome'`), headless. Playwright's
 own Chromium can't decode H.264, and Chrome needs no download.
@@ -2433,6 +2434,7 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `search.spec.ts` | a title found by a word in it, and by a misspelt one |
 | `channels.spec.ts` | the followed channels and their scoped search, a channel's page listing its own videos, and Hide channel taking a channel's videos off the feed across a reload |
 | `watch.spec.ts` | a card opening its video in the app and Back returning to the feed; the panel's Comments, its Transcript as sentences that seek, Ask AI streaming an answer whose time seeks, and the panel changing sides |
+| `visual.spec.ts` | how features look, against screenshots (below): the progress bar's pins, passage markers and chapter gaps; the bookmark and repeat menus with their pictures; a caption line, and captions centred beside the panel; the up-next card; a tag chip off, picked and left out; a card in the light theme |
 | `preferences.spec.ts` | a shortcut moved to another key answering there and not on the old one, the speed list setting the steps `.` takes, Home opening on the window set under Pages, and the panel opening on the tab Settings names |
 
 Each spec has a channel to itself (see `seed.py`), and a spec that leaves
@@ -2453,3 +2455,35 @@ Three things the app does that a spec has to allow for:
   replaces whatever the panel holds. A question sent before it lands is wiped
   when it does — out of reach of anyone typing, but not of a test, which waits
   for the suggestions an empty thread shows.
+
+#### Screenshots
+
+`visual.spec.ts` compares pictures, one **feature** to a picture rather than
+whole screens: the bar, a menu, a chip. A failure then names what changed, a
+restyle redraws one baseline rather than all of them, and nothing else on the
+page — a date, another card — can move a picture it isn't in.
+
+The baselines are in `e2e/__screenshots__`, named for the feature and the
+platform (`-darwin`): they're only good for the system and Chrome that drew
+them, so this is a suite for the machine that made them, not for CI elsewhere.
+After a change that was meant to show:
+
+```bash
+npx playwright test visual --update-snapshots
+```
+
+What keeps them still: the video paused, the data seeded, nothing hovered that
+isn't the subject, animations off. `e2e/screenshot.css` hides the video's own
+picture behind a mid-grey backdrop. A decoded frame is the one thing that could
+differ between runs, and grey rather than black keeps the translucent layers
+over it — the caption box, the bar's shade, the up-next scrim — telling apart.
+The comparison counts a pixel as changed at a small colour difference
+(`threshold: 0.05`; the default 0.2 let the caption box drop from 75% to 50%
+opaque unnoticed) and tolerates 1% of them changing, which absorbs
+antialiasing.
+
+One more thing it has to allow for. A card in the grid sits at a fractional
+position, and at 483px wide its 16:9 thumbnail is 271.69px high, so where the
+picture's edges round to depends on what else the page holds. The card shot
+lifts it out of the grid to the corner, at 480px.
+

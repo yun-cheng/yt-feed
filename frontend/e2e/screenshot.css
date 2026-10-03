@@ -1,0 +1,16 @@
+/* Applied while visual.spec.ts takes a picture (playwright.config.ts →
+   expect.toHaveScreenshot.stylePath). The video's own picture is hidden: the
+   shots are of what's drawn over it — the bar, the captions, the cards — and
+   a decoded frame is the one thing on screen that could differ by a pixel
+   between two runs for reasons that aren't ours. The moment pictures in the
+   menus are images of their own, and stay.
+
+   Mid grey takes its place, not black. Over black, the caption box, the
+   bar's shade and the up-next scrim all read as black whatever their
+   opacity, so a change to any of them would pass unseen. */
+video {
+  visibility: hidden !important;
+}
+:has(> video) {
+  background: #808080 !important;
+}

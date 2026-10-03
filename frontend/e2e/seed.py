@@ -88,6 +88,13 @@ SUMMARISED = {"e2eSoup0000"}
 LOCAL_FILES = [("Clip one.mp4", 8), ("Clip two.mp4", 5)]
 
 
+def thumbnail(video_id: str) -> str:
+    """Where YouTube keeps a video's thumbnail. The specs' browser answers
+    every request there with one picture made below (fixtures.ts), so a card
+    looks as it does in use without anything leaving the machine."""
+    return f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg"
+
+
 def make_file(path: str, seconds: int) -> None:
     subprocess.run(
         [
@@ -116,6 +123,7 @@ async def main() -> None:
             for video_id, title, seconds, published, views, downloaded in videos:
                 db.add(Video(
                     youtube_id=video_id, channel_id=channel_id, title=title,
+                    thumbnail_url=thumbnail(video_id),
                     published_at=published, duration_seconds=seconds,
                     view_count=views, like_count=views // 20,
                     is_short=video_id in SHORTS,
@@ -137,11 +145,18 @@ async def main() -> None:
                     continue
                 db.add(Download(
                     youtube_id=video_id, title=title, channel_id=channel_id,
+                    thumbnail_url=thumbnail(video_id),
                     channel_name=channel_title, duration_seconds=seconds,
                     published_at=published.isoformat(), status="ready",
                 ))
                 make_file(os.path.join(settings.downloads_dir, f"{video_id}.mp4"), seconds)
         await db.commit()
+
+    subprocess.run(
+        ["ffmpeg", "-loglevel", "error", "-y", "-f", "lavfi",
+         "-i", "testsrc2=size=320x180", "-frames:v", "1", os.environ["E2E_THUMB"]],
+        check=True,
+    )
 
     media = Path(os.environ["E2E_MEDIA_DIR"])
     media.mkdir(parents=True, exist_ok=True)
