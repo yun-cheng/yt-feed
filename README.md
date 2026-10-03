@@ -45,7 +45,7 @@ real video (muted, with custom captions and scrubbing).
   when offered, with dual subtitles, an AI translation into Traditional Chinese, and a top/bottom
   position and font size the embed's own captions would never give you; and a panel
   laid over the video (`g`), down either side, with its info, chapters,
-  bookmarks, notes, comments, transcript and Ask AI — which one it opens on is a setting
+  bookmarks, repeat passages, notes, comments, transcript and Ask AI — which one it opens on is a setting
 - **Notes on a video** — the panel's Notes tab holds what you want to remember
   about it: labels, fields that each hold several values (Actors: Ann, Bo), and
   a free-text note. Saved as you type, kept server-side per person, and the
@@ -66,7 +66,9 @@ real video (muted, with custom captions and scrubbing).
   in the control bar** that opens its menu on hover: a click on the loop's turns
   the repeat on or off, a click on the bookmark's marks the moment or clears the
   one you're standing on, and the bookmark's menu lists them all to jump to,
-  each with a picture of its moment. It's
+  each with a picture of its moment. **Either kind can carry a note** — why you
+  marked it, what the passage is — written from its menu or from the panel's
+  Bookmarks and Repeat tabs, which list them too. It's
   our own bar over a file on disk, and a
   rail laid over YouTube's own bar on the embed
 - **Up next, in the channel's own order** — when a video ends, the card offered

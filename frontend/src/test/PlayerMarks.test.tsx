@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useRef } from 'react'
 import {
   BookmarkMenu,
+  NoteBox,
   MomentThumb,
   PIN_ICON,
   EmbedMarkRail,
@@ -96,9 +97,11 @@ function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: st
   return (
     <div>
       <div data-testid="marks">{m.bookmarks.map((b) => b.position_seconds).join(',')}</div>
+      <div data-testid="notes">{m.bookmarks.map((b) => b.note).join('|')}</div>
       <div data-testid="loop">{`${m.loop.a ?? '-'}/${m.loop.b ?? '-'}`}</div>
       {/* Every passage, running one marked — the list the menu draws. */}
       <div data-testid="loops">{m.loops.map((l) => `${l.active ? '*' : ''}${l.a ?? '-'}/${l.b ?? '-'}`).join(' ')}</div>
+      <div data-testid="loop-notes">{m.loops.map((l) => l.note).join('|')}</div>
       <div data-testid="others">{m.others.map((l) => `${l.a ?? '-'}/${l.b ?? '-'}`).join(' ')}</div>
       <div data-testid="stage">{m.loopStage}</div>
       <div data-testid="looping">{m.looping ? 'yes' : 'no'}</div>
@@ -106,9 +109,11 @@ function Harness({ player, videoId = 'vid1' }: { player: PlayerApi; videoId?: st
       {/* The control bar's button and the menu it opens, standing in for the
           real ones: what they get from the hook is exactly these actions. */}
       <button onClick={m.toggleBookmarkHere}>bookmark</button>
+      <button onClick={() => m.setBookmarkNote(m.bookmarks[0].id, '  the reveal  ')}>note</button>
       <button onClick={() => m.pinLoopEnd('a')}>pin a</button>
       <button onClick={() => m.pinLoopEnd('b')}>pin b</button>
       <button onClick={m.newLoop}>new</button>
+      <button onClick={() => m.setLoopNote(m.loops[0].id, ' chorus ')}>loop note</button>
       <button onClick={m.clearLoop}>stop</button>
       <button onClick={m.toggleRepeat}>repeat</button>
       {m.loops.map((l) => (
@@ -155,12 +160,14 @@ async function markAt(p: { _set: (t: number) => void }, at: number) {
 
 let posted: Array<Record<string, unknown>>
 let deleted: string[]
+let patched: Array<{ url: string; body: unknown }>
 /** The server's saved passages, by video — many per video, at most one active. */
 let loops: Record<string, SavedLoop[]>
 
 beforeEach(() => {
   posted = []
   deleted = []
+  patched = []
   loops = {}
   let nextId = 1
   let nextLoopId = 100
@@ -190,7 +197,7 @@ beforeEach(() => {
       const list = loops[video] ?? (loops[video] = [])
       if (method === 'POST') {
         for (const l of list) l.active = false
-        const row: SavedLoop = { id: nextLoopId++, a: body.a ?? null, b: body.b ?? null, active: true }
+        const row: SavedLoop = { id: nextLoopId++, a: body.a ?? null, b: body.b ?? null, active: true, note: body.note ?? '' }
         list.push(row)
         return { ok: true, json: async () => ({ ...row }) } as unknown as Response
       }
@@ -204,6 +211,10 @@ beforeEach(() => {
     if (method === 'DELETE') {
       deleted.push(input)
       return { ok: true, json: async () => ({ status: 'ok' }) } as unknown as Response
+    }
+    if (method === 'PATCH') {
+      patched.push({ url: input, body })
+      return { ok: true, json: async () => body } as unknown as Response
     }
     return { ok: true, json: async () => [] } as unknown as Response
   }))
@@ -237,6 +248,26 @@ describe('usePlayerMarks — bookmarks', () => {
     // after the keypress reads as a dropped one.
     expect(screen.getByTestId('marks')).toHaveTextContent('42')
     await waitFor(() => expect(posted).toEqual([{ video_id: 'vid1', position_seconds: 42 }]))
+  })
+
+  it('writes a note on a bookmark, trimmed, shown at once', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    await markAt(p, 42)
+    act(() => { fireEvent.click(screen.getByText('note')) })
+    expect(screen.getByTestId('notes')).toHaveTextContent('the reveal')
+    await waitFor(() => expect(patched).toEqual([{ url: '/api/bookmarks/id/1', body: { note: 'the reveal' } }]))
+  })
+
+  it('a note written before the bookmark is saved goes with it once it is', async () => {
+    const p = fakePlayer()
+    await renderMarks(p)
+    act(() => { p._set(42) })
+    // No await between the two: the POST is still out when the note is written.
+    act(() => key('b'))
+    act(() => { fireEvent.click(screen.getByText('note')) })
+    await waitFor(() => expect(patched).toEqual([{ url: '/api/bookmarks/id/1', body: { note: 'the reveal' } }]))
+    expect(screen.getByTestId('notes')).toHaveTextContent('the reveal')
   })
 
   it('keeps the list in playback order', async () => {
@@ -551,6 +582,32 @@ describe('usePlayerMarks — one end is enough', () => {
 })
 
 describe('usePlayerMarks — passages that survive the video', () => {
+  it('keep what you wrote about them', async () => {
+    const p = fakePlayer()
+    const { rerender } = await renderMarks(p, 'vid1')
+    act(() => { p._set(10) }); act(() => key('['))
+    await act(async () => {})
+    act(() => { fireEvent.click(screen.getByText('loop note')) })
+    expect(screen.getByTestId('loop-notes')).toHaveTextContent('chorus')
+    await act(async () => {})
+
+    rerender(<Harness player={p} videoId="vid2" />)
+    await act(async () => {})
+    rerender(<Harness player={p} videoId="vid1" />)
+    await waitFor(() => expect(screen.getByTestId('loop-notes')).toHaveTextContent('chorus'))
+    expect(loops.vid1[0].note).toBe('chorus')
+  })
+
+  it('a note written before the passage is saved goes with it once it is', async () => {
+    const p = fakePlayer()
+    await renderMarks(p, 'vid1')
+    act(() => { p._set(10) })
+    // No await between the two: the POST is still out when the note is written.
+    act(() => key('['))
+    act(() => { fireEvent.click(screen.getByText('loop note')) })
+    await waitFor(() => expect(loops.vid1?.[0]?.note).toBe('chorus'))
+  })
+
   it('are there again when you come back', async () => {
     // A loop is work on a passage, and the work is about the video, not about
     // the sitting that pinned it.
@@ -612,7 +669,7 @@ describe('usePlayerMarks — passages that survive the video', () => {
     // The fetch is a round trip and `[` is pressed the moment the passage
     // arrives; the press wins.
     const p = fakePlayer()
-    loops.vid1 = [{ id: 9, a: 300, b: 330, active: true }]
+    loops.vid1 = [{ id: 9, a: 300, b: 330, active: true, note: '' }]
     render(<Harness player={p} videoId="vid1" />)
     act(() => { p._set(10) }); act(() => key('['))
     await act(async () => {})
@@ -1069,6 +1126,51 @@ const marks: Bookmark[] = [
 ]
 const noLoop: Loop = { a: null, b: null }
 
+describe('NoteBox', () => {
+  it('starts on the note, with the cursor at its end', () => {
+    render(<NoteBox label="Bookmark note" note="half" onDone={vi.fn()} />)
+    const box = screen.getByLabelText('Bookmark note') as HTMLTextAreaElement
+    expect(box).toHaveFocus()
+    expect(box.selectionStart).toBe(4)
+  })
+
+  it('Enter keeps what was written; Shift+Enter is a new line', () => {
+    const onDone = vi.fn()
+    render(<NoteBox label="Bookmark note" note="" onDone={onDone} />)
+    const box = screen.getByLabelText('Bookmark note')
+    fireEvent.change(box, { target: { value: 'the reveal' } })
+    fireEvent.keyDown(box, { key: 'Enter', shiftKey: true })
+    expect(onDone).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Enter' })
+    // And the blur that follows doesn't answer twice.
+    fireEvent.blur(box)
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(onDone).toHaveBeenCalledWith('the reveal')
+  })
+
+  it('clicking away keeps it too', () => {
+    const onDone = vi.fn()
+    render(<NoteBox label="Bookmark note" note="" onDone={onDone} />)
+    const box = screen.getByLabelText('Bookmark note')
+    fireEvent.change(box, { target: { value: 'kept' } })
+    fireEvent.blur(box)
+    expect(onDone).toHaveBeenCalledWith('kept')
+  })
+
+  it('Escape leaves the note as it was, without reaching the player', () => {
+    const onDone = vi.fn()
+    render(<NoteBox label="Bookmark note" note="old" onDone={onDone} />)
+    const box = screen.getByLabelText('Bookmark note')
+    fireEvent.change(box, { target: { value: 'new' } })
+    const outer = vi.fn()
+    window.addEventListener('keydown', outer)
+    fireEvent.keyDown(box, { key: 'Escape' })
+    window.removeEventListener('keydown', outer)
+    expect(onDone).toHaveBeenCalledWith(null)
+    expect(outer).not.toHaveBeenCalled()
+  })
+})
+
 describe('MarkTrack', () => {
   it('renders nothing before the duration is known', () => {
     // Dividing by 0 would put every mark at NaN%.
@@ -1102,6 +1204,11 @@ describe('MarkTrack', () => {
     expect(area.style.left).toBe(pin.style.left)
     expect(area).toHaveClass('-translate-x-1/2')
     expect(pin).toHaveClass('-translate-x-1/2')
+  })
+
+  it('a bookmark with a note says it on hover', () => {
+    render(<MarkTrack bookmarks={[{ id: 1, position_seconds: 30, note: 'the reveal' }]} loop={noLoop} duration={120} onSeek={vi.fn()} />)
+    expect(screen.getByRole('button')).toHaveAttribute('title', 'the reveal — jump to 0:30')
   })
 
   it('draws a bookmark as PotPlayer does: a pin twice a chapter cut wide, centred on the track', () => {
@@ -1319,8 +1426,8 @@ describe('MomentThumb', () => {
 
 describe('LoopMenu', () => {
   const passages: SavedLoop[] = [
-    { id: 1, a: 30, b: 60, active: false },
-    { id: 2, a: 90, b: null, active: true },
+    { id: 1, a: 30, b: 60, active: false, note: '' },
+    { id: 2, a: 90, b: null, active: true, note: '' },
   ]
   const open = (over: Partial<Parameters<typeof LoopMenu>[0]> = {}) => {
     const props = {
@@ -1338,6 +1445,61 @@ describe('LoopMenu', () => {
     expect(screen.getByText('0:30 – 1:00')).toBeInTheDocument()
     // An unpinned end says what it resolves to, because that's what it does.
     expect(screen.getByText('1:30 – end')).toBeInTheDocument()
+  })
+
+  it('a passage with no note says what is there, dimmer', () => {
+    open({ textAt: (at) => (at === 30 ? 'what was said' : '') })
+    expect(screen.getByText('what was said')).toHaveClass('text-white/45')
+  })
+
+  it('a passage says what it is, under its range', () => {
+    open({ loops: [{ id: 1, a: 30, b: 60, active: false, note: 'the run in bar 12' }], onNote: vi.fn() })
+    expect(screen.getByText('the run in bar 12')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('its pencil writes a note in place, kept on Enter', () => {
+    const onNote = vi.fn()
+    const onWriting = vi.fn()
+    const props = open({ onNote, onWriting })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a note' })[0])
+    expect(onWriting).toHaveBeenLastCalledWith(true)
+    const box = screen.getByLabelText('Passage note')
+    expect(box).toHaveFocus()
+    // Written on, the row doesn't repeat the passage on a click.
+    expect(box.closest('button')).toBeNull()
+    fireEvent.change(box, { target: { value: 'chorus' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(onNote).toHaveBeenCalledWith(1, 'chorus')
+    expect(onWriting).toHaveBeenLastCalledWith(false)
+    expect(screen.queryByLabelText('Passage note')).toBeNull()
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('Escape leaves the note and keeps the menu open', () => {
+    const onNote = vi.fn()
+    const props = open({ onNote })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a note' })[0])
+    const box = screen.getByLabelText('Passage note')
+    fireEvent.change(box, { target: { value: 'chorus' } })
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(onNote).not.toHaveBeenCalled()
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('a press outside keeps the note before the menu closes', () => {
+    const onNote = vi.fn()
+    const props = open({ onNote })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a note' })[0])
+    fireEvent.change(screen.getByLabelText('Passage note'), { target: { value: 'chorus' } })
+    fireEvent.mouseDown(document.body)
+    expect(onNote).toHaveBeenCalledWith(1, 'chorus')
+    expect(props.onClose).toHaveBeenCalled()
+  })
+
+  it('offers no pencil where nothing would keep the note', () => {
+    open()
+    expect(screen.queryByRole('button', { name: 'Add a note' })).toBeNull()
   })
 
   it('picking one switches to it, and gets out of the way', () => {
@@ -1385,7 +1547,7 @@ describe('LoopMenu', () => {
 
   it('says which passages are marked but not repeating', () => {
     // The bar can't show a loop that isn't running, so the menu says it.
-    open({ loops: [{ id: 3, a: 90, b: 30, active: false }] })
+    open({ loops: [{ id: 3, a: 90, b: 30, active: false, note: '' }] })
     expect(screen.getByText('not looping')).toBeInTheDocument()
   })
 
@@ -1437,8 +1599,8 @@ describe('LoopMenu', () => {
 
 describe('BookmarkMenu', () => {
   const rows = [
-    { id: 1, start: 30, text: 'what was said' },
-    { id: 2, start: 95, text: '' },
+    { id: 1, start: 30, text: 'what was said', note: '' },
+    { id: 2, start: 95, text: '', note: '' },
   ]
   const open = (over: Partial<Parameters<typeof BookmarkMenu>[0]> = {}) => {
     const props = {
@@ -1456,6 +1618,38 @@ describe('BookmarkMenu', () => {
     fireEvent.click(screen.getByText('1:35'))
     expect(props.onSeek).toHaveBeenCalledWith(95)
     expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('a note reads brighter than the line found there', () => {
+    open({ rows: [{ id: 1, start: 30, text: 'the reveal', note: 'the reveal' }, rows[0]] })
+    expect(screen.getByText('the reveal')).toHaveClass('text-white/70')
+    expect(screen.getByText('what was said')).toHaveClass('text-white/45')
+  })
+
+  it('its pencil writes a note in place, kept on Enter, the menu left open', () => {
+    const onNote = vi.fn()
+    const onWriting = vi.fn()
+    const props = open({ onNote, onWriting })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a note' })[0])
+    expect(onWriting).toHaveBeenLastCalledWith(true)
+    const box = screen.getByLabelText('Bookmark note')
+    expect(box).toHaveFocus()
+    expect(box.closest('button')).toBeNull()
+    fireEvent.change(box, { target: { value: 'the reveal' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(onNote).toHaveBeenCalledWith(1, 'the reveal')
+    expect(onWriting).toHaveBeenLastCalledWith(false)
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('a press outside keeps the note before the menu closes', () => {
+    const onNote = vi.fn()
+    const props = open({ onNote })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add a note' })[0])
+    fireEvent.change(screen.getByLabelText('Bookmark note'), { target: { value: 'kept' } })
+    fireEvent.mouseDown(document.body)
+    expect(onNote).toHaveBeenCalledWith(1, 'kept')
+    expect(props.onClose).toHaveBeenCalled()
   })
 
   it('draws each row with its picture', () => {

@@ -29,7 +29,33 @@ describe('PanelRows', () => {
     render(<PanelRows rows={rows} activeRow={-1} onSeek={onSeek} />)
     expect(screen.getByText('1:05')).toBeInTheDocument()
     fireEvent.click(screen.getByText('The end'))
-    expect(onSeek).toHaveBeenCalledWith(600)
+    expect(onSeek).toHaveBeenCalledWith(600, 2)
+  })
+
+  it('a row can say when it is otherwise, and what pressing it does', () => {
+    render(<PanelRows rows={[{ start: 30, text: 'Chorus', when: '0:30 – 1:00', title: 'Repeat this passage' }]} activeRow={-1} onSeek={() => {}} />)
+    expect(screen.getByText('0:30 – 1:00')).toBeInTheDocument()
+    expect(screen.queryByText('0:30')).toBeNull()
+    expect(screen.getByRole('button', { name: /Chorus/ })).toHaveAttribute('title', 'Repeat this passage')
+  })
+
+  it('draws a row’s line its own way, when given one', () => {
+    render(<PanelRows rows={rows} activeRow={-1} onSeek={() => {}} line={(i) => <em>{`line ${i}`}</em>} />)
+    expect(screen.getByText('line 1').tagName).toBe('EM')
+    expect(screen.queryByText('The middle')).toBeNull()
+  })
+
+  it('a row being written on shows its editor, and stops seeking', () => {
+    const onSeek = vi.fn()
+    render(<PanelRows rows={rows} activeRow={-1} onSeek={onSeek} editing={{ row: 1, editor: <textarea aria-label="Bookmark note" /> }} />)
+    const editor = screen.getByLabelText('Bookmark note')
+    expect(editor.closest('button')).toBeNull()
+    expect(screen.queryByText('The middle')).toBeNull()
+    // Its time still shows; the other rows still seek.
+    fireEvent.click(screen.getByText('1:05'))
+    expect(onSeek).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('Intro'))
+    expect(onSeek).toHaveBeenCalledWith(0, 0)
   })
 
   it('marks the row the play head is in', () => {

@@ -55,7 +55,7 @@ export type Loop = { a: number | null; b: number | null }
  *  POINT, so marks simply coexist; a loop is a MODE, so a video can hold several
  *  passages but only one of them repeats — and which one is worth remembering,
  *  since that's the passage you were working on. */
-export type SavedLoop = { id: number; a: number | null; b: number | null; active: boolean }
+export type SavedLoop = { id: number; a: number | null; b: number | null; active: boolean; note: string }
 
 const NO_LOOP: Loop = { a: null, b: null }
 
@@ -166,6 +166,14 @@ export function loopActive(loop: Loop, duration: number): boolean {
   return loopBounds(loop, duration) !== null
 }
 
+function sendNote(id: number, note: string) {
+  apiFetch(`/api/bookmarks/id/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note }),
+  }).catch(() => { /* shown here either way; the error toast says it didn't keep */ })
+}
+
 /** Bookmarks + A–B repeat for one video, wired to the keyboard.
  *
  * `videoId` is whatever identifies the video to the backend — a YouTube id, or
@@ -257,10 +265,22 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
       .then((r) => r.json())
       .then((saved: Bookmark) => {
         if (!saved?.id) return
-        setBookmarks((list) => list.map((b) => (b.id === temp.id ? saved : b)))
+        // A note written while the POST was out is sent on under the real id.
+        const note = bookmarksRef.current.find((b) => b.id === temp.id)?.note
+        setBookmarks((list) => list.map((b) => (b.id === temp.id ? { ...saved, note: b.note } : b)))
+        if (note) sendNote(saved.id, note)
       })
       .catch(() => setBookmarks((list) => list.filter((b) => b.id !== temp.id)))
   }, [videoId])
+
+  /** What a bookmark says: why you marked it. Empty takes it back to the
+   *  line the page finds for it (what's said there, the chapter). */
+  const setBookmarkNote = useCallback((id: number, note: string) => {
+    const text = note.trim()
+    setBookmarks((list) => list.map((b) => (b.id === id ? { ...b, note: text } : b)))
+    // Not yet saved: the POST making it sends the note on (addBookmark).
+    if (id > 0) sendNote(id, text)
+  }, [])
 
   const removeBookmark = useCallback((id: number) => {
     setBookmarks((list) => list.filter((b) => b.id !== id))
@@ -301,7 +321,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
   /** Mark a new passage with one end pinned. It becomes the running one — you
    *  only mark a passage when it's the one you're about to work on. */
   const openLoop = useCallback((end: 'a' | 'b', at: number) => {
-    const temp: SavedLoop = { id: -Date.now(), a: end === 'a' ? at : null, b: end === 'b' ? at : null, active: true }
+    const temp: SavedLoop = { id: -Date.now(), a: end === 'a' ? at : null, b: end === 'b' ? at : null, active: true, note: '' }
     writeLoops([...loopsRef.current.map((l) => ({ ...l, active: false })), temp])
     apiFetch(`/api/bookmarks/${videoId}/loops`, {
       method: 'POST',
@@ -321,18 +341,18 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
           return
         }
         writeLoops(loopsRef.current.map((l) => (l.id === temp.id ? { ...l, id: saved.id } : l)))
-        // Ends moved, or the passage switched away from, while it had no id to
-        // send them under. They go out now.
-        if (now.a !== temp.a || now.b !== temp.b || now.active !== temp.active) {
-          sendLoop(saved.id, { a: now.a, b: now.b, active: now.active })
+        // Ends moved, the passage switched away from, or a note written, while
+        // it had no id to send them under. They go out now.
+        if (now.a !== temp.a || now.b !== temp.b || now.active !== temp.active || now.note !== temp.note) {
+          sendLoop(saved.id, { a: now.a, b: now.b, active: now.active, note: now.note })
         }
       })
       .catch(() => writeLoops(loopsRef.current.filter((l) => l.id !== temp.id)))
   }, [videoId, writeLoops, sendLoop])
 
-  /** Move an end, or switch to this passage. Switching clears the rest, because
-   *  only one passage of a video repeats at a time. */
-  const editLoop = useCallback((id: number, change: Partial<Pick<SavedLoop, 'a' | 'b' | 'active'>>) => {
+  /** Move an end, switch to this passage, or write what it is. Switching
+   *  clears the rest, because only one passage of a video repeats at a time. */
+  const editLoop = useCallback((id: number, change: Partial<Pick<SavedLoop, 'a' | 'b' | 'active' | 'note'>>) => {
     writeLoops(loopsRef.current.map((l) => (
       l.id === id ? { ...l, ...change } : change.active ? { ...l, active: false } : l
     )))
@@ -346,6 +366,11 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
     apiFetch(`/api/bookmarks/${videoId}/loops/id/${id}`, { method: 'DELETE', quiet: true })
       .catch(() => { /* gone from view either way */ })
   }, [videoId, writeLoops])
+
+  /** What a passage is, as the menu writes it. */
+  const setLoopNote = useCallback((id: number, note: string) => {
+    editLoop(id, { note: note.trim() })
+  }, [editLoop])
 
   /** Stop repeating, keeping the passage. `\\` and the menu's own row.
    *
@@ -544,7 +569,7 @@ export function usePlayerMarks(videoId: string, playerRef: RefObject<PlayerApi |
 
   return {
     bookmarks, loop, loops, others, loopStage, looping, markHere,
-    toggleBookmarkHere, removeBookmark, pinLoopEnd, newLoop, useLoop, dropLoop, clearLoop, toggleRepeat,
+    toggleBookmarkHere, removeBookmark, setBookmarkNote, pinLoopEnd, newLoop, useLoop, dropLoop, setLoopNote, clearLoop, toggleRepeat,
   }
 }
 
@@ -625,7 +650,7 @@ export function MarkTrack({ bookmarks, loop, others = [], duration, onSeek }: {
           on the track itself. */}
       {bookmarks.map((b) => <BookmarkPin key={`pin${b.id}`} left={pct(b.position_seconds)} />)}
       {/* And the hit area over each, wider than the pin is to aim at. */}
-      {bookmarks.map((b) => hit(b.id, b.position_seconds, t('Bookmark'), null))}
+      {bookmarks.map((b) => hit(b.id, b.position_seconds, b.note || t('Bookmark'), null))}
     </>
   )
 }
@@ -668,11 +693,11 @@ function useDismiss(box: RefObject<HTMLDivElement | null>, onClose: () => void, 
 // How wide a moment's picture is in the menus.
 const MENU_THUMB_W = 80
 
-/** One bookmark as the menu reads it: where it is, and a line saying what's
- *  there (the watch page picks it — the note, what's said, the chapter).
- *  `frame` is the picture grabbed from the file at that moment, when there is
- *  one (see useFileFrames). */
-export type BookmarkRow = { id: number; start: number; text: string; frame?: string }
+/** One bookmark as the menu reads it: where it is, its note, and a line saying
+ *  what's there (the watch page picks it — the note, else what's said, else
+ *  the chapter). `frame` is the picture grabbed from the file at that moment,
+ *  when there is one (see useFileFrames). */
+export type BookmarkRow = { id: number; start: number; text: string; note: string; frame?: string }
 
 /** A moment's picture, `width` px across — a bookmark's, a passage's start, a
  *  chapter's: the frame grabbed from the file when there is one, else YouTube's
@@ -722,30 +747,149 @@ export const PIN_ICON = (
 )
 
 /** The ▶ that marks a passage's start, as a stand-in for its picture. */
-const LOOP_START_ICON = (
+export const LOOP_START_ICON = (
   <svg className="h-3 w-1.5 text-white/70" viewBox="0 0 6 12" aria-hidden>
     <path fill="currentColor" d="M0 0l6 6-6 6z" />
   </svg>
 )
+
+/** One mark as a bar menu shows it — a bookmark or a passage, drawn alike. */
+type MenuMark = {
+  id: number
+  /** Where its picture is from: the moment, or the passage's start. */
+  at: number
+  frame?: string
+  /** When it is: a time, or a passage's range. */
+  when: string
+  note: string
+  /** What's there, for a mark with no note: what's said, or the chapter. */
+  found?: string
+}
+
+const MENU_ROW = 'flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-sm text-white transition-colors hover:bg-white/10'
+// Shown on the row's hover where there's a pointer to hover with.
+const MENU_ROW_ACTION = 'shrink-0 rounded p-1 text-white/60 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100'
+
+export const PENCIL_ICON = (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
+  </svg>
+)
+const CROSS_ICON = (
+  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+    <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+  </svg>
+)
+
+/** A row of a bar menu: the mark's picture, when it is, and what it is — its
+ *  note, or else (dimmer) what was found there. On hover, a pencil to write
+ *  the note and an × to drop the mark. Written on, the row is its note box
+ *  until that's done, and stops being something to press. */
+function MenuMarkRow({ mark, icon, storyboard, active = false, aside, pickTitle, onPick, noteLabel, writing, onWrite, onNoteDone, removeTitle, removeLabel, onRemove }: {
+  mark: MenuMark
+  /** The stand-in for a picture there's none of. */
+  icon: ReactNode
+  storyboard?: StoryboardInfo | null
+  /** The running passage. */
+  active?: boolean
+  /** Said under when it is, ahead of the note — a passage that isn't looping. */
+  aside?: string
+  pickTitle?: string
+  onPick: () => void
+  noteLabel: string
+  writing: boolean
+  /** Absent, there's no pencil: nothing would keep the note. */
+  onWrite?: () => void
+  onNoteDone: (note: string | null) => void
+  removeTitle: string
+  removeLabel: string
+  onRemove: () => void
+}) {
+  const thumb = <MomentThumb time={mark.at} width={MENU_THUMB_W} frame={mark.frame} storyboard={storyboard}>{icon}</MomentThumb>
+  if (writing) {
+    return (
+      <div className={`flex items-start gap-2 px-3 py-1.5 text-sm text-white ${active ? 'bg-white/10' : ''}`}>
+        {thumb}
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="tabular-nums">{mark.when}</span>
+          <NoteBox note={mark.note} label={noteLabel} onDone={onNoteDone} />
+        </span>
+      </div>
+    )
+  }
+  return (
+    <div className={`group/row flex items-center ${active ? 'bg-white/10' : ''}`}>
+      <button role="menuitem" onClick={onPick} title={pickTitle} className={`${MENU_ROW} !items-start`}>
+        {thumb}
+        <span className="flex min-w-0 flex-col">
+          <span className="whitespace-nowrap tabular-nums">{mark.when}</span>
+          {aside && <span className="text-xs leading-snug text-white/60">{aside}</span>}
+          {mark.note
+            ? <span className="line-clamp-2 whitespace-pre-line text-xs leading-snug text-white/70">{mark.note}</span>
+            : mark.found && <span className="line-clamp-2 text-xs leading-snug text-white/45">{mark.found}</span>}
+        </span>
+      </button>
+      {onWrite && (
+        <button
+          onClick={onWrite}
+          title={mark.note ? t('Edit note') : t('Add a note')}
+          aria-label={mark.note ? t('Edit note') : t('Add a note')}
+          className={MENU_ROW_ACTION}
+        >
+          {PENCIL_ICON}
+        </button>
+      )}
+      <button onClick={onRemove} title={removeTitle} aria-label={removeLabel} className={`mr-1 ${MENU_ROW_ACTION}`}>
+        {CROSS_ICON}
+      </button>
+    </div>
+  )
+}
+
+/** Which of a bar menu's marks is being written on, and closing the menu
+ *  around that. `onWriting` hears when writing starts and stops, so the page
+ *  doesn't shut the menu under it when the pointer drifts off. A press
+ *  outside keeps the note: the blur that would keep it comes after the press,
+ *  and by then the menu is gone — so it's blurred first. */
+function useMenuNotes(box: RefObject<HTMLDivElement | null>, onClose: () => void, within: RefObject<HTMLElement | null> | undefined, onWriting?: (writing: boolean) => void) {
+  const [noting, setNoting] = useState<number | null>(null)
+  const writingRef = useRef(onWriting)
+  writingRef.current = onWriting
+  const write = (id: number | null) => { setNoting(id); writingRef.current?.(id !== null) }
+  // Gone, the menu is writing nothing.
+  useEffect(() => () => writingRef.current?.(false), [])
+  useDismiss(box, () => {
+    if (noting !== null) (document.activeElement as HTMLElement | null)?.blur()
+    onClose()
+  }, within)
+  /** A note done with: kept if it changed, and the row is a row again. */
+  const done = (mark: MenuMark, onNote?: (id: number, note: string) => void) => (note: string | null) => {
+    if (note !== null && note.trim() !== mark.note) onNote?.(mark.id, note)
+    write(null)
+  }
+  return { noting, write, done }
+}
 
 /** The video's bookmarks, from the bookmark button: each jumps to its moment,
  *  and its × clears it. Jumping leaves the menu open — you hop through marks
  *  to find the one you meant. The foot, given `onToggleHere`, does what the
  *  button's own press does: it's for a touch screen, where a tap opens this
  *  instead, and with a mouse the button's click already does it. */
-export function BookmarkMenu({ rows, storyboard, markHere, onSeek, onRemove, onToggleHere, onClose, within }: {
+export function BookmarkMenu({ rows, storyboard, markHere, onSeek, onRemove, onNote, onWriting, onToggleHere, onClose, within }: {
   rows: BookmarkRow[]
   storyboard?: StoryboardInfo | null
   markHere: boolean
   onSeek: (seconds: number) => void
   onRemove: (id: number) => void
+  /** Write what a bookmark is for. */
+  onNote?: (id: number, note: string) => void
+  onWriting?: (writing: boolean) => void
   onToggleHere?: () => void
   onClose: () => void
   within?: RefObject<HTMLElement | null>
 }) {
   const box = useRef<HTMLDivElement | null>(null)
-  useDismiss(box, onClose, within)
-  const row = 'flex w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left text-sm text-white transition-colors hover:bg-white/10'
+  const notes = useMenuNotes(box, onClose, within, onWriting)
   return (
     <div
       ref={box}
@@ -760,33 +904,31 @@ export function BookmarkMenu({ rows, storyboard, markHere, onSeek, onRemove, onT
       </div>
       {/* Four rows of pictures before it scrolls. */}
       <div className="max-h-[15.5rem] overflow-y-auto">
-        {rows.map((b) => (
-          <div key={b.id} className="group/row flex items-center">
-            <button role="menuitem" onClick={() => onSeek(b.start)} className={`${row} !items-start`}>
-              <MomentThumb time={b.start} width={MENU_THUMB_W} frame={b.frame} storyboard={storyboard}>{PIN_ICON}</MomentThumb>
-              <span className="flex min-w-0 flex-col">
-                <span className="tabular-nums">{formatTime(b.start)}</span>
-                {b.text && <span className="line-clamp-2 text-xs leading-snug text-white/70">{b.text}</span>}
-              </span>
-            </button>
-            <button
-              onClick={() => onRemove(b.id)}
-              title={t('Remove bookmark')}
-              aria-label={t('Remove bookmark')}
-              className="mr-1 shrink-0 rounded p-1 text-white/60 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          </div>
-        ))}
+        {rows.map((b) => {
+          const mark: MenuMark = { id: b.id, at: b.start, frame: b.frame, when: formatTime(b.start), note: b.note, found: b.text }
+          return (
+            <MenuMarkRow
+              key={b.id}
+              mark={mark}
+              icon={PIN_ICON}
+              storyboard={storyboard}
+              onPick={() => onSeek(b.start)}
+              noteLabel={t('Bookmark note')}
+              writing={notes.noting === b.id}
+              onWrite={onNote && (() => notes.write(b.id))}
+              onNoteDone={notes.done(mark, onNote)}
+              removeTitle={t('Remove bookmark')}
+              removeLabel={t('Remove bookmark')}
+              onRemove={() => onRemove(b.id)}
+            />
+          )
+        })}
         {!rows.length && (
           <div className="px-3 py-2 text-sm text-white/60">{t('Nothing marked yet.')}</div>
         )}
       </div>
       {onToggleHere && <div className="mt-1 border-t border-white/10 pt-1">
-        <button role="menuitem" onClick={onToggleHere} className={row}>
+        <button role="menuitem" onClick={onToggleHere} className={MENU_ROW}>
           <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             {markHere
               ? <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
@@ -800,16 +942,69 @@ export function BookmarkMenu({ rows, storyboard, markHere, onSeek, onRemove, onT
   )
 }
 
-export function LoopMenu({ loops, duration, stage, storyboard, frameAt, onPin, onUse, onDrop, onStop, onNew, onClose, within, tapped = false }: {
+/** Writing a mark's note in place — a bookmark's, in the panel's row, or a
+ *  passage's, in the repeat menu. Enter keeps it (Shift+Enter starts a new
+ *  line), clicking away keeps it too, and Escape leaves the note as it was.
+ *  `onDone` gets the text, or null for Escape. */
+export function NoteBox({ note, label, onDone }: { note: string; label: string; onDone: (note: string | null) => void }) {
+  const [draft, setDraft] = useState(note)
+  const box = useRef<HTMLTextAreaElement>(null)
+  // Once: Enter then the blur it causes is one answer, not two.
+  const done = useRef(false)
+  const finish = (value: string | null) => {
+    if (done.current) return
+    done.current = true
+    onDone(value)
+  }
+  // The cursor at the end, to carry on writing.
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [])
+  return (
+    <textarea
+      ref={box}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        // Not while an IME is composing: Enter there picks the characters.
+        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+          e.preventDefault()
+          finish(draft)
+        } else if (e.key === 'Escape') {
+          e.stopPropagation()
+          finish(null)
+        }
+      }}
+      onBlur={() => finish(draft)}
+      rows={1}
+      maxLength={2000}
+      placeholder={t('Add a note')}
+      aria-label={label}
+      className="min-h-[1.5rem] min-w-0 flex-1 resize-none rounded-md bg-shade-12 px-1.5 py-0.5 text-(length:--panel-body) leading-snug text-white ring-1 ring-white/25 [field-sizing:content] placeholder:text-shade-88 focus:outline-none"
+    />
+  )
+}
+
+export function LoopMenu({ loops, duration, stage, storyboard, frameAt, textAt, onPin, onUse, onDrop, onNote, onWriting, onStop, onNew, onClose, within, tapped = false }: {
   loops: SavedLoop[]
   duration: number
   /** Where each passage's picture comes from — see MomentThumb. */
   storyboard?: StoryboardInfo | null
   frameAt?: (time: number) => string | undefined
+  /** What's there at a passage's start, for one with no note. */
+  textAt?: (time: number) => string
   stage: LoopStage
   onPin: (end: 'a' | 'b') => void
   onUse: (id: number) => void
   onDrop: (id: number) => void
+  /** Write what a passage is. */
+  onNote?: (id: number, note: string) => void
+  /** Told when a note starts and stops being written, so the menu isn't shut
+   *  under it by the pointer drifting off. */
+  onWriting?: (writing: boolean) => void
   onStop: () => void
   onNew: () => void
   onClose: () => void
@@ -820,14 +1015,13 @@ export function LoopMenu({ loops, duration, stage, storyboard, frameAt, onPin, o
   tapped?: boolean
 }) {
   const box = useRef<HTMLDivElement | null>(null)
-  useDismiss(box, onClose, within)
+  const notes = useMenuNotes(box, onClose, within, onWriting)
 
   // Choosing a passage to work on closes the menu; managing the list doesn't.
   // Once you've picked one you want to hear it, and the panel sits over the
   // video — but pinning an end, deleting, and stopping are all things you may do
   // twice in a row, and reopening between them would be the annoying half.
   const chose = (act: () => void) => () => { act(); onClose() }
-  const row = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-white transition-colors hover:bg-white/10'
   return (
     <div
       ref={box}
@@ -835,7 +1029,7 @@ export function LoopMenu({ loops, duration, stage, storyboard, frameAt, onPin, o
       role="menu"
       // Flush with its button, with no gap: it opens on hover, and a gap is
       // somewhere the pointer leaves both on its way across.
-      className="absolute bottom-full right-0 z-40 min-w-[17rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
+      className="absolute bottom-full right-0 z-40 w-[18rem] overflow-hidden rounded-xl bg-shade-28 py-1.5 shadow-2xl ring-1 ring-white/10"
     >
       <div className="px-3 pb-1 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-white/60">
         {t('Repeat')}
@@ -843,41 +1037,34 @@ export function LoopMenu({ loops, duration, stage, storyboard, frameAt, onPin, o
       {/* The passages. Bounded here rather than on the panel, so the actions
           below stay put however many you've marked — four rows of pictures. */}
       <div className="max-h-[15.5rem] overflow-y-auto">
-        {loops.map((l) => (
-          <div key={l.id} className={`group/row flex items-center ${l.active ? 'bg-white/10' : ''}`}>
-            <button
-              role="menuitem"
-              onClick={l.active ? onStop : chose(() => onUse(l.id))}
-              title={l.active ? t('Stop repeating ({key})', { key: shortcutLabel('loopClear') }) : t('Repeat this passage')}
-              className={row}
-            >
-              {/* The picture at its start: the top of the video when A is open. */}
-              <MomentThumb time={l.a ?? 0} width={MENU_THUMB_W} frame={frameAt?.(l.a ?? 0)} storyboard={storyboard}>
-                {LOOP_START_ICON}
-              </MomentThumb>
-              {/* Whether this is the one running. In white, like everything the
-                  loop wears: it takes no colour of its own here either. */}
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${l.active ? 'bg-white' : 'bg-white/25'}`} />
-              <span className="tabular-nums">{loopLabel(l)}</span>
-              {!loopActive(l, duration) && (
-                // Marked but not repeating — an end pinned the wrong side of the
-                // other, or a passage too short to be one. Said plainly, since
-                // the bar can't show a loop that isn't running.
-                <span className="ml-auto pl-2 text-xs text-white/60">{t('not looping')}</span>
-              )}
-            </button>
-            <button
-              onClick={() => onDrop(l.id)}
-              title={t('Delete this passage')}
-              aria-label={t('Delete passage {range}', { range: loopLabel(l) })}
-              className="mr-1 shrink-0 rounded p-1 text-white/60 hoverable:opacity-0 transition-opacity hover:bg-white/10 hover:text-white hoverable:focus:opacity-100 hoverable:group-hover/row:opacity-100"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-              </svg>
-            </button>
-          </div>
-        ))}
+        {loops.map((l) => {
+          // The picture at its start: the top of the video when A is open.
+          const at = l.a ?? 0
+          const mark: MenuMark = { id: l.id, at, frame: frameAt?.(at), when: loopLabel(l), note: l.note, found: textAt?.(at) }
+          return (
+            <MenuMarkRow
+              key={l.id}
+              mark={mark}
+              icon={LOOP_START_ICON}
+              storyboard={storyboard}
+              // The running one is lit, as the panel lights it.
+              active={l.active}
+              // Marked but not repeating — an end pinned the wrong side of the
+              // other, or a passage too short to be one. Said plainly, since
+              // the bar can't show a loop that isn't running.
+              aside={loopActive(l, duration) ? undefined : t('not looping')}
+              pickTitle={l.active ? t('Stop repeating ({key})', { key: shortcutLabel('loopClear') }) : t('Repeat this passage')}
+              onPick={l.active ? onStop : chose(() => onUse(l.id))}
+              noteLabel={t('Passage note')}
+              writing={notes.noting === l.id}
+              onWrite={onNote && (() => notes.write(l.id))}
+              onNoteDone={notes.done(mark, onNote)}
+              removeTitle={t('Delete this passage')}
+              removeLabel={t('Delete passage {range}', { range: loopLabel(l) })}
+              onRemove={() => onDrop(l.id)}
+            />
+          )
+        })}
         {!loops.length && (
           <div className="px-3 py-2 text-sm text-white/60">{t('Nothing marked yet.')}</div>
         )}
@@ -901,14 +1088,14 @@ export function LoopMenu({ loops, duration, stage, storyboard, frameAt, onPin, o
             </button>
           ))}
         </div>
-        <button role="menuitem" onClick={chose(onNew)} className={row}>
+        <button role="menuitem" onClick={chose(onNew)} className={MENU_ROW}>
           <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" d="M12 5v14M5 12h14" />
           </svg>
           {t('New passage from here')}
         </button>
         {tapped && stage !== 'idle' && (
-          <button role="menuitem" onClick={onStop} className={row}>
+          <button role="menuitem" onClick={onStop} className={MENU_ROW}>
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>

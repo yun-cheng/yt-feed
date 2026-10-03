@@ -1,7 +1,7 @@
 /**
- * The panel laid over the video — Info, Chapters, Bookmarks, Comments,
- * Transcript and Ask AI in a column down one side of the picture, to read while
- * it plays without leaving it for the details below. Opened with `g` or the
+ * The panel laid over the video — Info, Chapters, Bookmarks, Repeat, Notes,
+ * Comments, Transcript and Ask AI in a column down one side of the picture, to
+ * read while it plays without leaving it for the details below. Opened with `g` or the
  * button beside CC, on the tab the `video_panel_tab` setting names
  * (lib/videoPanel.ts).
  *

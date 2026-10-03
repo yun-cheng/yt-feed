@@ -879,9 +879,10 @@ components/
                                   listening for the key you press
   PlayerMarks.tsx                 bookmarks (`b`) and a video's saved A–B loops
                                   (`[`, `]`, `\`): state, shortcuts, the actions
-                                  behind the bar's two buttons, and the marks
-                                  drawn on the progress bar (ours, or a rail
-                                  over the embed's)
+                                  behind the bar's two buttons, their two menus
+                                  (one row for both, `MenuMarkRow`), the note
+                                  box (`NoteBox`), and the marks drawn on the
+                                  progress bar (ours, or a rail over the embed's)
   SearchPage.tsx
   WatchPage.tsx                   in-app player (/watch/:id) — the embed, or the
                                   downloaded file with our own control bar;
@@ -896,8 +897,8 @@ components/
                                   and the panel over the video's — fetched
                                   only when you open one of them
   VideoPanel.tsx                  the panel over the video: Info, Chapters,
-                                  Bookmarks, Notes, Comments, Transcript and
-                                  Ask AI down one side of the picture
+                                  Bookmarks, Repeat, Notes, Comments, Transcript
+                                  and Ask AI down one side of the picture
   NotesPanel.tsx                  the panel's Notes tab: labels, fields of
                                   several values, and a note, saved as you type
   Toaster.tsx                     the app's single toast surface: errors, and
@@ -1088,9 +1089,8 @@ Other details:
     chrome, all four sit in a row on the left: caption, panel, then these.
   - **Each opens its menu on hover and acts on a click**, the way CC does. The
     bookmark button's click marks or clears this moment; its menu
-    (`BookmarkMenu`) lists the video's bookmarks, each with its picture and the
-    line the panel's Bookmarks tab gives it, to jump to (the menu stays open —
-    you hop through marks to find the one you meant) or clear with its ×. The
+    (`BookmarkMenu`) lists the video's bookmarks to jump to (the menu stays open —
+    you hop through marks to find the one you meant). The
     repeat button's click turns the repeat on or off (`toggleRepeat`): off stops
     the running passage and keeps it, as `\` does; on resumes the newest passage
     you marked, from its top, or starts one here when there are none. A touch
@@ -1101,6 +1101,21 @@ Other details:
     flush on their buttons, with no gap for the pointer to fall through on the
     way up, and treat their button as inside, so pressing it doesn't shut a menu
     that hover opened.
+  - **The two menus draw their rows alike** (`MenuMarkRow`), and like the
+    panel's Bookmarks and Repeat tabs: the picture, when it is (a time, or a
+    passage's range), then its note — or, dimmer, what was found there: what's
+    being said at that moment, else the chapter. A passage that isn't looping
+    says so under its range. On hover, a pencil writes the note and an × drops
+    the mark. The running passage's row is lit.
+  - **A mark's note is written in place** (`NoteBox`): the row becomes a box,
+    Enter keeps it (Shift+Enter is a new line), clicking away keeps it too, and
+    Escape leaves it as it was without reaching the player. A bookmark's note
+    is `setBookmarkNote`, a passage's `setLoopNote`; both land at once and are
+    sent on, and one written while the mark's own POST is still out is sent
+    under the real id once it arrives. While a menu has a note open, the
+    pointer leaving doesn't shut it (`menuNoteOpen`); when the note is done,
+    the menu closes if the pointer has gone, and a press outside keeps the
+    note before closing. On the bar, a noted bookmark's tooltip is its note.
   - **One end is enough to repeat** (`loopBounds`). An unpinned A means the start
     of the video and an unpinned B means the end of it, which is what each key
     reads as on its own: `[` is "repeat from here", `]` is "repeat up to here".
@@ -1197,7 +1212,8 @@ Other details:
     in.
   - **Each moment shows its picture** (`MomentThumb`): a bookmark in its menu
     (80px) and the panel's Bookmarks tab (96px), a passage — its start, or the
-    top of the video when A is open — in the repeat menu (80px), and a chapter
+    top of the video when A is open — in the repeat menu (80px) and the panel's
+    Repeat tab (96px), and a chapter
     in the panel's Chapters tab (96px). Off a file it's the exact frame:
     `useFileFrames` (`lib/frameGrab.ts`) walks one detached `<video>` through
     the moments, draws each to a canvas and keeps it as a small JPEG for the
@@ -1812,9 +1828,9 @@ keeps whichever scroller contains the column.
 
 ### The panel on the video (`VideoPanel.tsx`)
 
-A column laid over one side of the player with seven tabs — Info, Chapters,
-Bookmarks, Notes, Comments, Transcript, Ask AI: the page's four, two of its own
-for jumping around the video, and one for writing about it — to read while it
+A column laid over one side of the player with eight tabs — Info, Chapters,
+Bookmarks, Repeat, Notes, Comments, Transcript, Ask AI: the page's four, three
+of its own for jumping around the video, and one for writing about it — to read while it
 plays without leaving it for the details below. The button right of CC (`panelControl`) or
 `g` (the `videoPanel` shortcut) opens and closes it; the × in its header closes
 it too.
@@ -1827,8 +1843,8 @@ have none they leave the tab row and a panel set to open on either opens on
 **Info**, the one tab that costs nothing (`panelTabShown`); while the captions
 are still on their way it waits on the tab it was asked for rather than
 flashing through Comments and fetching them for nothing. Chapters joins the row
-once the video turns out to have some. Chapters and Bookmarks are lists to jump
-around in, and Notes is somewhere to write, rather than somewhere to start, so
+once the video turns out to have some. Chapters, Bookmarks and Repeat are lists
+to jump around in, and Notes is somewhere to write, rather than somewhere to start, so
 the setting doesn't offer them. It's off again for
 every new video, for the Comments reason below.
 
@@ -1848,7 +1864,8 @@ a tab opened here after its twin below fetches nothing twice:
 |---|---|
 | Info | title, channel, views and age, the description (timestamps seek) |
 | Chapters | the chapters on the bar (see "Chapters"), each its picture (`MomentThumb`), time and title; the one playing is lit |
-| Bookmarks | `marks.bookmarks`, the ticks on the bar as a list, the last one passed lit, each with its picture (`MomentThumb`) and a × to remove it. A row reads its note, else what's being said at that moment (the transcript row spanning it), else the chapter it's in — a bare timestamp says nothing about why you marked it. Empty, it says which key makes one |
+| Bookmarks | `marks.bookmarks`, the ticks on the bar as a list, the last one passed lit, each with its picture (`MomentThumb`), a pencil to write its note and a × to remove it. A row reads its note, else — dimmer — what's being said at that moment (the transcript row spanning it), else the chapter it's in: a bare timestamp says nothing about why you marked it. Empty, it says which key makes one |
+| Repeat | `marks.loops`, the passages the repeat menu lists, the running one lit; each its start's picture, its range, and its note or — dimmer — what's said at its start, with the same pencil and ×. Pressing a row does what the menu's does: another passage starts (from its top), the running one stops |
 | Notes | `NotesPanel`, its own fetch — see "Notes on a video" below |
 | Comments | `CommentList compact`, from the same `useComments` feed as the tab |
 | Transcript | `PanelRows`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
@@ -1856,7 +1873,7 @@ a tab opened here after its twin below fetches nothing twice:
 
 **Where it sits.** `PANEL_WIDTH`, 31.25% of the player (320px over a 1024px
 one), never less than 12 panel units, so a phone-sized player's panel stays
-readable. Seven tabs and two buttons need about 19 units on one line (22 on the
+readable. Eight tabs and two buttons need about 21 units on one line (24 on the
 left, where the back button takes the corner), so on a narrow player the tabs
 wrap onto a line of their own rather than squeeze — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
 player box, so it goes to fullscreen with it. It reaches the bottom edge while
@@ -2364,7 +2381,7 @@ problem.
 
 | File | Covers |
 |------|--------|
-| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the two menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
+| `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the two menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), notes on both kinds of mark (written in a menu, kept on Enter or a press outside, left on Escape, sent once a fresh mark is saved), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
 | `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
@@ -2379,7 +2396,7 @@ problem.
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `captionLines.test.ts` | which caption lines are up: the rolling two lines oldest first, the word-by-word reveal and its lookahead, sentences stitched across cues and broken mid-cue, CJK joined without spaces, a track with no punctuation kept one line per cue, and a long sentence cut into **even** pieces rather than a runt at its only comma — but left whole for the transcript |
 | `captionPrefs.test.ts` | the saved caption look: the defaults, the old `'line'` name for whole-sentence mode, an older build's size clamped rather than dropped, and a tenth staying a tenth |
-| `PanelRows.test.tsx` | the list behind the panel's Transcript, Chapters and Bookmarks tabs: a row seeks, the active one is marked, a picture sits inside the row's seek button while its remove button sits beside it, the empty line gives way to *Translating…*, and following stops when the active row is scrolled away until Sync to video or a click resumes it |
+| `PanelRows.test.tsx` | the list behind the panel's Transcript, Chapters, Bookmarks and Repeat tabs: a row seeks (and says which row it was), a row's own `when` and line, one being written on showing its editor and no longer seeking, the active one is marked, a picture sits inside the row's seek button while its remove button sits beside it, the empty line gives way to *Translating…*, and following stops when the active row is scrolled away until Sync to video or a click resumes it |
 | `frameGrab.test.tsx` | `useFileFrames` against a stand-in video and canvas: the moments grabbed in turn, each once, kept for the session, the last stopping short of the end, and nothing without a file |
 | `storyboard.test.ts` | picking a scrub frame: the walk across a sheet, crossing sheets, clamping, and scaling to a width |
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |

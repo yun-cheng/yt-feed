@@ -11,7 +11,7 @@ import LocalControls, { localPlayer, playerIsLive, BAR_BUTTON } from './LocalCon
 import { nextSpeed } from '../lib/playbackSpeeds'
 import { actionFor, shortcutLabel } from '../lib/shortcuts'
 import type { PlayerApi } from './LocalControls'
-import { usePlayerMarks, BookmarkMenu, EmbedMarkRail, LoopMenu, MomentThumb, PIN_ICON } from './PlayerMarks'
+import { usePlayerMarks, BookmarkMenu, NoteBox, EmbedMarkRail, LoopMenu, MomentThumb, PIN_ICON, LOOP_START_ICON, PENCIL_ICON, loopActive, loopLabel } from './PlayerMarks'
 import { useFileFrames } from '../lib/frameGrab'
 import { hasCleanEmbed } from '../lib/ext'
 import { formatCount, linkify } from '../lib/richText'
@@ -253,7 +253,7 @@ const SyncIcon = () => (
 )
 
 // One icon per tab, shared by the switch under the video and the panel over it
-// (which alone has Chapters and Bookmarks).
+// (which alone has Chapters, Bookmarks, Repeat and Notes).
 const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
   info: (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -286,6 +286,12 @@ const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
       <path strokeLinejoin="round" d="M17 3H7a2 2 0 0 0-2 2v16l7-3.5 7 3.5V5a2 2 0 0 0-2-2z" />
     </svg>
   ),
+  // The repeat button's arrows, outlined.
+  loops: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3" />
+    </svg>
+  ),
   // A page with a pencil: what you write about the video.
   notes: (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -314,16 +320,27 @@ const PANEL_THUMB_W = 96
  *
  * Following works as the page's transcript does: scrolling the active row out
  * of view stops it, and Sync to video (or clicking a row) starts it again.
+ *
+ * A row being written on (`editing` — a bookmark's note) shows its editor in
+ * place of the line, and stops seeking until it's done.
  */
-export function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trailing, empty }: {
-  rows: { start: number; text: string }[]
+export function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trailing, line, editing, empty }: {
+  /** `when` stands in for the time where a row is more than a moment — a
+   *  passage's range — and `title` says what pressing it does, where that's
+   *  more than seeking. */
+  rows: { start: number; text: string; when?: string; title?: string }[]
   activeRow: number
-  onSeek: (seconds: number) => void
+  /** A row pressed: where it starts, and which row it is. */
+  onSeek: (seconds: number, row: number) => void
   busy?: boolean
   /** Something drawn ahead of a row's time — a bookmark's picture. */
   leading?: (i: number) => ReactNode
   /** Something to do to a row, beside it — a bookmark's remove button. */
   trailing?: (i: number) => ReactNode
+  /** A row's line, drawn otherwise than as its plain text. */
+  line?: (i: number) => ReactNode
+  /** The row being written on, and what to write with. */
+  editing?: { row: number; editor: ReactNode }
   /** What the tab says while it has no rows. */
   empty?: ReactNode
 }) {
@@ -358,16 +375,25 @@ export function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trai
               i === activeRow ? 'bg-white/15' : 'hover:bg-white/10'
             }`}
           >
-            <button
-              onClick={() => { setFollowing(true); onSeek(s.start) }}
-              className="flex min-w-0 flex-1 gap-2 px-1.5 py-1 text-left"
-            >
-              {leading?.(i)}
-              <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{formatTime(s.start)}</span>
-              <span className={`text-(length:--panel-body) leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
-                {s.text}
-              </span>
-            </button>
+            {editing?.row === i ? (
+              <div className="flex min-w-0 flex-1 gap-2 px-1.5 py-1">
+                {leading?.(i)}
+                <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{s.when ?? formatTime(s.start)}</span>
+                {editing.editor}
+              </div>
+            ) : (
+              <button
+                onClick={() => { setFollowing(true); onSeek(s.start, i) }}
+                title={s.title}
+                className="flex min-w-0 flex-1 gap-2 px-1.5 py-1 text-left"
+              >
+                {leading?.(i)}
+                <span className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-tint-3ea6ff">{s.when ?? formatTime(s.start)}</span>
+                <span className={`text-(length:--panel-body) leading-snug [overflow-wrap:anywhere] ${i === activeRow ? 'text-white' : 'text-shade-cc'}`}>
+                  {line ? line(i) : s.text}
+                </span>
+              </button>
+            )}
             {trailing?.(i)}
           </div>
         ))}
@@ -387,6 +413,50 @@ export function PanelRows({ rows, activeRow, onSeek, busy = false, leading, trai
         </button>
       )}
     </div>
+  )
+}
+
+const PANEL_ROW_ACTION = 'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-shade-aa transition-colors hover:bg-white/10 hover:text-white'
+
+/** A mark's two buttons in the panel — a bookmark's, a passage's: write its
+ *  note, and drop it. The pencil steps aside while the note is being written. */
+function PanelMarkActions({ noted, writing, onWrite, removeLabel, onRemove }: {
+  noted: boolean
+  writing: boolean
+  onWrite: () => void
+  removeLabel: string
+  onRemove: () => void
+}) {
+  return (
+    <>
+      {!writing && (
+        <button
+          onClick={onWrite}
+          className={PANEL_ROW_ACTION}
+          title={noted ? t('Edit note') : t('Add a note')}
+          aria-label={noted ? t('Edit note') : t('Add a note')}
+        >
+          <span className="scale-[0.875]">{PENCIL_ICON}</span>
+        </button>
+      )}
+      <button onClick={onRemove} className={PANEL_ROW_ACTION} title={removeLabel} aria-label={removeLabel}>
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+    </>
+  )
+}
+
+/** A mark's line in the panel: its note as written, or else — dimmer, so the
+ *  two read apart — what was found there. `aside` comes first, on a line of
+ *  its own, as the bar menus put it: a passage that isn't looping. */
+function markLine(note: string, found: string, aside?: string) {
+  return (
+    <>
+      {aside && <span className="block text-xs text-shade-99">{aside}</span>}
+      {note ? <span className="whitespace-pre-line">{note}</span> : <span className="opacity-60">{found}</span>}
+    </>
   )
 }
 
@@ -485,6 +555,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // same way the caption menu does — see chromeUp.
   const [showLoopMenu, setShowLoopMenu] = useState(false)
   const [showBookmarkMenu, setShowBookmarkMenu] = useState(false)
+  // The bookmark, or the passage, whose note is being written in the panel, by id.
+  const [notingBookmark, setNotingBookmark] = useState<number | null>(null)
+  const [notingLoop, setNotingLoop] = useState<number | null>(null)
   // Opened by a tap rather than a hover: only then do the menus carry the row
   // that does what the button's click does — bookmark here, stop repeating —
   // a tap having opened the menu instead.
@@ -768,6 +841,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     { key: 'info', label: t('Info'), icon: TAB_ICONS.info },
     ...(chapters.length ? [{ key: 'chapters' as const, label: t('Chapters'), icon: TAB_ICONS.chapters }] : []),
     { key: 'bookmarks', label: t('Bookmarks'), icon: TAB_ICONS.bookmarks },
+    { key: 'loops', label: t('Repeat'), icon: TAB_ICONS.loops },
     { key: 'notes', label: t('Notes'), icon: TAB_ICONS.notes },
     { key: 'comments', label: t('Comments'), icon: TAB_ICONS.comments },
     ...(captions === null || hasCaptions ? [
@@ -1525,12 +1599,14 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // The panel's other two lists of moments. A chapter row is its title; a
   // bookmark row is its note, or else what's being said there, or else which
   // chapter it's in — a bare timestamp says nothing about why you marked it.
+  // A passage's row is the same, for its start. What you wrote reads brighter
+  // than what was found for you (markLine).
   // Each lights the last row the play head has passed, as the transcript does.
   // Off a file, each picture is grabbed from the file itself — only once the
   // list it's in is showing, and then kept. A passage's picture is its start.
   const momentFrame = useFileFrames(playLocal ? localSrc : null, [
     ...(showBookmarkMenu || panelShows('bookmarks') ? marks.bookmarks.map((b) => b.position_seconds) : []),
-    ...(showLoopMenu ? marks.loops.map((l) => l.a ?? 0) : []),
+    ...(showLoopMenu || panelShows('loops') ? marks.loops.map((l) => l.a ?? 0) : []),
     ...(panelShows('chapters') ? chapters.map((c) => c.start) : []),
   ])
   const chapterRows = useMemo(
@@ -1538,11 +1614,25 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     [chapters, momentFrame],
   )
   const activeChapter = chapters.indexOf(chapterAt(chapters, curTime) as Chapter)
+  const foundAt = useCallback((at: number) => (
+    transcript.find((s) => s.start <= at && at < s.end)?.text || chapterAt(chapters, at)?.title || ''
+  ), [transcript, chapters])
   const bookmarkRows = useMemo(() => marks.bookmarks.map((b) => {
     const at = b.position_seconds
-    const said = transcript.find((s) => s.start <= at && at < s.end)?.text
-    return { id: b.id, start: at, text: b.note || said || chapterAt(chapters, at)?.title || '', frame: momentFrame(at) }
-  }), [marks.bookmarks, transcript, chapters, momentFrame])
+    return { id: b.id, start: at, note: b.note, frame: momentFrame(at), text: b.note || foundAt(at) }
+  }), [marks.bookmarks, foundAt, momentFrame])
+  const duration = meta?.duration_seconds ?? 0
+  const loopRows = useMemo(() => marks.loops.map((l) => {
+    const at = l.a ?? 0
+    return {
+      id: l.id, start: at, when: loopLabel(l), note: l.note, frame: momentFrame(at),
+      found: foundAt(at), text: l.note || foundAt(at),
+      looping: loopActive(l, duration),
+      // As the menu's row does: the running one stops, any other starts.
+      title: l.active ? t('Stop repeating ({key})', { key: shortcutLabel('loopClear') }) : t('Repeat this passage'),
+    }
+  }), [marks.loops, foundAt, momentFrame, duration])
+  const activeLoop = marks.loops.findIndex((l) => l.active)
   const activeBookmark = marks.bookmarks.reduce((last, b, i) => (b.position_seconds <= curTime + 0.05 ? i : last), -1)
   const activeRow = useMemo(() => {
     if (!transcriptWanted) return -1
@@ -2134,17 +2224,78 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   </MomentThumb>
                 )}
                 empty={t('No bookmarks yet. Press {key} to mark the moment you’re at.', { key: shortcutLabel('bookmark') })}
+                line={(i) => markLine(bookmarkRows[i].note, bookmarkRows[i].text)}
+                editing={(() => {
+                  const row = bookmarkRows.findIndex((b) => b.id === notingBookmark)
+                  if (row < 0) return undefined
+                  const b = bookmarkRows[row]
+                  return {
+                    row,
+                    editor: (
+                      <NoteBox
+                        note={b.note}
+                        label={t('Bookmark note')}
+                        onDone={(note) => {
+                          if (note !== null && note.trim() !== b.note) marks.setBookmarkNote(b.id, note)
+                          setNotingBookmark(null)
+                        }}
+                      />
+                    ),
+                  }
+                })()}
                 trailing={(i) => (
-                  <button
-                    onClick={() => marks.removeBookmark(bookmarkRows[i].id)}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-shade-aa transition-colors hover:bg-white/10 hover:text-white"
-                    title={t('Remove bookmark')}
-                    aria-label={t('Remove bookmark')}
-                  >
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-                      <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
-                    </svg>
-                  </button>
+                  <PanelMarkActions
+                    noted={Boolean(bookmarkRows[i].note)}
+                    writing={notingBookmark === bookmarkRows[i].id}
+                    onWrite={() => setNotingBookmark(bookmarkRows[i].id)}
+                    removeLabel={t('Remove bookmark')}
+                    onRemove={() => marks.removeBookmark(bookmarkRows[i].id)}
+                  />
+                )}
+              />
+            </PanelTab>
+          )}
+          {panelKeeps('loops') && (
+            <PanelTab shown={panelTabShown === 'loops'}>
+              <PanelRows
+                rows={loopRows}
+                activeRow={activeLoop}
+                onSeek={(_, i) => (marks.loops[i].active ? marks.clearLoop() : marks.useLoop(marks.loops[i].id))}
+                leading={(i) => (
+                  <MomentThumb time={loopRows[i].start} width={PANEL_THUMB_W} frame={loopRows[i].frame} storyboard={storyboard}>
+                    {LOOP_START_ICON}
+                  </MomentThumb>
+                )}
+                empty={t('No passages yet. Press {start} and {end} to mark one.', {
+                  start: shortcutLabel('loopStart'), end: shortcutLabel('loopEnd'),
+                })}
+                line={(i) => markLine(loopRows[i].note, loopRows[i].found, loopRows[i].looping ? undefined : t('not looping'))}
+                editing={(() => {
+                  const row = loopRows.findIndex((l) => l.id === notingLoop)
+                  if (row < 0) return undefined
+                  const l = loopRows[row]
+                  return {
+                    row,
+                    editor: (
+                      <NoteBox
+                        note={l.note}
+                        label={t('Passage note')}
+                        onDone={(note) => {
+                          if (note !== null && note.trim() !== l.note) marks.setLoopNote(l.id, note)
+                          setNotingLoop(null)
+                        }}
+                      />
+                    ),
+                  }
+                })()}
+                trailing={(i) => (
+                  <PanelMarkActions
+                    noted={Boolean(loopRows[i].note)}
+                    writing={notingLoop === loopRows[i].id}
+                    onWrite={() => setNotingLoop(loopRows[i].id)}
+                    removeLabel={t('Delete passage {range}', { range: loopRows[i].when })}
+                    onRemove={() => marks.dropLoop(loopRows[i].id)}
+                  />
                 )}
               />
             </PanelTab>
@@ -2449,6 +2600,15 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const MARK_BUTTON_FLOAT = 'group relative flex h-11 w-11 items-center justify-center text-white'
   const bookmarkMenuRef = useRef<HTMLDivElement>(null)
   const loopMenuRef = useRef<HTMLDivElement>(null)
+  // A note being written in the bookmark or repeat menu: the pointer leaving
+  // doesn't shut the menu then, or the note would go with it.
+  const menuNoteOpen = useRef(false)
+  // And once it's done, the menu does what the pointer leaving would have done
+  // — unless the pointer is still over it, or a tap opened it.
+  const noteWritten = (writing: boolean, box: HTMLElement | null, byTap: boolean, close: () => void) => {
+    menuNoteOpen.current = writing
+    if (!writing && !byTap && !box?.matches(':hover')) close()
+  }
   const bookmarkTapRef = useRef(false)
   const loopTapRef = useRef(false)
   const hoverMenu = (set: (open: boolean) => void) => ({
@@ -2457,7 +2617,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   })
   const marksControls = (
     <div className={ownBar ? 'flex items-center' : 'absolute bottom-[14px] left-[13.75rem] z-20 flex items-center'}>
-      <div ref={bookmarkMenuRef} className="relative" {...hoverMenu((open) => { setShowBookmarkMenu(open); setBookmarkMenuByTap(false) })}>
+      <div ref={bookmarkMenuRef} className="relative" {...hoverMenu((open) => {
+        if (!open && menuNoteOpen.current) return
+        setShowBookmarkMenu(open)
+        setBookmarkMenuByTap(false)
+      })}>
       <button
         onPointerDown={(e) => { bookmarkTapRef.current = e.pointerType === 'touch' }}
         onClick={() => {
@@ -2497,13 +2661,19 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           markHere={marks.markHere}
           onSeek={seekTo}
           onRemove={marks.removeBookmark}
+          onNote={marks.setBookmarkNote}
+          onWriting={(writing) => noteWritten(writing, bookmarkMenuRef.current, bookmarkMenuByTap, () => setShowBookmarkMenu(false))}
           onToggleHere={bookmarkMenuByTap ? marks.toggleBookmarkHere : undefined}
           onClose={() => setShowBookmarkMenu(false)}
           within={bookmarkMenuRef}
         />
       )}
       </div>
-      <div ref={loopMenuRef} className="relative" {...hoverMenu((open) => { setShowLoopMenu(open); setLoopMenuByTap(false) })}>
+      <div ref={loopMenuRef} className="relative" {...hoverMenu((open) => {
+        if (!open && menuNoteOpen.current) return
+        setShowLoopMenu(open)
+        setLoopMenuByTap(false)
+      })}>
       <button
         onPointerDown={(e) => { loopTapRef.current = e.pointerType === 'touch' }}
         onClick={() => {
@@ -2561,9 +2731,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           stage={marks.loopStage}
           storyboard={storyboard}
           frameAt={momentFrame}
+          textAt={foundAt}
           onPin={marks.pinLoopEnd}
           onUse={marks.useLoop}
           onDrop={marks.dropLoop}
+          onNote={marks.setLoopNote}
+          onWriting={(writing) => noteWritten(writing, loopMenuRef.current, loopMenuByTap, () => setShowLoopMenu(false))}
           onStop={marks.clearLoop}
           onNew={marks.newLoop}
           onClose={() => setShowLoopMenu(false)}
