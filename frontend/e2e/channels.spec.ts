@@ -45,3 +45,13 @@ test('Hide channel takes its videos off the feed', async ({ page }) => {
     await page.request.delete(`/api/hidden-channels/${HIDEABLE}`)
   }
 })
+
+test('a channel’s topics narrow its page to the videos about them', async ({ page }) => {
+  await page.goto('/channel/UCe2eTopics000000000000')
+  const kyoto = page.getByRole('link', { name: 'A week in Kyoto', exact: true })
+  await expect(kyoto.first()).toBeVisible()
+  await page.getByRole('button', { name: /recipes/ }).first().click()
+  await expect(page.getByRole('link', { name: 'Pasta at home', exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Bread basics', exact: true }).first()).toBeVisible()
+  await expect(kyoto).toHaveCount(0)
+})

@@ -2395,9 +2395,9 @@ start) that `e2e/seed.py` fills with a channel or two per spec, followed by the
 account the claim creates. Every video a spec opens is **downloaded** — a
 test-pattern file ffmpeg makes on the spot — so the watch page plays a file
 rather than the embed, the same way every run; the rest are only listed. The
-seed also gives the filters their material (channel tags, Shorts, watch
-history, a finished summary) and makes a folder of loose files for the
-local-folders spec.
+seed also gives the filters and lists their material (channel tags, Shorts,
+watch history, a finished summary, a channel's built topics, imported videos,
+Watch Later) and makes a folder of loose files for the local-folders spec.
 
 Nothing reaches the real app or the outside. Search gets a Meilisearch of its
 own, on port 7709 over a database in `e2e/.run`, indexed from the seed when the
@@ -2422,17 +2422,17 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `marks.spec.ts` | a bookmark made with `b` shows a frame of its moment in the panel's Bookmarks tab and is there again when the video is reopened; the Chapters tab lists the description's chapters, each with its frame, and a click seeks; captions follow the play head |
 | `loop.spec.ts` | a passage pinned with `[` and `]` plays round more than once without running past its end, until `\` lets go |
 | `upnext.spec.ts` | the channel's next video is offered when one ends and opens on a click; Dismiss; and with the panel open on either side, the card stays centred on the whole frame, at full width, clear of the panel |
-| `feed.spec.ts` | the followed channels' videos from the last 3 days, a wider window bringing in an older one, and the sort deciding the order and surviving a reload |
+| `feed.spec.ts` | the followed channels' videos from the last 3 days, a wider window bringing in an older one (from a button, and by dragging the window's far edge), the sort deciding the order and surviving a reload, and each of Views, Hot, Likes and Like% putting its own video first |
 | `history.spec.ts` | a video reopens where it was left, one left near its end starts over, and History lists it and gives it back after a removal is undone |
-| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; Downloads listing the files, and its page-scoped search narrowing them |
+| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; Imported listing its videos, with a removal undone; and the page-scoped search on Downloads, History, Watch Later and Imported narrowing each list |
 | `local.spec.ts` | a folder added by path lists its files with the lengths ffprobe read, and plays one |
-| `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows |
+| `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows; the volume boost switching on without an error from its WebAudio graph and gone on coming back; and focus mode keeping the bar down while paused until the pointer is over the video, and holding across a reload |
 | `settings.spec.ts` | the app language and the light theme taking over the page and holding across a reload — then put back, since the whole suite shares one account |
 | `mobile.spec.ts` | at 375px wide, the feed, Settings, History, Downloads and the watch page never scroll sideways, the watch page's Back stays on screen, and the sidebar opens from its button |
 | `filters.spec.ts` | Shorts as a feed of its own; the watched hidden until Watched is picked; a length chip; a tag chip and its − exclusion; Summarised |
 | `presets.spec.ts` | a selection saved as a preset and put back with one click |
 | `search.spec.ts` | a title found by a word in it, and by a misspelt one |
-| `channels.spec.ts` | the followed channels and their scoped search, a channel's page listing its own videos, and Hide channel taking a channel's videos off the feed across a reload |
+| `channels.spec.ts` | the followed channels and their scoped search, a channel's page listing its own videos, its topics narrowing that page, and Hide channel taking a channel's videos off the feed across a reload |
 | `watch.spec.ts` | a card opening its video in the app and Back returning to the feed; the panel's Comments, its Transcript as sentences that seek, Ask AI streaming an answer whose time seeks, and the panel changing sides |
 | `visual.spec.ts` | how features look, against screenshots (below): the progress bar's pins, passage markers and chapter gaps; the bookmark and repeat menus with their pictures; a caption line, and captions centred beside the panel; the up-next card; a tag chip off, picked and left out; a card in the light theme |
 | `preferences.spec.ts` | a shortcut moved to another key answering there and not on the old one, the speed list setting the steps `.` takes, Home opening on the window set under Pages, and the panel opening on the tab Settings names |

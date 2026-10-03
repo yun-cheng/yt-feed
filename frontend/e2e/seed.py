@@ -11,6 +11,7 @@ against anything else.
 """
 
 import asyncio
+import json
 import os
 import subprocess
 from datetime import datetime, timedelta
@@ -22,8 +23,10 @@ if "e2e" not in os.environ.get("DATA_DIR", ""):
 from app.config import settings  # noqa: E402
 from app.database import async_session, init_db  # noqa: E402
 from app.models import (  # noqa: E402
-    Channel, ChannelTag, Download, SummaryJob, UserChannel, Video, WatchHistory,
+    Channel, ChannelTag, Download, ImportedVideo, SummaryJob, UserChannel, UserImport,
+    Video, WatchHistory, WatchLater,
 )
+from app.video_labels import LABEL_VERSION  # noqa: E402
 
 # Days ago, so a seeded video is inside the feed's default time window (the
 # last 3 days) whenever the suite runs — all but the one feed.spec widens to.
@@ -62,6 +65,9 @@ FEED = [
         ("e2eFeedPop0", "Popular but older", 60, ago(5), 900_000, False),
         ("e2eFeedNew0", "Newer but quiet", 60, ago(1), 50, False),
         ("e2eShort000", "A short one", 30, ago(1), 100, False),
+        ("e2eFeedHot0", "Viral today", 60, ago(0.1), 100_000, False),
+        ("e2eFeedLove", "Loved but small", 60, ago(4), 1000, False),
+        ("e2eFeedLike", "Liked a lot", 60, ago(6), 500_000, False),
     ]),
     ("UCe2eCooking00000000000", "Cooking Channel", [
         ("e2eSoup0000", "Soup in ten minutes", 400, ago(1), 5000, False),
@@ -70,7 +76,30 @@ FEED = [
     ("UCe2eHideable0000000000", "Hideable Channel", [
         ("e2eHideMe00", "Hide me", 60, ago(1), 100, False),
     ]),
+    ("UCe2eTopics000000000000", "Topics Channel", [
+        ("e2ePasta000", "Pasta at home", 60, ago(1), 100, False),
+        ("e2eBread000", "Bread basics", 60, ago(2), 100, False),
+        ("e2eKyoto000", "A week in Kyoto", 60, ago(3), 100, False),
+    ]),
 ]
+
+# Likes, where a twentieth of the views (the default) wouldn't tell the sorts
+# apart. Over the last week each sort has its own leader: Views the old
+# popular one, Hot the new one, Likes the well-liked one, Like% the small
+# well-loved one.
+LIKES = {"e2eFeedLove": 500, "e2eFeedLike": 100_000}
+
+# A channel's video topics, as its page draws them: a vocabulary built at the
+# current version, and each video's labels already assigned — so the page asks
+# the model for nothing.
+TOPICS = {"e2ePasta000": ["recipes"], "e2eBread000": ["recipes"], "e2eKyoto000": ["travel"]}
+TOPIC_CHANNELS = {"UCe2eTopics000000000000": ["recipes", "travel"]}
+
+# Lists the specs search in and take back from: two imported videos, and two
+# in Watch Later. Those two are videos no spec opens: Watch Later hides the
+# watched, and opening a short video at all can count as watching it.
+IMPORTED = [("e2eImport00", "Imported clip"), ("e2eImport01", "Another import")]
+WATCH_LATER = ["e2eFeedPop0", "e2eFeedHot0"]
 
 # Vertical short-form: the Shorts feed, kept out of the Videos one.
 SHORTS = {"e2eShort000"}
@@ -114,7 +143,12 @@ async def main() -> None:
     Path(settings.downloads_dir).mkdir(parents=True, exist_ok=True)
     async with async_session() as db:
         for channel_id, channel_title, videos in FEED:
-            db.add(Channel(youtube_id=channel_id, title=channel_title))
+            vocab = TOPIC_CHANNELS.get(channel_id)
+            db.add(Channel(
+                youtube_id=channel_id, title=channel_title,
+                video_label_vocab=json.dumps(vocab) if vocab else None,
+                video_label_version=LABEL_VERSION if vocab else None,
+            ))
             # Followed by user 1, whom the setup claim creates: the database
             # has no users yet, and SQLite doesn't hold the row to its key.
             db.add(UserChannel(user_id=1, channel_id=channel_id))
@@ -125,9 +159,17 @@ async def main() -> None:
                     youtube_id=video_id, channel_id=channel_id, title=title,
                     thumbnail_url=thumbnail(video_id),
                     published_at=published, duration_seconds=seconds,
-                    view_count=views, like_count=views // 20,
+                    view_count=views, like_count=LIKES.get(video_id, views // 20),
                     is_short=video_id in SHORTS,
+                    title_labels=json.dumps(TOPICS[video_id]) if video_id in TOPICS else None,
                 ))
+                if video_id in WATCH_LATER:
+                    db.add(WatchLater(
+                        user_id=1, youtube_id=video_id, title=title, channel_id=channel_id,
+                        channel_name=channel_title, thumbnail_url=thumbnail(video_id),
+                        duration_seconds=seconds, published_at=published.isoformat(),
+                        view_count=views,
+                    ))
                 if video_id in HISTORY:
                     position, watched = HISTORY[video_id]
                     db.add(WatchHistory(
@@ -150,6 +192,13 @@ async def main() -> None:
                     published_at=published.isoformat(), status="ready",
                 ))
                 make_file(os.path.join(settings.downloads_dir, f"{video_id}.mp4"), seconds)
+        for video_id, title in IMPORTED:
+            db.add(ImportedVideo(
+                youtube_id=video_id, title=title, channel_name="Somewhere Else",
+                thumbnail_url=thumbnail(video_id), duration_seconds=90,
+                published_at=ago(1).isoformat(), view_count=10,
+            ))
+            db.add(UserImport(user_id=1, youtube_id=video_id))
         await db.commit()
 
     subprocess.run(

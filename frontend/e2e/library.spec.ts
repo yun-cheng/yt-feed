@@ -58,3 +58,35 @@ test('Downloads lists the files, and the search box narrows them', async ({ page
   await expect(page.getByText('Library one').first()).toBeVisible()
   await expect(page.getByText('Marks video')).toHaveCount(0)
 })
+
+test('Imported lists what was imported, and a removal can be undone', async ({ page }) => {
+  await page.goto('/')
+  await nav(page, 'Imported').click()
+  const clip = page.getByRole('link', { name: 'Imported clip', exact: true })
+  await expect(clip.first()).toBeVisible()
+
+  await card(page, 'Imported clip').getByRole('button', { name: 'More actions' }).click()
+  await page.getByRole('button', { name: 'Remove from imported' }).click()
+  await expect(clip).toHaveCount(0)
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(clip.first()).toBeVisible()
+})
+
+// Each list's search, scoped to it, filters what it holds — seed.py's rows.
+const LISTS = [
+  { page: 'History', scope: 'history', query: 'Soup', kept: 'Soup in ten minutes', dropped: 'Seen it already' },
+  { page: 'Watch Later', scope: 'Watch Later', query: 'Viral', kept: 'Viral today', dropped: 'Popular but older' },
+  { page: 'Imported', scope: 'imported', query: 'Another', kept: 'Another import', dropped: 'Imported clip' },
+]
+for (const l of LISTS) {
+  test(`${l.page}’s search keeps to what it lists`, async ({ page }) => {
+    await page.goto('/')
+    await nav(page, l.page).click()
+    await expect(page.getByRole('link', { name: l.dropped, exact: true }).first()).toBeVisible()
+    await page.getByPlaceholder('Search').fill(l.query)
+    const scope = page.getByRole('button', { name: `Search only ${l.scope}` })
+    if ((await scope.getAttribute('aria-pressed')) !== 'true') await scope.click()
+    await expect(page.getByRole('link', { name: l.kept, exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: l.dropped, exact: true })).toHaveCount(0)
+  })
+}
