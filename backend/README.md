@@ -27,8 +27,13 @@ Dependencies: [`requirements.txt`](requirements.txt).
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --timeout-graceful-shutdown 5 --port 8000
 ```
+
+`--timeout-graceful-shutdown 5` keeps `--reload` from hanging: the old worker
+waits for open connections to close before the new one starts, and the page
+holds one open indefinitely, so without a limit the app sits loading after
+any code change.
 
 The DB and downloads live under `../data/` (created on first run — see
 `bootstrap.py`, and `DATA_DIR` to move it). Search is optional — if Meilisearch isn't running, search just returns nothing and the

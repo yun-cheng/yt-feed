@@ -264,8 +264,12 @@ Run three processes. The frontend dev server proxies `/api` → `localhost:8000`
 cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --timeout-graceful-shutdown 5 --port 8000
 ```
+
+`--timeout-graceful-shutdown 5` keeps a code reload from hanging: without it,
+the old server waits forever for the page's long-lived connection to close,
+and the app sits loading.
 
 ### Frontend
 
