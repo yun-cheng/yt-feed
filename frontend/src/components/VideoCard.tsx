@@ -8,6 +8,7 @@ import type { StoryboardInfo } from '../lib/storyboard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useSummaryStatus, startSummary } from '../hooks/summaryStore'
 import { usePlaylistsOf } from '../hooks/playlistStore'
+import { useNotesOf } from '../hooks/notesStore'
 import type { SummaryLength } from '../hooks/summaryStore'
 import { formatCount } from '../lib/richText'
 import { t } from '../lib/i18n'
@@ -231,6 +232,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
   const [storyboard, setStoryboard] = useState<StoryboardInfo | null>(null)
   const summary = useSummaryStatus(video.youtube_id)
   const savedIn = usePlaylistsOf(video.youtube_id)
+  const notes = useNotesOf(video.youtube_id)
   const playlists = useMemo(
     () => (savedIn ?? []).filter((p) => p.id !== playlistId),
     [savedIn, playlistId],
@@ -1069,8 +1071,10 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             the same as one seen through. Summarising/Summarised, because the
             summary is written somewhere you aren't and the card is where you
             come back to look for it. The playlists it's saved in, because
-            otherwise only the save-to menu says. */}
-        {!isHovered && (watchProgress?.watched || summary || playlists.length > 0) && (
+            otherwise only the save-to menu says. Your labels and fields, from
+            the watch page's Notes tab, for the same reason — the note itself
+            stays there. */}
+        {!isHovered && (watchProgress?.watched || summary || playlists.length > 0 || notes) && (
           <div className="absolute left-1 top-1 z-[6] flex flex-col items-start gap-1">
             {watchProgress?.watched && (
               <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
@@ -1093,6 +1097,30 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
                 {playlists.length > 1 && <span className="flex-shrink-0">+{playlists.length - 1}</span>}
               </span>
             )}
+            {notes && notes.labels.length > 0 && (
+              <span
+                data-testid="labels-badge"
+                title={notes.labels.join('\n')}
+                className="flex max-w-[14rem] items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white"
+              >
+                {/* A tag: the label's own shape. */}
+                <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3 4a1 1 0 0 1 1-1h7.6a1 1 0 0 1 .7.3l8.4 8.4a1 1 0 0 1 0 1.4l-7.6 7.6a1 1 0 0 1-1.4 0L3.3 12.3a1 1 0 0 1-.3-.7V4zm4.5 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" />
+                </svg>
+                <span className="truncate">{notes.labels.join(', ')}</span>
+              </span>
+            )}
+            {notes?.fields.map((f) => (
+              <span
+                key={f.name}
+                data-testid="field-badge"
+                title={`${f.name}: ${f.values.join(', ')}`}
+                className="flex max-w-[14rem] items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white"
+              >
+                <span className="flex-shrink-0 text-white/60">{f.name}</span>
+                <span className="truncate">{f.values.join(', ')}</span>
+              </span>
+            ))}
             {summary?.status === 'running' && (
               <span className="flex items-center gap-1 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-tint-8ab4f8">
                 <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>

@@ -4,6 +4,7 @@ import VideoCard from '../components/VideoCard'
 import type { VideoItem } from '../App'
 import { loadSummaries, _resetSummaries } from '../hooks/summaryStore'
 import { loadPlaylistMemberships, _resetPlaylistMemberships } from '../hooks/playlistStore'
+import { loadCardNotes, rememberNotes, _resetCardNotes } from '../hooks/notesStore'
 
 const mockVideo: VideoItem = {
   youtube_id: 'abc123',
@@ -364,5 +365,48 @@ describe('VideoCard — playlist badge', () => {
       await new Promise((r) => setTimeout(r, 0))
     })
     expect(screen.getByTestId('playlist-badge')).toHaveTextContent('Cooking')
+  })
+})
+
+describe('VideoCard — labels and fields', () => {
+  afterEach(() => { _resetCardNotes(); vi.restoreAllMocks() })
+
+  it('badges the labels, and each field with its values, where Watched sits', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true, status: 200, clone: () => ({ text: async () => '' }),
+      json: async () => ({ abc123: { labels: ['comedy', 'rewatch'], fields: [{ name: 'Cities', values: ['Tokyo', 'Kyoto'] }] } }),
+    })) as unknown as typeof fetch
+    render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} watchProgress={{ position_seconds: 1234, watched: true }} />)
+    await act(async () => { await loadCardNotes() })
+    const labels = screen.getByTestId('labels-badge')
+    expect(labels).toHaveTextContent('comedy, rewatch')
+    expect(labels).toHaveAttribute('title', 'comedy\nrewatch')
+    const field = screen.getByTestId('field-badge')
+    expect(field).toHaveTextContent('CitiesTokyo, Kyoto')
+    expect(field).toHaveAttribute('title', 'Cities: Tokyo, Kyoto')
+    // One corner, one column: under Watched.
+    expect(labels.parentElement).toBe(screen.getByText('Watched').parentElement)
+  })
+
+  it('has no badge for a video with none', () => {
+    render(card())
+    expect(screen.queryByTestId('labels-badge')).toBeNull()
+    expect(screen.queryByTestId('field-badge')).toBeNull()
+  })
+
+  it('steps aside while the card is hovered, like the other badges', () => {
+    render(<VideoCard video={mockVideo} isHovered={true} onHover={vi.fn()} onChannelClick={vi.fn()} />)
+    act(() => { rememberNotes('abc123', { labels: ['comedy'], fields: [] }) })
+    expect(screen.queryByTestId('labels-badge')).toBeNull()
+  })
+
+  it('follows what the Notes tab saves, and goes once it is emptied', () => {
+    render(card())
+    act(() => { rememberNotes('abc123', { labels: ['new'], fields: [{ name: 'Actors', values: [] }] }) })
+    expect(screen.getByTestId('labels-badge')).toHaveTextContent('new')
+    // A field still waiting for values has nothing to show.
+    expect(screen.queryByTestId('field-badge')).toBeNull()
+    act(() => { rememberNotes('abc123', { labels: [], fields: [{ name: 'Actors', values: [] }] }) })
+    expect(screen.queryByTestId('labels-badge')).toBeNull()
   })
 })

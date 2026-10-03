@@ -2,6 +2,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import NotesPanel from '../components/NotesPanel'
 import type { VideoNotes } from '../components/NotesPanel'
+import { useNotesOf, _resetCardNotes } from '../hooks/notesStore'
 
 type Call = { url: string; method: string; body?: VideoNotes }
 
@@ -35,7 +36,7 @@ function type(label: string, text: string, key = 'Enter') {
 }
 
 beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); _resetCardNotes() })
 
 describe('NotesPanel', () => {
   it('shows what was written before', async () => {
@@ -114,6 +115,18 @@ describe('NotesPanel', () => {
     expect(puts(calls)).toHaveLength(1)
     expect(puts(calls)[0].body!.note).toBe('Good')
     expect(screen.getByText('Saved')).toBeInTheDocument()
+  })
+
+  it('a save reaches the cards, as the server kept it', async () => {
+    serve({ labels: [], fields: [], note: '' })
+    let seen: unknown
+    function Card() { seen = useNotesOf('vid1'); return null }
+    render(<Card />)
+    await mount()
+    type('Add a label', 'comedy')
+    await settle()
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(seen).toEqual({ labels: ['comedy'], fields: [] })
   })
 
   it('leaving the video sends what was still waiting', async () => {

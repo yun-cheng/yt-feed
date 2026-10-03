@@ -82,6 +82,27 @@ test('a card names the playlists its video is saved in', async ({ page }) => {
   await expect(badge).toHaveCount(0)
 })
 
+test('a card badges its video’s labels and fields', async ({ page }) => {
+  await page.request.put('/api/notes/video/e2eLibOne00', {
+    data: { labels: ['comedy'], fields: [{ name: 'Cities', values: ['Tokyo', 'Kyoto'] }], note: 'not on the card' },
+  })
+  try {
+    await page.goto('/')
+    // The whole card, thumbnail and all — the badges sit on the thumbnail.
+    const whole = (title: string) => page.locator('div')
+      .filter({ has: page.getByRole('img', { name: title }) })
+      .filter({ has: page.getByRole('button', { name: 'More actions' }) })
+      .last()
+    await page.mouse.move(0, 0)
+    await expect(whole('Library one').getByTestId('labels-badge')).toHaveText('comedy')
+    await expect(whole('Library one').getByTestId('field-badge')).toHaveText('CitiesTokyo, Kyoto')
+    await expect(whole('Library one')).not.toContainText('not on the card')
+    await expect(whole('Library two').getByTestId('labels-badge')).toHaveCount(0)
+  } finally {
+    await page.request.put('/api/notes/video/e2eLibOne00', { data: { labels: [], fields: [], note: '' } })
+  }
+})
+
 test('Downloads lists the files, and the search box narrows them', async ({ page }) => {
   await page.goto('/')
   await nav(page, 'Downloads').click()

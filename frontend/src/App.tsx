@@ -8,6 +8,7 @@ import Toaster from './components/Toaster'
 import { startNotificationPolling } from './hooks/notificationStore'
 import { loadSummaries, useSummarisedIds } from './hooks/summaryStore'
 import { loadPlaylistMemberships } from './hooks/playlistStore'
+import { loadCardNotes } from './hooks/notesStore'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VideoRow from './components/VideoRow'
@@ -1321,6 +1322,7 @@ export default function App() {
     startNotificationPolling()
     loadSummaries()
     loadPlaylistMemberships()
+    loadCardNotes()
   }, [])
 
   // ── Auto-refresh via Page Visibility API ────────────────

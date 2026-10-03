@@ -49,7 +49,9 @@ real video (muted, with custom captions and scrubbing).
 - **Notes on a video** — the panel's Notes tab holds what you want to remember
   about it: labels, fields that each hold several values (Actors: Ann, Bo), and
   a free-text note. Saved as you type, kept server-side per person, and the
-  boxes suggest the labels, fields and values you've used on other videos
+  boxes suggest the labels, fields and values you've used on other videos.
+  The labels and fields also show on the video's card, as badges beside
+  Watched and its playlists
 - **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
   click its pin to jump back); `[` and `]` set a loop's ends and `\` stops it,
   so a passage replays until you're done with it — seeking out of it, on the

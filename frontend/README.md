@@ -345,6 +345,14 @@ The pieces that aren't obvious:
   (`GET /api/playlists/memberships`), fetched at start and again on every
   `playlists-changed`. On a playlist's own page that playlist is left off,
   since every card there would say it.
+- **Your labels and fields follow, as badges in the same corner** — one for
+  the labels (a tag, then `comedy, rewatch`), then one per field, its name
+  dimmed before its values (`Cities Tokyo, Kyoto`) — written in the watch
+  page's Notes tab (see "Notes on a video"). Each is cut to the badge's width;
+  its tooltip has the rest. The note itself stays off the card. `notesStore`
+  holds one map for the library (`GET /api/notes`), fetched at start, and the
+  Notes tab writes each save's answer back into it, so the card you return to
+  already shows it.
 - **The page obeys the global controls**, like the feed does: the Videos/Shorts
   switch and the sidebar's tag selection, plus its own watch-status selection
   (see below). Both are applied
@@ -906,6 +914,8 @@ hooks/
                                   something is running
   playlistStore.ts                which playlists each video is saved in —
                                   the cards' playlist badge
+  notesStore.ts                   each video's labels and fields — the
+                                  card's badges for them
 lib/
   api.ts                          apiFetch — fetch wrapper that surfaces failures
   title.ts                        useDocumentTitle — the browser tab's title:
@@ -1920,6 +1930,9 @@ and a free-text **note**. Yours alone, like bookmarks, and kept by the server
   label, here and on the server, which also trims, drops blanks and folds two
   fields of one name into one. A field with no values yet is kept: it was made
   on purpose and is waiting for them.
+- **On the cards.** Each save's answer goes into `notesStore`, the map the
+  cards draw their labels and fields from, so the feed behind the watch page is
+  already up to date. A field with no values yet has nothing to show there.
 
 ### Comments (`Comments.tsx`)
 
@@ -2372,7 +2385,7 @@ problem.
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
-| `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, and Escape handing the keyboard back |
+| `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, a save reaching the cards as the server kept it, and Escape handing the keyboard back |
 | `VideoPanel.test.tsx` | that the panel over the video keeps a tab's state when you switch away and back, and when you close and reopen it, and that closed it's out of reach |
 | `Comments.test.tsx` | that nothing is fetched before the tab opens, that the panel on the video and the tab share one fetch and the panel's side button moves it, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing; plus the three calls behind the row, where an unreachable server has to read as "no presets" and a refused save as nothing added |
@@ -2468,7 +2481,7 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `upnext.spec.ts` | the channel's next video is offered when one ends and opens on a click; Dismiss; and with the panel open on either side, the card stays centred on the whole frame, at full width, clear of the panel |
 | `feed.spec.ts` | the followed channels' videos from the last 3 days, a wider window bringing in an older one (from a button, and by dragging the window's far edge), the sort deciding the order and surviving a reload, and each of Views, Hot, Likes and Like% putting its own video first |
 | `history.spec.ts` | a video reopens where it was left, one left near its end starts over, and History lists it and gives it back after a removal is undone |
-| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; the card's playlist badge appearing on a save, left off on that playlist's own page, and gone after a removal; Imported listing its videos, with a removal undone; and the page-scoped search on Downloads, History, Watch Later and Imported narrowing each list |
+| `library.spec.ts` | Save to Watch Later and find it there; a playlist made from a card's menu holding the video, with a removal undone; the card's playlist badge appearing on a save, left off on that playlist's own page, and gone after a removal; a card badging its video's labels and fields but not its note; Imported listing its videos, with a removal undone; and the page-scoped search on Downloads, History, Watch Later and Imported narrowing each list |
 | `local.spec.ts` | a folder added by path lists its files with the lengths ffprobe read, and plays one |
 | `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows; the volume boost switching on without an error from its WebAudio graph and gone on coming back; and focus mode keeping the bar down while paused until the pointer is over the video, and holding across a reload |
 | `settings.spec.ts` | the app language and the light theme taking over the page and holding across a reload — then put back, since the whole suite shares one account |

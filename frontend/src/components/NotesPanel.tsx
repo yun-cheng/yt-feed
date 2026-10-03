@@ -15,6 +15,7 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import { apiFetch } from '../lib/api'
 import { t } from '../lib/i18n'
 import { PanelScroll } from './VideoPanel'
+import { rememberNotes } from '../hooks/notesStore'
 
 export type NoteField = { name: string; values: string[] }
 export type VideoNotes = { labels: string[]; fields: NoteField[]; note: string }
@@ -161,7 +162,13 @@ export default function NotesPanel({ videoId }: { videoId: string }) {
       body: JSON.stringify(body),
       keepalive,
     })
-      .then((r) => { if (r.ok && !pending.current) setStatus('saved') })
+      .then(async (r) => {
+        if (!r.ok) return
+        // The cards' copy, as the server kept it — sent on leaving too, so
+        // the card you go back to already shows it.
+        rememberNotes(videoId, await r.json())
+        if (!pending.current) setStatus('saved')
+      })
       .catch(() => {})
   }, [videoId])
 
