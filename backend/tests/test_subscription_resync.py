@@ -20,7 +20,9 @@ from datetime import datetime, timezone
 import pytest
 
 from app import users
-from app.models import Channel, Video
+from app.models import Channel, UserChannel, Video
+# The real refresh, taken before the `live` fixture stubs it.
+from app.routers.subscriptions import sync_all_from_subscriptions as _real_sync_all
 
 
 @pytest.fixture
@@ -115,6 +117,55 @@ async def test_a_hand_added_channel_survives_a_resync_that_never_mentions_it(
     assert r.status_code == 200, r.text
     assert set(await users.held_channel_ids(db, me)) == {"byhand", "subbed"}
     assert await db.get(Channel, "byhand") is not None
+
+
+async def test_a_hand_added_channel_survives_resync_after_resync(
+    client, db, live, monkeypatch
+):
+    """With the metadata refresh running for real. It used to import every
+    channel you follow as a subscription, hand-added ones too, so the first
+    resync relabelled the channel and the second deleted it — the stub above
+    hid that for as long as it stood in for the refresh."""
+    from app.routers import subscriptions as subs_mod
+    from app.routers.subscriptions import ImportChannel
+
+    async def _details(ids):
+        return [ImportChannel(youtube_id=c, title=f"Fresh {c}") for c in ids]
+
+    monkeypatch.setattr(subs_mod, "_fetch_channel_details", _details)
+    me = await users.ensure_local_user(db)
+    await _following(db, me, ("byhand", "manual"), ("subbed", "subscription"))
+    live("subbed")
+    monkeypatch.setattr(subs_mod, "sync_all_from_subscriptions", _real_sync_all)
+
+    for _ in range(2):
+        r = await client.post("/api/subscriptions/resync")
+        assert r.status_code == 200, r.text
+
+    assert set(await users.held_channel_ids(db, me)) == {"byhand", "subbed"}
+    assert (await db.get(UserChannel, (me.id, "byhand"))).source == "manual"
+    byhand = await db.get(Channel, "byhand")
+    await db.refresh(byhand)
+    assert byhand.title == "Fresh byhand"
+
+
+async def test_subscribing_to_a_hand_added_channel_makes_it_a_subscription(
+    client, db, live
+):
+    """Once YouTube lists it, it's a subscription — so unsubscribing later
+    prunes it like any other, rather than the hand-add exempting it forever."""
+    me = await users.ensure_local_user(db)
+    await _following(db, me, ("byhand", "manual"), ("subbed", "subscription"))
+    live("subbed", "byhand")
+
+    r = await client.post("/api/subscriptions/resync")
+    assert r.status_code == 200, r.text
+    assert (await db.get(UserChannel, (me.id, "byhand"))).source == "subscription"
+
+    live("subbed")
+    r = await client.post("/api/subscriptions/resync")
+    assert r.status_code == 200, r.text
+    assert set(await users.held_channel_ids(db, me)) == {"subbed"}
 
 
 async def test_a_subscription_youtube_has_dropped_is_pruned_with_its_videos(

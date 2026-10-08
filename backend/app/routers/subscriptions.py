@@ -118,19 +118,51 @@ async def sync_all_from_subscriptions(
     user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh metadata for every channel this person follows."""
+    """Refresh metadata for every channel this person follows.
+
+    Metadata only — titles, pictures, counts, topics. Not a subscription
+    import: what you follow includes the channels you added by hand, and
+    importing those as subscriptions relabelled each one, so the next resync
+    found a "subscription" YouTube didn't list and deleted it. Every hand-added
+    channel went that way within two resyncs. Which channels are subscriptions
+    is resync's to say, from the live list.
+    """
     ids = sorted(await users.held_channel_ids(db, user))
     if not ids:
         return {"error": "No subscriptions saved. Import first."}
 
-    # Fetch from YouTube API
+    channels = await _fetch_channel_details(ids)
+    if channels is None:
+        return {"error": "Not authenticated"}
+
+    refreshed = 0
+    for ch in channels:
+        row = await db.get(Channel, ch.youtube_id)
+        if row is None:
+            continue
+        row.title = ch.title
+        row.description = ch.description
+        row.thumbnail_url = ch.thumbnail_url
+        row.subscriber_count = ch.subscriber_count
+        # channels.list carries topics, but a channel can have none; an empty
+        # answer leaves what was there.
+        if ch.topics:
+            row.topics = json.dumps(ch.topics)
+        refreshed += 1
+    await db.commit()
+    return {"saved": refreshed, "total": len(ids)}
+
+
+async def _fetch_channel_details(ids: list[str]) -> list[ImportChannel] | None:
+    """channels.list for these ids, 50 at a time. None without a YouTube token;
+    a batch that errors is skipped, so the answer can be short."""
     import httpx
     from app.auth_google import _get_token
     from google.auth.transport.requests import Request as GoogleRequest
 
     creds = _get_token()
     if not creds:
-        return {"error": "Not authenticated"}
+        return None
     if creds.expired and creds.refresh_token:
         creds.refresh(GoogleRequest())
 
@@ -164,8 +196,7 @@ async def sync_all_from_subscriptions(
                     subscriber_count=int(stats.get("subscriberCount", 0)),
                     topics=topics,
                 ))
-
-    return await import_subscriptions(channels, user, db)
+    return channels
 
 
 async def _prune_channels(
@@ -313,6 +344,13 @@ async def resync_subscriptions(
     # `sync_all` does after this is refresh, not membership.
     for channel_id in new_ids:
         await users.hold(db, user, channel_id, source="subscription")
+    # A channel you added by hand and have since subscribed to on YouTube is a
+    # subscription now, so unsubscribing later prunes it like any other.
+    for channel_id in sorted(live_ids & manual_ids):
+        await users.hold(db, user, channel_id, source="subscription")
+        row = await db.get(Channel, channel_id)
+        if row is not None:
+            row.source = "subscription"
     user.last_resync_at = datetime.utcnow()
     await db.commit()
 
@@ -321,11 +359,6 @@ async def resync_subscriptions(
     # Refresh metadata (incl. subscriber counts for brand-new channels) via the
     # existing channels.list-with-stats path.
     sync_result = await sync_all_from_subscriptions(user, db)
-    # sync_all → import_subscriptions rewrites the mirror file from the channels
-    # the Data API actually returned, and that call SKIPS a batch that errors —
-    # so a transient hiccup would silently drop those ids from it. Restore the
-    # full live set; it, not a partial fetch, is the subscription list.
-    _write_subscriptions(ids)
 
     # Auto-tag newly-added channels (sidebar filters) now that sync_all has
     # populated their titles/descriptions.

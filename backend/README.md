@@ -325,7 +325,17 @@ ranks in the feed, and the archive fill will eventually walk its back catalogue.
 deletes every channel that isn't in your live subscription list, and a
 hand-added one never will be — so it's marked `"manual"` and the prune skips it
 (`_prune_channels`' caller). Subscribing to it on YouTube later flips it back to
-`"subscription"`, because then the live list really does own it.
+`"subscription"`, because then the live list really does own it — and only
+the resync does that flip, from the live list (`live_ids & manual_ids`).
+
+The metadata refresh that follows every resync (`sync_all_from_subscriptions`,
+also `POST /api/subscriptions/sync-all`) touches titles, pictures, counts and
+topics and nothing else. It used to hand everything you follow to the
+subscription import, which marked each channel a subscription — hand-added ones
+included — so the next resync found a "subscription" YouTube didn't list and
+pruned it. Every hand-added channel went that way within two days. What it
+fetches is `_fetch_channel_details`, which the tests stub to run the refresh
+for real.
 
 Resolving is two-tier, cheapest first:
 
@@ -2270,7 +2280,7 @@ no per-test decorator). What's covered:
 | `test_people.py` | adding a person, the link that signs them in (again, and on another device), retiring one, and that adding the first extra account doesn't log the owner out — plus removal taking their data, refusing the last account, and the three guards around the single YouTube token |
 | `test_memberships.py` | following and unfollowing, and the prune's new hinge: a channel someone else still holds survives, the last holder letting go still reclaims it, and one person's list is out of the other's scope |
 | `test_presets.py` | saved sidebar selections: a preset coming back whole, the defaults filling in what wasn't sent, a re-used name overwriting rather than doubling, a name trimmed (blank refused, overlong cut) and an unknown key refused, the order they were made in, a blob that won't parse filtering nothing instead of 500ing the list, and one account's presets staying theirs |
-| `test_subscription_resync.py` | the prune's refusals — the one endpoint that deletes what you never named. An empty live list refused rather than obeyed (a 200 with nothing in it reads as "you subscribe to nothing", and the prune would take every channel and every video with it), expired auth refused the same way, a hand-added channel exempt because it will never be in the live list, the dry run reporting the damage without doing any of it — and, so the tests above can't pass by the prune having simply stopped working, a dropped subscription still going with its videos |
+| `test_subscription_resync.py` | the prune's refusals — the one endpoint that deletes what you never named. An empty live list refused rather than obeyed (a 200 with nothing in it reads as "you subscribe to nothing", and the prune would take every channel and every video with it), expired auth refused the same way, a hand-added channel exempt because it will never be in the live list — and still hand-added after two resyncs with the metadata refresh running for real, while one YouTube starts listing becomes a subscription and goes when it's dropped — the dry run reporting the damage without doing any of it — and, so the tests above can't pass by the prune having simply stopped working, a dropped subscription still going with its videos |
 | `test_youtube_parsing.py` | the pure transforms on the ingest boundary, where a wrong answer is stored as fact rather than raised: ISO 8601 durations including the **day** component (`P1DT2H` — anything past 24 hours, which a time-only pattern read as zero and so filed under "under 5 minutes"), unparseable input costing one video its length instead of the batch, the thumbnail ladder, telling a spent quota from a dead token across a 403, and a yt-dlp entry with no date reading as now rather than 1970 |
 | `test_api_contract.py` | that every `/api/…` the frontend calls is a route this app serves. The two suites meet nowhere — the frontend stubs `fetch`, so it answers whatever URL it's handed — and a renamed route leaves both green while the feature is dead in the browser. Reads the call sites out of `frontend/src` and resolves each against the real route table |
 | `test_bootstrap.py` | the first boot on an empty volume: the directories made, a session key generated (and stable across restarts, and different between two deployments, and left alone when one is configured), the setup token written and read back — and that `SKIP_CONFIG_ADOPTION` stops a test run inheriting the developer's live OAuth token, which is not hypothetical: the guard it replaced inferred wrong and a suite ran against real credentials |
