@@ -396,6 +396,7 @@ export const ko: Record<string, string> = {
   'Ask AI': 'AI에게 질문',
   'Transcript language: {lang}': '스크립트 언어: {lang}',
   'No lines match “{q}”.': '"{q}"와(과) 일치하는 줄이 없습니다.',
+  'No playlists match “{q}”.': '"{q}"와(과) 일치하는 재생목록이 없습니다.',
   'Main': '기본',
   'Second': '보조',
   'Chinese': '중국어',
@@ -434,6 +435,7 @@ export const ko: Record<string, string> = {
   'Save': '저장',
   'Saved': '저장됨',
   'Transcript language': '스크립트 언어',
+  'Search playlists': '재생목록 검색',
   'Search transcript': '스크립트 검색',
   'Sync to video': '동영상과 동기화',
   // Player marks

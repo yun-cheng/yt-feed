@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { apiFetch } from '../lib/api'
 import type { VideoItem } from '../App'
 import { tn, t } from '../lib/i18n'
@@ -27,6 +27,22 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  // Narrows the list by name, for when there are more playlists than fit.
+  const [query, setQuery] = useState('')
+  const queryRef = useRef<HTMLInputElement>(null)
+  // Focused on open, so you can type a name straight away; without scrolling,
+  // since the menu around it may not be placed yet.
+  useEffect(() => { queryRef.current?.focus({ preventScroll: true }) }, [])
+  const q = query.trim().toLocaleLowerCase()
+  const shown = q ? playlists.filter((p) => p.name.toLocaleLowerCase().includes(q)) : playlists
+  // The list's height with nothing typed, held while a search narrows it, so
+  // the menu doesn't shrink under the pointer (or hop, placed above the button)
+  // with each letter.
+  const listRef = useRef<HTMLDivElement>(null)
+  const [fullHeight, setFullHeight] = useState<number>()
+  useLayoutEffect(() => {
+    if (!loading && !q && listRef.current) setFullHeight(listRef.current.offsetHeight)
+  }, [loading, q, playlists])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -92,14 +108,56 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
         <span className="text-sm font-semibold text-white">{t('Save to…')}</span>
       </div>
 
+      {/* Filter */}
+      <div className="relative px-3 pb-2">
+        <svg className="pointer-events-none absolute left-5 top-[calc(50%-0.25rem)] h-4 w-4 -translate-y-1/2 text-shade-99" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <circle cx="11" cy="11" r="7" />
+          <path strokeLinecap="round" d="M20 20l-3.5-3.5" />
+        </svg>
+        <input
+          ref={queryRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter saves to the one playlist left, if it's come down to one.
+            if (e.key === 'Enter' && q && shown.length === 1) toggle(shown[0].id)
+            // Esc clears; on an empty field it gives the keyboard back.
+            if (e.key !== 'Escape') return
+            e.stopPropagation()
+            if (query) setQuery('')
+            else e.currentTarget.blur()
+          }}
+          placeholder={t('Search playlists')}
+          aria-label={t('Search playlists')}
+          className="w-full rounded-full bg-shade-12 py-1.5 pl-8 pr-8 text-sm text-white ring-1 ring-white/10 placeholder:text-shade-88 focus:outline-none focus:ring-white/25"
+        />
+        {query && (
+          <button
+            onClick={() => { setQuery(''); queryRef.current?.focus() }}
+            aria-label={t('Clear search')}
+            className="absolute right-4 top-[calc(50%-0.25rem)] -translate-y-1/2 rounded-full p-1 text-shade-99 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       {/* Playlists */}
-      <div className="max-h-[26rem] min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        ref={listRef}
+        style={{ minHeight: q ? fullHeight : undefined }}
+        className="max-h-[26rem] min-h-0 flex-1 overflow-y-auto overscroll-contain"
+      >
         {loading ? (
           <div className="px-4 py-3 text-sm text-shade-aa">{t('Loading…')}</div>
         ) : playlists.length === 0 ? (
           <div className="px-4 py-3 text-sm text-shade-99">{t('No playlists yet')}</div>
+        ) : shown.length === 0 ? (
+          <div className="px-4 py-3 text-sm text-shade-99">{t('No playlists match “{q}”.', { q: query.trim() })}</div>
         ) : (
-          playlists.map((p) => (
+          shown.map((p) => (
             <button
               key={p.id}
               onClick={() => toggle(p.id)}
@@ -137,7 +195,8 @@ export default function SaveToPlaylist({ video, onBack }: Props) {
           </div>
         ) : (
           <button
-            onClick={() => setCreating(true)}
+            // A search that found nothing is likely the name you wanted.
+            onClick={() => { setNewName(shown.length ? '' : query.trim()); setCreating(true) }}
             className="w-full flex items-center gap-4 px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors"
           >
             <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>

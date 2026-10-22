@@ -396,6 +396,7 @@ export const ja: Record<string, string> = {
   'Ask AI': 'AIに質問',
   'Transcript language: {lang}': '文字起こし言語：{lang}',
   'No lines match “{q}”.': '「{q}」に一致する行はありません。',
+  'No playlists match “{q}”.': '「{q}」に一致する再生リストはありません。',
   'Main': 'メイン',
   'Second': '第2',
   'Chinese': '中国語',
@@ -434,6 +435,7 @@ export const ja: Record<string, string> = {
   'Save': '保存',
   'Saved': '保存済み',
   'Transcript language': '文字起こしの言語',
+  'Search playlists': '再生リストを検索',
   'Search transcript': '文字起こしを検索',
   'Sync to video': '動画に同期',
   // Player marks

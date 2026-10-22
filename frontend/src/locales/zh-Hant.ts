@@ -397,6 +397,7 @@ export const zhHant: Record<string, string> = {
   'Ask AI': '詢問 AI',
   'Transcript language: {lang}': '逐字稿語言：{lang}',
   'No lines match “{q}”.': '沒有符合「{q}」的句子。',
+  'No playlists match “{q}”.': '沒有符合「{q}」的播放清單。',
   'Main': '主要',
   'Second': '第二',
   'Chinese': '中文',
@@ -435,6 +436,7 @@ export const zhHant: Record<string, string> = {
   'Save': '儲存',
   'Saved': '已儲存',
   'Transcript language': '逐字稿語言',
+  'Search playlists': '搜尋播放清單',
   'Search transcript': '搜尋逐字稿',
   'Sync to video': '同步到影片位置',
   // Player marks

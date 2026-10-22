@@ -396,6 +396,7 @@ export const th: Record<string, string> = {
   'Ask AI': 'ถาม AI',
   'Transcript language: {lang}': 'ภาษาถอดเสียง: {lang}',
   'No lines match “{q}”.': 'ไม่มีบรรทัดที่ตรงกับ "{q}"',
+  'No playlists match “{q}”.': 'ไม่มีเพลย์ลิสต์ที่ตรงกับ "{q}"',
   'Main': 'หลัก',
   'Second': 'ที่สอง',
   'Chinese': 'จีน',
@@ -434,6 +435,7 @@ export const th: Record<string, string> = {
   'Save': 'บันทึก',
   'Saved': 'บันทึกแล้ว',
   'Transcript language': 'ภาษาบทถอดเสียง',
+  'Search playlists': 'ค้นหาเพลย์ลิสต์',
   'Search transcript': 'ค้นหาบทถอดเสียง',
   'Sync to video': 'ซิงค์กับวิดีโอ',
   // Player marks

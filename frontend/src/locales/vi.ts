@@ -396,6 +396,7 @@ export const vi: Record<string, string> = {
   'Ask AI': 'Hỏi AI',
   'Transcript language: {lang}': 'Ngôn ngữ bản ghi: {lang}',
   'No lines match “{q}”.': 'Không có dòng nào khớp với "{q}".',
+  'No playlists match “{q}”.': 'Không có danh sách phát nào khớp với “{q}”.',
   'Main': 'Chính',
   'Second': 'Phụ',
   'Chinese': 'Tiếng Trung',
@@ -434,6 +435,7 @@ export const vi: Record<string, string> = {
   'Save': 'Lưu',
   'Saved': 'Đã lưu',
   'Transcript language': 'Ngôn ngữ bản ghi',
+  'Search playlists': 'Tìm danh sách phát',
   'Search transcript': 'Tìm trong bản ghi',
   'Sync to video': 'Đồng bộ với video',
   // Player marks
