@@ -1896,9 +1896,11 @@ the controls are hidden; while they show it stops just above the progress bar
 4.375rem up, and the captions' `max(11%, 5.5rem)` over YouTube's. It's anchored
 at the top, so only its foot moves and what you're reading stays put. Our bar's
 box starts 2rem above its progress bar — a transparent fade — so that box takes
-no pointer itself; only its progress bar and button row do (`takesPointer` in
-`LocalControls`). Otherwise the fade sat over the panel's last lines and
-swallowed every click on them. Its one
+no pointer itself; only the box around its progress bar and button row does,
+padding included (`takesPointer` in `LocalControls`). Otherwise the fade sat
+over the panel's last lines and swallowed every click on them — and the padding
+counts because a press on the strip under the buttons, left to fall through,
+played or paused the video. Its one
 rounded corner is the inner foot, when it stops short of the bottom. While it's
 open, captions still centre on the whole picture, and a line too long for that
 slides away from the panel rather than under it (`CaptionRow`: the row stops at

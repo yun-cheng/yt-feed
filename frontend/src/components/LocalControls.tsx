@@ -481,15 +481,17 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
 
   // The box itself never takes the pointer: its top is a transparent fade 2rem
   // tall, laid over whatever the player has there — the panel over the video's
-  // last lines, most of all, which it made unclickable. Only the two rows that
-  // are controls take it, and only while they're showing; a press on the fade
-  // lands on the video beneath, the way it does on any player.
+  // last lines, most of all, which it made unclickable. Only the controls take
+  // it, and only while they're showing; a press on the fade lands on the video
+  // beneath, the way it does on any player. The controls' padding counts as
+  // controls: a press on the strip under the buttons used to fall through to
+  // the video and play or pause it.
   const takesPointer = show ? 'pointer-events-auto' : ''
   return (
     // A container, so what the page puts in the row can drop out when the
     // player is too narrow for it (the chapter button does).
     <div
-      className={`@container/controls pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-8 transition-opacity duration-150 ${
+      className={`@container/controls pointer-events-none absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/80 to-transparent pt-8 transition-opacity duration-150 ${
         show ? 'opacity-100' : 'opacity-0'
       }`}
     >
@@ -547,330 +549,332 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         </div>
       </div>
 
-      {/* Progress bar. The padded wrapper is the hit area (and the measured rect —
-          its horizontal edges match the track's). */}
-      <div
-        ref={barRef}
-        className={`group/bar cursor-pointer py-2 pb-2 ${takesPointer}`}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId)
-          draggingRef.current = true
-          seekTo(e.clientX)
-        }}
-        onPointerMove={(e) => {
-          setHoverRatio(ratioAt(e.clientX))
-          if (draggingRef.current) seekTo(e.clientX)
-        }}
-        // Drop the preview as soon as the cursor leaves the BAR — leaving it to
-        // the whole controls area kept the thumbnail up while you were off using
-        // the buttons. A drag holds the pointer capture, which suppresses this,
-        // so scrubbing past the ends is unaffected.
-        onPointerLeave={() => setHoverRatio(null)}
-        onPointerUp={() => { draggingRef.current = false }}
-      >
-        {/* Thickens on hover, YouTube-style, to make the target read as grabbable. */}
-        <div className="relative h-1.5 transition-all group-hover/bar:h-2">
-          <div
-            data-testid="track-rail"
-            className="absolute inset-0 overflow-hidden rounded-full bg-white/30"
-            style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
-          >
+      <div className={`px-3 pb-2 ${takesPointer}`}>
+        {/* Progress bar. The padded wrapper is the hit area (and the measured rect —
+            its horizontal edges match the track's). */}
+        <div
+          ref={barRef}
+          className="group/bar cursor-pointer py-2 pb-2"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId)
+            draggingRef.current = true
+            seekTo(e.clientX)
+          }}
+          onPointerMove={(e) => {
+            setHoverRatio(ratioAt(e.clientX))
+            if (draggingRef.current) seekTo(e.clientX)
+          }}
+          // Drop the preview as soon as the cursor leaves the BAR — leaving it to
+          // the whole controls area kept the thumbnail up while you were off using
+          // the buttons. A drag holds the pointer capture, which suppresses this,
+          // so scrubbing past the ends is unaffected.
+          onPointerLeave={() => setHoverRatio(null)}
+          onPointerUp={() => { draggingRef.current = false }}
+        >
+          {/* Thickens on hover, YouTube-style, to make the target read as grabbable. */}
+          <div className="relative h-1.5 transition-all group-hover/bar:h-2">
             <div
-              data-testid="track-fill"
-              className="absolute inset-y-0 bg-red-500"
-              style={{ left: `${fillFrom * 100}%`, width: `${Math.max(0, progress - fillFrom) * 100}%` }}
+              data-testid="track-rail"
+              className="absolute inset-0 overflow-hidden rounded-full bg-white/30"
+              style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
+            >
+              <div
+                data-testid="track-fill"
+                className="absolute inset-y-0 bg-red-500"
+                style={{ left: `${fillFrom * 100}%`, width: `${Math.max(0, progress - fillFrom) * 100}%` }}
+              />
+            </div>
+            {/* Bookmarks and the A–B loop, on the track they're positions on.
+                Clicking a mark seeks to the exact moment it marks rather than to
+                wherever on the track the click landed. */}
+            <MarkTrack
+              bookmarks={bookmarks ?? []}
+              loop={loop ?? { a: null, b: null }}
+              others={others ?? []}
+              duration={duration}
+              onSeek={(seconds) => {
+                const p = api()
+                if (!p) return
+                p.seekTo(seconds, true)
+                setTime(seconds)
+              }}
+            />
+            {hoverRatio !== null && (
+              <div
+                className="pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-white/50"
+                style={{ left: `${hoverRatio * 100}%` }}
+              />
+            )}
+            <div
+              className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow"
+              style={{ left: `${progress * 100}%` }}
             />
           </div>
-          {/* Bookmarks and the A–B loop, on the track they're positions on.
-              Clicking a mark seeks to the exact moment it marks rather than to
-              wherever on the track the click landed. */}
-          <MarkTrack
-            bookmarks={bookmarks ?? []}
-            loop={loop ?? { a: null, b: null }}
-            others={others ?? []}
-            duration={duration}
-            onSeek={(seconds) => {
-              const p = api()
-              if (!p) return
-              p.seekTo(seconds, true)
-              setTime(seconds)
-            }}
-          />
-          {hoverRatio !== null && (
-            <div
-              className="pointer-events-none absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-white/50"
-              style={{ left: `${hoverRatio * 100}%` }}
-            />
-          )}
-          <div
-            className="pointer-events-none absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow"
-            style={{ left: `${progress * 100}%` }}
-          />
         </div>
-      </div>
 
-      {/* Play / mute / clock on the left, fullscreen on the right. Everything
-          here also has a keyboard shortcut (k, m, f) — see the key handler. */}
-      <div className={`flex items-center text-white ${takesPointer}`}>
-        <button
-          onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
-          className={BAR_BUTTON}
-          title={paused ? t('Play ({key})', { key: shortcutLabel('playPause') }) : t('Pause ({key})', { key: shortcutLabel('playPause') })}
-        >
-          <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-            {paused ? <path d="M8 5v14l11-7z" /> : <path d="M6 5h4v14H6zm8 0h4v14h-4z" />}
-          </svg>
-        </button>
-        {nextControl}
-        {/* Mute, and the volume popup over it (see SLIDER_POPUP). Boost is the
-            popup's second column, deliberately NOT the same scope as the
-            first: volume is how loud you like things; boost is how quiet this
-            particular video was mixed, and it goes with the video rather than
-            with you. */}
-        <div className="group/slider relative flex items-center">
+        {/* Play / mute / clock on the left, fullscreen on the right. Everything
+            here also has a keyboard shortcut (k, m, f) — see the key handler. */}
+        <div className="flex items-center text-white">
           <button
-            onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
+            onClick={() => { const p = api(); if (!p) return; if (paused) p.playVideo(); else p.pauseVideo() }}
             className={BAR_BUTTON}
-            title={muted ? t('Unmute ({key})', { key: shortcutLabel('mute') }) : t('Mute ({key})', { key: shortcutLabel('mute') })}
+            title={paused ? t('Play ({key})', { key: shortcutLabel('playPause') }) : t('Pause ({key})', { key: shortcutLabel('playPause') })}
           >
             <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              {muted || volume === 0
-                ? <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3 2.7-2.7a1 1 0 0 0-1.4-1.4L15.1 10.6l-2.7-2.7v8.2l2.7-2.7 2.7 2.7a1 1 0 0 0 1.4-1.4L16.5 12z" />
-                : <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />}
+              {paused ? <path d="M8 5v14l11-7z" /> : <path d="M6 5h4v14H6zm8 0h4v14h-4z" />}
             </svg>
           </button>
-          <div className={SLIDER_POPUP}>
-            <div className={SLIDER_PANEL}>
-              <SliderColumn
-                value={muted ? 0 : volume}
-                min={0}
-                max={100}
-                step={VOLUME_STEP}
-                ticks={VOLUME_TICKS}
-                majorEvery={20}
-                head={<span className={SLIDER_HEAD}>{muted ? 0 : volume}%</span>}
-                onChange={(next) => {
-                  // Dragging off zero unmutes, like YouTube — otherwise the slider
-                  // would move with no sound and look broken.
-                  if (next > 0) api()?.unMute()
-                  setAudioVolume(next)
-                }}
-                title={t('Volume ({up}/{down})', { up: shortcutLabel('volumeUp'), down: shortcutLabel('volumeDown') })}
-                label={t('Volume')}
-              />
-              {canBoost && (
-                <SliderColumn
-                  value={boost}
-                  min={1}
-                  max={MAX_BOOST}
-                  step={BOOST_STEP}
-                  ticks={BOOST_TICKS}
-                  majorEvery={1}
-                  head={
-                    /* Its value doubles as the quick switch: off, or 2×. */
-                    <button
-                      onClick={() => setBoost(boost > 1 ? 1 : 2)}
-                      className={`${SLIDER_HEAD} rounded px-1 hover:bg-white/10`}
-                      title={boost > 1
-                        ? t('Boosting this video {n}× — click for normal', { n: boost })
-                        : t('Boost just this video, past 100%')}
-                      aria-pressed={boost > 1}
-                      aria-label={t('Boost this video’s volume')}
-                      data-testid="boost-button"
-                    >
-                      {boostLabel(boost)}
-                    </button>
-                  }
-                  onChange={setBoost}
-                  title={t('Volume boost, this video only')}
-                  label={t('Volume boost')}
-                />
-              )}
-            </div>
-          </div>
-          {/* The levels, in the row. Where the sliders sit in the row too, their
-              heads already say this, so these are for where they pop up. The
-              volume always: the level is worth knowing without having to go
-              looking for it, and in whole steps of 5 (see VOLUME_STEP) it's a
-              number that stays still. The boost only while it's doing
-              something: at 1× it would be a number that never moves. */}
-          <span
-            data-testid="volume-readout"
-            className="ml-1.5 hidden w-9 text-right text-xs tabular-nums text-white/90 hoverable:inline"
-          >
-            {muted ? 0 : volume}%
-          </span>
-          {canBoost && boost > 1 && (
-            <span
-              data-testid="boost-readout"
-              className="ml-1.5 hidden text-xs tabular-nums text-white/90 hoverable:inline"
-            >
-              {boostLabel(boost)}
-            </span>
-          )}
-        </div>
-        {/* Playback speed. A menu rather than a click-through cycle: eight rates
-            are too many to step past one at a time, and the label has to say
-            where you are anyway. Left group, with the other things that belong
-            to this video rather than to the player's chrome.
-            Hidden on a broadcast — the edge is where playback is, so there's
-            nothing to speed up; slowing one down only walks you backwards off
-            the live edge. */}
-        {!live && (
-          /* Opens on hover where there's a pointer, like the volume beside it,
-             and on a tap where there isn't — the click still toggles it for
-             touch and the keyboard, except that a click on a menu the hover
-             already opened leaves it open. Centred on the button and flush
-             against it, for the same straight way up. */
-          <div
-            ref={rateRef}
-            className="relative"
-            onPointerEnter={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = true; setRateMenu(true) } }}
-            onPointerLeave={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = false; setRateMenu(false) } }}
-          >
+          {nextControl}
+          {/* Mute, and the volume popup over it (see SLIDER_POPUP). Boost is the
+              popup's second column, deliberately NOT the same scope as the
+              first: volume is how loud you like things; boost is how quiet this
+              particular video was mixed, and it goes with the video rather than
+              with you. */}
+          <div className="group/slider relative flex items-center">
             <button
-              onClick={() => setRateMenu((v) => rateHoverRef.current || !v)}
-              className={`${BAR_BUTTON} text-sm tabular-nums`}
-              aria-haspopup="menu"
-              aria-expanded={rateMenu}
-              aria-label={t('Playback speed')}
-              title={t('Playback speed ({slower} and {faster})', { slower: shortcutLabel('speedDown'), faster: shortcutLabel('speedUp') })}
-              data-testid="speed-button"
+              onClick={() => { const p = api(); if (!p) return; if (p.isMuted()) p.unMute(); else p.mute() }}
+              className={BAR_BUTTON}
+              title={muted ? t('Unmute ({key})', { key: shortcutLabel('mute') }) : t('Mute ({key})', { key: shortcutLabel('mute') })}
             >
-              {rate}×
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                {muted || volume === 0
+                  ? <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3 2.7-2.7a1 1 0 0 0-1.4-1.4L15.1 10.6l-2.7-2.7v8.2l2.7-2.7 2.7 2.7a1 1 0 0 0 1.4-1.4L16.5 12z" />
+                  : <path d="M3 9v6h4l5 5V4L7 9H3zm11.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 14.5 12z" />}
+              </svg>
             </button>
-            {rateMenu && (
-              // Same panel as the caption menu — dark sheet, check in a fixed
-              // gutter so the numbers line up whichever row is ticked.
-              <div
-                role="menu"
-                className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
-              >
-                {/* Fastest at the top, so up means more here as it does on the
-                    volume slider beside it. */}
-                {[...playbackSpeeds()].reverse().map((r) => (
-                  <button
-                    key={r}
-                    role="menuitemradio"
-                    aria-checked={r === rate}
-                    onClick={() => {
-                      api()?.setPlaybackRate?.(r)
-                      setRate(r)  // the poll would catch up, a quarter-second late
-                      setRateMenu(false)
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left tabular-nums hover:bg-white/10"
-                  >
-                    <span className="w-4 shrink-0">{r === rate && '✓'}</span>
-                    {r}×
-                  </button>
-                ))}
+            <div className={SLIDER_POPUP}>
+              <div className={SLIDER_PANEL}>
+                <SliderColumn
+                  value={muted ? 0 : volume}
+                  min={0}
+                  max={100}
+                  step={VOLUME_STEP}
+                  ticks={VOLUME_TICKS}
+                  majorEvery={20}
+                  head={<span className={SLIDER_HEAD}>{muted ? 0 : volume}%</span>}
+                  onChange={(next) => {
+                    // Dragging off zero unmutes, like YouTube — otherwise the slider
+                    // would move with no sound and look broken.
+                    if (next > 0) api()?.unMute()
+                    setAudioVolume(next)
+                  }}
+                  title={t('Volume ({up}/{down})', { up: shortcutLabel('volumeUp'), down: shortcutLabel('volumeDown') })}
+                  label={t('Volume')}
+                />
+                {canBoost && (
+                  <SliderColumn
+                    value={boost}
+                    min={1}
+                    max={MAX_BOOST}
+                    step={BOOST_STEP}
+                    ticks={BOOST_TICKS}
+                    majorEvery={1}
+                    head={
+                      /* Its value doubles as the quick switch: off, or 2×. */
+                      <button
+                        onClick={() => setBoost(boost > 1 ? 1 : 2)}
+                        className={`${SLIDER_HEAD} rounded px-1 hover:bg-white/10`}
+                        title={boost > 1
+                          ? t('Boosting this video {n}× — click for normal', { n: boost })
+                          : t('Boost just this video, past 100%')}
+                        aria-pressed={boost > 1}
+                        aria-label={t('Boost this video’s volume')}
+                        data-testid="boost-button"
+                      >
+                        {boostLabel(boost)}
+                      </button>
+                    }
+                    onChange={setBoost}
+                    title={t('Volume boost, this video only')}
+                    label={t('Volume boost')}
+                  />
+                )}
               </div>
+            </div>
+            {/* The levels, in the row. Where the sliders sit in the row too, their
+                heads already say this, so these are for where they pop up. The
+                volume always: the level is worth knowing without having to go
+                looking for it, and in whole steps of 5 (see VOLUME_STEP) it's a
+                number that stays still. The boost only while it's doing
+                something: at 1× it would be a number that never moves. */}
+            <span
+              data-testid="volume-readout"
+              className="ml-1.5 hidden w-9 text-right text-xs tabular-nums text-white/90 hoverable:inline"
+            >
+              {muted ? 0 : volume}%
+            </span>
+            {canBoost && boost > 1 && (
+              <span
+                data-testid="boost-readout"
+                className="ml-1.5 hidden text-xs tabular-nums text-white/90 hoverable:inline"
+              >
+                {boostLabel(boost)}
+              </span>
             )}
           </div>
-        )}
-        {/* Where you are. On a recording that's a position out of a total; on a
-            broadcast there is no total — only the edge, which moves — so the
-            clock gives way to the thing you actually want to know and to do:
-            am I live, and take me there. */}
-        {live ? (
-          <div className="flex items-center px-2">
-            {/* How far into the broadcast you are, counted from when it went
-                on air. Not the distance back from the edge: that number runs
-                backwards while the picture runs forwards, and at the edge it's
-                a jittering "-0:04" that says nothing but "the buffer exists".
-                This one just tells you where you are, the way the clock on a
-                recording does — only without a total to divide it by. */}
-            <span
-              data-testid="live-elapsed"
-              className="mr-2 text-sm tabular-nums text-white/90"
-              title={t('How far into the broadcast you are')}
+          {/* Playback speed. A menu rather than a click-through cycle: eight rates
+              are too many to step past one at a time, and the label has to say
+              where you are anyway. Left group, with the other things that belong
+              to this video rather than to the player's chrome.
+              Hidden on a broadcast — the edge is where playback is, so there's
+              nothing to speed up; slowing one down only walks you backwards off
+              the live edge. */}
+          {!live && (
+            /* Opens on hover where there's a pointer, like the volume beside it,
+               and on a tap where there isn't — the click still toggles it for
+               touch and the keyboard, except that a click on a menu the hover
+               already opened leaves it open. Centred on the button and flush
+               against it, for the same straight way up. */
+            <div
+              ref={rateRef}
+              className="relative"
+              onPointerEnter={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = true; setRateMenu(true) } }}
+              onPointerLeave={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = false; setRateMenu(false) } }}
             >
-              {formatTime(time)}
-            </span>
-            <button
-              onClick={() => {
-                const p = api()
-                if (!p || !duration) return
-                // The edge is wherever the stream has got to, which is what
-                // duration reports on a broadcast. Seeking there and playing is
-                // one gesture: you can be behind because you paused.
-                p.seekTo(duration, true)
-                setTime(duration)
-                p.playVideo()
-              }}
-              disabled={atLive}
-              data-testid="live-pill"
-              aria-label={atLive ? t('Watching live') : t('Jump to live')}
-              title={atLive ? t('Watching live') : t('Jump to live')}
-              className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-sm font-medium ${
-                atLive ? 'cursor-default text-white' : 'text-white/70 hover:text-white'
-              }`}
-            >
-              {/* Red while you're at the edge, grey once you've fallen behind —
-                  the same tell YouTube uses, and the reason the word alone
-                  isn't enough: "LIVE" is true of the stream either way. */}
-              <span className={`h-2 w-2 rounded-full ${atLive ? 'bg-red-600' : 'bg-white/50'}`} />
-              {t('LIVE')}
-            </button>
-          </div>
-        ) : (
-          /* 14px and 8px of padding, both YouTube's. */
-          <span className="whitespace-nowrap px-2 text-sm tabular-nums text-white/90">
-            {formatTime(time)} / {formatTime(duration)}
-          </span>
-        )}
-        {leftControls}
-        {/* No gap, like YouTube's: each button carries its own padding (see
-            BAR_BUTTON), which spaces the row evenly and keeps the hit targets
-            full-size. */}
-        <div className="ml-auto flex items-center">
-          {rightControls}
-          {/* What you're actually watching. Read-only: YouTube's working quality
-              setter isn't reachable from outside the iframe (see lib/quality),
-              so offering a click here would be offering something we can't do.
-              Hidden entirely until the player has settled on an answer — a label
-              that flickers "auto" then a number is worse than arriving late. */}
-          {resolution && (
-            <span
-              className="select-none px-2 text-sm tabular-nums text-white/90"
-              title={videoRef ? t('Resolution of the file') : t('YouTube\'s current quality')}
-            >
-              {resolution}
+              <button
+                onClick={() => setRateMenu((v) => rateHoverRef.current || !v)}
+                className={`${BAR_BUTTON} text-sm tabular-nums`}
+                aria-haspopup="menu"
+                aria-expanded={rateMenu}
+                aria-label={t('Playback speed')}
+                title={t('Playback speed ({slower} and {faster})', { slower: shortcutLabel('speedDown'), faster: shortcutLabel('speedUp') })}
+                data-testid="speed-button"
+              >
+                {rate}×
+              </button>
+              {rateMenu && (
+                // Same panel as the caption menu — dark sheet, check in a fixed
+                // gutter so the numbers line up whichever row is ticked.
+                <div
+                  role="menu"
+                  className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
+                >
+                  {/* Fastest at the top, so up means more here as it does on the
+                      volume slider beside it. */}
+                  {[...playbackSpeeds()].reverse().map((r) => (
+                    <button
+                      key={r}
+                      role="menuitemradio"
+                      aria-checked={r === rate}
+                      onClick={() => {
+                        api()?.setPlaybackRate?.(r)
+                        setRate(r)  // the poll would catch up, a quarter-second late
+                        setRateMenu(false)
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left tabular-nums hover:bg-white/10"
+                    >
+                      <span className="w-4 shrink-0">{r === rate && '✓'}</span>
+                      {r}×
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Where you are. On a recording that's a position out of a total; on a
+              broadcast there is no total — only the edge, which moves — so the
+              clock gives way to the thing you actually want to know and to do:
+              am I live, and take me there. */}
+          {live ? (
+            <div className="flex items-center px-2">
+              {/* How far into the broadcast you are, counted from when it went
+                  on air. Not the distance back from the edge: that number runs
+                  backwards while the picture runs forwards, and at the edge it's
+                  a jittering "-0:04" that says nothing but "the buffer exists".
+                  This one just tells you where you are, the way the clock on a
+                  recording does — only without a total to divide it by. */}
+              <span
+                data-testid="live-elapsed"
+                className="mr-2 text-sm tabular-nums text-white/90"
+                title={t('How far into the broadcast you are')}
+              >
+                {formatTime(time)}
+              </span>
+              <button
+                onClick={() => {
+                  const p = api()
+                  if (!p || !duration) return
+                  // The edge is wherever the stream has got to, which is what
+                  // duration reports on a broadcast. Seeking there and playing is
+                  // one gesture: you can be behind because you paused.
+                  p.seekTo(duration, true)
+                  setTime(duration)
+                  p.playVideo()
+                }}
+                disabled={atLive}
+                data-testid="live-pill"
+                aria-label={atLive ? t('Watching live') : t('Jump to live')}
+                title={atLive ? t('Watching live') : t('Jump to live')}
+                className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-sm font-medium ${
+                  atLive ? 'cursor-default text-white' : 'text-white/70 hover:text-white'
+                }`}
+              >
+                {/* Red while you're at the edge, grey once you've fallen behind —
+                    the same tell YouTube uses, and the reason the word alone
+                    isn't enough: "LIVE" is true of the stream either way. */}
+                <span className={`h-2 w-2 rounded-full ${atLive ? 'bg-red-600' : 'bg-white/50'}`} />
+                {t('LIVE')}
+              </button>
+            </div>
+          ) : (
+            /* 14px and 8px of padding, both YouTube's. */
+            <span className="whitespace-nowrap px-2 text-sm tabular-nums text-white/90">
+              {formatTime(time)} / {formatTime(duration)}
             </span>
           )}
-          {extraControls}
-          {/* Focus mode. Sits with fullscreen rather than with the volume
-              groups because it's the same kind of thing they are: not about
-              this video, but about how much of the player you want to see. */}
-          <button
-            onClick={() => setFocusMode(!focus)}
-            className={`${BAR_BUTTON} ${focus ? '' : 'text-white/60'}`}
-            aria-pressed={focus}
-            aria-label={t('Focus mode')}
-            data-testid="focus-button"
-            title={focus
-              ? t('Focus mode on — the bar follows the cursor only')
-              : t('Focus mode — keep the bar down unless the cursor is on the video')}
-          >
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              {/* A cursor, because that's the rule: in focus mode the bar
-                  answers the pointer and nothing else. Deliberately NOT a
-                  viewfinder or any other cornered glyph — fullscreen is four
-                  corner brackets and sits immediately to the right of this, so
-                  anything bracket-shaped here reads as a second fullscreen
-                  button. A solid diagonal shares no silhouette with it. */}
-              <path d="M5 2 17 14h-5.1l2.9 5.9-2.7 1.3L9.2 15.4 5 19z" />
-            </svg>
-          </button>
-          <button
-            onClick={onFullscreen}
-            className={BAR_BUTTON}
-            title={t('Fullscreen ({key})', { key: shortcutLabel('fullscreen') })}
-          >
-            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
-            </svg>
-          </button>
+          {leftControls}
+          {/* No gap, like YouTube's: each button carries its own padding (see
+              BAR_BUTTON), which spaces the row evenly and keeps the hit targets
+              full-size. */}
+          <div className="ml-auto flex items-center">
+            {rightControls}
+            {/* What you're actually watching. Read-only: YouTube's working quality
+                setter isn't reachable from outside the iframe (see lib/quality),
+                so offering a click here would be offering something we can't do.
+                Hidden entirely until the player has settled on an answer — a label
+                that flickers "auto" then a number is worse than arriving late. */}
+            {resolution && (
+              <span
+                className="select-none px-2 text-sm tabular-nums text-white/90"
+                title={videoRef ? t('Resolution of the file') : t('YouTube\'s current quality')}
+              >
+                {resolution}
+              </span>
+            )}
+            {extraControls}
+            {/* Focus mode. Sits with fullscreen rather than with the volume
+                groups because it's the same kind of thing they are: not about
+                this video, but about how much of the player you want to see. */}
+            <button
+              onClick={() => setFocusMode(!focus)}
+              className={`${BAR_BUTTON} ${focus ? '' : 'text-white/60'}`}
+              aria-pressed={focus}
+              aria-label={t('Focus mode')}
+              data-testid="focus-button"
+              title={focus
+                ? t('Focus mode on — the bar follows the cursor only')
+                : t('Focus mode — keep the bar down unless the cursor is on the video')}
+            >
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                {/* A cursor, because that's the rule: in focus mode the bar
+                    answers the pointer and nothing else. Deliberately NOT a
+                    viewfinder or any other cornered glyph — fullscreen is four
+                    corner brackets and sits immediately to the right of this, so
+                    anything bracket-shaped here reads as a second fullscreen
+                    button. A solid diagonal shares no silhouette with it. */}
+                <path d="M5 2 17 14h-5.1l2.9 5.9-2.7 1.3L9.2 15.4 5 19z" />
+              </svg>
+            </button>
+            <button
+              onClick={onFullscreen}
+              className={BAR_BUTTON}
+              title={t('Fullscreen ({key})', { key: shortcutLabel('fullscreen') })}
+            >
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
