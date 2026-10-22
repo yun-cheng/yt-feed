@@ -77,6 +77,7 @@ app/
   ranking.py       score = views / hours-since-published; age-range resolving
   categorizer.py   legacy keyword → feed-category rules (config/categories.yaml)
   llm.py           OpenRouter chat client, shared by AI features
+  dictionary.py    a word looked up in the Mac's own dictionaries (see "Dictionary look-ups")
   video_labels.py  LLM per-video topic labeling (see "Video topics")
   search_index.py  Meilisearch push + query (best-effort)
   auth_google.py   Google sign-in: the OAuth flow, /auth/me, /auth/logout
@@ -95,6 +96,7 @@ app/
     local.py       local folders: scan a directory, serve its files, remember positions
     settings.py    app settings, served with the spec the UI renders from
     notes.py       what you write about a video: labels, fields, a note
+    dictionary.py  a hovered caption word's entries, one per dictionary
     ask.py         questions about a video, answered from its transcript (streamed)
     summaries.py   the same answer, written in the background from a card
     notifications.py  the bell: what finished while you were on another page
@@ -670,6 +672,47 @@ text), capped at 2,000: comments are themselves refetched on a TTL, and a
 translation costs a fraction of a cent, so persisting them would be care spent
 on nothing. An unknown target, an empty comment or one over 10,000 characters
 (YouTube's own cap) is a 400; a model failure is a 502 and isn't cached.
+
+## Dictionary look-ups (`dictionary.py`, `routers/dictionary.py`)
+
+Rest the pointer on a word in a paused caption and the watch page asks
+`GET /api/dictionary?text=…&at=…` for it. The answer comes from **macOS's own
+Dictionary** — the one Look Up (force click) uses — through Dictionary Services,
+a C API in CoreServices reached with `ctypes`, so it costs no dependency.
+
+- **The whole line, not a word.** The page sends the caption line and the
+  UTF-16 index under the pointer, and Dictionary Services finds the term
+  (`DCSGetTermRangeInString`): "ice cream" comes back whole from either half,
+  "ran" opens the entry for "run", and Chinese, which has no spaces to split on,
+  is cut into words by the dictionaries that define them. Its offset is a caret
+  that belongs to the word before it, so it's asked at `at + 1`; a term that
+  then doesn't cover `at` (a space, a comma) is no entry.
+- **UTF-16 at both ends**, which is what a JavaScript string indexes in and what
+  a CFString counts in — the index goes straight through, and the range that
+  comes back is the one the page highlights, emoji or not.
+- **Every ticked dictionary, in Dictionary.app's order.** Like Look Up, the
+  answer has one section per dictionary that has the term, read from the list
+  ticked in Dictionary.app on every call, so reordering it there shows on the
+  next word. The first dictionary to find a term decides what the term is; the
+  rest are asked for that same range, so every section is about what's
+  highlighted. Wikipedia is left out: it answers over the network, slowly, and
+  as a page's text, styles and all.
+- **Private calls, with a public floor.** Reading that list
+  (`DCSCopyActiveDictionaries`) and asking one dictionary by reference aren't
+  public API — stable since 10.5, and what every third-party lookup tool uses.
+  If a macOS release drops them, the lookup falls back to the public
+  `DCSCopyTextDefinition` alone: one unnamed section from Dictionary.app's first
+  choice.
+- **Null, not 404, for no entry.** The page asks on every word the pointer
+  crosses, and most of what it crosses (a name, a number) has none. **503**
+  means no dictionary on this server at all — anything that isn't a Mac, the
+  Linux container included — and the page stops asking for the visit.
+- Calls take a couple of milliseconds once warm (the first after a start opens
+  the dictionaries, ~¼s), run in the thread pool off the event loop, and one at a
+  time under a lock.
+- **Only the ticked ones are asked.** Asking a dictionary that isn't downloaded
+  makes macOS download it to answer, so walking the whole catalogue would
+  quietly fetch a gigabyte of dictionaries nobody chose.
 
 ## Offline downloads (`routers/downloads.py`)
 
@@ -2271,6 +2314,7 @@ no per-test decorator). What's covered:
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
 | `test_captions.py` | sentence grouping, numbered-reply parsing |
+| `test_dictionary.py` | a hovered letter bringing back its whole term ("ice cream" from inside "cream"), an inflected word finding its headword, a comma, a space and a full stop being no entry, positions counted in UTF-16 units as the page counts them, one section per ticked dictionary in Dictionary.app's order, the public call still answering when the private ones are gone, and a server with no dictionary saying so (503). The look-ups themselves are skipped off a Mac |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
 | `test_notes.py` | notes saved whole and read back, each video its own, a save replacing rather than adding, tidying (trim, blanks, case, one field per name), an unfilled field kept, an emptied row gone, suggestions most used first under the commonest spelling, non-Latin text intact, and the cards' map holding labels and filled fields only |
