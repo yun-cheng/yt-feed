@@ -18,6 +18,7 @@ import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
 import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import NotesPanel from './NotesPanel'
+import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
 import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
 import type { StoryboardInfo } from '../lib/storyboard'
@@ -165,7 +166,9 @@ const CAPTION_PANEL_GAP = '0.5rem'
 // building line grows without shoving earlier words; whole-line (manual) subs
 // center and use the full width. Rendered once for the main track and, with dual
 // subtitles on, again for the second — the two blocks stack.
-function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
+// `lookup` (paused only) makes each line's words something to rest the pointer on;
+// `track` keys its lines apart from the other track's.
+function CaptionBlock({ lines, size, lookup, track }: { lines: CaptionLine[]; size: number; lookup: CaptionLookup; track: number }) {
   // A track is all one kind, so if none are word-by-word they're manual subs.
   const manual = lines.every((l) => !l.wordByWord)
   return (
@@ -193,23 +196,28 @@ function CaptionBlock({ lines, size }: { lines: CaptionLine[]; size: number }) {
         MozOsxFontSmoothing: 'grayscale',
       }}
     >
-      {lines.map((line, i) => (
-        // display:flex blockifies the span so its background fills the whole line
-        // box (leading included) — stacked lines then abut with no gap, like
-        // YouTube. Word-by-word lines pin left; whole-line (manual) captions center.
-        <div key={i} style={{ display: 'flex', justifyContent: line.wordByWord ? 'flex-start' : 'center' }}>
-          <span
-            style={{
-              color: '#fff',
-              background: 'rgba(8, 8, 8, 0.75)',
-              padding: '0 0.25em',  // YouTube: 0 vertical, ~6px horizontal
-              textAlign: line.wordByWord ? 'left' : 'center',
-            }}
-          >
-            {line.text}
-          </span>
-        </div>
-      ))}
+      {lines.map((line, i) => {
+        const { style: lookupStyle, ...lookupProps } = lookup.lineProps(`${track}:${i}`, line.text)
+        return (
+          // display:flex blockifies the span so its background fills the whole line
+          // box (leading included) — stacked lines then abut with no gap, like
+          // YouTube. Word-by-word lines pin left; whole-line (manual) captions center.
+          <div key={i} style={{ display: 'flex', justifyContent: line.wordByWord ? 'flex-start' : 'center' }}>
+            <span
+              {...lookupProps}
+              style={{
+                color: '#fff',
+                background: 'rgba(8, 8, 8, 0.75)',
+                padding: '0 0.25em',  // YouTube: 0 vertical, ~6px horizontal
+                textAlign: line.wordByWord ? 'left' : 'center',
+                ...lookupStyle,
+              }}
+            >
+              {lookup.renderText(`${track}:${i}`, line.text)}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -2114,6 +2122,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     : ownBar
       ? (chromeUp ? '4.75rem' : '1.5rem')
       : 'max(11%, 5.5rem)'
+  // Rest the pointer on a word of a paused caption for its dictionary entry.
+  const captionLookup = useCaptionLookup(!playing, () => playerRef.current?.playVideo())
+
   // The two tracks, grouped by the edge each was sent to: one block when they
   // share an edge (main first), two when they don't.
   const captionStacks = (['top', 'bottom'] as const).map((pos) => ({
@@ -2150,11 +2161,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               the pick — not the content — decides which reads on top. */}
           {rows.map((lines, i) => lines && (
             <CaptionRow key={i} panelSide={panelOnVideo ? panelSide : null}>
-              <CaptionBlock lines={lines} size={captionSize} />
+              <CaptionBlock lines={lines} size={captionSize} lookup={captionLookup} track={i} />
             </CaptionRow>
           ))}
         </div>
       ))}
+      {showCaptions && <DictionaryTip lookup={captionLookup} box={playerBoxRef} />}
 
       {/* Mounted from its first opening until the video changes; closing hides
           it, so what its tabs held is still there when it opens again. */}

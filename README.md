@@ -43,7 +43,9 @@ real video (muted, with custom captions and scrubbing).
   own captions, rendered from the transcript and styled like YouTube's —
   switchable between English / Chinese / Japanese / Korean / Thai / Vietnamese
   when offered, with dual subtitles, an AI translation into Traditional Chinese, a top/bottom
-  position for each of the two, and a font size the embed's own captions would never give you; and a panel
+  position for each of the two, and a font size the embed's own captions would never give you —
+  paused, rest the pointer on a word in them for its entries in the Mac's own
+  dictionaries, one section per dictionary ticked in Dictionary.app; and a panel
   laid over the video (`g`), down either side, with its info, chapters,
   bookmarks, repeat passages, notes, comments, transcript and Ask AI — which one it opens on is a setting
 - **Notes on a video** — the panel's Notes tab holds what you want to remember

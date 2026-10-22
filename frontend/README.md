@@ -889,6 +889,9 @@ components/
                                   keyboard controls, our own captions (language
                                   switcher, dual subtitles, AI translation),
                                   metadata, description, topic chips
+  CaptionLookup.tsx               a word in a paused caption looked up: the
+                                  highlight in the line, and the tip of its
+                                  dictionary entries (see "Looking a word up")
   AskPanel.tsx                    Ask: a conversation about the video, answered
                                   from its transcript. Shares the right-hand
                                   panel with the transcript, one tab each, and
@@ -947,6 +950,8 @@ lib/
                                   kept across videos
   captionSlots.ts                 what a click in the caption menu's Main / Second
                                   columns does to the two slots
+  dictionary.ts                   /api/dictionary, remembered per line, and an
+                                  entry's one run of text split into lines
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   i18n.ts                         t / tn / tc and the current language (see "Language")
   captionDefaults.ts              the caption languages every video opens with
@@ -1417,6 +1422,34 @@ Other details:
   spoken line keeps the bottom. Sharing an edge, they stack as one block, Main
   first; apart, each is its own block at its own inset. A preference saved before
   the Second had an edge of its own (`pos2`) puts it wherever the Main was.
+- **Looking a word up** (`CaptionLookup.tsx`, `lib/dictionary.ts`): while the
+  video is paused, rest the pointer on a word in either track and, after a
+  quarter-second, its entries open in a tip over the player — above the line, or
+  below it for captions at the top — with the term highlighted in the line.
+  - **The server finds the term.** The page sends the whole line and the index
+    of the character under the pointer (`caretPositionFromPoint`, then which side
+    of the caret the point is on); the Mac's dictionaries say what the term is,
+    so "ice cream" highlights whole, "ran" opens "run", and an unspaced Chinese
+    line is cut into its words without the page knowing how. See the backend's
+    "Dictionary look-ups".
+  - **A section per dictionary**, in the order Dictionary.app has them ticked.
+    Each starts folded to a preview — the headword and the first lines, fading
+    out — and opens from its name or the preview. Every word starts folded
+    again; what you open is for that word.
+  - **Lines go back to taking the pointer** while paused (`pointer-events` on
+    the text only, not the block), so a click on one would land nowhere; it
+    plays, as a click on the rest of a paused video does. The folds leave
+    focus with the player, so Space still plays rather than toggling one.
+  - **An entry is one run of text**, and `formatDefinition` finds its seams:
+    the head (`word | pronunciation |`, both pronunciations for 譯典通, zhuyin
+    untangled from a Chinese head and the Cangjie code after it dropped), parts
+    of speech, numbered senses, sub-senses, examples, and sections like ORIGIN or
+    譯典通's 片語 and 同義. The thesaurus separates its examples with `|` too, so
+    a "head" that runs into a part of speech is no head.
+  - **Asked once per term.** Answers are kept per line, and a pointer moving
+    within a term already answered, or over a gap already found empty, asks
+    nothing. A server with no dictionary answers 503 once, and the page stops
+    asking for the visit.
 - **Generate captions**: on a video with **no track at all**, the menu has no
   languages to list — so instead of the two columns it shows one row, "⚡ Generate
   captions", and the caption button appears for that alone (`offerGenerate`). It
@@ -2417,6 +2450,7 @@ problem.
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `captionLines.test.ts` | which caption lines are up: the rolling two lines oldest first, the word-by-word reveal and its lookahead, sentences stitched across cues and broken mid-cue, CJK joined without spaces, a track with no punctuation kept one line per cue, and a long sentence cut into **even** pieces rather than a runt at its only comma — but left whole for the transcript |
+| `dictionary.test.ts` | an entry split at its seams for each dictionary that ships with macOS — the Oxford heads and senses, a lone sense under its part of speech, numbers inside an example left alone, a Chinese head untangled into word, zhuyin and pinyin with its Cangjie code dropped, 譯典通's two pronunciations, abbreviated parts of speech, examples and closing sections (and 同義詞 inside a gloss left alone), the thesaurus's `|`-separated examples not taken for a head — and the client asking once per term, remembering where there was nothing, and stopping when the server has no dictionary |
 | `captionSlots.test.ts` | the menu's two slots: a replaced Main drops into an empty Second and leaves a chosen one alone, toggling off promotes, picking the Main as Second swaps |
 | `captionPrefs.test.ts` | the saved caption look: the defaults, the second track's edge following the main's in an older save, the old `'line'` name for whole-sentence mode, an older build's size clamped rather than dropped, and a tenth staying a tenth |
 | `PanelRows.test.tsx` | the list behind the panel's Transcript, Chapters, Bookmarks and Repeat tabs: a row seeks (and says which row it was), a row's own `when` and line, one being written on showing its editor and no longer seeking, the active one is marked, a picture sits inside the row's seek button while its remove button sits beside it, the empty line gives way to *Translating…*, and following stops when the active row is scrolled away until Sync to video or a click resumes it |
