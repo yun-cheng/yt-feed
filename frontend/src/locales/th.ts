@@ -18,6 +18,7 @@ export const th: Record<string, string> = {
   'The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.': 'ส่วนขยายจะดึงค่านี้เองทันทีที่คุณเปิดแอป ดังนั้นปกติคุณไม่ต้องใช้มัน วางลงในตัวเลือกของส่วนขยายก็ต่อเมื่อมันดึงไม่ได้ เช่น เมื่อที่อยู่แอปไม่ใช่ localhost มันบอกส่วนขยายว่าจะบันทึกประวัติและดูภายหลังของใคร ดังนั้นจงปฏิบัติต่อมันเหมือนรหัสผ่าน',
   'Copied': 'คัดลอกแล้ว',
   'Copy': 'คัดลอก',
+  'Search Google': 'ค้นหาใน Google',
   'Could not load settings.': 'โหลดการตั้งค่าไม่ได้',
   'Could not save that. Reloading the page will show what stuck.': 'บันทึกไม่สำเร็จ โหลดหน้าใหม่เพื่อดูว่าอะไรบันทึกได้',
   'Settings': 'การตั้งค่า',

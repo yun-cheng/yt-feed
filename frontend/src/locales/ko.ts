@@ -18,6 +18,7 @@ export const ko: Record<string, string> = {
   'The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.': '앱을 열면 확장 프로그램이 자동으로 키를 가져오므로 보통은 필요하지 않습니다. localhost가 아닌 주소 등 자동으로 가져올 수 없을 때만 확장 프로그램 옵션에 붙여넣으세요. 이 키는 누구의 시청 기록과 나중에 볼 동영상을 저장할지 결정하므로 비밀번호처럼 관리하세요.',
   'Copied': '복사됨',
   'Copy': '복사',
+  'Search Google': 'Google에서 검색',
   'Could not load settings.': '설정을 불러올 수 없습니다.',
   'Could not save that. Reloading the page will show what stuck.': '저장하지 못했습니다. 페이지를 새로고침하면 실제 저장된 내용을 확인할 수 있습니다.',
   'Settings': '설정',

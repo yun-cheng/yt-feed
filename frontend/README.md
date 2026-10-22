@@ -1436,6 +1436,12 @@ Other details:
     Each starts folded to a preview — the headword and the first lines, fading
     out — and opens from its name or the preview. Every word starts folded
     again; what you open is for that word.
+  - **A bar on the edge nearest the word** — the bottom of a tip above the
+    line, the top of one below it — holds Copy and Search Google for the word
+    as the caption has it. Only the entries scroll, so the bar stays where the
+    pointer just came from; it's darker than the entries so it reads as the
+    tip's own. Which edge faces the word is decided where the tip is placed
+    (`data-side`), and the column reverses for it.
   - **Lines go back to taking the pointer** while paused (`pointer-events` on
     the text only, not the block), so a click on one would land nowhere; it
     plays, as a click on the rest of a paused video does. The folds leave
