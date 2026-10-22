@@ -28,6 +28,7 @@ import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { captionDefaults } from '../lib/captionDefaults'
 import { splitTimed } from '../lib/captionSplit'
 import { linesAt, sentenceLinesAt, toSentences, type CaptionLine, type Cue } from '../lib/captionLines'
+import { pickMain as pickMainSlots, pickSecond as pickSecondSlots } from '../lib/captionSlots'
 import { CAPTION_DISPLAY_DEFAULTS, CAPTION_PREFS_KEY, CAPTION_SIZE_MAX, CAPTION_SIZE_MIN, CAPTION_SIZE_STEP, loadCaptionPrefs, roundSize, type CaptionPos, type CaptionPrefs } from '../lib/captionPrefs'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
@@ -1780,7 +1781,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // A restored second pick can coincide with the main once the main resolves (e.g.
   // native → en, saved second also en). The overlay already dedupes it; treat it as
   // off here too so the menu doesn't tick the same track in both columns.
-  const curSecond = captionLang2 && captionLang2 !== curMain ? captionLang2 : ''
+  // Captions off means both slots read empty, as the main already does: a second
+  // ticked while nothing shows would come back with the next main picked, and the
+  // main it replaced would have nowhere to go.
+  const curSecond = captionLang2 && curMain && captionLang2 !== curMain ? captionLang2 : ''
   // Commit a (main, second) pair. Invariant: no second without a main — an empty
   // main with a second set promotes the second up. Slots can't hold the same track.
   const setSlots = (main: string, second: string) => {
@@ -1789,19 +1793,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     if (main) setCaptionLang(main)
     setCaptionLang2(second)
   }
-  // Clicking a Main row: the active one toggles the slot off (promoting any second);
-  // a row already in the second slot moves up (clearing second); anything else just
-  // becomes the new main.
-  const pickMain = (code: string) =>
-    code === curMain ? setSlots(curSecond, '')
-      : code === curSecond ? setSlots(code, '')
-      : setSlots(code, curSecond)
-  // Clicking a Second row: the active one toggles off; picking the current main
-  // swaps the two; anything else becomes the new second.
-  const pickSecond = (code: string) =>
-    code === curSecond ? setSlots(curMain, '')
-      : code === curMain ? setSlots(curSecond, code)
-      : setSlots(curMain, code)
+  // What a click on each column does is lib/captionSlots — a replaced main drops
+  // into an empty Second, among the rest.
+  const pickMain = (code: string) => setSlots(...pickMainSlots(code, curMain, curSecond))
+  const pickSecond = (code: string) => setSlots(...pickSecondSlots(code, curMain, curSecond))
   // A word-segment track shows two rows — whole sentences vs word-by-word — instead
   // of a nested toggle. Picking a variant switches to that display mode and selects
   // the track in the given slot (if it isn't already there); re-picking the active

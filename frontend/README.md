@@ -945,6 +945,8 @@ lib/
                                   translation) cut into timed pieces
   captionPrefs.ts                 how captions look (on, mode, each track's place, size),
                                   kept across videos
+  captionSlots.ts                 what a click in the caption menu's Main / Second
+                                  columns does to the two slots
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   i18n.ts                         t / tn / tc and the current language (see "Language")
   captionDefaults.ts              the caption languages every video opens with
@@ -1406,9 +1408,10 @@ Other details:
   content, decides the order). Both share one renderer (`CaptionBlock`), and the menu
   stays open so both can be set in one pass. A slot can't hold the same track as the
   other, and there's never a Second without a Main, so the picks stay consistent
-  (`setSlots`): toggling the Main off promotes the Second up; picking the Second's
-  language as Main clears the Second; picking the Main's language as Second swaps the
-  two.
+  (`lib/captionSlots`, committed by `setSlots`): toggling the Main off promotes the
+  Second up; picking the Second's language as Main clears the Second; picking the
+  Main's language as Second swaps the two; and a new Main pushes the one it replaces
+  into an empty Second, so picking a translation keeps the original beneath it.
 - **A position per slot**: each column of the menu ends in its slot's edge (top
   or bottom), pinned to the column's foot so the two line up, so a translation can sit at the top while the
   spoken line keeps the bottom. Sharing an edge, they stack as one block, Main
@@ -2414,6 +2417,7 @@ problem.
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `captionLines.test.ts` | which caption lines are up: the rolling two lines oldest first, the word-by-word reveal and its lookahead, sentences stitched across cues and broken mid-cue, CJK joined without spaces, a track with no punctuation kept one line per cue, and a long sentence cut into **even** pieces rather than a runt at its only comma — but left whole for the transcript |
+| `captionSlots.test.ts` | the menu's two slots: a replaced Main drops into an empty Second and leaves a chosen one alone, toggling off promotes, picking the Main as Second swaps |
 | `captionPrefs.test.ts` | the saved caption look: the defaults, the second track's edge following the main's in an older save, the old `'line'` name for whole-sentence mode, an older build's size clamped rather than dropped, and a tenth staying a tenth |
 | `PanelRows.test.tsx` | the list behind the panel's Transcript, Chapters, Bookmarks and Repeat tabs: a row seeks (and says which row it was), a row's own `when` and line, one being written on showing its editor and no longer seeking, the active one is marked, a picture sits inside the row's seek button while its remove button sits beside it, the empty line gives way to *Translating…*, and following stops when the active row is scrolled away until Sync to video or a click resumes it |
 | `frameGrab.test.tsx` | `useFileFrames` against a stand-in video and canvas: the moments grabbed in turn, each once, kept for the session, the last stopping short of the end, and nothing without a file |
