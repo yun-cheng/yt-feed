@@ -208,7 +208,7 @@ describe('VideoCard — sort highlighting', () => {
 
   it('does not highlight other stats when sort=views', () => {
     render(<VideoCard video={mockVideo} isHovered={false} onHover={vi.fn()} onChannelClick={vi.fn()} sort="views" />)
-    expect(screen.getByText('75.0K likes')).not.toHaveClass('text-white')
+    expect(screen.getByText('75K likes')).not.toHaveClass('text-white')
   })
 
   it('highlights newest stat when sort=oldest', () => {

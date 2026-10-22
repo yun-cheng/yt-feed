@@ -65,14 +65,20 @@ export function linkify(text: string, onSeek: (s: number) => void) {
 export function formatCount(n: number): string {
   const lang = getLang()
   if (lang === 'zh-Hant') {
-    if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}億`
-    if (n >= 10_000) return `${(n / 10_000).toFixed(1)}萬`
+    if (n >= 100_000_000) return `${oneDecimal(n / 100_000_000)}億`
+    if (n >= 10_000) return `${oneDecimal(n / 10_000)}萬`
     return String(n)
   }
   if (lang !== 'en') {
     return new Intl.NumberFormat(locale(), { notation: 'compact', maximumFractionDigits: 1 }).format(n)
   }
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  if (n >= 1_000_000) return `${oneDecimal(n / 1_000_000)}M`
+  if (n >= 1_000) return `${oneDecimal(n / 1_000)}K`
   return String(n)
+}
+
+/** One decimal place, unless it's a 0: 168K, not 168.0K — as Intl's compact
+ *  notation does for the other languages. */
+function oneDecimal(x: number): string {
+  return x.toFixed(1).replace(/\.0$/, '')
 }

@@ -28,6 +28,7 @@ describe('in 繁體中文', () => {
     expect(formatCount(9_999)).toBe('9999')
     expect(formatCount(355_780)).toBe('35.6萬')
     expect(formatCount(123_000_000)).toBe('1.2億')
+    expect(formatCount(1_680_000)).toBe('168萬')
   })
 
   it('counts in each language’s own short forms elsewhere', () => {
@@ -42,6 +43,9 @@ describe('in 繁體中文', () => {
   it('counts in K and M in English', () => {
     expect(formatCount(355_780)).toBe('355.8K')
     expect(formatCount(1_200_000)).toBe('1.2M')
+    // A round number reads round.
+    expect(formatCount(168_000)).toBe('168K')
+    expect(formatCount(2_000_000)).toBe('2M')
   })
 
   it('says how long ago', () => {

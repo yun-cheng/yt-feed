@@ -140,7 +140,8 @@ takes the first language the browser lists that the app has (any Chinese reads
   backend in English.
 - **Numbers and times.** In Chinese, counts use 萬 and 億 (35.6萬) the way
   YouTube writes them there; the other languages take their short forms from
-  `Intl`'s compact notation (35.6万, 35.6만, 12 Tr). Dates format for the
+  `Intl`'s compact notation (35.6万, 35.6만, 12 Tr). One decimal at most, and
+  none when it's a 0: 168K and 168萬, as `Intl` writes them too. Dates format for the
   language's locale (`locale()`: `zh-TW`, `ja-JP`…). The time slider's ticks
   use a short form (1月, 1สป, 1tu) to fit between their neighbours, and its
   heading the long one (過去 1 個月). A new tick label is worth checking at
