@@ -20,6 +20,8 @@ export const ja: Record<string, string> = {
   'Share': '共有',
   'Copy': 'コピー',
   'Search Google': 'Googleで検索',
+  'Dictionary': '辞書',
+  'Open in Dictionary': '辞書で開く',
   'Could not load settings.': '設定を読み込めませんでした。',
   'Could not save that. Reloading the page will show what stuck.': '保存できませんでした。ページを再読み込みすると、実際に保存された内容が表示されます。',
   'Settings': '設定',

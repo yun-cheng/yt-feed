@@ -20,6 +20,8 @@ export const ko: Record<string, string> = {
   'Share': '공유',
   'Copy': '복사',
   'Search Google': 'Google에서 검색',
+  'Dictionary': '사전',
+  'Open in Dictionary': '사전에서 열기',
   'Could not load settings.': '설정을 불러올 수 없습니다.',
   'Could not save that. Reloading the page will show what stuck.': '저장하지 못했습니다. 페이지를 새로고침하면 실제 저장된 내용을 확인할 수 있습니다.',
   'Settings': '설정',

@@ -1444,11 +1444,18 @@ Other details:
     out — and opens from its name or the preview. Every word starts folded
     again; what you open is for that word.
   - **A bar on the edge nearest the word** — the bottom of a tip above the
-    line, the top of one below it — holds Copy and Search Google for the word
-    as the caption has it. Only the entries scroll, so the bar stays where the
-    pointer just came from; it's darker than the entries so it reads as the
-    tip's own. Which edge faces the word is decided where the tip is placed
-    (`data-side`), and the column reverses for it.
+    line, the top of one below it — holds Copy, Search Google and Dictionary
+    for the word as the caption has it. Dictionary hands `dict://<word>` to
+    Dictionary.app (the browser asks the first time) and the page stays put.
+    Only the entries scroll, so the bar stays where the pointer just came
+    from; it's darker than the entries so it reads as the tip's own. Which
+    edge faces the word is decided where the tip is placed (`data-side`), and
+    the column reverses for it.
+  - **The bar holds still.** Copy keeps the width of its wider label, so
+    turning into "Copied" moves nothing. The tip is 20rem, or wider where a
+    language's labels need it (Thai, Vietnamese); the entries take its width
+    without adding to it (`w-0 min-w-full`), so a long line wraps instead of
+    widening the tip. Too narrow a player for even that, and the bar wraps.
   - **Lines go back to taking the pointer** while paused (`pointer-events` on
     the text only, not the block), so a click on one would land nowhere; it
     plays, as a click on the rest of a paused video does. The folds leave

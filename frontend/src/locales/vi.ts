@@ -20,6 +20,8 @@ export const vi: Record<string, string> = {
   'Share': 'Chia sẻ',
   'Copy': 'Sao chép',
   'Search Google': 'Tìm trên Google',
+  'Dictionary': 'Từ điển',
+  'Open in Dictionary': 'Mở trong Từ điển',
   'Could not load settings.': 'Không thể tải cài đặt.',
   'Could not save that. Reloading the page will show what stuck.': 'Không thể lưu. Tải lại trang để xem nội dung đã lưu thực sự.',
   'Settings': 'Cài đặt',

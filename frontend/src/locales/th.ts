@@ -20,6 +20,8 @@ export const th: Record<string, string> = {
   'Share': 'แชร์',
   'Copy': 'คัดลอก',
   'Search Google': 'ค้นหาใน Google',
+  'Dictionary': 'พจนานุกรม',
+  'Open in Dictionary': 'เปิดในพจนานุกรม',
   'Could not load settings.': 'โหลดการตั้งค่าไม่ได้',
   'Could not save that. Reloading the page will show what stuck.': 'บันทึกไม่สำเร็จ โหลดหน้าใหม่เพื่อดูว่าอะไรบันทึกได้',
   'Settings': 'การตั้งค่า',

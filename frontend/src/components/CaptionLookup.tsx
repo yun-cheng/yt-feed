@@ -150,9 +150,9 @@ export function useCaptionLookup(enabled: boolean, onClickLine: () => void) {
  * to a preview: its first few lines, fading out, as Look Up shows them. Every
  * word starts with them all folded; what you open is for that word.
  *
- * A bar pinned to the edge nearest the word holds a copy and a Google search
- * for it — the word as the caption has it — and stays put while the entries
- * scroll.
+ * A bar pinned to the edge nearest the word holds a copy, a Google search and
+ * Dictionary.app for it — the word as the caption has it — and stays put while
+ * the entries scroll.
  */
 export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: RefObject<HTMLElement | null> }) {
   const { found, termRef, keep, hideSoon } = lookup
@@ -209,6 +209,9 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
     }, () => { /* no clipboard access: nothing to say */ })
   }
   const search = () => window.open(`https://www.google.com/search?q=${encodeURIComponent(found.term)}`, '_blank', 'noopener,noreferrer')
+  // The Mac's own link into Dictionary.app, which finds "ran" under "run"
+  // itself. The browser hands it over (asking first, the first time) and stays.
+  const openDictionary = () => window.location.assign(`dict://${encodeURIComponent(found.term)}`)
   return (
     <div
       ref={tipRef}
@@ -218,10 +221,13 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
       // Placed once measured (above); hidden until then so it never flashes at 0,0.
       style={{ visibility: 'hidden', maxHeight: 'min(60%, 20rem)' }}
       // A column with the bar last, so at the bottom when the tip is above the
-      // word; reversed, at the top, when it's below.
-      className="group absolute z-30 flex w-80 max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-xl bg-shade-28 text-left text-[13px] leading-snug text-white shadow-lg ring-1 ring-white/10 data-[side=below]:flex-col-reverse"
+      // word; reversed, at the top, when it's below. 20rem wide, or as wide as
+      // the bar's labels need in a longer language.
+      className="group absolute z-30 flex w-max min-w-[min(20rem,calc(100%-1rem))] max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-xl bg-shade-28 text-left text-[13px] leading-snug text-white shadow-lg ring-1 ring-white/10 data-[side=below]:flex-col-reverse"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+      {/* Takes the tip's width without adding to it, so a long line in an
+          entry wraps rather than widening the tip. */}
+      <div className="min-h-0 w-0 min-w-full flex-1 overflow-y-auto px-3 py-2">
         {found.sections.map((section, i) => {
           const shown = lone || !!open?.has(section.dictionary)
           return (
@@ -257,8 +263,8 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
         })}
       </div>
       {/* Darker than the entries, so it reads as the tip's own bar. */}
-      <div className="flex shrink-0 items-center gap-1 border-t border-white/15 bg-shade-1c px-2 py-1 group-data-[side=below]:border-t-0 group-data-[side=below]:border-b">
-        <TipButton label={t(copied === word ? 'Copied' : 'Copy')} onClick={copy}>
+      <div className="flex shrink-0 flex-wrap items-center gap-1 border-t border-white/15 bg-shade-1c px-2 py-1 group-data-[side=below]:border-t-0 group-data-[side=below]:border-b">
+        <TipButton label={t(copied === word ? 'Copied' : 'Copy')} sizedFor={[t('Copy'), t('Copied')]} onClick={copy}>
           {copied === word
             ? <path d="M5 12l5 5L20 7" />
             : <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 012-2h10" /></>}
@@ -266,24 +272,44 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
         <TipButton label={t('Search Google')} onClick={search}>
           <circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" />
         </TipButton>
+        <TipButton label={t('Dictionary')} title={t('Open in Dictionary')} onClick={openDictionary}>
+          <path d="M4 5a2 2 0 012-2h13v15H6a2 2 0 00-2 2V5z" /><path d="M4 20a2 2 0 002 2h13v-4" />
+        </TipButton>
       </div>
     </div>
   )
 }
 
-function TipButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function TipButton({ label, sizedFor, title, onClick, children }: {
+  label: string
+  // Every label it can show: it keeps the widest one's width, so "Copied"
+  // doesn't push the next button along (or the row onto two).
+  sizedFor?: string[]
+  title?: string
+  onClick: () => void
+  children: ReactNode
+}) {
   return (
     <button
       type="button"
+      title={title}
       onClick={onClick}
       // Leaves the keyboard with the player, as the section folds do.
       onMouseDown={(e) => e.preventDefault()}
-      className="flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs text-shade-cc transition-colors hover:bg-white/10 hover:text-white"
+      className="flex h-7 items-center gap-1.5 rounded-full px-2 text-xs text-shade-cc transition-colors hover:bg-white/10 hover:text-white"
     >
       <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         {children}
       </svg>
-      {label}
+      {sizedFor ? (
+        // All of them in one cell, the ones not showing invisible.
+        <span className="grid text-left">
+          {sizedFor.map((l) => (
+            <span key={l} aria-hidden className="invisible [grid-area:1/1]">{l}</span>
+          ))}
+          <span className="[grid-area:1/1]">{label}</span>
+        </span>
+      ) : label}
     </button>
   )
 }
