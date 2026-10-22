@@ -433,7 +433,12 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   frontend renders itself (the hover preview and the watch page both style their
   own captions). With no `lang`, `_fetch_captions` serves the video's **native
   language**: it prefers human-uploaded subtitles, then the original ASR track,
-  and skips machine-*translated* tracks (which carry `tlang=` in their URL).
+  and skips machine-*translated* tracks (which carry `tlang=` in their URL) —
+  even under the video's own language code: a video YouTube has dubbed carries an
+  ASR track per dub, and its plain `en` key can be another dub's ASR translated
+  into English while the English actually spoken sits under `en-orig`. YouTube
+  answers those translations with a 429, so taking the plain key left the default
+  track (and the AI translation built on it) empty.
   Which uploaded subtitle is "native" is the video's own language when YouTube
   reports one, and otherwise the **first track the creator uploaded** — English
   is only the guess among auto-captions, where ASR is all there is. Guessing it

@@ -144,3 +144,17 @@ async def test_english_is_still_the_guess_among_auto_captions():
     whatever key the dict happens to start with."""
     auto = {"de": json3(), "en": json3()}
     assert feed._pick_track({}, auto, None, "")[1] == "en"
+
+
+async def test_a_dubbed_videos_native_track_is_its_own_transcript():
+    """A video YouTube has dubbed carries an ASR track per dub, and the plain
+    `en` key can be the Arabic dub's ASR translated into English, while the
+    English that was spoken sits under `en-orig`. The translation is the one
+    YouTube rate-limits, so picking it left the video with no default captions —
+    and nothing for the Chinese translation to translate."""
+    auto = {
+        "ar-orig": json3("asr-ar"),
+        "en": json3("asr?lang=ar&tlang=en"),
+        "en-orig": json3("asr?lang=en"),
+    }
+    assert feed._pick_track({}, auto, "en-US", "") == (json3_track("asr?lang=en"), "en-orig")

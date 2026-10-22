@@ -443,9 +443,19 @@ def _pick_track(subs: dict, auto: dict, source_lang: str | None, lang: str):
                 return t, key
     # 2. Otherwise auto-captions: the video's own language (or English, the one
     #    guess worth making where ASR is all there is), else the ORIGINAL ASR
-    #    track (no `tlang=`) rather than a machine translation.
+    #    track (no `tlang=`) rather than a machine translation. Originals are
+    #    tried first even in the video's own language: on a video YouTube has
+    #    dubbed, the plain `en` key can be another dub's ASR translated INTO
+    #    English (`lang=ar&tlang=en`) while the real transcript sits under
+    #    `en-orig` — and YouTube answers those translations with a 429, which
+    #    left the default track, and the Chinese translation built on it, empty.
     if auto:
-        picked = pick_lang(auto, [p for p in (source_lang, "en") if p])
+        prefs = [p for p in (source_lang, "en") if p]
+        originals = {
+            k: v for k, v in auto.items()
+            if (t := _json3(v)) and "tlang=" not in t.get("url", "")
+        }
+        picked = pick_lang(originals, prefs) or pick_lang(auto, prefs)
         if picked:
             t = _json3(picked[0])
             if t:
