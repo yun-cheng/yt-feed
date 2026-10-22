@@ -20,22 +20,31 @@ export const CAPTION_SIZE_STEP = 0.1
 // into 1.2000000000000002 and printing as 120.00000000000001%.
 export const roundSize = (n: number) =>
   Math.round(Math.min(CAPTION_SIZE_MAX, Math.max(CAPTION_SIZE_MIN, n)) * 10) / 10
-export const CAPTION_DISPLAY_DEFAULTS = { pos: 'bottom' as const, size: 1 }
+// `pos` is the main track's edge and `pos2` the second track's. Apart, so a
+// translation can sit at the top while the spoken line keeps the bottom; at the
+// same edge they stack as one block, main first.
+export const CAPTION_DISPLAY_DEFAULTS = { pos: 'bottom' as const, pos2: 'bottom' as const, size: 1 }
+export type CaptionPos = 'top' | 'bottom'
 export type CaptionPrefs = {
   on: boolean
   mode: 'word' | 'sentence'
-  pos: 'top' | 'bottom'
+  pos: CaptionPos
+  pos2: CaptionPos
   size: number
 }
 export function loadCaptionPrefs(): CaptionPrefs {
   try {
     const p = JSON.parse(localStorage.getItem(CAPTION_PREFS_KEY) || '{}')
+    const pos: CaptionPos = p.pos === 'top' ? 'top' : 'bottom'
     return {
       on: p.on === true,
       // 'line' is the old name for this mode — keep reading it so a saved
       // preference doesn't silently reset.
       mode: p.mode === 'sentence' || p.mode === 'line' ? 'sentence' : 'word',
-      pos: p.pos === 'top' ? 'top' : 'bottom',
+      pos,
+      // Saved before the second track had an edge of its own: it went wherever
+      // the main one did, so that is where it stays.
+      pos2: p.pos2 === 'top' || p.pos2 === 'bottom' ? p.pos2 : pos,
       // Clamped rather than rejected: a size saved by an older build (the first
       // version of this stepped 50/75/100/150/200/300) is still a size someone
       // chose, and every one of those lands inside the range anyway.

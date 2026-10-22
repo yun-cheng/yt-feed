@@ -7,12 +7,17 @@ afterEach(() => { localStorage.clear() })
 
 describe('loadCaptionPrefs', () => {
   it('starts off, word by word, at the bottom, at YouTube’s size', () => {
-    expect(loadCaptionPrefs()).toEqual({ on: false, mode: 'word', pos: 'bottom', size: 1 })
+    expect(loadCaptionPrefs()).toEqual({ on: false, mode: 'word', pos: 'bottom', pos2: 'bottom', size: 1 })
   })
 
   it('reads back what was saved', () => {
-    save({ on: true, mode: 'sentence', pos: 'top', size: 1.5 })
-    expect(loadCaptionPrefs()).toEqual({ on: true, mode: 'sentence', pos: 'top', size: 1.5 })
+    save({ on: true, mode: 'sentence', pos: 'top', pos2: 'bottom', size: 1.5 })
+    expect(loadCaptionPrefs()).toEqual({ on: true, mode: 'sentence', pos: 'top', pos2: 'bottom', size: 1.5 })
+  })
+
+  it('puts the second track where the main one was, when saved before it had its own', () => {
+    save({ pos: 'top' })
+    expect(loadCaptionPrefs().pos2).toBe('top')
   })
 
   it('reads the old name for whole-sentence mode', () => {
@@ -28,10 +33,10 @@ describe('loadCaptionPrefs', () => {
   })
 
   it('falls back to the defaults on a value it can’t read', () => {
-    save({ on: 'yes', mode: 'karaoke', pos: 'middle', size: 'big' })
-    expect(loadCaptionPrefs()).toEqual({ on: false, mode: 'word', pos: 'bottom', size: 1 })
+    save({ on: 'yes', mode: 'karaoke', pos: 'middle', pos2: 'left', size: 'big' })
+    expect(loadCaptionPrefs()).toEqual({ on: false, mode: 'word', pos: 'bottom', pos2: 'bottom', size: 1 })
     save('{not json')
-    expect(loadCaptionPrefs()).toEqual({ on: false, mode: 'word', pos: 'bottom', size: 1 })
+    expect(loadCaptionPrefs()).toEqual({ on: false, mode: 'word', pos: 'bottom', pos2: 'bottom', size: 1 })
   })
 })
 

@@ -28,7 +28,7 @@ import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { captionDefaults } from '../lib/captionDefaults'
 import { splitTimed } from '../lib/captionSplit'
 import { linesAt, sentenceLinesAt, toSentences, type CaptionLine, type Cue } from '../lib/captionLines'
-import { CAPTION_DISPLAY_DEFAULTS, CAPTION_PREFS_KEY, CAPTION_SIZE_MAX, CAPTION_SIZE_MIN, CAPTION_SIZE_STEP, loadCaptionPrefs, roundSize, type CaptionPrefs } from '../lib/captionPrefs'
+import { CAPTION_DISPLAY_DEFAULTS, CAPTION_PREFS_KEY, CAPTION_SIZE_MAX, CAPTION_SIZE_MIN, CAPTION_SIZE_STEP, loadCaptionPrefs, roundSize, type CaptionPos, type CaptionPrefs } from '../lib/captionPrefs'
 
 // Turn YouTube's own controls off and drive the embed with OUR control bar — the
 // same one a downloaded file gets.
@@ -534,10 +534,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // per-word timing (the default); 'sentence' stitches cues into whole sentences
   // and shows each at once, centered. Applies to both the main and second tracks.
   const [captionMode, setCaptionMode] = useState<'word' | 'sentence'>(savedPrefs.mode)
-  // Where the block sits and how big it is. Kept apart from the language picks:
-  // these say nothing about which track is showing, and the Reset below puts
-  // only these two back — losing your languages is not what "reset" should mean.
-  const [captionPos, setCaptionPos] = useState<'top' | 'bottom'>(savedPrefs.pos)
+  // Where each track sits and how big they are. Kept apart from the language
+  // picks: these say nothing about which track is showing, and the Reset below
+  // puts only these back — losing your languages is not what "reset" should mean.
+  const [captionPos, setCaptionPos] = useState<CaptionPos>(savedPrefs.pos)
+  const [captionPos2, setCaptionPos2] = useState<CaptionPos>(savedPrefs.pos2)
   const [captionSize, setCaptionSize] = useState(savedPrefs.size)
   // Base codes observed to carry per-word timing (auto-caption tracks). A track only
   // reveals this once loaded, so we accumulate it and keep it for the video — that's
@@ -1422,10 +1423,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         on: showCaptions,
         mode: captionMode,
         pos: captionPos,
+        pos2: captionPos2,
         size: captionSize,
       }))
     } catch { /* storage disabled — prefs just won't persist */ }
-  }, [showCaptions, captionMode, captionPos, captionSize])
+  }, [showCaptions, captionMode, captionPos, captionPos2, captionSize])
 
   // Which of English/Chinese/Japanese/Korean this video offers (native, uploaded,
   // or auto-translated) — populates the caption language switcher.
@@ -1822,7 +1824,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const stepCaptionSize = (delta: number) =>
     setCaptionSize((cur) => roundSize(cur + delta * CAPTION_SIZE_STEP))
   const captionDisplayIsDefault =
-    captionPos === CAPTION_DISPLAY_DEFAULTS.pos && captionSize === CAPTION_DISPLAY_DEFAULTS.size
+    captionPos === CAPTION_DISPLAY_DEFAULTS.pos && captionPos2 === CAPTION_DISPLAY_DEFAULTS.pos2 &&
+    captionSize === CAPTION_DISPLAY_DEFAULTS.size
 
   // Whether the currently-loaded main / second tracks carry per-word timing. Only a
   // word-segment track (auto captions) supports the word-by-word reveal; a whole-cue
@@ -2111,27 +2114,35 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // moves: what you're reading stays put.
   const panelBottom = !chromeUp ? '0px' : ownBar ? '4.5rem' : 'max(11%, 5.5rem)'
 
-  const captionInset = captionPos === 'top'
+  const captionInset = (pos: CaptionPos) => pos === 'top'
     ? (ownBar ? '3.25rem' : 'max(9%, 4rem)')
     : ownBar
       ? (chromeUp ? '4.75rem' : '1.5rem')
       : 'max(11%, 5.5rem)'
+  // The two tracks, grouped by the edge each was sent to: one block when they
+  // share an edge (main first), two when they don't.
+  const captionStacks = (['top', 'bottom'] as const).map((pos) => ({
+    pos,
+    rows: [captionLines, captionLines2].map((lines, i) =>
+      (i === 0 ? captionPos : captionPos2) === pos && lines.length > 0 ? lines : null),
+  })).filter((stack) => stack.rows.some(Boolean))
 
   // The caption + volume overlays. Rendered inside the player box, which is also
   // the fullscreen target, so they show in both windowed and fullscreen modes.
   const overlays = (
     <>
       {/* Caption overlay — the main track, plus the optional second (dual-
-          subtitle) track stacked beneath it. Bottom-anchored above the control
-          bar so new lines push the stack upward; see CaptionBlock for styling. */}
-      {showCaptions && (captionLines.length > 0 || captionLines2.length > 0) && (
+          subtitle) track, each at the edge it was sent to; sharing an edge,
+          the second stacks beneath the main. See CaptionBlock for styling. */}
+      {showCaptions && captionStacks.map(({ pos, rows }) => (
         <div
+          key={pos}
           className="pointer-events-none absolute inset-x-0 z-10 flex flex-col gap-[2px] px-[5%]"
-          // Anchored to whichever edge the block was sent to. Bottom-anchored,
-          // new lines push the stack upward; top-anchored it grows downward,
-          // which is the same reading order either way.
+          // Anchored to its edge. Bottom-anchored, new lines push the stack
+          // upward; top-anchored it grows downward, which is the same reading
+          // order either way.
           style={{
-            ...(captionPos === 'top' ? { top: captionInset } : { bottom: captionInset }),
+            ...(pos === 'top' ? { top: captionInset(pos) } : { bottom: captionInset(pos) }),
             ...(panelOnVideo && {
               [panelSide]: PANEL_WIDTH,
               paddingLeft: CAPTION_PANEL_GAP,
@@ -2142,13 +2153,13 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           {/* The main track is the primary line (top); the second track sits under
               it. Now that either slot can hold any language or the AI translation,
               the pick — not the content — decides which reads on top. */}
-          {[captionLines, captionLines2].map((lines, i) => lines.length > 0 && (
+          {rows.map((lines, i) => lines && (
             <CaptionRow key={i} panelSide={panelOnVideo ? panelSide : null}>
               <CaptionBlock lines={lines} size={captionSize} />
             </CaptionRow>
           ))}
         </div>
-      )}
+      ))}
 
       {/* Mounted from its first opening until the video changes; closing hides
           it, so what its tabs held is still there when it opens again. */}
@@ -2363,6 +2374,29 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // a tap still opens the menu; so does a click while there's no track to turn
   // on, since then the menu (and its offer to transcribe) is all there is.
   const captionTapRef = useRef(false)
+  // A slot's edge, at the foot of its column: where that track sits is a fact
+  // about the slot, so it is set beside the slot's languages.
+  const captionPosRow = (label: string, cur: CaptionPos, set: (pos: CaptionPos) => void) => (
+    <div
+      role="group"
+      aria-label={`${t('Position')}: ${label}`}
+      className="mt-auto flex items-center gap-1.5 border-t border-white/10 px-3 pb-1 pt-2"
+    >
+      <span className="mr-auto pr-2 text-shade-cc">{t('Position')}</span>
+      {(['top', 'bottom'] as const).map((pos) => (
+        <button
+          key={pos}
+          onClick={() => set(pos)}
+          className={`rounded px-2 py-0.5 capitalize ${
+            cur === pos ? 'bg-white text-black' : 'bg-white/10 hover:bg-white/20'
+          }`}
+          aria-pressed={cur === pos}
+        >
+          {pos}
+        </button>
+      ))}
+    </div>
+  )
   const captionControl = (captionLangs.length > 0 || offerGenerate) && (
     <div
       ref={captionMenuRef}
@@ -2383,10 +2417,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
           {captionLangs.length > 0 ? (
           <div className="flex">
             {([
-              { title: t('Main'), cur: curMain, pick: pickMain },
-              { title: t('Second'), cur: curSecond, pick: pickSecond },
+              { title: t('Main'), cur: curMain, pick: pickMain, pos: captionPos, setPos: setCaptionPos },
+              { title: t('Second'), cur: curSecond, pick: pickSecond, pos: captionPos2, setPos: setCaptionPos2 },
             ] as const).map((col, ci) => (
-              <div key={col.title} className={`min-w-[9rem] py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
+              <div key={col.title} className={`flex min-w-[9rem] flex-col py-1 ${ci > 0 ? 'border-l border-white/10' : ''}`}>
                 <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-shade-99">{col.title}</div>
                 {captionLangs.map((l) => {
                   const active = col.cur === l.code
@@ -2434,6 +2468,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                     </span>
                   </button>
                 )}
+                {captionPosRow(col.title, col.pos, col.setPos)}
               </div>
             ))}
           </div>
@@ -2468,31 +2503,19 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               {gen?.status === 'error' && (
                 <div className="px-3 pb-1.5 text-xs text-tint-f28b82">{gen.error}</div>
               )}
+              {captionPosRow(t('Main'), captionPos, setCaptionPos)}
             </div>
           )}
 
-          {/* How the block is drawn, under the two track columns because it
-              applies to both of them. Position and size are the two things
-              YouTube's own settings get wrong for a player this size: its
-              captions are locked to the bottom and to a size chosen for a
-              phone. Reset is greyed once there's nothing to undo. */}
+          {/* How the block is drawn, under the two track columns because size
+              applies to both of them (each column sets its own position).
+              Position and size are the two things YouTube's own settings get
+              wrong for a player this size: its captions are locked to the
+              bottom and to a size chosen for a phone. Reset puts back both
+              positions and the size, and is greyed once there's nothing to
+              undo. */}
           <div className="border-t border-white/10 py-1">
             <div className="px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-shade-99">{t('Display')}</div>
-            <div className="flex items-center gap-1.5 px-3 py-1">
-              <span className="mr-auto pr-3 text-shade-cc">{t('Position')}</span>
-              {(['top', 'bottom'] as const).map((pos) => (
-                <button
-                  key={pos}
-                  onClick={() => setCaptionPos(pos)}
-                  className={`rounded px-2 py-0.5 capitalize ${
-                    captionPos === pos ? 'bg-white text-black' : 'bg-white/10 hover:bg-white/20'
-                  }`}
-                  aria-pressed={captionPos === pos}
-                >
-                  {pos}
-                </button>
-              ))}
-            </div>
             <div className="flex items-center gap-1.5 px-3 py-1">
               <span className="mr-auto pr-3 text-shade-cc">{t('Size')}</span>
               <button
@@ -2518,6 +2541,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             <button
               onClick={() => {
                 setCaptionPos(CAPTION_DISPLAY_DEFAULTS.pos)
+                setCaptionPos2(CAPTION_DISPLAY_DEFAULTS.pos2)
                 setCaptionSize(CAPTION_DISPLAY_DEFAULTS.size)
               }}
               disabled={captionDisplayIsDefault}
