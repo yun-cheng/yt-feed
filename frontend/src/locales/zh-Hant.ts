@@ -18,6 +18,7 @@ export const zhHant: Record<string, string> = {
   'Your API key': '你的 API 金鑰',
   'The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.': '只要打開這個 App，擴充功能就會自動取得金鑰，所以通常用不到它。只有在它取不到的時候（例如 App 的網址不是 localhost），才需要貼到擴充功能的選項裡。它決定擴充功能要把觀看紀錄記到誰的帳號、把「稍後觀看」存到誰那裡，請把它當成密碼保管。',
   'Copied': '已複製',
+  'Share': '分享',
   'Copy': '複製',
   'Search Google': '在 Google 搜尋',
   'Could not load settings.': '無法載入設定。',

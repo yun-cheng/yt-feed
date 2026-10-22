@@ -479,6 +479,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [saved, setSaved] = useState(false)
   const saveRef = useRef<HTMLDivElement>(null)
   const saveMenu = usePopover()
+  // Share's "Copied", for a moment after a press.
+  const [linkCopied, setLinkCopied] = useState(false)
+  const linkCopiedTimer = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(linkCopiedTimer.current), [])
   // Pinned (default): the player holds its place and only the details below
   // scroll. Unpinned: the whole page scrolls, so a tall video can move away.
   const [pinned, setPinned] = useState(true)
@@ -804,7 +808,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   }, [])
 
   /* The actions after Save, in the order they're shown: Transcript, Ask AI,
-   * Download. */
+   * Share, Download. */
   type Action = {
     key: string
     label: string
@@ -892,6 +896,28 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         onClick: () => setSidePanel((v) => (v === 'ask' ? null : 'ask')),
       },
     ] : []),
+    // Share copies the video's own link, from its start: the moment you're at
+    // is what "Open on YouTube" carries, and a link to send isn't about that.
+    {
+      key: 'share',
+      label: linkCopied ? t('Copied') : t('Share'),
+      icon: linkCopied ? (
+        <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7-7 7M21 12H9a6 6 0 00-6 6v1" />
+        </svg>
+      ),
+      onClick: () => {
+        void navigator.clipboard.writeText(youtubeUrl).then(() => {
+          setLinkCopied(true)
+          window.clearTimeout(linkCopiedTimer.current)
+          linkCopiedTimer.current = window.setTimeout(() => setLinkCopied(false), 1500)
+        })
+      },
+    },
     {
       key: 'download',
       label: isDownloaded ? t('Downloaded') : t('Download'),
@@ -913,17 +939,17 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
    * title beside it (the header wraps around the stack) — icons below that and
    * whenever you've scrolled. So the breakpoint is set by the wider row, which
    * depends on what the rows hold rather than on whether there are captions:
-   *   actions  Save, Download ~217px;  + Transcript, Ask AI ~454px
+   *   actions  Save, Share, Download ~322px;  + Transcript, Ask AI ~559px
    *   switch   two tabs + pin ~319px;  four tabs + pin ~439px
-   * With captions on a wide screen that's the four actions, 43rem; below lg
-   * the four tabs, 42rem; without captions the two tabs, 34rem. Icons are
-   * always enough: four are a 168px row. Written out whole, since Tailwind only
+   * With captions on a wide screen that's the five actions, 50rem; below lg
+   * the four tabs, 42rem; without captions the three actions, 35rem. Icons are
+   * always enough: five are a 212px row. Written out whole, since Tailwind only
    * generates the classes it can find in the source. */
   const labelled = hasCaptions && !panelsAsTabs
-    ? { pill: 'w-9 @min-[43rem]:w-auto @min-[43rem]:px-3.5', text: 'hidden @min-[43rem]:inline' }
+    ? { pill: 'w-9 @min-[50rem]:w-auto @min-[50rem]:px-3.5', text: 'hidden @min-[50rem]:inline' }
     : hasCaptions
       ? { pill: 'w-9 @min-[42rem]:w-auto @min-[42rem]:px-3.5', text: 'hidden @min-[42rem]:inline' }
-      : { pill: 'w-9 @min-[34rem]:w-auto @min-[34rem]:px-3.5', text: 'hidden @min-[34rem]:inline' }
+      : { pill: 'w-9 @min-[35rem]:w-auto @min-[35rem]:px-3.5', text: 'hidden @min-[35rem]:inline' }
 
   /* Switching from the floating switch, deep in one tab, lands at the top of
    * the other — not at whatever depth the first one had reached, which in the

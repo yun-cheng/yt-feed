@@ -17,6 +17,7 @@ export const ja: Record<string, string> = {
   'Your API key': 'あなたのAPIキー',
   'The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.': '拡張機能はアプリを開いた瞬間に自動的にこれを取得するため、通常は必要ありません。拡張機能が取得できない場合（例：localhostでないアドレス）のみ、拡張機能のオプションに貼り付けてください。これは誰の履歴を記録し、誰の後で見るに保存するかを決定するため、パスワードと同様に扱ってください。',
   'Copied': 'コピーしました',
+  'Share': '共有',
   'Copy': 'コピー',
   'Search Google': 'Googleで検索',
   'Could not load settings.': '設定を読み込めませんでした。',

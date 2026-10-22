@@ -17,6 +17,7 @@ export const vi: Record<string, string> = {
   'Your API key': 'Khóa API của bạn',
   'The extension picks this up on its own the moment you open the app, so you usually never need it. Paste it into the extension’s options only when it can’t — on an app address other than localhost, say. It tells the extension whose history to record into and whose Watch Later to save to, so treat it like a password.': 'Tiện ích mở rộng tự động lấy khóa này ngay khi bạn mở ứng dụng, nên thường bạn không cần dùng đến. Chỉ dán vào tùy chọn của tiện ích khi nó không lấy được — ví dụ khi địa chỉ ứng dụng không phải localhost. Khóa này cho tiện ích biết ghi lịch sử và lưu Xem sau vào tài khoản của ai, nên hãy coi nó như mật khẩu.',
   'Copied': 'Đã sao chép',
+  'Share': 'Chia sẻ',
   'Copy': 'Sao chép',
   'Search Google': 'Tìm trên Google',
   'Could not load settings.': 'Không thể tải cài đặt.',

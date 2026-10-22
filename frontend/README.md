@@ -1837,8 +1837,8 @@ while hidden — so it never shifts when you switch.
 
 The switch is **pinned**, with the player's pin toggle at its right — it decides
 how the details scroll, so it sits with them rather than fading with the player's
-chrome. The video's actions — Save, Transcript, Ask AI, Download, in that order
-— are pinned under it on every tab, since they're also how the side panel opens
+chrome. The video's actions — Save, Transcript, Ask AI, Share, Download, in that
+order — are pinned under it on every tab, since they're also how the side panel opens
 and closes. They're a zero-height `sticky`
 layer at the top of the column, so the stack rides along as you scroll and hangs
 over the right of the header rather than taking rows. The header flows around
@@ -1851,7 +1851,7 @@ header following that would reflow the page under the reader.
 Switching tabs from deep in one lands at the top of the other.
 
 **Below `lg` the switch has four tabs**: Transcript and Ask AI join Info and
-Comments, and their buttons leave the actions (Save and Download stay). The
+Comments, and their buttons leave the actions (Save, Share and Download stay). The
 right-hand panel has no column of its own there — it stacks under everything,
 a long scroll away on a phone — so as a tab it opens in the details column in
 Info's place, right under the switch; Info or Comments closes it again. It's the same `sidePanel` state either way, so
@@ -1868,14 +1868,14 @@ hold sets their widths:
 
 | row | labelled |
 |---|---|
-| actions: Save, Download | ~217px |
-| actions: + Transcript, Ask AI | ~454px |
+| actions: Save, Share, Download | ~322px |
+| actions: + Transcript, Ask AI | ~559px |
 | switch: two tabs + pin | ~319px |
 | switch: four tabs + pin | ~439px |
 
-So with captions on a wide screen it's the four actions, 43rem (labelled beside
-an open transcript from a ~1200px window); below `lg` the four tabs, 42rem;
-without captions the two tabs, 34rem. Icons always fit, so nothing hides behind
+So with captions on a wide screen it's the five actions, 50rem (labelled beside
+an open transcript from a ~1300px window); below `lg` the four tabs, 42rem;
+without captions the three actions, 35rem. Icons always fit, so nothing hides behind
 a "…". The same layout serves a phone: the title wraps beside the stack for a
 line or two and the channel line runs full width under it, rather than the stack
 taking rows of its own.
@@ -2338,6 +2338,9 @@ the page four times a second. It works over a downloaded file too, since the
 position means the same thing in the copy on YouTube. Clicking **pauses** on the
 way out: the overlay keeps playing behind the new tab otherwise, and two copies
 of the same audio is a worse greeting than pressing play again.
+**Share**, in the actions under the title, is the other half: it copies the
+plain `watch?v=ID`, no timestamp, since a link you send starts from the top.
+It reads Copied, with a tick, for a moment after.
 
 Against the embed without the extension, these float over the player instead —
 its control bar is inside the iframe, out of reach — so the caption button, the
