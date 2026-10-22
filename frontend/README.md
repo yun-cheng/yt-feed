@@ -862,11 +862,13 @@ components/
                                   Google OAuth client. Claiming creates the
                                   owner and signs this browser in
   PlaylistPage.tsx / PlaylistsPage.tsx
-  SaveToPlaylist.tsx              the Save to… menu: your playlists under a
-                                  filter field focused on open (Enter saves to
-                                  the last one left; a name nothing matches
-                                  becomes New playlist's), then New playlist.
-                                  A search keeps the menu at its full height
+  SaveToPlaylist.tsx              the Save to… menu: your playlists, last
+                                  edited first (held in place until it
+                                  reopens), under a filter field focused on
+                                  open (Enter saves to the last one left; a
+                                  name nothing matches becomes New playlist's),
+                                  then New playlist. A search keeps the menu at
+                                  its full height
   DownloadsPage.tsx               the offline library — cards open the watch
                                   overlay, which plays the file from disk
   ImportedPage.tsx                videos added by URL — the same VideoRow the

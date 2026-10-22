@@ -1529,6 +1529,19 @@ decided once, in one place. Somebody else's playlist is **404, not 403**: a
 refusal would confirm the id exists, which is more than the asker should learn.
 The same applies to a bookmark id.
 
+### Playlist order
+
+Playlists list **most recently edited first** — `GET /api/playlists`, and each
+video's playlists in `/memberships` — so the one you're filling sits at the top
+of the save menu. `playlists.edited_at` is stamped when a video joins or leaves
+(an add of one already there, a removal of one that isn't, and a rename don't
+count), on creation, and by an import or re-sync that brought anything new.
+It's a column rather than the newest item's `added_at`: an undone removal puts
+the item back with its old `added_at`, and a removal leaves no item to read.
+Playlists from before the column were backfilled at startup
+(`_backfill_playlist_edits`) from their newest item, or their creation when
+that's later.
+
 ### Importing playlists
 
 A playlist can be copied here from YouTube. `playlists.youtube_id` remembers

@@ -50,6 +50,16 @@ class VideoPayload(BaseModel):
     score: float = 0.0
 
 
+# Most recently edited first; a playlist from before `edited_at` that the
+# backfill couldn't date falls back to when it was made.
+_RECENT_FIRST = (func.coalesce(Playlist.edited_at, Playlist.created_at).desc(), Playlist.id.desc())
+
+
+def _edited(playlist: Playlist) -> None:
+    """A video joined or left: up to the top of the lists."""
+    playlist.edited_at = datetime.utcnow()
+
+
 async def _owned(db: AsyncSession, user: User, playlist_id: int) -> Playlist:
     """This person's playlist, or 404.
 
@@ -91,11 +101,12 @@ def _video_dict(it: PlaylistItem) -> dict:
 async def list_playlists(
     user: User = Depends(auth.account), db: AsyncSession = Depends(get_db)
 ):
-    """All playlists with item count + a cover thumbnail (newest item)."""
+    """All playlists with item count + a cover thumbnail (newest item), the
+    one a video last joined or left first."""
     playlists = (await db.execute(
         select(Playlist)
         .where(Playlist.user_id == user.id)
-        .order_by(Playlist.created_at.desc())
+        .order_by(*_RECENT_FIRST)
     )).scalars().all()
 
     # counts per playlist
@@ -122,6 +133,7 @@ async def list_playlists(
             "created_at": p.created_at.isoformat() if p.created_at else None,
             "youtube_id": p.youtube_id or "",
             "synced_at": p.synced_at.isoformat() if p.synced_at else None,
+            "edited_at": p.edited_at.isoformat() if p.edited_at else None,
         })
     return out
 
@@ -133,7 +145,8 @@ async def create_playlist(
     db: AsyncSession = Depends(get_db),
 ):
     name = body.name.strip() or "New playlist"
-    p = Playlist(user_id=user.id, name=name, created_at=datetime.utcnow())
+    now = datetime.utcnow()
+    p = Playlist(user_id=user.id, name=name, created_at=now, edited_at=now)
     db.add(p)
     await db.commit()
     await db.refresh(p)
@@ -191,14 +204,14 @@ async def playlist_memberships(
 
     One map for the whole library rather than a question per card: a feed page
     draws dozens of cards, and nearly all of them are in no playlist at all.
-    Each video's playlists come newest-first, the order the Playlists page
-    lists them in.
+    Each video's playlists come most recently edited first, the order the
+    Playlists page lists them in.
     """
     rows = (await db.execute(
         select(PlaylistItem.youtube_id, Playlist.id, Playlist.name)
         .join(Playlist, Playlist.id == PlaylistItem.playlist_id)
         .where(Playlist.user_id == user.id)
-        .order_by(Playlist.created_at.desc(), Playlist.id.desc())
+        .order_by(*_RECENT_FIRST)
     )).all()
     out: dict[str, list[dict]] = {}
     for vid, pid, name in rows:
@@ -434,6 +447,7 @@ async def _merge(db: AsyncSession, playlist: Playlist, videos: list[dict]) -> in
     # No network call here, deliberately — `_enrich` has already resolved the
     # avatars. Everything from this point is a local write.
     db.add_all(items)
+    _edited(playlist)
     return len(items)
 
 
@@ -704,7 +718,7 @@ async def add_item(
     user: User = Depends(auth.account),
     db: AsyncSession = Depends(get_db),
 ):
-    await _owned(db, user, playlist_id)
+    playlist = await _owned(db, user, playlist_id)
     exists = (await db.execute(
         select(PlaylistItem).where(
             PlaylistItem.playlist_id == playlist_id,
@@ -716,6 +730,7 @@ async def add_item(
         joined = receipts.stamp_or_now(fields.pop("created_at"))
         item = PlaylistItem(playlist_id=playlist_id, added_at=joined, **fields)
         db.add(item)
+        _edited(playlist)
         await imported.fill_channel_avatars([item], db)
         await db.commit()
     return {"status": "ok"}
@@ -742,7 +757,7 @@ async def add_item_by_id(
     deleted, region-blocked — rather than putting a titleless row in a playlist,
     which renders as a blank card.
     """
-    await _owned(db, user, playlist_id)
+    playlist = await _owned(db, user, playlist_id)
     existing = (await db.execute(
         select(PlaylistItem).where(
             PlaylistItem.playlist_id == playlist_id,
@@ -769,6 +784,7 @@ async def add_item_by_id(
     fields.pop("created_at")
     item = PlaylistItem(playlist_id=playlist_id, added_at=datetime.utcnow(), **fields)
     db.add(item)
+    _edited(playlist)
     await imported.fill_channel_avatars([item], db)
     await db.commit()
     return {"status": "ok", "saved": True, "already": False, "title": payload.title}
@@ -787,7 +803,7 @@ async def remove_item(
     it to `POST /{playlist_id}/items` is the undo — `created_at` and all, which
     is what puts it back where it was rather than at the top.
     """
-    await _owned(db, user, playlist_id)
+    playlist = await _owned(db, user, playlist_id)
     item = (await db.execute(
         select(PlaylistItem).where(
             PlaylistItem.playlist_id == playlist_id,
@@ -801,5 +817,6 @@ async def remove_item(
         PlaylistItem.playlist_id == playlist_id,
         PlaylistItem.youtube_id == youtube_id,
     ))
+    _edited(playlist)
     await db.commit()
     return {"status": "ok", "removed": receipt}

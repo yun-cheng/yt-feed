@@ -26,6 +26,34 @@ async def test_create_and_list(client):
     assert row["thumbnail_url"] == ""
 
 
+async def order(client) -> list[int]:
+    return [p["id"] for p in (await client.get("/api/playlists")).json()]
+
+
+async def test_the_list_puts_the_last_edited_first(client):
+    """The save menu's order: the playlist a video last joined or left is at
+    the top, and a new playlist counts as just edited."""
+    a, b, c = await make(client, "A"), await make(client, "B"), await make(client, "C")
+    assert await order(client) == [c, b, a]
+    await add(client, a, "vid1")
+    assert await order(client) == [a, c, b]
+    await client.delete(f"/api/playlists/{b}/items/vid1")  # not there: no edit
+    assert await order(client) == [a, c, b]
+    await add(client, b, "vid1")
+    await add(client, a, "vid1")  # already there: no edit
+    assert await order(client) == [b, a, c]
+    await client.delete(f"/api/playlists/{c}/items/vid1")
+    await add(client, c, "vid2")
+    await client.delete(f"/api/playlists/{a}/items/vid1")
+    assert await order(client) == [a, c, b]
+
+
+async def test_a_rename_is_not_an_edit(client):
+    a, b = await make(client, "A"), await make(client, "B")
+    await client.patch(f"/api/playlists/{a}", json={"name": "A2"})
+    assert await order(client) == [b, a]
+
+
 async def test_a_nameless_playlist_gets_a_default_name(client):
     """The create dialog can be submitted empty; a blank row in the sidebar
     would be unclickable."""
@@ -79,15 +107,17 @@ async def test_containing_powers_the_save_to_menu(client):
 
 
 async def test_memberships_power_the_cards_badge(client):
-    """One map for every card: each saved video's playlists, newest playlist
-    first, and nothing at all for a video in none."""
+    """One map for every card: each saved video's playlists, most recently
+    edited first, and nothing at all for a video in none."""
     a, b = await make(client, "A"), await make(client, "B")
     await add(client, a, "vid1")
     await add(client, b, "vid1")
+    got = (await client.get("/api/playlists/memberships")).json()
+    assert got == {"vid1": [{"id": b, "name": "B"}, {"id": a, "name": "A"}]}
     await add(client, a, "vid2")
     got = (await client.get("/api/playlists/memberships")).json()
     assert got == {
-        "vid1": [{"id": b, "name": "B"}, {"id": a, "name": "A"}],
+        "vid1": [{"id": a, "name": "A"}, {"id": b, "name": "B"}],
         "vid2": [{"id": a, "name": "A"}],
     }
 
@@ -318,3 +348,29 @@ async def test_a_restore_with_an_unreadable_timestamp_still_lands(client):
     removed["created_at"] = "the other day"
     await client.post(f"/api/playlists/{pid}/items", json=removed)
     assert len((await client.get(f"/api/playlists/{pid}")).json()["videos"]) == 1
+
+
+async def test_startup_dates_a_playlist_from_before_edits_were_kept(client):
+    """The backfill: the newest item's join time, else the playlist's own."""
+    from datetime import datetime
+
+    from sqlalchemy import update
+
+    from app.database import _backfill_playlist_edits, async_session, engine
+    from app.models import Playlist, PlaylistItem
+
+    old, filled, empty = await make(client, "Old"), await make(client, "Filled"), await make(client, "Empty")
+    await add(client, filled, "vid1")
+    async with async_session() as db:
+        await db.execute(update(Playlist).values(edited_at=None))
+        await db.execute(update(Playlist).where(Playlist.id == old).values(created_at=datetime(2024, 1, 1)))
+        await db.execute(update(Playlist).where(Playlist.id == filled).values(created_at=datetime(2024, 1, 2)))
+        await db.execute(update(Playlist).where(Playlist.id == empty).values(created_at=datetime(2024, 1, 3)))
+        await db.execute(update(PlaylistItem).values(added_at=datetime(2024, 1, 5)))
+        await db.commit()
+    async with engine.begin() as conn:
+        await _backfill_playlist_edits(conn)
+    rows = (await client.get("/api/playlists")).json()
+    assert [r["id"] for r in rows] == [filled, empty, old]
+    assert rows[0]["edited_at"].startswith("2024-01-05")
+    assert rows[2]["edited_at"].startswith("2024-01-01")

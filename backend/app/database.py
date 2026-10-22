@@ -70,6 +70,8 @@ _COLUMN_MIGRATIONS = [
     # before this column does — so the default is also the correct backfill.
     ("playlists", "youtube_id", "VARCHAR NOT NULL DEFAULT ''"),
     ("playlists", "synced_at", "DATETIME"),
+    # When a video last joined or left — backfilled by `_backfill_playlist_edits`.
+    ("playlists", "edited_at", "DATETIME"),
     # The cover the bell shows. Empty is the correct backfill as well as the
     # default: it's copied off the video at write time, and a row written before
     # this column existed has no copy to recover — the bell falls back to text.
@@ -153,6 +155,21 @@ async def _unstick_empty_label_builds(conn):
     ))
 
 
+async def _backfill_playlist_edits(conn):
+    """Give playlists from before `edited_at` the best answer they have.
+
+    The newest item's join time, or the playlist's own creation when that's
+    later or there are no items. Removals before the column existed left nothing
+    behind, so they can't count. Idempotent: every playlist made or changed since
+    carries its own stamp, so this only ever matches the old ones, once.
+    """
+    await conn.execute(text(
+        "UPDATE playlists SET edited_at = MAX(COALESCE(created_at, ''), COALESCE("
+        "  (SELECT MAX(added_at) FROM playlist_items i WHERE i.playlist_id = playlists.id), ''))"
+        " WHERE edited_at IS NULL AND created_at IS NOT NULL"
+    ))
+
+
 async def init_db(assert_migrated: bool = True):
     """Bring the schema up to date.
 
@@ -171,3 +188,4 @@ async def init_db(assert_migrated: bool = True):
         await conn.run_sync(Base.metadata.create_all)
         await _apply_column_migrations(conn)
         await _unstick_empty_label_builds(conn)
+        await _backfill_playlist_edits(conn)

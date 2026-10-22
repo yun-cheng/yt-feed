@@ -506,6 +506,11 @@ class Playlist(Base):
     youtube_id = Column(String, default="", nullable=False, index=True)
     synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # When a video last joined or left it — what the lists sort by, most recent
+    # first, so the playlist you're filling sits at the top of the save menu.
+    # Kept rather than read off the items: a restore puts an item back with its
+    # old `added_at`, and a removal leaves no item to read at all.
+    edited_at = Column(DateTime, nullable=True)
 
 
 class PlaylistItem(Base):
