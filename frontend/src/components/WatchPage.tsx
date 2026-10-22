@@ -1041,7 +1041,19 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     let cancelled = false
     apiFetch(`/api/feed/video/${videoId}`)
       .then((r) => r.json())
-      .then((d) => { if (!cancelled && d && d.youtube_id) setMeta(d) })
+      .then((d: VideoItem) => {
+        if (cancelled || !d?.youtube_id) return
+        setMeta(d)
+        // A channel outside the catalog whose count was never learned: asked
+        // once, and kept by the server for its other videos.
+        if (d.channel_subscribers !== null || !d.channel_id) return
+        return apiFetch(`/api/feed/channel-subscribers/${d.channel_id}`, { quiet: true })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((s) => {
+            if (cancelled || typeof s?.subscribers !== 'number') return
+            setMeta((m) => (m?.youtube_id === d.youtube_id ? { ...m, channel_subscribers: s.subscribers } : m))
+          })
+      })
       .catch(() => { /* keep the card metadata / minimal chrome */ })
     return () => { cancelled = true }
   }, [videoId, video])
@@ -2995,13 +3007,22 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 />
               </a>
             )}
-            <a
-              href={`/channel/${meta.channel_id}`}
-              onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
-              className="font-medium text-white hover:text-blue-400 transition-colors"
-            >
-              {meta.channel_name || t('Unknown')}
-            </a>
+            {/* The subscribers under the name, as YouTube has them; hidden
+                until known. */}
+            <div className="flex min-w-0 flex-col">
+              <a
+                href={`/channel/${meta.channel_id}`}
+                onClick={(e) => { e.preventDefault(); onChannelClick(meta.channel_id) }}
+                className="font-medium text-white hover:text-blue-400 transition-colors"
+              >
+                {meta.channel_name || t('Unknown')}
+              </a>
+              {!!meta.channel_subscribers && (
+                <span className="text-xs text-shade-99">
+                  {t('{count} subscribers', { count: formatCount(meta.channel_subscribers) })}
+                </span>
+              )}
+            </div>
             <span className="text-shade-99">·</span>
             <span>{t('{count} views', { count: formatCount(meta.view_count) })}</span>
             <span className="text-shade-99">·</span>

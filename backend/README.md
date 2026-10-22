@@ -1179,6 +1179,23 @@ the field blank and the card falls back to its initial. The spend is recorded
 against the day but **not** against the archive's share (`archive=False`), so
 opening videos can't eat the fetching budget.
 
+### The uploader's subscribers
+
+The watch page shows the channel's subscriber count under its name, and
+`get_video` hands it over as `channel_subscribers`. A channel in the catalog
+answers from `channels`, kept fresh by the subscription resync — for an imported
+video of that channel too. Any other answers from the row's own
+`channel_subscribers`, which a video extraction carries for free
+(`channel_follower_count`), so every row written since has it.
+
+Rows from before the column are NULL, "never learned", and so is an extraction
+that lacked it. The page then asks `GET /api/feed/channel-subscribers/{id}`,
+which looks the channel up as adding one does (`resolve_channel`: the Data API,
+else yt-dlp) and writes the count to **every** row of that channel, so it's
+asked once per channel rather than once per video. A failed lookup writes
+nothing and the next visit asks again. It takes a channel id only: anything else
+would reach the lookup as a handle.
+
 ---
 
 ## Local folders (`routers/local.py`)
@@ -2236,7 +2253,8 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | POST | `/api/feed/captions-generate/{id}` | Transcribe a video with no captions locally (Whisper). Idempotent; resumes a job a restart killed. 501 where the model isn't installed |
 | GET | `/api/feed/captions-generate/{id}` | Progress of that job and the cues so far: `{status, covered, duration, lang, cues, supported}` |
 | GET | `/api/feed/captions-translate/{id}` | AI-translate captions to Traditional Chinese — returns whole sentences around a play position (query: `lang` = source track, `at` = seconds, `count` = sentences) |
-| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
+| GET | `/api/feed/video/{id}` | one video's metadata + `title_labels` and `channel_subscribers` (for the in-app watch page / deep links); falls back to the `imported_videos` snapshot, then to resolving it from YouTube and caching it |
+| GET | `/api/feed/channel-subscribers/{channel_id}` | a channel's subscriber count when `get_video` had none (`null`): looked up once and kept on every imported row of the channel |
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
 | GET | `/api/feed/description/{id}` | one video's description and chapters, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |

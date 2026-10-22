@@ -416,6 +416,11 @@ class ImportedVideo(Base):
     # it with the extension's button and this is just the metadata the watch page
     # and history need; see routers/feed.get_video.
     source = Column(String, nullable=False, default="import", server_default="import")
+    # The uploader's subscriber count, as the video's extraction gave it — the
+    # watch page shows it under the channel name. NULL = never learned (a row
+    # from before this column, or an extraction without it); the page asks for
+    # it then, and the answer is written to every row of the channel.
+    channel_subscribers = Column(BigInteger, nullable=True)
 
 
 class UserImport(Base):

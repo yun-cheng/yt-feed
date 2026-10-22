@@ -1846,7 +1846,10 @@ ten-second window.
 The left column under the player has two tabs. **Info** is the channel, stats and
 description; **Comments** is `Comments.tsx`, below. A tab rather than a section
 under the description, so reading the comments doesn't start with scrolling past
-everything else. The title heads both. The switch is the top bar's Videos /
+everything else. The title heads both. The channel's subscriber count sits
+under its name, as YouTube has it, and shows once it's known: a channel outside
+the catalog whose count was never kept is asked for it after the video's own
+fetch (see the backend's "The uploader's subscribers"). The switch is the top bar's Videos /
 Shorts control copied — two equal halves in one track, the chevron's room kept
 while hidden — so it never shifts when you switch.
 

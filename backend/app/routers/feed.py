@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from typing import Awaitable, Callable, Optional, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1000,15 +1000,61 @@ async def get_video(video_id: str, db: AsyncSession = Depends(get_db)):
     imported video keeps its title/channel chrome even though it belongs to no
     subscribed channel. A video in neither is resolved from YouTube and cached,
     which is the path every video opened with the extension's button takes.
+
+    `channel_subscribers` comes from the catalog's channel row when there is
+    one — an imported video's too, when its channel is in the catalog — and
+    otherwise from the imported row's own copy. null means it was never
+    learned; the page then asks `channel_subscribers` below.
     """
     v = await db.get(Video, video_id)
-    if not v:
-        imp = await db.get(ImportedVideo, video_id)
-        if imp:
-            from app.routers.imported import _serialize as _serialize_imported
-            return _serialize_imported(imp)
-        return await _resolve_from_youtube(video_id, db)
-    return _serialize_video(v, await db.get(Channel, v.channel_id))
+    if v:
+        chan = await db.get(Channel, v.channel_id)
+        return {**_serialize_video(v, chan), "channel_subscribers": _subscribers(chan)}
+    imp = await db.get(ImportedVideo, video_id)
+    if imp:
+        from app.routers.imported import _serialize as _serialize_imported
+        payload = _serialize_imported(imp)
+    else:
+        payload = await _resolve_from_youtube(video_id, db)
+        if not payload:
+            return payload
+    chan = await db.get(Channel, payload["channel_id"]) if payload["channel_id"] else None
+    return {**payload, "channel_subscribers": _subscribers(chan) if chan else payload["channel_subscribers"]}
+
+
+def _subscribers(chan: Channel | None) -> int:
+    return (chan.subscriber_count or 0) if chan else 0
+
+
+@router.get("/channel-subscribers/{channel_id}")
+async def channel_subscribers(channel_id: str, db: AsyncSession = Depends(get_db)):
+    """A channel's subscriber count, for one outside the catalog.
+
+    What the watch page asks when `get_video` had none to give: an imported
+    row from before the count was kept, or an extraction that lacked it. Looked
+    up as adding a channel looks one up (the Data API, else yt-dlp) and written
+    to every imported row of the channel, so it's asked once per channel. A
+    lookup that fails stores nothing, and the next visit asks again.
+    """
+    from app.channel_lookup import _ID_RE, resolve_channel
+
+    # An id only: anything else would be looked up as a handle.
+    if not _ID_RE.match(channel_id):
+        raise HTTPException(400, "Not a channel id")
+    chan = await db.get(Channel, channel_id)
+    if chan:
+        return {"subscribers": _subscribers(chan)}
+
+    info = await resolve_channel(channel_id)
+    if not info:
+        return {"subscribers": None}
+    count = int(info.get("subscriber_count") or 0)
+    await db.execute(
+        update(ImportedVideo).where(ImportedVideo.channel_id == channel_id)
+        .values(channel_subscribers=count)
+    )
+    await db.commit()
+    return {"subscribers": count}
 
 
 def _serialize_video(v: Video, chan: Channel | None) -> dict:

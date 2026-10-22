@@ -75,6 +75,9 @@ export type VideoItem = {
   // Channel-specific labels drawn from the title (channel page only).
   // undefined = not present in payload; null = not labeled yet; [] = no labels.
   title_labels?: string[] | null
+  // The channel's subscriber count, on the watch page's own fetch (and
+  // Imported). null = never learned, which the watch page then asks for.
+  channel_subscribers?: number | null
 }
 
 // A video you've watched (or started): a feed video plus where you got to.

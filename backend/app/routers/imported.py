@@ -125,7 +125,15 @@ def _to_record(video_id: str, info: dict, source: str = "import") -> ImportedVid
         # straight back to the UI already carries it (the default only lands on flush).
         created_at=datetime.utcnow(),
         source=source,
+        channel_subscribers=_int_or_none(info.get("channel_follower_count")),
     )
+
+
+def _int_or_none(v) -> int | None:
+    try:
+        return int(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _channel_thumb(info: dict) -> str:
@@ -202,6 +210,7 @@ def _serialize(v: ImportedVideo) -> dict:
         "is_short": bool(v.is_short),
         "score": v.score or 0.0,
         "created_at": v.created_at.isoformat() if v.created_at else None,
+        "channel_subscribers": v.channel_subscribers,
     }
 
 

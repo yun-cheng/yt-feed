@@ -428,3 +428,76 @@ async def test_restoring_what_you_already_hold_changes_nothing(client, db):
     r = await client.post("/api/imported/restore", json={"youtube_id": "keptAAAAAAA"})
     assert r.json()["restored"] is False
     assert len((await client.get("/api/imported")).json()) == 1
+
+
+
+@pytest.mark.asyncio
+async def test_the_watch_page_gets_the_channels_subscribers(client, db, monkeypatch):
+    """From the catalog's channel row when it has one, else the imported row's
+    own copy of what the extraction said; null when neither ever learned it."""
+    from datetime import datetime
+    from app.models import Channel, Video
+    from app.routers import imported as imported_mod
+
+    monkeypatch.setattr(imported_mod, "_extract", lambda vid: info(channel_follower_count=999))
+    db.add(Channel(youtube_id="chan1", title="A Channel", thumbnail_url="", subscriber_count=1234))
+    db.add(Video(youtube_id="feedvid", channel_id="chan1", title="F", thumbnail_url="",
+                 published_at=datetime(2026, 1, 1), duration_seconds=60, view_count=1))
+    db.add(_to_record("theirs", info(channel_id="elsewhere", channel_follower_count=56)))
+    db.add(_to_record("older", info(channel_id="unknown")))
+    await db.commit()
+
+    async def subs(vid):
+        return (await client.get(f"/api/feed/video/{vid}")).json()["channel_subscribers"]
+
+    assert await subs("feedvid") == 1234
+    # Imported, but its channel is in the catalog: the catalog's count wins.
+    assert await subs("opened") == 1234
+    assert await subs("theirs") == 56
+    assert await subs("older") is None
+
+
+CHAN = "UC" + "a" * 22
+
+
+@pytest.mark.asyncio
+async def test_a_channels_subscribers_are_looked_up_once_and_kept(client, db, monkeypatch):
+    from app import channel_lookup
+
+    calls = []
+
+    async def resolve(raw):
+        calls.append(raw)
+        return {"subscriber_count": 4200}
+
+    monkeypatch.setattr(channel_lookup, "resolve_channel", resolve)
+    db.add(_to_record("v1", info(channel_id=CHAN)))
+    db.add(_to_record("v2", info(channel_id=CHAN)))
+    await db.commit()
+
+    assert (await client.get(f"/api/feed/channel-subscribers/{CHAN}")).json() == {"subscribers": 4200}
+    assert calls == [CHAN]
+    # Written to every row of the channel, so its other videos have it too.
+    for vid in ("v1", "v2"):
+        assert (await client.get(f"/api/feed/video/{vid}")).json()["channel_subscribers"] == 4200
+
+
+@pytest.mark.asyncio
+async def test_a_failed_subscriber_lookup_keeps_nothing(client, db, monkeypatch):
+    from app import channel_lookup
+
+    async def resolve(raw):
+        return None
+
+    monkeypatch.setattr(channel_lookup, "resolve_channel", resolve)
+    db.add(_to_record("v1", info(channel_id=CHAN)))
+    await db.commit()
+
+    assert (await client.get(f"/api/feed/channel-subscribers/{CHAN}")).json() == {"subscribers": None}
+    assert (await client.get("/api/feed/video/v1")).json()["channel_subscribers"] is None
+
+
+@pytest.mark.asyncio
+async def test_only_a_channel_id_is_looked_up(client):
+    """Anything else would go to the lookup as a handle."""
+    assert (await client.get("/api/feed/channel-subscribers/someone")).status_code == 400

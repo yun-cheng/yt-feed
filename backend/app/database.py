@@ -82,6 +82,9 @@ _COLUMN_MIGRATIONS = [
     # A saved passage's note. Empty is the correct backfill: nothing could
     # write one before this column existed.
     ("video_loops", "note", "VARCHAR NOT NULL DEFAULT ''"),
+    # No default → existing rows become NULL, "never learned"; the watch page
+    # fills a channel's in on its first visit (feed.channel_subscribers).
+    ("imported_videos", "channel_subscribers", "BIGINT"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the
