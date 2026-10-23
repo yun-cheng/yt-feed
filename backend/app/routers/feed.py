@@ -782,9 +782,9 @@ def _translate_batch(batch: list[str], header: str) -> dict[int, str] | None:
     from app import llm
 
     user = header + "\nLines:\n" + "\n".join(f"{n}. {t}" for n, t in enumerate(batch, 1))
-    # One retry: replies are occasionally mangled, and losing a batch leaves a
-    # stretch of the video untranslated.
-    for _ in range(2):
+    # Two retries: replies are occasionally mangled or a line short (see
+    # `_parse_numbered`), and losing a batch leaves a stretch untranslated.
+    for _ in range(3):
         try:
             raw = llm.chat(
                 _TRANSLATE_SYSTEM, user,
@@ -841,6 +841,13 @@ def _parse_numbered(raw: str, count: int) -> dict[int, str] | None:
 
     Returns None when too little came back to trust the batch (the caller then
     retries), rather than silently leaving most of a stretch untranslated.
+
+    Also None when the LAST line is missing, whatever else came back. That is
+    what a model that joined two lines and renumbered the rest sends: every
+    line after the join answers the number before its own, so each translation
+    shows one sentence late, and nothing in the numbering gives it away. A
+    line dropped from the middle leaves its neighbours' numbers right, and is
+    only a gap.
     """
     out: dict[int, str] = {}
     for line in raw.splitlines():
@@ -850,6 +857,8 @@ def _parse_numbered(raw: str, count: int) -> dict[int, str] | None:
         n = int(m.group(1))
         if 1 <= n <= count:
             out[n] = m.group(2).strip()
+    if count not in out:
+        return None
     return out if len(out) >= max(1, int(count * 0.6)) else None
 
 

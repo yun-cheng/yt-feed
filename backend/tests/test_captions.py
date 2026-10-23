@@ -155,13 +155,20 @@ def test_stray_prose_around_the_list_is_ignored():
 def test_numbers_outside_the_batch_are_dropped():
     """A model that keeps counting past the batch would otherwise write into
     lines that don't exist."""
-    assert _parse_numbered("1. first\n9. nope", 2) == {1: "first"}
+    assert _parse_numbered("1. first\n2. second\n9. nope", 2) == {1: "first", 2: "second"}
 
 
-def test_a_mostly_complete_reply_is_accepted():
-    """Below-100% is normal and the caller fills the gaps with the source line."""
-    got = _parse_numbered("1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h", 10)
+def test_a_reply_with_a_gap_is_accepted():
+    """A line dropped from the middle leaves the others' numbers right."""
+    got = _parse_numbered("1. a\n2. b\n4. d\n5. e\n6. f\n7. g\n8. h\n10. j", 10)
     assert got is not None and len(got) == 8
+
+
+def test_a_reply_short_at_the_end_is_rejected():
+    """What a model that joined two lines and renumbered the rest sends: every
+    line after the join answers the number before its own. Taken, each
+    translation showed one sentence late from there to the end."""
+    assert _parse_numbered("1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i", 10) is None
 
 
 def test_too_little_back_is_rejected_so_the_caller_can_retry():

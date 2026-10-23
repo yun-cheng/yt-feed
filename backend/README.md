@@ -569,7 +569,13 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   drops a quote or comma somewhere in a 40-element array, killing the whole batch,
   whereas a numbered list is addressable per line, so a mangled or skipped line
   falls back to its source text and everything else stays aligned to its timing.
-  A batch gets one retry; a batch that fails outright degrades to source text.
+  A batch that fails outright degrades to source text.
+
+  A reply missing its **last** line is rejected outright, though, however much
+  else came back (`_parse_numbered`). That's what a model that joined two lines
+  and renumbered the rest sends: every line after the join answers the number
+  before its own, so each translation shows one sentence late, and the
+  numbering looks fine. A batch gets two retries.
 
   Results merge into `caption_translations` keyed by the **resolved** source
   track, not the requested code, so `""` (native) and `"en"` on an English video
@@ -2352,7 +2358,7 @@ no per-test decorator). What's covered:
 | `test_video_length.py` | the runtime buckets: each boundary second belonging to the longer one, an unprobed duration belonging to none, both ways of meaning "any length", an unknown name dropped rather than refused, `total` counting what you'll be shown, and a channel page filtering the same way |
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
-| `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence), numbered-reply parsing, and a track download that fails once being retried rather than cached as no captions |
+| `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |
 | `test_dictionary.py` | a hovered letter bringing back its whole term ("ice cream" from inside "cream"), an inflected word finding its headword, a comma, a space and a full stop being no entry, positions counted in UTF-16 units as the page counts them, one section per ticked dictionary in Dictionary.app's order, the public call still answering when the private ones are gone, and a server with no dictionary saying so (503). The look-ups themselves are skipped off a Mac |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
