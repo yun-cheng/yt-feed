@@ -27,6 +27,7 @@ import { MENU_LAYER, inPortal, usePopover } from '../lib/popover'
 import { t, tc } from '../lib/i18n'
 import { TITLE_RANK, useDocumentTitle } from '../lib/title'
 import { captionDefaults } from '../lib/captionDefaults'
+import { loadChannelCaptions, saveChannelCaptions } from '../lib/channelCaptions'
 import { splitTimed } from '../lib/captionSplit'
 import { linesAt, sentenceLinesAt, toSentences, type CaptionLine, type Cue } from '../lib/captionLines'
 import { pickMain as pickMainSlots, pickSecond as pickSecondSlots } from '../lib/captionSlots'
@@ -1462,8 +1463,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
   // Persist how captions look so it carries to the next video and next session.
   // The languages aren't kept here (see CAPTION_PREFS_KEY); nor is the AI
-  // translation anywhere — restoring it would fire a translation (real tokens,
-  // real latency) on every video you open, so it stays a per-video opt-in.
+  // translation — restoring it would fire a translation (real tokens, real
+  // latency) on every video you open. The one place it comes back is a channel
+  // you left it on, with the caption_memory setting asking for that (below).
   useEffect(() => {
     try {
       localStorage.setItem(CAPTION_PREFS_KEY, JSON.stringify({
@@ -1475,6 +1477,29 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
       }))
     } catch { /* storage disabled — prefs just won't persist */ }
   }, [showCaptions, captionMode, captionPos, captionPos2, captionSize])
+
+  // Captions remembered for this video's channel (lib/channelCaptions), applied
+  // once the channel is known: at once from a card, a moment later on a cold
+  // load. Only a change made here is saved — the first run per channel applies
+  // and returns, so merely opening a video doesn't set its channel.
+  const capChannelId = meta?.channel_id ?? ''
+  const capChannel = useRef('')
+  useEffect(() => {
+    if (!capChannelId) return
+    if (capChannel.current !== capChannelId) {
+      capChannel.current = capChannelId
+      const saved = loadChannelCaptions(capChannelId)
+      if (saved) {
+        setShowCaptions(saved.on)
+        if (saved.lang !== undefined) {
+          setCaptionLang(saved.lang)
+          setCaptionLang2(saved.lang2 ?? '')
+        }
+      }
+      return
+    }
+    saveChannelCaptions(capChannelId, { on: showCaptions, lang: captionLang, lang2: captionLang2 })
+  }, [capChannelId, showCaptions, captionLang, captionLang2])
 
   // Which of English/Chinese/Japanese/Korean this video offers (native, uploaded,
   // or auto-translated) — populates the caption language switcher.

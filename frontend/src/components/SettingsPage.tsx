@@ -7,6 +7,7 @@ import ShortcutsEditor from './ShortcutsEditor'
 import SecretField, { type SecretView } from './SecretField'
 import type { PageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
+import { setCaptionMemory } from '../lib/channelCaptions'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
 import { setShortcutOverrides } from '../lib/shortcuts'
 import { setVideoPanelDefault } from '../lib/videoPanel'
@@ -194,6 +195,7 @@ export default function SettingsPage({ onPageDefaultsChange }: PageProps = {}) {
       // Settings the running app reads outside this page take effect now.
       // The language last: it remounts the app, this page included.
       setCaptionDefaults(next.values)
+      setCaptionMemory(next.values.caption_memory)
       setSpeedDefaults(next.values.playback_speeds)
       setShortcutOverrides(next.values.shortcuts)
       setVideoPanelDefault(next.values.video_panel_tab)

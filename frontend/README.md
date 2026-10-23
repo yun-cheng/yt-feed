@@ -963,6 +963,7 @@ lib/
   time.ts                         formatTime — the player clock; timeAgo — "5m ago" on cards and the watch page
   i18n.ts                         t / tn / tc and the current language (see "Language")
   captionDefaults.ts              the caption languages every video opens with
+  channelCaptions.ts              captions remembered per channel (the caption_memory setting)
   richText.tsx                    YouTube free text (descriptions, comments):
                                   URLs as links, timestamps as seek buttons;
                                   formatCount (1.2M, or 35.6萬 in Chinese)
@@ -1395,6 +1396,17 @@ Other details:
   account, so they follow you to another browser. A pick made on a video lasts
   for that video; the next one opens on your defaults again. How captions look —
   on or off, word-by-word, position, size — is still remembered per browser.
+- **Captions per channel**: the `caption_memory` setting (Settings → Language,
+  `lib/channelCaptions.ts`). `last_video`, the default, is the behaviour above.
+  `channel_on` keeps on/off for each channel; `channel_tracks` keeps the two
+  slots' picks too, the AI translation included — so a channel you watch with
+  English + Chinese opens that way, and one you watch without captions opens
+  without them. A channel with nothing remembered opens as the last video had
+  them. What's kept is in localStorage (`ytfeed:caption-channels`, by channel
+  id), applied once the video's channel is known (at once from a card, after
+  `/api/feed/video` on a cold load). Only a change made on the video is saved:
+  opening one doesn't set its channel. Tracks kept under `channel_tracks` stay
+  stored through a switch to `channel_on`, so switching back finds them.
 - **Caption display (position, size, reset)**: a **Display** section under the two
   columns, because it applies to both. **Position** puts the block at the top or the
   bottom of the player — top is for a video whose own subtitles are burned in along
@@ -1622,7 +1634,8 @@ Other details:
   (`ytfeed:caption-prefs`) and re-applied on the next video/session — the overlay
   seeds its state from them on mount. The languages come from your defaults, and
   the AI translation from nowhere: restoring it would translate every video you
-  open.
+  open. The one exception is a channel remembered with its tracks (*Captions per
+  channel*, above), where you left it on for that channel.
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
 ### Live broadcasts
@@ -2481,6 +2494,7 @@ problem.
 | `captionLines.test.ts` | which caption lines are up: the rolling two lines oldest first, the word-by-word reveal and its lookahead, sentences stitched across cues and broken mid-cue, CJK joined without spaces, a track with no punctuation kept one line per cue, and a long sentence cut into **even** pieces rather than a runt at its only comma — but left whole for the transcript |
 | `dictionary.test.ts` | an entry split at its seams for each dictionary that ships with macOS — the Oxford heads and senses, a lone sense under its part of speech, numbers inside an example left alone, a Chinese head untangled into word, zhuyin and pinyin with its Cangjie code dropped, 譯典通's two pronunciations, abbreviated parts of speech, examples and closing sections (and 同義詞 inside a gloss left alone), the thesaurus's `|`-separated examples not taken for a head — and the client asking once per term, remembering where there was nothing, and stopping when the server has no dictionary |
 | `captionSlots.test.ts` | the menu's two slots: a replaced Main drops into an empty Second and leaves a chosen one alone, toggling off promotes, picking the Main as Second swaps |
+| `channelCaptions.test.ts` | captions per channel: nothing kept by default, an unknown setting read as the default, on/off kept apart per channel, tracks (AI translation among them) kept under `channel_tracks`, tracks kept earlier left in place under `channel_on` and found again, and a store that no longer parses |
 | `captionPrefs.test.ts` | the saved caption look: the defaults, the second track's edge following the main's in an older save, the old `'line'` name for whole-sentence mode, an older build's size clamped rather than dropped, and a tenth staying a tenth |
 | `PanelRows.test.tsx` | the list behind the panel's Transcript, Chapters, Bookmarks and Repeat tabs: a row seeks (and says which row it was), a row's own `when` and line, one being written on showing its editor and no longer seeking, the active one is marked, a picture sits inside the row's seek button while its remove button sits beside it, the empty line gives way to *Translating…*, and following stops when the active row is scrolled away until Sync to video or a click resumes it |
 | `frameGrab.test.tsx` | `useFileFrames` against a stand-in video and canvas: the moments grabbed in turn, each once, kept for the session, the last stopping short of the end, and nothing without a file |

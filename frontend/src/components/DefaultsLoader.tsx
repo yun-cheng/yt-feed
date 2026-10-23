@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { apiFetch } from '../lib/api'
 import { setPageDefaultOverrides } from '../lib/pageDefaults'
 import { setCaptionDefaults } from '../lib/captionDefaults'
+import { setCaptionMemory } from '../lib/channelCaptions'
 import { setSpeedDefaults } from '../lib/playbackSpeeds'
 import { setShortcutOverrides } from '../lib/shortcuts'
 import { setVideoPanelDefault } from '../lib/videoPanel'
@@ -37,6 +38,7 @@ export default function DefaultsLoader({ children }: { children: React.ReactNode
         if (!d) return
         setPageDefaultOverrides(d.values?.page_defaults)
         setCaptionDefaults(d.values)
+        setCaptionMemory(d.values?.caption_memory)
         setSpeedDefaults(d.values?.playback_speeds)
         setShortcutOverrides(d.values?.shortcuts)
         setVideoPanelDefault(d.values?.video_panel_tab)
