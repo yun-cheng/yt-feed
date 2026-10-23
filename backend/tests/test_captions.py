@@ -124,6 +124,8 @@ def test_a_title_does_not_end_a_sentence():
     assert [s["text"] for s in _to_sentences(cues)] == [
         "before channels like Mr. Beast came in.", "Then",
     ]
+    # As it split before, which a row numbered against that split is read by.
+    assert len(_to_sentences(cues, legacy=True)) == 3
 
 
 @pytest.mark.parametrize("abbr", ["Dr.", "Mrs.", "vs.", "e.g."])

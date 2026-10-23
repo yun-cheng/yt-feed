@@ -85,6 +85,9 @@ _COLUMN_MIGRATIONS = [
     # No default → existing rows become NULL, "never learned"; the watch page
     # fills a channel's in on its first visit (feed.channel_subscribers).
     ("imported_videos", "channel_subscribers", "BIGINT"),
+    # NULL marks a row still keyed by position (`lines`); the first read of it
+    # converts (feed._stored_translations).
+    ("caption_translations", "by_source", "TEXT"),
 ]
 
 # The tables whose primary key gained `user_id`. A row here that still lacks the

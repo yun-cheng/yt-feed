@@ -559,8 +559,10 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   approaches**, like video buffering: a long video is never translated past where
   it's watched (a 37-min podcast used to mean ~2min of waiting), and a seek
   translates where you *landed* rather than restarting from 0:00. Results merge
-  into the sparse per-sentence `caption_translations` map, so they survive a
-  restart and a re-watch is free. Grouping also shrinks the job — 158 cues become
+  into the sparse `caption_translations` map, so they survive a restart and a
+  re-watch is free. The map is keyed by the **source sentence**
+  (`by_source`), not its position, so a change to where sentences split can't
+  hand a translation to its neighbour. Grouping also shrinks the job — 158 cues become
   49 sentences.
 
   The video's **channel and title go in as context** so the model picks
@@ -568,14 +570,21 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   Lines go out numbered and come back numbered — *not* JSON: the model reliably
   drops a quote or comma somewhere in a 40-element array, killing the whole batch,
   whereas a numbered list is addressable per line, so a mangled or skipped line
-  falls back to its source text and everything else stays aligned to its timing.
-  A batch that fails outright degrades to source text.
+  leaves a hole and everything else stays aligned to its timing. A hole is
+  shown as its source text and not stored, so the next request asks again.
 
   A reply missing its **last** line is rejected outright, though, however much
   else came back (`_parse_numbered`). That's what a model that joined two lines
   and renumbered the rest sends: every line after the join answers the number
   before its own, so each translation shows one sentence late, and the
   numbering looks fine. A batch gets two retries.
+
+  Rows from before `by_source` are keyed by position and are converted on the
+  first read, against the sentence split they were numbered by
+  (`_to_sentences(legacy=True)`). A row with any line equal to its own source
+  is dropped instead: that was how a short reply got stored, and the shift it
+  usually came with starts somewhere the row doesn't say. Six of 36 rows were
+  like this, `_5p1_TNSWqQ` among them, one sentence late from 0:34 on.
 
   Results merge into `caption_translations` keyed by the **resolved** source
   track, not the requested code, so `""` (native) and `"en"` on an English video
@@ -1937,7 +1946,7 @@ worker posts from a `youtube.com` page context and a cookie would need
 | `video_loops` | the passages of a video one user marked to repeat, each with an optional note — many per video, at most one `active`, either end nullable (one end pinned still repeats) |
 | `local_folders` | directories browsed as feeds (absolute path + display name) |
 | `local_videos` | one video file inside a local folder — cached duration/size/mtime, its own resume position |
-| `caption_translations` | AI caption translations, keyed by (video, source lang, target lang) — the one cache worth persisting, since rebuilding costs tokens and minutes |
+| `caption_translations` | AI caption translations, keyed by (video, source lang, target lang), each line by its source sentence — the one cache worth persisting, since rebuilding costs tokens and minutes |
 
 `watch_later`, `playlist_items`, `downloads`, `imported_videos` and
 `watch_history` each store a
@@ -2358,6 +2367,7 @@ no per-test decorator). What's covered:
 | `test_video_length.py` | the runtime buckets: each boundary second belonging to the longer one, an unprobed duration belonging to none, both ways of meaning "any length", an unknown name dropped rather than refused, `total` counting what you'll be shown, and a channel page filtering the same way |
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
+| `test_caption_translation.py` | the AI translation's store: each line kept against its source sentence, a line the model didn't return shown as its source but not kept (so it's asked for again), and a row from before `by_source` read by the split it was numbered against — or dropped when a line in it is its own source |
 | `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |
 | `test_dictionary.py` | a hovered letter bringing back its whole term ("ice cream" from inside "cream"), an inflected word finding its headword, a comma, a space and a full stop being no entry, positions counted in UTF-16 units as the page counts them, one section per ticked dictionary in Dictionary.app's order, the public call still answering when the private ones are gone, and a server with no dictionary saying so (503). The look-ups themselves are skipped off a Mac |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |

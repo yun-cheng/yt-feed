@@ -233,9 +233,9 @@ class CaptionTranslation(Base):
     """LLM translations of one video's captions, stored SPARSELY.
 
     Translation runs a block at a time as playback approaches it (like video
-    buffering), so a video is usually only partly translated — `lines` is a JSON
-    map of {cue index: translated text} that each block merges into, rather than
-    a whole-video blob. Worth persisting at all because, unlike the other caption
+    buffering), so a video is usually only partly translated — `by_source` is
+    a JSON map of {source sentence: translated text} that each block merges
+    into, rather than a whole-video blob. Worth persisting at all because, unlike the other caption
     caches (in-memory, TTL'd), a rebuild costs real tokens.
 
     Keyed by the SOURCE track — translating a video's English vs. its Japanese
@@ -247,7 +247,12 @@ class CaptionTranslation(Base):
     video_id = Column(String, primary_key=True)
     src_lang = Column(String, primary_key=True, default="")  # "" = the native track
     target_lang = Column(String, primary_key=True, default="zh-Hant")
-    lines = Column(Text, nullable=False, default="{}")  # JSON {"<cue index>": "text"}
+    # Legacy: JSON {"<sentence index>": "text"}, numbered against the sentence
+    # split of its day. Read once into `by_source`, and "{}" after that.
+    lines = Column(Text, nullable=False, default="{}")
+    # JSON {"<source sentence>": "text"}. Keyed by the sentence itself, so a
+    # change to where sentences split can't hand a line to its neighbour.
+    by_source = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

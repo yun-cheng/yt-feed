@@ -660,7 +660,7 @@ _ABBREVIATION = re.compile(r"(?:^|\s)(?:Mrs?|Ms|Dr|Prof|St|Jr|Sr|vs|e\.g|i\.e)\.
 _CJK = re.compile(r"[　-鿿＀-￯]")
 
 
-def _to_sentences(cues: list[dict]) -> list[dict]:
+def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
     """Group caption cues into whole SENTENCES: [{start, end, text}].
 
     Cues are split at arbitrary phrase boundaries, and those split points do not
@@ -672,6 +672,10 @@ def _to_sentences(cues: list[dict]) -> list[dict]:
     sentences removes the conflict.
 
     Mirrors the frontend's `toSentences()` (used there for "Whole line" mode).
+
+    `legacy` splits as it did before titles like "Mr." stopped ending a
+    sentence: the split translations stored by position were numbered against,
+    which reading one of those rows has to reproduce (`_stored_translations`).
     """
     if not cues:
         return []
@@ -724,7 +728,7 @@ def _to_sentences(cues: list[dict]) -> list[dict]:
 
     for w in toks:
         buf.append(w)
-        if _SENTENCE_END.search(w["text"]) and not _ABBREVIATION.search(w["text"]):
+        if _SENTENCE_END.search(w["text"]) and (legacy or not _ABBREVIATION.search(w["text"])):
             flush()
     flush()
 
@@ -802,7 +806,9 @@ def _translate_batch(batch: list[str], header: str) -> dict[int, str] | None:
     return None
 
 
-async def _translate_lines(lines: list[str], title: str = "", channel: str = "") -> list[str] | None:
+async def _translate_lines(
+    lines: list[str], title: str = "", channel: str = "",
+) -> list[str | None] | None:
     """Translate subtitle lines to Traditional Chinese, preserving line count.
 
     `title`/`channel` ride along with every batch as context so the model can pick
@@ -811,7 +817,8 @@ async def _translate_lines(lines: list[str], title: str = "", channel: str = "")
     Batches run CONCURRENTLY (the pool's worker count is the concurrency limit):
     wall time is then roughly the slowest batch rather than the sum, and the token
     cost is identical since the batches themselves don't change. Returns None only
-    if every batch failed; a single failed batch degrades to its source text.
+    if every batch failed; a line that didn't come back, or a whole failed batch,
+    is None in its place.
     """
     header = ""
     if channel:
@@ -830,9 +837,9 @@ async def _translate_lines(lines: list[str], title: str = "", channel: str = "")
     out: list[str] = []
     for batch, got in zip(batches, results):
         # Index-addressed, so a line the model mangled or skipped — or a whole
-        # failed batch — falls back to source text with everything else still
-        # aligned to its timing.
-        out.extend((got or {}).get(n, batch[n - 1]) for n in range(1, len(batch) + 1))
+        # failed batch — leaves a hole with everything else still aligned to
+        # its timing.
+        out.extend((got or {}).get(n) for n in range(1, len(batch) + 1))
     return out
 
 
@@ -1301,7 +1308,8 @@ async def get_translated_captions(
     channel go to the model as context for domain wording.
     """
     src = await _captions_cached(video_id, lang)
-    sents = _to_sentences((src or {}).get("cues") or [])
+    cues = (src or {}).get("cues") or []
+    sents = _to_sentences(cues)
     if not sents:
         return {"lang": _TRANSLATE_TARGET, "sentences": []}
 
@@ -1315,14 +1323,12 @@ async def get_translated_captions(
 
     async with lock:
         stored = await db.get(CaptionTranslation, (video_id, src_key, _TRANSLATE_TARGET))
-        have: dict = {}
-        if stored:
-            try:
-                have = json.loads(stored.lines)
-            except ValueError:
-                have = {}  # corrupt row — rebuild what we need
+        known = _stored_translations(stored, cues)
+        # What this response shows for a line the model didn't return: its
+        # source, so the stretch still reads, and never stored.
+        shown: dict[int, str] = {}
 
-        missing = [i for i in range(idx, end) if not have.get(str(i))]
+        missing = [i for i in range(idx, end) if sents[i]["text"] not in known]
         if missing:
             lo, hi = missing[0], missing[-1] + 1
             v = await db.get(Video, video_id)
@@ -1336,15 +1342,18 @@ async def get_translated_captions(
                 translated = None
             if translated:
                 for off, text in enumerate(translated):
-                    if text.strip():
-                        have[str(lo + off)] = text.strip()
+                    sent = sents[lo + off]["text"]
+                    if text and text.strip():
+                        known[sent] = text.strip()
+                    elif sent not in known:
+                        shown[lo + off] = sent
                 # A write failure must not lose what we just paid for, so the
                 # translation is returned either way.
                 try:
                     await db.merge(CaptionTranslation(
                         video_id=video_id, src_lang=src_key,
-                        target_lang=_TRANSLATE_TARGET,
-                        lines=json.dumps(have, ensure_ascii=False),
+                        target_lang=_TRANSLATE_TARGET, lines="{}",
+                        by_source=json.dumps(known, ensure_ascii=False),
                     ))
                     await db.commit()
                 except Exception:
@@ -1353,10 +1362,37 @@ async def get_translated_captions(
     return {
         "lang": _TRANSLATE_TARGET,
         "sentences": [
-            {"start": sents[i]["start"], "end": sents[i]["end"], "text": have[str(i)]}
-            for i in range(idx, end) if have.get(str(i))
+            {"start": sents[i]["start"], "end": sents[i]["end"], "text": text}
+            for i in range(idx, end)
+            if (text := known.get(sents[i]["text"]) or shown.get(i))
         ],
     }
+
+
+def _stored_translations(stored: "CaptionTranslation | None", cues: list[dict]) -> dict[str, str]:
+    """A stored row's translations, as {source sentence: translation}.
+
+    A row from before `by_source` is keyed by position, so it's read against
+    the sentences as they split then (`legacy`). Such a row is dropped whole if
+    any line is its own source. That was how a line the model didn't return
+    got stored, and a reply a line short was most often one that joined two
+    lines and renumbered the rest, which left everything after the join one
+    sentence late. Where it started can't be told from the row, and a wrong
+    line is worse than one translated again.
+    """
+    if not stored:
+        return {}
+    try:
+        if stored.by_source is not None:
+            return json.loads(stored.by_source)
+        by_index = json.loads(stored.lines or "{}")
+    except ValueError:
+        return {}  # corrupt row — rebuild what we need
+    old = _to_sentences(cues, legacy=True)
+    known = {old[int(i)]["text"]: t for i, t in by_index.items() if int(i) < len(old)}
+    if any(src == t for src, t in known.items()):
+        return {}
+    return known
 
 
 # ── Generated captions ──────────────────────────────────────────────────────
