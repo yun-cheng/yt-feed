@@ -20,6 +20,7 @@ export const ko: Record<string, string> = {
   'Share': '공유',
   'Copy': '복사',
   'Search Google': 'Google에서 검색',
+  'Not in your dictionaries': '사전에 없는 단어입니다',
   'Dictionary': '사전',
   'Open in Dictionary': '사전에서 열기',
   'Could not load settings.': '설정을 불러올 수 없습니다.',

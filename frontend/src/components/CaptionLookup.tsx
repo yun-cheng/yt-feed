@@ -9,7 +9,7 @@
  * a caption is something to read past, not into.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from 'react'
-import { dictionaryUnavailable, formatDefinition, lookUp, type DictEntry, type DictSection } from '../lib/dictionary'
+import { dictionaryUnavailable, formatDefinition, lookUp, wordAt, type DictEntry, type DictSection } from '../lib/dictionary'
 import { t } from '../lib/i18n'
 
 // How long the pointer rests on a word before its entry opens, and the
@@ -106,7 +106,8 @@ export function useCaptionLookup(enabled: boolean, onClickLine: () => void) {
     const ask = { key, text, at }
     want.current = ask
     askTimer.current = window.setTimeout(async () => {
-      const entry = await lookUp(text, at)
+      // A word no dictionary has still opens, for its copy and search.
+      const entry = (await lookUp(text, at)) ?? wordAt(text, at)
       if (want.current !== ask) return
       want.current = null
       setFound(entry && { ...entry, key, text })
@@ -152,7 +153,8 @@ export function useCaptionLookup(enabled: boolean, onClickLine: () => void) {
  *
  * A bar pinned to the edge nearest the word holds a copy, a Google search and
  * Dictionary.app for it — the word as the caption has it — and stays put while
- * the entries scroll.
+ * the entries scroll. A word in no dictionary gets the bar alone, less
+ * Dictionary.app, under a line saying so.
  */
 export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: RefObject<HTMLElement | null> }) {
   const { found, termRef, keep, hideSoon } = lookup
@@ -202,6 +204,7 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
   }
   // A lone section needs no name to tell it from the others, nor a fold.
   const lone = found.sections.length === 1
+  const none = found.sections.length === 0
   const copy = () => {
     void navigator.clipboard.writeText(found.term).then(() => {
       setCopied(word)
@@ -223,11 +226,12 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
       // A column with the bar last, so at the bottom when the tip is above the
       // word; reversed, at the top, when it's below. 20rem wide, or as wide as
       // the bar's labels need in a longer language.
-      className="group absolute z-30 flex w-max min-w-[min(20rem,calc(100%-1rem))] max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-xl bg-shade-28 text-left text-[13px] leading-snug text-white shadow-lg ring-1 ring-white/10 data-[side=below]:flex-col-reverse"
+      className={`group absolute z-30 flex w-max ${none ? '' : 'min-w-[min(20rem,calc(100%-1rem))]'} max-w-[calc(100%-1rem)] flex-col overflow-hidden rounded-xl bg-shade-28 text-left text-[13px] leading-snug text-white shadow-lg ring-1 ring-white/10 data-[side=below]:flex-col-reverse`}
     >
       {/* Takes the tip's width without adding to it, so a long line in an
           entry wraps rather than widening the tip. */}
       <div className="min-h-0 w-0 min-w-full flex-1 overflow-y-auto px-3 py-2">
+        {none && <p className="text-shade-aa">{t('Not in your dictionaries')}</p>}
         {found.sections.map((section, i) => {
           const shown = lone || !!open?.has(section.dictionary)
           return (
@@ -272,9 +276,11 @@ export function DictionaryTip({ lookup, box }: { lookup: CaptionLookup; box: Ref
         <TipButton label={t('Search Google')} onClick={search}>
           <circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" />
         </TipButton>
-        <TipButton label={t('Dictionary')} title={t('Open in Dictionary')} onClick={openDictionary}>
-          <path d="M4 5a2 2 0 012-2h13v15H6a2 2 0 00-2 2V5z" /><path d="M4 20a2 2 0 002 2h13v-4" />
-        </TipButton>
+        {!none && (
+          <TipButton label={t('Dictionary')} title={t('Open in Dictionary')} onClick={openDictionary}>
+            <path d="M4 5a2 2 0 012-2h13v15H6a2 2 0 00-2 2V5z" /><path d="M4 20a2 2 0 002 2h13v-4" />
+          </TipButton>
+        )}
       </div>
     </div>
   )

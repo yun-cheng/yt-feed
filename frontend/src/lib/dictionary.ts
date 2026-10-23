@@ -3,8 +3,9 @@
  * Dictionary via /api/dictionary — the backend's docstring has how.
  *
  * The server is handed the whole line and the index under the pointer, and
- * says which term that is: so the page never splits words itself, and a
- * multi-word term or an unspaced Chinese line comes back already cut.
+ * says which term that is: so the page doesn't split words to look them up,
+ * and a multi-word term or an unspaced Chinese line comes back already cut.
+ * Only a word the server has nothing for is cut here (`wordAt`).
  *
  * Like Look Up, the term comes with a section from each dictionary that has
  * it, in the order the Dictionary app has them.
@@ -48,6 +49,21 @@ export async function lookUp(text: string, at: number): Promise<DictEntry | null
   if (entry) s.entries.push(entry)
   else s.misses.add(at)
   return entry
+}
+
+/**
+ * The word at `at` as the browser cuts it, with no sections: for a word no
+ * dictionary has, which can still be copied or searched. Unspaced Chinese is
+ * cut by the browser's own word list, so this is a guess where the server's
+ * answer is not — fine for a search, which is what it's for. Null off a word
+ * (a space, punctuation).
+ */
+export function wordAt(text: string, at: number): DictEntry | null {
+  for (const s of new Intl.Segmenter(undefined, { granularity: 'word' }).segment(text)) {
+    if (at < s.index || at >= s.index + s.segment.length) continue
+    return s.isWordLike ? { term: s.segment, start: s.index, length: s.segment.length, sections: [] } : null
+  }
+  return null
 }
 
 export type DefinitionLine = { text: string; kind: 'sense' | 'sub' | 'example' | 'heading' }

@@ -1464,6 +1464,11 @@ Other details:
     from; it's darker than the entries so it reads as the tip's own. Which
     edge faces the word is decided where the tip is placed (`data-side`), and
     the column reverses for it.
+  - **A word in no dictionary** still opens, with the bar alone under "Not in
+    your dictionaries" — Copy and Search Google, no Dictionary, and only as
+    wide as that. The server finds nothing, so the browser cuts the word
+    (`wordAt`, `Intl.Segmenter`): its word list, not the dictionaries', which
+    is close enough for a search. Off a word — a space, a comma — nothing opens.
   - **The bar holds still.** Copy keeps the width of its wider label, so
     turning into "Copied" moves nothing. The tip is 20rem, or wider where a
     language's labels need it (Thai, Vietnamese); the entries take its width
@@ -2492,7 +2497,7 @@ problem.
 | `time.test.ts`, `local.test.ts` | the clock, resume ratios, size formatting, the fetch helpers |
 | `ext.test.ts` | the clean-embed capability: the marker, an unknown version, and that the answer is frozen for the page |
 | `captionLines.test.ts` | which caption lines are up: the rolling two lines oldest first, the word-by-word reveal and its lookahead, sentences stitched across cues and broken mid-cue, CJK joined without spaces, a track with no punctuation kept one line per cue, and a long sentence cut into **even** pieces rather than a runt at its only comma — but left whole for the transcript |
-| `dictionary.test.ts` | an entry split at its seams for each dictionary that ships with macOS — the Oxford heads and senses, a lone sense under its part of speech, numbers inside an example left alone, a Chinese head untangled into word, zhuyin and pinyin with its Cangjie code dropped, 譯典通's two pronunciations, abbreviated parts of speech, examples and closing sections (and 同義詞 inside a gloss left alone), the thesaurus's `|`-separated examples not taken for a head — and the client asking once per term, remembering where there was nothing, and stopping when the server has no dictionary |
+| `dictionary.test.ts` | an entry split at its seams for each dictionary that ships with macOS — the Oxford heads and senses, a lone sense under its part of speech, numbers inside an example left alone, a Chinese head untangled into word, zhuyin and pinyin with its Cangjie code dropped, 譯典通's two pronunciations, abbreviated parts of speech, examples and closing sections (and 同義詞 inside a gloss left alone), the thesaurus's `|`-separated examples not taken for a head — and the client asking once per term, remembering where there was nothing, and stopping when the server has no dictionary; and the word under the pointer for one no dictionary has, unspaced Chinese cut into its words and nothing on a space or comma |
 | `captionSlots.test.ts` | the menu's two slots: a replaced Main drops into an empty Second and leaves a chosen one alone, toggling off promotes, picking the Main as Second swaps |
 | `channelCaptions.test.ts` | captions per channel: nothing kept by default, an unknown setting read as the default, on/off kept apart per channel, tracks (AI translation among them) kept under `channel_tracks`, tracks kept earlier left in place under `channel_on` and found again, and a store that no longer parses |
 | `captionPrefs.test.ts` | the saved caption look: the defaults, the second track's edge following the main's in an older save, the old `'line'` name for whole-sentence mode, an older build's size clamped rather than dropped, and a tenth staying a tenth |

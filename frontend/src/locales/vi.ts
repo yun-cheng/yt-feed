@@ -20,6 +20,7 @@ export const vi: Record<string, string> = {
   'Share': 'Chia sẻ',
   'Copy': 'Sao chép',
   'Search Google': 'Tìm trên Google',
+  'Not in your dictionaries': 'Không có trong từ điển',
   'Dictionary': 'Từ điển',
   'Open in Dictionary': 'Mở trong Từ điển',
   'Could not load settings.': 'Không thể tải cài đặt.',

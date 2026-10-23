@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { formatDefinition, lookUp } from '../lib/dictionary'
+import { formatDefinition, lookUp, wordAt } from '../lib/dictionary'
 
 // Trimmed from what macOS's dictionaries actually return.
 const LOOK = "look | lo͝ok | verb [no object, usually with adverbial of direction] 1 direct one's gaze toward someone: people were looking at him | they looked up. • (of a building or room) have a view in a specified direction: the rooms look out over Nahant Bay. 2 (look at) think of or regard in a specified way: I look at tennis differently. noun 1 an act of directing one's gaze: here, let me have a look."
@@ -84,6 +84,22 @@ describe('lookUp', () => {
     expect(await lookUp('one', 0)).toBeNull()
     expect(await lookUp('two', 0)).toBeNull()
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('wordAt', () => {
+  it('finds the word under the pointer, for one no dictionary has', () => {
+    expect(wordAt("Let's re-enter Zxqvland.", 17)).toEqual({ term: 'Zxqvland', start: 15, length: 8, sections: [] })
+    expect(wordAt("Let's re-enter Zxqvland.", 2)?.term).toBe("Let's")
+  })
+
+  it('cuts an unspaced Chinese line into its words', () => {
+    expect(wordAt('我們今天去公園。', 6)).toMatchObject({ term: '公園', start: 5, length: 2 })
+  })
+
+  it('finds nothing on a space or punctuation', () => {
+    expect(wordAt('Hi, you.', 2)).toBeNull()
+    expect(wordAt('Hi, you.', 3)).toBeNull()
   })
 })
 

@@ -20,6 +20,7 @@ export const ja: Record<string, string> = {
   'Share': '共有',
   'Copy': 'コピー',
   'Search Google': 'Googleで検索',
+  'Not in your dictionaries': '辞書に見つかりません',
   'Dictionary': '辞書',
   'Open in Dictionary': '辞書で開く',
   'Could not load settings.': '設定を読み込めませんでした。',

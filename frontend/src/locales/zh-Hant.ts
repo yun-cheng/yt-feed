@@ -21,6 +21,7 @@ export const zhHant: Record<string, string> = {
   'Share': '分享',
   'Copy': '複製',
   'Search Google': '在 Google 搜尋',
+  'Not in your dictionaries': '辭典裡沒有這個詞',
   'Dictionary': '辭典',
   'Open in Dictionary': '在「辭典」中打開',
   'Could not load settings.': '無法載入設定。',

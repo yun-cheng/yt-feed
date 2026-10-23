@@ -20,6 +20,7 @@ export const th: Record<string, string> = {
   'Share': 'แชร์',
   'Copy': 'คัดลอก',
   'Search Google': 'ค้นหาใน Google',
+  'Not in your dictionaries': 'ไม่พบในพจนานุกรม',
   'Dictionary': 'พจนานุกรม',
   'Open in Dictionary': 'เปิดในพจนานุกรม',
   'Could not load settings.': 'โหลดการตั้งค่าไม่ได้',
