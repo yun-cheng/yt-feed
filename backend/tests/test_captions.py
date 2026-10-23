@@ -1,4 +1,5 @@
-"""Caption post-processing — the parts that run before and after the LLM.
+"""Caption post-processing — the parts that run before and after the LLM —
+and the track download they all start from.
 
 `_to_sentences` is what makes translation work at all (fragments can't be
 translated 1:1 because word order moves across languages), and `_parse_numbered`
@@ -146,3 +147,39 @@ def test_too_little_back_is_rejected_so_the_caller_can_retry():
     assert _parse_numbered("1. only one", 10) is None
     assert _parse_numbered("no numbered lines here", 5) is None
     assert _parse_numbered("", 5) is None
+
+
+# ── downloading the track ────────────────────────────────────────────
+
+
+def _failing(times, monkeypatch):
+    """A track download that fails `times` times, then returns one cue."""
+    from app.routers import feed
+    calls = []
+
+    def _parse(url):
+        calls.append(url)
+        if len(calls) <= times:
+            raise OSError("HTTP Error 429: Too Many Requests")
+        return [cue(0.0, 1.0, "hello")]
+
+    monkeypatch.setattr(feed, "_parse_json3", _parse)
+    monkeypatch.setattr(feed, "_JSON3_RETRY_DELAYS", (0, 0))
+    return calls
+
+
+def test_a_track_download_that_fails_once_is_retried(monkeypatch):
+    """One 429 used to mean no captions — and no Chinese built on them — for
+    the five minutes a failure stays cached."""
+    from app.routers.feed import _parse_json3_retrying
+    calls = _failing(1, monkeypatch)
+    assert [c["text"] for c in _parse_json3_retrying("u")] == ["hello"]
+    assert len(calls) == 2
+
+
+def test_a_track_that_keeps_failing_gives_up(monkeypatch):
+    from app.routers.feed import _parse_json3_retrying
+    calls = _failing(99, monkeypatch)
+    with pytest.raises(OSError):
+        _parse_json3_retrying("u")
+    assert len(calls) == 3

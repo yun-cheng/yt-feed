@@ -510,6 +510,26 @@ def _parse_json3(url: str) -> list[dict] | None:
     return cues or None
 
 
+# Pauses before each retry of a track download.
+_JSON3_RETRY_DELAYS = (1.0, 3.0)
+
+
+def _parse_json3_retrying(url: str) -> list[dict] | None:
+    """`_parse_json3`, retried on failure.
+
+    The track's own download fails now and then (a 429, or a short body) where
+    the same URL works a second later. One failure used to be final for five
+    minutes, the negative cache's TTL: no captions, and no Chinese, since the
+    translation is built from them.
+    """
+    for delay in _JSON3_RETRY_DELAYS:
+        try:
+            return _parse_json3(url)
+        except Exception:
+            time.sleep(delay)
+    return _parse_json3(url)
+
+
 async def _generated_captions(video_id: str, lang: str = "") -> dict | None:
     """A track we transcribed ourselves, if there is a finished one.
 
@@ -553,9 +573,10 @@ async def _fetch_captions(video_id: str, lang: str = "") -> dict | None:
         return await _generated_captions(video_id, lang)
     try:
         cues = await asyncio.get_event_loop().run_in_executor(
-            _preview_pool, _parse_json3, picked[0]["url"]
+            _preview_pool, _parse_json3_retrying, picked[0]["url"]
         )
-    except Exception:
+    except Exception as exc:
+        print(f"[feed] could not download captions for {video_id}: {exc!r}")
         return None
     if not cues:
         return None
