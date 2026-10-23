@@ -1532,8 +1532,9 @@ Other details:
   stay a single row — they're already whole lines, so word-by-word would do nothing.
 
   Whole-sentence mode stitches cues: `toSentences` (`lib/captionLines.ts`) flattens
-  them to a word stream (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`,
-  centered, each shown until the next begins. A stitched sentence can run far past
+  them to a word stream (sentence ends fall mid-cue) and breaks at `. ! ? 。 ！ ？`
+  (not after a title or abbreviation like `Mr.` or `e.g.`, as in the backend's
+  `_to_sentences`), centered, each shown until the next begins. A stitched sentence can run far past
   what's readable in one block (183 characters over 11s, in one measured case), so
   an over-long one is chunked to roughly two subtitle lines' worth (~84 Latin / ~36
   CJK, since CJK is much denser).

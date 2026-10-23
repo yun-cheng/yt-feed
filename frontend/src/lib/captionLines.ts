@@ -40,6 +40,8 @@ export function linesAt(cues: Cue[] | null, curTime: number): CaptionLine[] {
 
 // A token whose text ends a sentence (Latin or CJK terminals, optional closing quote).
 const SENTENCE_END = /[.!?。！？][")'”’」』]?\s*$/
+// A stop that belongs to a title or an abbreviation ("Mr. Beast"), not a sentence.
+const ABBREVIATION = /(?:^|\s)(?:Mrs?|Ms|Dr|Prof|St|Jr|Sr|vs|e\.g|i\.e)\.\s*$/
 // Where a too-long sentence may be broken; how long "too long" is lives with
 // splitTimed, which breaks the lines that have no word timing to break on.
 const BREAK_AFTER = /[,;:，、；：][")'”’」』]?\s*$/
@@ -139,7 +141,7 @@ export function toSentences(cues: Cue[] | null, chunk = true): { start: number; 
 
   for (const w of toks) {
     buf.push(w)
-    if (SENTENCE_END.test(w.text)) flush()
+    if (SENTENCE_END.test(w.text) && !ABBREVIATION.test(w.text)) flush()
   }
   flush()  // trailing run with no terminal punctuation
 

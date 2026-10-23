@@ -18,6 +18,10 @@ def cue(start, dur, text, words=None):
     return c
 
 
+def w(t, text):
+    return {"t": t, "text": text}
+
+
 # ── _to_sentences ────────────────────────────────────────────────────
 
 
@@ -108,6 +112,25 @@ def test_a_closing_quote_after_the_stop_still_ends_the_sentence():
 def test_empty_cues_are_dropped():
     cues = [cue(0.0, 2.0, "  "), cue(2.0, 2.0, "Real text")]
     assert [s["text"] for s in _to_sentences(cues)] == ["Real text"]
+
+
+def test_a_title_does_not_end_a_sentence():
+    """ "…channels like Mr." and "Beast and Fireship came in…" went to the model
+    as two lines, and it joined them."""
+    cues = [
+        cue(0.0, 2.0, "before channels like Mr.", [w(0.0, "before"), w(0.5, " channels"), w(1.0, " like"), w(1.5, " Mr.")]),
+        cue(2.0, 2.0, "Beast came in. Then", [w(2.0, " Beast"), w(2.5, " came"), w(3.0, " in."), w(3.5, " Then")]),
+    ]
+    assert [s["text"] for s in _to_sentences(cues)] == [
+        "before channels like Mr. Beast came in.", "Then",
+    ]
+
+
+@pytest.mark.parametrize("abbr", ["Dr.", "Mrs.", "vs.", "e.g."])
+def test_other_abbreviations_do_not_end_a_sentence(abbr):
+    words = [w(0.0, "see"), w(0.5, f" {abbr}"), w(1.0, " Smith."), w(1.5, " Next.")]
+    cues = [cue(0.0, 2.0, f"see {abbr} Smith. Next.", words)]
+    assert [s["text"] for s in _to_sentences(cues)] == [f"see {abbr} Smith.", "Next."]
 
 
 # ── _parse_numbered ──────────────────────────────────────────────────

@@ -47,6 +47,11 @@ describe('toSentences', () => {
     expect(s[1].end).toBe(Number.POSITIVE_INFINITY)
   })
 
+  it('runs on past a title like "Mr." — it does not end the sentence', () => {
+    const cues = [auto(0, 2, 'channels like Mr.'), auto(2, 2, 'Beast came in. Then')]
+    expect(toSentences(cues).map((x) => x.text)).toEqual(['channels like Mr. Beast came in.', 'Then'])
+  })
+
   it('joins CJK words without spaces', () => {
     const cues: Cue[] = [
       { start: 0, dur: 2, text: '我们今天', words: [{ t: 0, text: '我们' }, { t: 1, text: '今天' }] },

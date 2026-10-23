@@ -653,6 +653,10 @@ def _captions_cached(video_id: str, lang: str) -> "Awaitable[Optional[dict]]":
 
 # A token ending a sentence (Latin or CJK terminals, optional closing quote).
 _SENTENCE_END = re.compile(r"[.!?。！？][\"')\]”’」』]?\s*$")
+# A stop that belongs to a title or an abbreviation, not a sentence: "…channels
+# like Mr. / Beast and Fireship…" split there, and the model, given two halves of
+# one sentence as two lines, joined them and renumbered every line after it.
+_ABBREVIATION = re.compile(r"(?:^|\s)(?:Mrs?|Ms|Dr|Prof|St|Jr|Sr|vs|e\.g|i\.e)\.\s*$")
 _CJK = re.compile(r"[　-鿿＀-￯]")
 
 
@@ -720,7 +724,7 @@ def _to_sentences(cues: list[dict]) -> list[dict]:
 
     for w in toks:
         buf.append(w)
-        if _SENTENCE_END.search(w["text"]):
+        if _SENTENCE_END.search(w["text"]) and not _ABBREVIATION.search(w["text"]):
             flush()
     flush()
 
