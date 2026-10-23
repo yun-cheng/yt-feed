@@ -1618,10 +1618,11 @@ Other details:
   The position ticker that drives the caption reveal also feeds the transcript, at
   500ms instead of 120ms when only the transcript needs it: its highlight moves
   once a sentence, so the caption rate would be ~8 renders per useful change.
-- **Persisted**: on/off, main + second language, and style are saved to
-  localStorage (`ytfeed:caption-prefs`) and re-applied on the next video/session —
-  the overlay seeds its state from them on mount. The AI-translate selection is
-  deliberately excluded (see above).
+- **Persisted**: on/off and style are saved to localStorage
+  (`ytfeed:caption-prefs`) and re-applied on the next video/session — the overlay
+  seeds its state from them on mount. The languages come from your defaults, and
+  the AI translation from nowhere: restoring it would translate every video you
+  open.
 - Non-embeddable videos (`onError` 101/150) show an "Open on YouTube" fallback.
 
 ### Live broadcasts
