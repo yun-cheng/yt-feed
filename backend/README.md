@@ -2038,10 +2038,12 @@ keys with no two actions on one key.
 
 The `theme` setting is a **`user`** `choice` of `dark` (the default), `light` or `system`; the frontend applies it (see its README, *Theme*).
 
-The language settings are four `choice`s, all **`user`**: `app_language`
+The language settings are five `choice`s, all **`user`**: `app_language`
 (`auto`, `en`, `zh-Hant`, `ja`, `ko`, `th`, `vi`; `auto` follows the browser),
-and `caption_lang` / `caption_lang2`, the caption languages every video opens with (`""` for the
-video's own track, or no second track), and `translate_lang`, what a comment's
+`caption_lang` / `caption_lang2`, the caption languages every video opens with (`""` for the
+video's own track, or no second track), `caption_memory`, whether captions are
+remembered per channel (`last_video`, the default; `channel_on`; `channel_tracks` —
+what each channel keeps lives in the browser, see the frontend README), and `translate_lang`, what a comment's
 Translate button translates into (`""` follows the app language;
 `languages.TRANSLATE_LANG_OPTIONS`). A `choice` serves its `options` in menu
 order, refuses anything else with a 400, and reads a stored value that is no

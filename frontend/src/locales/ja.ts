@@ -50,6 +50,11 @@ export const ja: Record<string, string> = {
   'The video\'s own language': '動画の元の言語',
   'Second caption track': '第2字幕トラック',
   'A second language shown under the first, for following along in two at once.': '最初の字幕の下に表示される2つ目の言語で、2つの言語を同時に確認できます。',
+  'Captions remember': '字幕の記憶',
+  'Per channel, a video opens its captions the way you last left them on that channel — off for one, two tracks for another. A channel you haven\'t set yet opens as the last video had them. Remembered tracks include the AI translation, which then runs on each new video from that channel.': 'チャンネルごとに記憶すると、動画はそのチャンネルで最後に設定した状態で字幕を開きます。あるチャンネルではオフ、別のチャンネルでは2トラック、というように。まだ設定していないチャンネルは、直前の動画と同じ状態で開きます。記憶するトラックにはAI翻訳も含まれ、そのチャンネルの新しい動画ごとに翻訳が実行されます。',
+  'As the last video had them': '直前の動画と同じ',
+  'Per channel: on or off': 'チャンネルごと：オン/オフ',
+  'Per channel: on or off, and which tracks': 'チャンネルごと：オン/オフとトラック',
   'None': 'なし',
   // People, page defaults editor
   'Remove {name}? Their history, playlists, tags and saved videos go too. Nothing shared — channels, videos, downloads — is touched.': '{name}を削除しますか？視聴履歴、再生リスト、タグ、保存した動画も削除されます。共有されているチャンネル、動画、ダウンロードには影響しません。',

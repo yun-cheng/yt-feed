@@ -50,6 +50,11 @@ export const vi: Record<string, string> = {
   'The video\'s own language': 'Ngôn ngữ gốc của video',
   'Second caption track': 'Phụ đề thứ hai',
   'A second language shown under the first, for following along in two at once.': 'Ngôn ngữ thứ hai hiển thị bên dưới ngôn ngữ đầu tiên, để theo dõi cả hai cùng lúc.',
+  'Captions remember': 'Phụ đề ghi nhớ',
+  'Per channel, a video opens its captions the way you last left them on that channel — off for one, two tracks for another. A channel you haven\'t set yet opens as the last video had them. Remembered tracks include the AI translation, which then runs on each new video from that channel.': 'Theo từng kênh, video mở phụ đề theo cách bạn để lại lần cuối trên kênh đó — tắt ở kênh này, hai phụ đề ở kênh khác. Kênh bạn chưa đặt sẽ mở như video trước. Phụ đề được ghi nhớ bao gồm cả bản dịch AI, khi đó sẽ chạy trên mỗi video mới của kênh đó.',
+  'As the last video had them': 'Như video trước',
+  'Per channel: on or off': 'Theo kênh: bật hoặc tắt',
+  'Per channel: on or off, and which tracks': 'Theo kênh: bật hoặc tắt, và phụ đề nào',
   'None': 'Không',
   // People, page defaults editor
   'Remove {name}? Their history, playlists, tags and saved videos go too. Nothing shared — channels, videos, downloads — is touched.': 'Xóa {name}? Lịch sử, danh sách phát, thẻ và video đã lưu của họ cũng sẽ bị xóa. Nội dung dùng chung — kênh, video, tải xuống — không bị ảnh hưởng.',

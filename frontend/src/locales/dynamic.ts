@@ -27,6 +27,11 @@ export const DYNAMIC_MESSAGES: string[] = [
   'The video\'s own language',
   'Second caption track',
   'A second language shown under the first, for following along in two at once.',
+  'Captions remember',
+  'Per channel, a video opens its captions the way you last left them on that channel — off for one, two tracks for another. A channel you haven\'t set yet opens as the last video had them. Remembered tracks include the AI translation, which then runs on each new video from that channel.',
+  'As the last video had them',
+  'Per channel: on or off',
+  'Per channel: on or off, and which tracks',
   'None',
   // The player's two settings, and every action the shortcut editor lists.
   'Player',

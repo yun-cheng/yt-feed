@@ -51,6 +51,11 @@ export const zhHant: Record<string, string> = {
   'The video\'s own language': '影片的原始語言',
   'Second caption track': '第二字幕',
   'A second language shown under the first, for following along in two at once.': '顯示在第一字幕下方的第二種語言，方便同時對照兩種語言。',
+  'Captions remember': '字幕記憶方式',
+  'Per channel, a video opens its captions the way you last left them on that channel — off for one, two tracks for another. A channel you haven\'t set yet opens as the last video had them. Remembered tracks include the AI translation, which then runs on each new video from that channel.': '依頻道記憶時，影片會照你上次在該頻道留下的樣子開啟字幕——這個頻道關閉、那個頻道顯示兩條字幕。還沒設定過的頻道，則沿用上一部影片的樣子。記住的字幕包含 AI 翻譯，之後該頻道的每部新影片都會進行翻譯。',
+  'As the last video had them': '沿用上一部影片',
+  'Per channel: on or off': '依頻道：開或關',
+  'Per channel: on or off, and which tracks': '依頻道：開或關，以及哪些字幕',
   'None': '無',
   // People, page defaults editor
   'Remove {name}? Their history, playlists, tags and saved videos go too. Nothing shared — channels, videos, downloads — is touched.': '要移除 {name} 嗎？他們的觀看紀錄、播放清單、標籤和儲存的影片也會一併刪除。共用的頻道、影片和下載內容不受影響。',

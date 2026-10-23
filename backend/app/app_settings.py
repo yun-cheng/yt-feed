@@ -251,6 +251,28 @@ SPEC: tuple[Spec, ...] = (
         group="Language",
     ),
     Spec(
+        key="caption_memory",
+        type="choice",
+        # Read by the frontend's lib/channelCaptions.ts; what each channel last
+        # showed is kept in the browser, beside the rest of the caption prefs.
+        options=(
+            ("last_video", "As the last video had them"),
+            ("channel_on", "Per channel: on or off"),
+            ("channel_tracks", "Per channel: on or off, and which tracks"),
+        ),
+        default=lambda: "last_video",
+        scope="user",
+        label="Captions remember",
+        description=(
+            "Per channel, a video opens its captions the way you last left them "
+            "on that channel — off for one, two tracks for another. A channel "
+            "you haven't set yet opens as the last video had them. Remembered "
+            "tracks include the AI translation, which then runs on each new "
+            "video from that channel."
+        ),
+        group="Language",
+    ),
+    Spec(
         key="translate_lang",
         type="choice",
         options=tuple(TRANSLATE_LANG_OPTIONS),

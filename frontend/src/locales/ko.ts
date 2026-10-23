@@ -50,6 +50,11 @@ export const ko: Record<string, string> = {
   'The video\'s own language': '동영상의 원본 언어',
   'Second caption track': '두 번째 자막',
   'A second language shown under the first, for following along in two at once.': '첫 번째 자막 아래에 표시되는 두 번째 언어로, 두 언어를 동시에 볼 수 있습니다.',
+  'Captions remember': '자막 기억 방식',
+  'Per channel, a video opens its captions the way you last left them on that channel — off for one, two tracks for another. A channel you haven\'t set yet opens as the last video had them. Remembered tracks include the AI translation, which then runs on each new video from that channel.': '채널별로 기억하면 영상은 그 채널에서 마지막으로 둔 상태로 자막을 엽니다. 어떤 채널은 끄고, 다른 채널은 두 트랙으로요. 아직 설정하지 않은 채널은 직전 영상과 같은 상태로 열립니다. 기억한 트랙에는 AI 번역도 포함되며, 그 채널의 새 영상마다 번역이 실행됩니다.',
+  'As the last video had them': '직전 영상과 같게',
+  'Per channel: on or off': '채널별: 켜기/끄기',
+  'Per channel: on or off, and which tracks': '채널별: 켜기/끄기와 트랙',
   'None': '없음',
   // People, page defaults editor
   'Remove {name}? Their history, playlists, tags and saved videos go too. Nothing shared — channels, videos, downloads — is touched.': '{name}님을 삭제하시겠습니까? 시청 기록, 재생목록, 태그, 저장한 동영상도 함께 삭제됩니다. 공유 항목(채널, 동영상, 다운로드)은 영향을 받지 않습니다.',

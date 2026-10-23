@@ -50,6 +50,11 @@ export const th: Record<string, string> = {
   'The video\'s own language': 'ภาษาต้นฉบับของวิดีโอ',
   'Second caption track': 'แทร็กคำบรรยายที่สอง',
   'A second language shown under the first, for following along in two at once.': 'ภาษาที่สองแสดงใต้ภาษาแรก เพื่อติดตามสองภาษาพร้อมกัน',
+  'Captions remember': 'การจำคำบรรยาย',
+  'Per channel, a video opens its captions the way you last left them on that channel — off for one, two tracks for another. A channel you haven\'t set yet opens as the last video had them. Remembered tracks include the AI translation, which then runs on each new video from that channel.': 'เมื่อจำแยกตามช่อง วิดีโอจะเปิดคำบรรยายแบบที่คุณตั้งไว้ล่าสุดในช่องนั้น — ช่องหนึ่งปิด อีกช่องแสดงสองแทร็ก ช่องที่ยังไม่เคยตั้งจะเปิดแบบเดียวกับวิดีโอก่อนหน้า แทร็กที่จำไว้รวมถึงคำแปล AI ซึ่งจะทำงานกับวิดีโอใหม่ทุกรายการของช่องนั้น',
+  'As the last video had them': 'ตามวิดีโอก่อนหน้า',
+  'Per channel: on or off': 'แยกตามช่อง: เปิดหรือปิด',
+  'Per channel: on or off, and which tracks': 'แยกตามช่อง: เปิดหรือปิด และแทร็กใด',
   'None': 'ไม่มี',
   // People, page defaults editor
   'Remove {name}? Their history, playlists, tags and saved videos go too. Nothing shared — channels, videos, downloads — is touched.': 'ลบ {name}? ประวัติ เพลย์ลิสต์ แท็ก และวิดีโอที่บันทึกของเขาจะหายไปด้วย สิ่งที่แชร์ — ช่อง วิดีโอ ดาวน์โหลด — ไม่ถูกแตะต้อง',
