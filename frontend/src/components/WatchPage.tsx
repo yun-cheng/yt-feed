@@ -1187,10 +1187,24 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         }),
       }).catch(() => { /* progress is best-effort */ })
     }
+    // Whether the ending has been reported, so a player sitting at its end
+    // reports it once rather than every tick.
+    let endReported = false
     const id = window.setInterval(() => {
       // 1 = PLAYING. Paused or buffering means the position hasn't moved, so
       // there's nothing new to say.
-      if (playerRef.current?.getPlayerState() === 1) report()
+      const state = playerRef.current?.getPlayerState()
+      if (state === 1) {
+        endReported = false
+        report()
+      } else if (state === 0 && !endReported) {
+        // 0 = ENDED, said once. A broadcast you watched from behind the edge
+        // is only seen to be over here (see playerIsLive): every report while
+        // it played said `live`, and without this one the first to say
+        // otherwise would wait for you to leave the page.
+        endReported = true
+        report()
+      }
     }, HISTORY_REPORT_SEC * 1000)
     const onHide = () => { if (document.visibilityState === 'hidden') report(true) }
     document.addEventListener('visibilitychange', onHide)
