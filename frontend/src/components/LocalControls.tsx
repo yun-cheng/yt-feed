@@ -246,9 +246,15 @@ export function localPlayer(el: HTMLVideoElement): PlayerApi {
  *  property of the MOMENT: a stream that was live an hour ago is a recording
  *  now, and a stored flag would be wrong by exactly as long as it has been
  *  since the last sync. The player is watching the thing.
+ *
+ *  Except that the embed doesn't always notice: watched from behind the edge,
+ *  it can keep saying `isLive` after the broadcast is over. But a broadcast
+ *  still on air can't END under you — its edge keeps moving ahead of the play
+ *  head — so a player that has ended (state 0) is holding a recording,
+ *  whatever the flag says.
  */
 export function playerIsLive(p: PlayerApi | null | undefined): boolean {
-  return Boolean(p?.getVideoData?.()?.isLive)
+  return Boolean(p?.getVideoData?.()?.isLive) && p?.getPlayerState() !== 0
 }
 
 /** How far behind the broadcast still counts as watching it live.
@@ -314,7 +320,15 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   chapters?: Chapter[]
 }) {
   const [time, setTime] = useState(0)
+  // The track's length. On a recording that's the video's; on a broadcast it's
+  // where the edge was when you last reached the end of the track — held there
+  // rather than following the edge, so the bar stands still while you watch
+  // behind it (see sync).
   const [duration, setDuration] = useState(0)
+  const durationRef = useRef(0)
+  // Where the broadcast has got to: what the player reports as its duration.
+  // The same as `duration` on a recording.
+  const [edge, setEdge] = useState(0)
   const [paused, setPaused] = useState(true)
   const [muted, setMuted] = useState(false)
   // A live broadcast is a different bar: no end to run towards, so no clock
@@ -367,21 +381,41 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
     const sync = () => {
       const p = api()
       if (!p) return
-      setTime(p.getCurrentTime())
+      const now = p.getCurrentTime()
+      setTime(now)
       // Buffering counts as running, so a stall neither flips the button to
       // "play" nor pins the bar open. (localPlayer never reports it.)
       const s = p.getPlayerState()
       setPaused(s !== 1 && s !== 3)
       setMuted(p.isMuted())
-      setDuration(p.getDuration())
       // Polled with everything else rather than read once: over the embed the
       // answer isn't there at all until the player has loaded the video, and a
       // stream can end while you're watching it, which turns it into an
       // ordinary recording under the same bar.
-      setLive(playerIsLive(p))
+      const isLive = playerIsLive(p)
+      setLive(isLive)
+      const end = p.getDuration()
+      setEdge(end)
+      // A broadcast's edge grows by the second. Followed live, it would slide
+      // every point on the track — the fill, the marks, where a click lands —
+      // under you as you watched half an hour behind it. So the track keeps the
+      // length it had and catches up only when you play into its end, and then
+      // once, to wherever the edge has got to. At the edge itself that's every
+      // few seconds, which is the track keeping pace with the broadcast.
+      if (!isLive || !durationRef.current || now >= durationRef.current) durationRef.current = end
+      setDuration(durationRef.current)
       // Polled like the rest: a keyboard shortcut, or a player rebuilt under us
       // (which starts over at 1×), both change this without telling the bar.
-      setRate(p.getPlaybackRate?.() ?? 1)
+      const r = p.getPlaybackRate?.() ?? 1
+      // Faster than the broadcast is only possible behind it. Caught up, the
+      // player would just stall waiting for the next second to air — so back to
+      // 1×, as YouTube's own player does.
+      if (isLive && end > 0 && end - now <= LIVE_EDGE_SEC && r > 1) {
+        p.setPlaybackRate?.(1)
+        setRate(1)
+      } else {
+        setRate(r)
+      }
       // What's actually on screen. A file knows its own height; the embed only
       // has YouTube's name for the quality it settled on, which drifts on its
       // own while it's on auto — so this is polled with everything else rather
@@ -450,9 +484,10 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // An open menu keeps the bar up in either mode: it's a menu you opened, and
   // fading it out from under the cursor would be the bar cancelling a choice.
   const show = (focus ? hovering : hovering || paused) || rateMenu
-  // On a broadcast the "duration" is how long it has been running, and the play
-  // head can sit a hair past it (the two are measured a moment apart), so the
-  // ratio needs a ceiling it never needed on a file.
+  // On a broadcast the track's length is an edge the play head is allowed to
+  // pass (see sync), and reads a hair past even at the real one (the two are
+  // measured a moment apart), so the ratio needs a ceiling it never needed on
+  // a file.
   const progress = duration ? Math.min(1, time / duration) : 0
   // Inside a running A-B repeat the red fill starts at A, not at the start of
   // the video: what's been played is this pass through the passage, so the bar
@@ -461,11 +496,12 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   const loopEnds = loop && duration ? loopBounds(loop, duration) : null
   const fillFrom = loopEnds && time >= loopEnds.a && time <= loopEnds.b ? loopEnds.a / duration : 0
   // How far back in the stream you are. At the edge this is the buffer and
-  // nothing more; further back it's where you scrubbed to.
-  const behind = Math.max(0, duration - time)
-  // `duration > 0` because a player that hasn't loaded yet reports 0 for both,
+  // nothing more; further back it's where you scrubbed to. Measured from the
+  // real edge, not the track's held length.
+  const behind = Math.max(0, edge - time)
+  // `edge > 0` because a player that hasn't loaded yet reports 0 for both,
   // and a zero gap would otherwise read as "at the edge" over a 0:00 clock.
-  const atLive = live && duration > 0 && behind <= LIVE_EDGE_SEC
+  const atLive = live && edge > 0 && behind <= LIVE_EDGE_SEC
 
   // The frame under the cursor, cut from YouTube's sprite sheet. Follows
   // `shownTime` rather than `hoverTime` so it holds its picture while the popup
@@ -716,61 +752,60 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               are too many to step past one at a time, and the label has to say
               where you are anyway. Left group, with the other things that belong
               to this video rather than to the player's chrome.
-              Hidden on a broadcast — the edge is where playback is, so there's
-              nothing to speed up; slowing one down only walks you backwards off
-              the live edge. */}
-          {!live && (
-            /* Opens on hover where there's a pointer, like the volume beside it,
-               and on a tap where there isn't — the click still toggles it for
-               touch and the keyboard, except that a click on a menu the hover
-               already opened leaves it open. Centred on the button and flush
-               against it, for the same straight way up. */
-            <div
-              ref={rateRef}
-              className="relative"
-              onPointerEnter={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = true; setRateMenu(true) } }}
-              onPointerLeave={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = false; setRateMenu(false) } }}
+              On a broadcast too: behind the edge, faster is how you catch up.
+              At the edge it can't go faster than the broadcast airs, so the
+              poll drops it back to 1× there (see sync).
+
+              Opens on hover where there's a pointer, like the volume beside it,
+              and on a tap where there isn't — the click still toggles it for
+              touch and the keyboard, except that a click on a menu the hover
+              already opened leaves it open. Centred on the button and flush
+              against it, for the same straight way up. */}
+          <div
+            ref={rateRef}
+            className="relative"
+            onPointerEnter={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = true; setRateMenu(true) } }}
+            onPointerLeave={(e) => { if (e.pointerType !== 'touch') { rateHoverRef.current = false; setRateMenu(false) } }}
+          >
+            <button
+              onClick={() => setRateMenu((v) => rateHoverRef.current || !v)}
+              className={`${BAR_BUTTON} text-sm tabular-nums`}
+              aria-haspopup="menu"
+              aria-expanded={rateMenu}
+              aria-label={t('Playback speed')}
+              title={t('Playback speed ({slower} and {faster})', { slower: shortcutLabel('speedDown'), faster: shortcutLabel('speedUp') })}
+              data-testid="speed-button"
             >
-              <button
-                onClick={() => setRateMenu((v) => rateHoverRef.current || !v)}
-                className={`${BAR_BUTTON} text-sm tabular-nums`}
-                aria-haspopup="menu"
-                aria-expanded={rateMenu}
-                aria-label={t('Playback speed')}
-                title={t('Playback speed ({slower} and {faster})', { slower: shortcutLabel('speedDown'), faster: shortcutLabel('speedUp') })}
-                data-testid="speed-button"
+              {rate}×
+            </button>
+            {rateMenu && (
+              // Same panel as the caption menu — dark sheet, check in a fixed
+              // gutter so the numbers line up whichever row is ticked.
+              <div
+                role="menu"
+                className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
               >
-                {rate}×
-              </button>
-              {rateMenu && (
-                // Same panel as the caption menu — dark sheet, check in a fixed
-                // gutter so the numbers line up whichever row is ticked.
-                <div
-                  role="menu"
-                  className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 overflow-hidden rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
-                >
-                  {/* Fastest at the top, so up means more here as it does on the
-                      volume slider beside it. */}
-                  {[...playbackSpeeds()].reverse().map((r) => (
-                    <button
-                      key={r}
-                      role="menuitemradio"
-                      aria-checked={r === rate}
-                      onClick={() => {
-                        api()?.setPlaybackRate?.(r)
-                        setRate(r)  // the poll would catch up, a quarter-second late
-                        setRateMenu(false)
-                      }}
-                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left tabular-nums hover:bg-white/10"
-                    >
-                      <span className="w-4 shrink-0">{r === rate && '✓'}</span>
-                      {r}×
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                {/* Fastest at the top, so up means more here as it does on the
+                    volume slider beside it. */}
+                {[...playbackSpeeds()].reverse().map((r) => (
+                  <button
+                    key={r}
+                    role="menuitemradio"
+                    aria-checked={r === rate}
+                    onClick={() => {
+                      api()?.setPlaybackRate?.(r)
+                      setRate(r)  // the poll would catch up, a quarter-second late
+                      setRateMenu(false)
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left tabular-nums hover:bg-white/10"
+                  >
+                    <span className="w-4 shrink-0">{r === rate && '✓'}</span>
+                    {r}×
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {/* Where you are. On a recording that's a position out of a total; on a
               broadcast there is no total — only the edge, which moves — so the
               clock gives way to the thing you actually want to know and to do:
@@ -793,12 +828,15 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
               <button
                 onClick={() => {
                   const p = api()
-                  if (!p || !duration) return
+                  if (!p || !edge) return
                   // The edge is wherever the stream has got to, which is what
                   // duration reports on a broadcast. Seeking there and playing is
-                  // one gesture: you can be behind because you paused.
-                  p.seekTo(duration, true)
-                  setTime(duration)
+                  // one gesture: you can be behind because you paused. The track
+                  // comes along — you're at its end now.
+                  p.seekTo(edge, true)
+                  setTime(edge)
+                  durationRef.current = edge
+                  setDuration(edge)
                   p.playVideo()
                 }}
                 disabled={atLive}

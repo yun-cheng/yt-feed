@@ -94,6 +94,15 @@ describe('localPlayer', () => {
     expect(playerIsLive(null)).toBe(false)
   })
 
+  it('calls an ended player a recording, whatever its live flag says', () => {
+    // A broadcast still on air can't end under you — its edge keeps moving
+    // ahead — so ending is the one answer the embed's stale flag can't outvote.
+    const p = fakePlayer({ getVideoData: () => ({ isLive: true }) })
+    expect(playerIsLive(p)).toBe(true)
+    p._state(0)
+    expect(playerIsLive(p)).toBe(false)
+  })
+
   it('reports YouTube’s state codes', () => {
     const el = videoEl()
     Object.defineProperty(el, 'paused', { value: true, configurable: true })
@@ -206,9 +215,27 @@ describe('LocalControls — the speed menu', () => {
     setSpeedDefaults(undefined)
   })
 
-  it('is gone on a broadcast, where the edge is where playback is', () => {
-    liveEmbed()
-    expect(screen.queryByTestId('speed-button')).not.toBeInTheDocument()
+  it('is there on a broadcast too, for catching up from behind', () => {
+    liveEmbed(600, 300)
+    expect(screen.getByTestId('speed-button')).toBeInTheDocument()
+  })
+
+  it('keeps a faster speed behind the edge, and drops to 1× on reaching it', () => {
+    let rate = 1.5
+    const setPlaybackRate = vi.fn((r: number) => { rate = r })
+    const { player } = renderOverEmbed({}, {
+      getDuration: () => 600,
+      getVideoData: () => ({ isLive: true }),
+      getPlaybackRate: () => rate,
+      setPlaybackRate,
+    })
+    act(() => { player._set(300); vi.advanceTimersByTime(300) })
+    expect(setPlaybackRate).not.toHaveBeenCalled()
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1.5\u00d7')
+    // Caught up: faster than the broadcast airs is just waiting for it.
+    act(() => { player._set(596); vi.advanceTimersByTime(300) })
+    expect(setPlaybackRate).toHaveBeenCalledWith(1)
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1\u00d7')
   })
 })
 
@@ -989,11 +1016,67 @@ describe('LocalControls — a live broadcast', () => {
     expect(screen.getByTestId('live-pill')).toBeEnabled()
   })
 
+  it('holds the track still while the edge moves on ahead of you', () => {
+    // Watching half an hour behind, the bar is a recording's: its length is
+    // the edge as it was, not as it is, so nothing slides under the play head.
+    let edge = 600
+    const { container, player } = renderOverEmbed({}, {
+      getDuration: () => edge,
+      getVideoData: () => ({ isLive: true }),
+    })
+    act(() => { player._set(300); vi.advanceTimersByTime(300) })
+    const fill = () => (container.querySelector('.bg-red-500') as HTMLElement).style.width
+    expect(fill()).toBe('50%')
+    edge = 900
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(fill()).toBe('50%')
+    // Still behind the real edge, which is what the pill goes by.
+    expect(screen.getByTestId('live-pill')).toBeEnabled()
+  })
+
+  it('catches the track up once, when you play into its end', () => {
+    let edge = 600
+    const { container, player } = renderOverEmbed({}, {
+      getDuration: () => edge,
+      getVideoData: () => ({ isLive: true }),
+    })
+    act(() => { player._set(300); vi.advanceTimersByTime(300) })
+    edge = 1200
+    act(() => { player._set(600); vi.advanceTimersByTime(300) })
+    const fill = () => (container.querySelector('.bg-red-500') as HTMLElement).style.width
+    expect(fill()).toBe('50%')
+    // And holds there again while the edge keeps going.
+    edge = 1500
+    act(() => { player._set(660); vi.advanceTimersByTime(300) })
+    expect(parseFloat(fill())).toBeCloseTo(55)
+  })
+
+  it('brings the track along when you jump to the edge', () => {
+    let edge = 600
+    const { container, player } = renderOverEmbed({}, {
+      getDuration: () => edge,
+      getVideoData: () => ({ isLive: true }),
+    })
+    act(() => { player._set(300); vi.advanceTimersByTime(300) })
+    edge = 900
+    act(() => { vi.advanceTimersByTime(300) })
+    fireEvent.click(screen.getByTestId('live-pill'))
+    expect(player.seekTo).toHaveBeenCalledWith(900, true)
+    expect((container.querySelector('.bg-red-500') as HTMLElement).style.width).toBe('100%')
+  })
+
   it('drops back to a clock when the broadcast ends under it', () => {
     const { player } = liveEmbed()
     player.getVideoData = () => ({ isLive: false })
     act(() => { vi.advanceTimersByTime(300) })
     expect(screen.queryByTestId('live-pill')).not.toBeInTheDocument()
+  })
+
+  it('drops back to a clock when you play to the end, though the flag still says live', () => {
+    const { player } = liveEmbed(600, 300)
+    act(() => { player._set(600); player._state(0); vi.advanceTimersByTime(300) })
+    expect(screen.queryByTestId('live-pill')).not.toBeInTheDocument()
+    expect(screen.getByText('10:00 / 10:00')).toBeInTheDocument()
   })
 })
 

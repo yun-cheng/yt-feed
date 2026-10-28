@@ -1653,7 +1653,11 @@ reports `Infinity` for its duration, which `getDuration` otherwise flattens to
 0). Liveness is a property of the *moment*: a stream that was live an hour ago is
 a recording now, and a stored flag would be stale by however long it has been
 since the last sync. It's polled with everything else, so a broadcast that ends
-under you turns back into an ordinary video with an ordinary clock.
+under you turns back into an ordinary video with an ordinary clock — when the
+embed notices. Watched from behind the edge, it can keep saying `isLive` after
+the broadcast is over, so a player in state 0 counts as a recording whatever the
+flag says: a broadcast still on air can't end under you, its edge keeps moving
+ahead of the play head.
 
 - **The clock becomes a LIVE pill.** The elapsed time still shows, counted from
   when the broadcast went on air — the same direction a recording's clock runs,
@@ -1669,6 +1673,15 @@ under you turns back into an ordinary video with an ordinary clock.
 - **The track is the elapsed broadcast**, so scrubbing back into YouTube's rewind
   window works exactly as it does on a recording; the play head can read a hair
   *past* the edge (the two are sampled a moment apart), so the fill is clamped.
+- **The track holds its length.** Following the edge, it would slide the fill,
+  the marks and every click target under you as you watched half an hour
+  behind. So it keeps the length it had, and catches up to wherever the edge has
+  got to only when you play into its end (or jump to live). At the edge that's
+  every few seconds, which is the track keeping pace. The pill and its red dot
+  go by the real edge, not the held length.
+- **The speed menu stays.** Behind the edge, faster is how you catch up. At it,
+  the player can't go faster than the broadcast airs, so the poll drops anything
+  above 1× back to 1× within `LIVE_EDGE_SEC`, as YouTube's own player does.
 - **The resume seek is confirmed, not just issued.** A seek made at `onReady`
   can be thrown away by the player's own startup, and live is where that bites:
   a live player puts itself at the broadcast's edge the moment playback really
@@ -1691,6 +1704,9 @@ under you turns back into an ordinary video with an ordinary clock.
   watched ten seconds after you joined it. The report carries `live: true` and
   the backend keeps `watched` off (see `routers/history.py`); once the stream has
   aired, the same id reports as a recording and the flag is decided normally.
+  Reaching the end is reported once on its own (the regular report only fires
+  while playing), since for a broadcast watched behind the edge that ending is
+  the first moment the player stops saying live.
 
 ### Up next (`/api/feed/next/:id`)
 
@@ -2247,9 +2263,9 @@ up means more there as it does on the volume slider.
   copy of the number here is the one that would go stale.
 - **It resets with the player**, since nothing persists it: a new video plays at
   1×, which is what a speed chosen for one video's narrator should do.
-- **Not on a broadcast.** Live playback is the edge, so there is nothing to speed
-  up, and slowing it down only walks you backwards off it. The button is absent
-  there rather than present and inert.
+- **On a broadcast too, capped at the edge.** Watching behind the edge, faster
+  is how you catch up; at it there's nothing ahead to play faster, so the bar
+  drops anything above 1× back to 1× (see *Live broadcasts*).
 - **Bare keys, unlike YouTube's.** It puts speed on shift+`,` and shift+`.`;
   nothing else here is a chord, and holding shift to nudge the speed is a key too
   many. `<`/`>` still work — it's the same key, and arriving on it with shift
@@ -2484,7 +2500,7 @@ problem.
 | File | Covers |
 |------|--------|
 | `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the chapter menu (lists, lights the playing one, jumps without closing, Escape or a press outside closes it), the menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), notes on both kinds of mark (written in a menu, kept on Enter or a press outside, left on Escape, sent once a fresh mark is saved), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
-| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
+| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), the live bar (its held track length, the speed dropping to 1× at the edge, an ended player read as a recording), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
 | `NotificationBell.test.tsx` | the badge and its cap, opening the bell clearing it, the cover and its icon fallback, a summary row opening the video on its Ask panel while a failure row has nowhere to send you, and dismissing one row without touching the rest |
