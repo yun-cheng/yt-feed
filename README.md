@@ -1,177 +1,150 @@
 # YT Feed
 
-A self-hosted YouTube subscription feed. A backend scrapes your subscribed
-channels with yt-dlp, ranks the videos by engagement, and serves a clean
-single-page UI whose signature feature is an inline **hover preview** of the
-real video (muted, with custom captions and scrubbing).
+A self-hosted YouTube app built around your subscriptions. It scans the
+channels you follow, ranks their videos by how they're doing rather than by an
+algorithm's guess at what you'll click, and plays them in a player of its own:
+captions you can read into, a panel that knows the video, marks, notes, and an
+up-next that walks a channel forward in time. Your whole household can use it,
+each person with their own history and library.
 
-## Features
+![The home feed: a time window, sorts, sidebar filters and the cards](docs/screenshots/home.png)
 
-- **Custom ranking** — score videos by views/hour, likes, like rate, or recency
-- **Time windows** — drag a two-handled slider to any span: the last 3 days, or
-  3 days to 2 weeks ago
-- **Tag filtering** — channels are auto-tagged by an LLM into a topic taxonomy;
-  filter the feed by tag, and edit a channel's labels on its page. Each chip is
-  split — its body shows only that tag, the `−` beside it hides that tag — so
-  "Chinese" and "not Chinese" are one click each
-- **AI categorization** — an LLM (via OpenRouter) reads each channel and assigns
-  topic + language labels; needs `OPENROUTER_API_KEY` (see `backend/README.md`)
-- **Video topics** — inside a channel, the LLM labels its videos by topic (a
-  vocabulary tailored per channel) so you can filter the channel by topic; the
-  labels also show on the watch page
-- **Focus mode** — a toggle in the control bar: the bar then follows the cursor
-  and nothing else, so pausing or seeking by keyboard leaves the picture clean.
-  Move the mouse onto the video to bring it back
-- **Summarised filter** — a chip in the sidebar that narrows any list of videos
-  to the ones you've had a summary written for, on the feed, a channel, History,
-  Watch Later, Imported and playlists
-- **Filter presets** — name the sidebar selection you've built and put it back
-  on with one click. A preset is a filter set and nothing else — no page, no
-  sort — so the same one works on the feed, History or Watch Later, the three
-  pages with the full set of filters. Click it again to take it off; leaving
-  the page takes it off too
-- **Hover preview** — plays the actual YouTube video inline; click to unmute
-- **Live streams** — a broadcast on air gets a LIVE pill in place of the clock,
-  red at the edge and grey once you've fallen behind; click it to jump back to
-  live. The track is the elapsed broadcast, so you can scrub back into it —
-  and where you paused is remembered, so a refresh returns you there rather than
-  to the edge. Watching live never marks the stream watched
-- **In-app watch** — click through to a full-bleed player at `/watch/:id` instead
-  of leaving for youtube.com; browser back returns you to exactly where you were.
-  Page-level keyboard shortcuts (space/k, m, f, ←/→, j/l, ↑/↓ volume, c, g, p, and
-  the marks below) and our
-  own captions, rendered from the transcript and styled like YouTube's —
-  switchable between English / Chinese / Japanese / Korean / Thai / Vietnamese
-  when offered, with dual subtitles, an AI translation into Traditional Chinese, a top/bottom
-  position for each of the two, and a font size the embed's own captions would never give you —
-  paused, rest the pointer on a word in them for its entries in the Mac's own
-  dictionaries, one section per dictionary ticked in Dictionary.app, with copy,
-  a Google search and the word in Dictionary.app to hand; and a panel
-  laid over the video (`g`), down either side, with its info, chapters,
-  bookmarks, repeat passages, notes, comments, transcript and Ask AI — which one it opens on is a setting
-- **Notes on a video** — the panel's Notes tab holds what you want to remember
-  about it: labels, fields that each hold several values (Actors: Ann, Bo), and
-  a free-text note. Saved as you type, kept server-side per person, and the
-  boxes suggest the labels, fields and values you've used on other videos.
-  The labels and fields also show on the video's card, as badges beside
-  Watched and its playlists
-- **Bookmarks & A–B repeat** — `b` marks the moment you're at (saved server-side;
-  click its pin to jump back); `[` and `]` set a loop's ends and `\` stops it,
-  so a passage replays until you're done with it — seeking out of it, on the
-  bar or anywhere else, lets it go. **One end is enough**: `[` alone
-  repeats from there to the end of the video, `]` alone from the start up to
-  there. **A video keeps as many passages as you mark**, saved with it — the loop
-  button's menu lists them, each with a picture of its start, where you switch
-  between them, delete one, or start a new one from where you are. Both show on the progress bar the way PotPlayer
-  draws them — a bookmark as a white pin, a passage as a ▶ and a ◀ bracketing it
-  — and while you're inside a running passage the red fill runs only from its
-  start. Both also have a **button
-  in the control bar** that opens its menu on hover: a click on the loop's turns
-  the repeat on or off, a click on the bookmark's marks the moment or clears the
-  one you're standing on, and the bookmark's menu lists them all to jump to,
-  each with a picture of its moment. **Either kind can carry a note** — why you
-  marked it, what the passage is — written from its menu or from the panel's
-  Bookmarks and Repeat tabs, which list them too. It's
-  our own bar over a file on disk, and a
-  rail laid over YouTube's own bar on the embed
-- **A chapter button, as YouTube has** — on our own bar, after the clock and
-  the mark buttons, it names the chapter playing; hover it to list the
-  chapters with their pictures and jump to one, click it to open the panel on
-  Chapters
-- **Up next, in the channel's own order** — when a video ends, the card offered
-  is the same channel's **next one forward in time**, which is the order YouTube's
-  own up-next never gives you and the one that lets you work through a backlog.
-  It follows whatever narrowed the page you came from: pick a topic, a time
-  window, or "unwatched" on a channel, and the chain stays inside that list.
-  The same video is a **next button in the control bar** for when you don't want
-  to sit through the rest — hover it and you see where you'd be going
-- **Ask AI** — a conversation about the video you're watching, answered from its
-  own transcript: it cites the moment it read, and those timestamps are buttons that
-  seek there. Because it only knows this video, it can say "that isn't in here"
-  rather than answering about the subject in general. Shares the right-hand panel
-  with the transcript, one tab each, and streams the reply as it's written
-- **Summaries written in the background** — ask any card's `…` menu for a **short**
-  or a **long** one and walk away. The card labels itself **Summarising**, then **Summarised**, and
-  the **bell** at the top right says when it landed; clicking that opens the video
-  with the summary already in its Ask panel, where you can keep asking
-- **Shorts** — a separate feed for vertical short-form videos
-- **Per-video volume boost** — some videos are mixed so quietly that 100% isn't
-  enough, and raising the shared volume just makes the next one shout. A second
-  slider beside the volume one amplifies **this video only**, +0 to +10 (up to
-  6×) — through a
-  limiter, so the extra range makes quiet dialogue louder instead of making loud
-  parts crackle — and resets when you move on. Downloaded files and local folders it amplifies directly;
-  on a YouTube embed the audio is out of the page's reach, so the extension does
-  it from inside the player's own frame
-- **Watch Later / Playlists / Downloads** — all server-side (sync across devices).
-  A downloaded video plays from disk in that same watch page — no ads, works
-  offline — with our own control bar and a scrub preview of the actual frames.
-  The bar is cut into the video's chapters, and hovering it names the chapter
-- **Playlists imported from YouTube** — bring a playlist over and it keeps a link
-  back, so a Re-sync button pulls anything new. Never anything out: your copy is
-  yours, so re-syncing is always safe. The Playlists page lists the ones your
-  connected account made, and takes a pasted link for any public playlist besides
-  — including other people's, which YouTube will happily *read* but won't
-  *enumerate*. The extension's button on any playlist page reaches what's left:
-  Watch Later, Liked Videos and private playlists, for everyone in the household,
-  connected account or not
-- **Undo a removal** — taking a video off History, a playlist or Imported, or
-  deleting a download, says so in the corner and offers to take it back for ten
-  seconds. What comes back is the row itself, not a fresh copy of it: a history
-  row keeps its resume point and its "Watched" badge, and a playlist item goes
-  back to its place in the list rather than to the top. A deleted download is
-  the one exception — the file is gone, so undoing fetches it again
-- **Reachable on a phone** — the app is built for a desktop and a keyboard, and
-  that hasn't changed; what's promised on a small screen is only that nothing is
-  *unreachable*. Below 768px the sidebar becomes a drawer carrying every
-  destination, the browser's own Back (or a swipe) leaves a video, and a control that only appeared
-  on hover now stays put where there is no pointer to hover with
-- **Watch history** — every video remembers where you stopped: revisiting resumes
-  from that timestamp, cards show a red progress bar before you hover, and finished
-  videos get a "Watched" badge. All of it on its own History page
-- **Search in a list** — on History, Watch Later, Downloads, Imported or a
-  playlist, the search box's "In history" / "In this playlist" / … button turns
-  it into a filter for that page, by title or channel name, alongside the page's
-  window, sort and sidebar filters, the way "In this channel" works on a channel
-  page. The Channels page filters as you type, by channel name or topic, with no
-  button to press first — typo-tolerant like the rest, and sorted by how well the
-  name answers what you typed
-- **Watch status filter** — a sidebar section for unwatched / in progress / watched;
-  the home feed excludes watched by default, so it's about what you haven't seen
-- **Your own page defaults** — Settings → Pages sets the time window, sort and
-  watch filter each page opens on (Home's past-3-days-by-likes, for one), with
-  the same slider and sort buttons the page itself shows. Links and reloads
-  follow your defaults too
-- **Six languages** — Settings → Language switches the app's own text between
-  English, 繁體中文, 日本語, 한국어, ไทย and Tiếng Việt, and
-  follows the browser until you pick. The same section sets the caption language
-  (and an optional second track) every video opens with, and the language a
-comment's Translate button translates into, all saved to your account
-- **Imported videos** — paste any YouTube link to add a one-off video from a
-  channel you don't follow; it lands on its own page that looks and behaves
-  exactly like the home feed (watch, download, playlist, watch later)
-- **Open from YouTube** — with the extension installed, hovering any thumbnail on
-  youtube.com puts three buttons on its corner: open that video here instead,
-  save it straight to Watch Later, or drop it into one of your playlists (or a
-  new one, named on the spot) — without leaving the page. Already-saved videos show a tick before you click. Whatever you send
-  over gets its title, channel and stats resolved on arrival, and stays off the
-  Imported page — that page is what you chose to keep
-- **Watch history from YouTube** — the extension also reports what you watch *on*
-  youtube.com, so a video you started there keeps its place here: same progress
-  bar, same resume point, same History page. One direction only; YouTube offers
-  nothing to write history back into. A switch on the Settings page turns it off,
-  and the extension stops watching rather than merely stops being listened to
-- **Local folders** — point the app at a directory on the backend's machine and
-  its video files become their own feed: poster frames, durations, hover previews
-  and resume, played in the same control bar downloads use. Each folder stays a
-  separate page; files are only ever read
-- **Search** — typo-tolerant, via a Meilisearch companion. From a channel page
-  the box can be confined to that channel: it filters the page you're on, so the
-  window, the topic chips and the watch filters keep working on what it finds.
-  The sort goes to Relevance while the search runs, and back to yours when it
-  ends
-- **Backend-scheduled refresh** — the backend re-scans channels on its own
-  interval (default 15 min); the UI just re-reads the results
+<sub>Screenshots are of the end-to-end test app over made-up channels, not a real feed.</sub>
+
+## A tour
+
+### 1. The feed
+
+Home is your channels' recent uploads, ranked. **Sort** by views, a views-per-hour
+"Hot" score, likes, like rate, or date, and drag the **time window** to any span:
+the past 3 days, or 3 days to 2 weeks ago. The **sidebar** narrows it down:
+
+- **Watch status** — unwatched, in progress, watched. Home hides the watched by
+  default, so it's about what you haven't seen
+- **Length**, and **Summarised** for the videos you've had a summary written for
+- **Topic and language tags**, assigned to each channel by an LLM. Each chip is
+  split: its body shows only that tag, its `−` hides it
+- **Presets** — name the selection you've built and put it back with one click
+
+Shorts have a feed of their own. Hover a card and the real video plays inline,
+muted, with captions and scrubbing. Search is typo-tolerant and can stay inside
+one channel or one list. Cards carry a red resume bar, a Watched badge, the
+playlists they're in, and your labels for them.
+
+### 2. Watching
+
+![The watch page: our own control bar and captions, with a word looked up](docs/screenshots/lookup.png)
+
+A card opens the video in the app at `/watch/:id`; Back returns you to exactly
+where you were. With the companion extension installed, YouTube's own chrome is
+stripped and the app draws its own control bar:
+
+- **Chapters** cut the progress bar, and a chapter button names the one playing
+- **Bookmarks** (`b`) and **repeat passages** (`[`, `]`) sit on the bar, each with
+  a picture of its moment and an optional note. A video keeps as many passages
+  as you mark
+- **Speed** at the steps you choose, a **volume boost** to 6× for the one video
+  that was mixed too quietly, **focus mode** for watching by keyboard, and a
+  **next** button
+- Every **keyboard shortcut** is a key you can rebind
+- **Live streams** get a LIVE pill: red at the edge, grey once you've fallen
+  behind. The track holds still while you watch behind the edge, and speeding
+  up catches you up
+- **Up next** is the same channel's next video *forward in time*, inside whatever
+  filters brought you here, so you can work through a channel's backlog
+
+**Captions** are rendered by the app, from the transcript:
+
+- English, Chinese, Japanese, Korean, Thai and Vietnamese, as offered
+- Two tracks at once, each above or below the picture
+- An AI translation into Traditional Chinese
+- Transcribed on your Mac with Whisper when YouTube has no captions at all
+- Remembered per channel if you like: off for one, two tracks for another
+- **Paused, rest the pointer on a word** to see its entries in the Mac's own
+  dictionaries, with copy, a Google search, and Dictionary.app to hand
+
+### 3. The panel on the video
+
+![The panel over the video, answering a question about it with timestamps](docs/screenshots/ask.png)
+
+`g` opens a panel down either side of the picture. It has one tab each for:
+
+- **Info**
+- **Chapters**
+- **Bookmarks**
+- **Repeat**
+- **Notes**: labels, multi-value fields and a free-text note, suggested from what
+  you've used before
+- **Comments**, with a Translate button on comments in another language
+- **Transcript**, where a click seeks
+- **Ask AI**: a conversation answered from this video's own transcript, whose
+  timestamps are buttons that seek
+
+From any card's `…` menu you can also ask for a short or long **summary** and walk
+away. The bell tells you when it's ready.
+
+### 4. Channels
+
+![The Channels page: every channel with its tags](docs/screenshots/channels.png)
+
+Channels come from your YouTube subscriptions, re-synced daily, or are added by
+hand from a link, an `@handle`, or the extension's button on a channel page. An
+LLM files each one under a topic and a language, and you can edit its labels. On
+a channel's page, the LLM also sorts its videos into topics of their own, so you
+can filter the channel by topic. A channel's older videos can be fetched back to
+its first upload.
+
+### 5. Your library
+
+![History: resume bars and Watched badges](docs/screenshots/history.png)
+
+Everything is kept on the server, so it follows you across devices. The library
+pages share the feed's windows, sorts, filters and search:
+
+- **History** resumes every video where you stopped, including videos you watch
+  on youtube.com when the extension is installed
+- **Watch Later**
+- **Playlists**, including ones imported from YouTube, which a Re-sync button keeps
+  up to date
+- **Downloads** play from disk, with no ads and offline
+- **Imported** holds one-off videos from channels you don't follow
+- **Local folders** turn a directory of video files into a feed of their own
+
+Removing something offers to take it back for ten seconds.
+
+### 6. Settings
+
+![Settings: language, captions and the library](docs/screenshots/settings.png)
+
+Settings are per person unless marked *Everyone*:
+
+- A dark or light **theme**
+- The app in **six languages**: English, 繁體中文, 日本語, 한국어, ไทย and Tiếng Việt
+- The **caption languages** every video opens with, and how captions are
+  remembered
+- Playback speeds, keyboard shortcuts, and which panel tab opens first
+- The **time window and sort** each page opens on
+- The deployment's own **connections**: AI key, Google sign-in, YouTube cookies
+  and proxy
+- **People**: the invite links that let the rest of the household in
+
+### 7. On a phone
+
+<img src="docs/screenshots/phone.png" alt="The feed on a phone" width="300">
+
+The app is built for a desktop and a keyboard. On a small screen the promise is
+that nothing is out of reach: the sidebar becomes a drawer, Back (or a swipe)
+leaves a video, and controls that only appeared on hover stay put.
+
+### The browser extension (optional)
+
+On **youtube.com** it puts *open in YT Feed*, *Watch Later* and *save to playlist*
+buttons on every thumbnail. It also adds a channel from its page, and records
+what you watch there into your History. On the **embedded player** it strips
+YouTube's overlays, so the app can draw its own bar, and it boosts a quiet video
+from inside the player's frame. Everything works without it; the app then keeps
+YouTube's controls and lays its marks over them. Setup is
+[below](#browser-extension-optional).
 
 ## Stack
 
@@ -179,8 +152,10 @@ comment's Translate button translates into, all saved to your account
 |-------|------|
 | Frontend | React 19 + TypeScript + Tailwind v4 + Vite |
 | Backend | FastAPI (async) + yt-dlp + SQLAlchemy |
-| Storage | SQLite (WAL) for all data; localStorage for preview volume + caption prefs |
+| Storage | SQLite (WAL) for all data; localStorage for per-browser conveniences (volume, caption picks) |
 | Search | Meilisearch (optional companion service) |
+| AI | OpenRouter for tagging, translation, summaries and Ask; mlx-whisper for local transcription |
+| Extension | Chrome MV3 (optional) |
 
 ## Architecture
 
@@ -297,18 +272,8 @@ All three are also defined in [`.claude/launch.json`](.claude/launch.json).
 
 ### Browser extension (optional)
 
-A companion extension does two things, each on a different site. On **youtube.com**
-it puts *open in YT Feed*, *save to Watch Later* and *save to a playlist* buttons
-on the corner of every video thumbnail, so a video you find there opens — or is
-kept — here instead, styled to pass for YouTube's own circular hover controls; it adds a
-channel to the feed from that channel's page, and reports what you watch there
-into the app's watch history. On
-**embedded players** it strips YouTube's overlays —
-title, avatar, centre play button, share row, "More videos" — so the app draws
-its own control bar over bare video, and it amplifies a too-quiet player past
-100% on the app's ask, which only something inside that frame can do.
-
-Load `extension/` unpacked from `chrome://extensions` (Developer mode → Load
+What it does is in [the tour](#the-browser-extension-optional). Load
+`extension/` unpacked from `chrome://extensions` (Developer mode → Load
 unpacked), open its **Extension options** and paste the API key from the app's
 **Settings → Extension**, then reload the app. The key says whose history and
 Watch Later the buttons reach; on a machine with one account you can leave it
@@ -360,8 +325,9 @@ Without it, channels are tagged by language only. See
 
 ## Channels
 
-Subscribed channels live in `backend/config/subscriptions.yaml` — import them via
-the in-app Google OAuth flow (`/api/auth/login`) or edit the file by hand. The
+Who follows which channel lives in the database, per person. Import your
+subscriptions by signing in with Google (`/api/auth/login`); `config/subscriptions.yaml`
+is only a written-out mirror of the list now, not where it's read from. The
 backend scheduler picks up new channels on its next scan; you can also force one
 with `POST /api/refresh`.
 
