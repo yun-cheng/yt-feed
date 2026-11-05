@@ -1,6 +1,6 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import Danmaku, { danmakuItem } from '../components/Danmaku'
+import Danmaku, { DanmakuControl, danmakuItem } from '../components/Danmaku'
 import type { ChatMessage } from '../components/ChatReplay'
 import type { PlayerApi } from '../components/LocalControls'
 import {
@@ -518,3 +518,58 @@ describe('Danmaku’s area', () => {
 })
 
 // ── Its button ───────────────────────────────────────────────────────
+
+describe('DanmakuControl', () => {
+  const mount = (prefs: Partial<DanmakuPrefs> = {}, chat: 'done' | 'running' = 'done') => {
+    const onPrefs = vi.fn()
+    render(<DanmakuControl prefs={{ ...DANMAKU_DEFAULTS, ...prefs }} onPrefs={onPrefs} chat={chat} buttonClass="" />)
+    return onPrefs
+  }
+
+  it('stops the size at its ends', () => {
+    mount({ size: SIZE_MAX })
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Turn danmaku on' }).parentElement!, { pointerType: 'mouse' })
+    expect(screen.getByRole('button', { name: 'Bigger danmaku' })).toBeDisabled()
+  })
+
+  it('turns on and off with a click', () => {
+    const onPrefs = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Turn danmaku on' }))
+    expect(onPrefs).toHaveBeenCalledWith({ ...DANMAKU_DEFAULTS, on: true })
+  })
+
+  it('opens its settings on hover: where, how big, how fast, how solid', () => {
+    const onPrefs = mount({ on: true })
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Turn danmaku off' }).parentElement!, { pointerType: 'mouse' })
+    // How much of the screen: a share, from a slider.
+    expect(screen.getByRole('slider', { name: 'Display area' })).toHaveValue('50')
+    fireEvent.change(screen.getByRole('slider', { name: 'Display area' }), { target: { value: '80' } })
+    expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ area: 0.8 }))
+    // Size steps by tenths from 100%, like the captions'.
+    expect(screen.getByText('100%')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Bigger danmaku' }))
+    expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ size: 1.1 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Smaller danmaku' }))
+    expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ size: 0.9 }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Fast' }))
+    expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ speed: 'fast' }))
+    fireEvent.change(screen.getByRole('slider', { name: 'Opacity' }), { target: { value: '40' } })
+    expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ opacity: 0.4 }))
+  })
+
+  it('says why nothing flies while the chat is still being fetched', () => {
+    mount({ on: true }, 'running')
+    fireEvent.pointerEnter(screen.getByRole('button', { name: 'Turn danmaku off' }).parentElement!, { pointerType: 'mouse' })
+    expect(screen.getByText('Fetching the chat replay…')).toBeInTheDocument()
+  })
+
+  it('opens its settings on a tap, whose switch does what a click would', () => {
+    const onPrefs = mount()
+    const button = screen.getByRole('button', { name: 'Turn danmaku on' })
+    fireEvent.pointerDown(button, { pointerType: 'touch' })
+    fireEvent.click(button)
+    expect(onPrefs).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('switch'))
+    expect(onPrefs).toHaveBeenCalledWith({ ...DANMAKU_DEFAULTS, on: true })
+  })
+})

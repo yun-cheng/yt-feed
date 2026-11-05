@@ -15,12 +15,14 @@
  * The chat is the panel's (`useChatReplay`, one fetch per page); this is one
  * more place to show it.
  */
-import { useEffect, useRef, type CSSProperties, type RefObject } from 'react'
-import { sentBy, type ChatMessage } from './ChatReplay'
+import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
+import { sentBy, type ChatMessage, type ChatState } from './ChatReplay'
 import type { PlayerApi } from './LocalControls'
 import {
-  CROSS_SECONDS, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MIN_PX, fitLanes, laneCount, laneGap, lanePitch, takeLane, type DanmakuPrefs, type Lanes,
+  AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
+  fitLanes, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
+import { t } from '../lib/i18n'
 
 /** One message as it flies: its text and emoji, coloured the way the chat's
  *  names are (the channel yellow, moderators blue, members green), a Super
@@ -318,5 +320,194 @@ export default function Danmaku({ player, messages, prefs, style }: {
         ...style,
       }}
     />
+  )
+}
+
+// ── The bar's button and its settings ───────────────────────────────────
+
+const speedLabel = (s: DanmakuSpeed) => (s === 'slow' ? t('Slow') : s === 'normal' ? t('Normal') : t('Fast'))
+
+const STEP_BUTTON = 'h-6 w-6 rounded bg-white/10 leading-none hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10'
+
+/** A share from `min` to 100%, as a slider with its percentage beside it. */
+function Slider({ title, value, min, step, onChange }: {
+  title: string
+  value: number
+  min: number
+  step: number
+  onChange: (v: number) => void
+}) {
+  const pct = Math.round(value * 100)
+  return (
+    <label className="block px-3 py-1.5">
+      <span className="mb-1 flex justify-between text-xs text-shade-99">
+        <span>{title}</span>
+        <span className="tabular-nums">{pct}%</span>
+      </span>
+      <input
+        type="range"
+        min={Math.round(min * 100)}
+        max={100}
+        step={Math.round(step * 100)}
+        value={pct}
+        onChange={(e) => onChange(Number(e.target.value) / 100)}
+        aria-label={title}
+        className="w-full accent-white"
+      />
+    </label>
+  )
+}
+
+function Choice<T extends string>({ title, options, value, label, onPick }: {
+  title: string
+  options: readonly T[]
+  value: T
+  label: (v: T) => string
+  onPick: (v: T) => void
+}) {
+  return (
+    <div className="px-3 py-1.5">
+      <div className="mb-1 text-xs text-shade-99">{title}</div>
+      <div role="radiogroup" aria-label={title} className="flex gap-1">
+        {options.map((o) => (
+          <button
+            key={o}
+            role="radio"
+            aria-checked={o === value}
+            onClick={() => onPick(o)}
+            className={`flex-1 whitespace-nowrap rounded-md px-2 py-1 text-xs transition-colors ${
+              o === value ? 'bg-white text-black' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            {label(o)}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The bar's 彈幕 button: a click turns it on or off, hovering opens its
+ * settings — where on the picture, how big, how fast, how solid. A touch has
+ * no hover, so a tap opens the settings, whose switch does what the click
+ * would have.
+ */
+export function DanmakuControl({ prefs, onPrefs, chat, buttonClass }: {
+  prefs: DanmakuPrefs
+  onPrefs: (p: DanmakuPrefs) => void
+  /** How the chat's fetch is going, to say why nothing flies yet. */
+  chat: ChatState['status']
+  buttonClass: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [byTap, setByTap] = useState(false)
+  const boxRef = useRef<HTMLDivElement>(null)
+  const tap = useRef(false)
+  const set = (p: Partial<DanmakuPrefs>) => onPrefs({ ...prefs, ...p })
+
+  // Opened by a tap, it closes on a tap anywhere else.
+  useEffect(() => {
+    if (!open || !byTap) return
+    const away = (e: PointerEvent) => {
+      if (!boxRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', away)
+    return () => document.removeEventListener('pointerdown', away)
+  }, [open, byTap])
+
+  const label = prefs.on ? t('Turn danmaku off') : t('Turn danmaku on')
+  const waiting = prefs.on && chat !== 'done'
+
+  return (
+    <div
+      ref={boxRef}
+      className="relative"
+      onPointerEnter={(e) => { if (e.pointerType !== 'touch') { setOpen(true); setByTap(false) } }}
+      onPointerLeave={(e) => { if (e.pointerType !== 'touch') setOpen(false) }}
+    >
+      {open && (
+        <div
+          role="dialog"
+          aria-label={t('Danmaku')}
+          className="absolute bottom-full right-0 w-60 rounded-lg bg-shade-28 py-1 text-sm text-white shadow-2xl ring-1 ring-white/10"
+        >
+          <label className="flex cursor-pointer items-center justify-between px-3 py-1.5">
+            <span className="font-medium">{t('Danmaku')}</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={prefs.on}
+              onChange={(e) => set({ on: e.target.checked })}
+              className="h-4 w-4 accent-white"
+            />
+          </label>
+          {waiting && (
+            <p className="px-3 pb-1 text-xs text-shade-99">
+              {chat === 'error' ? t('The chat replay couldn’t be fetched.') : t('Fetching the chat replay…')}
+            </p>
+          )}
+          <Slider
+            title={t('Display area')}
+            value={prefs.area}
+            min={AREA_MIN}
+            step={AREA_STEP}
+            onChange={(area) => set({ area: roundDanmakuArea(area) })}
+          />
+          {/* Stepped from 100% by tenths, like the captions' size. */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5">
+            <span className="mr-auto text-xs text-shade-99">{t('Size')}</span>
+            <button
+              onClick={() => set({ size: roundDanmakuSize(prefs.size - SIZE_STEP) })}
+              disabled={prefs.size <= SIZE_MIN}
+              className={STEP_BUTTON}
+              title={t('Smaller')}
+              aria-label={t('Smaller danmaku')}
+            >
+              −
+            </button>
+            <span className="w-11 text-center text-xs tabular-nums text-shade-cc">{Math.round(prefs.size * 100)}%</span>
+            <button
+              onClick={() => set({ size: roundDanmakuSize(prefs.size + SIZE_STEP) })}
+              disabled={prefs.size >= SIZE_MAX}
+              className={STEP_BUTTON}
+              title={t('Bigger')}
+              aria-label={t('Bigger danmaku')}
+            >
+              +
+            </button>
+          </div>
+          <Choice title={t('Speed')} options={DANMAKU_SPEEDS} value={prefs.speed} label={speedLabel} onPick={(speed) => set({ speed })} />
+          <Slider
+            title={t('Opacity')}
+            value={prefs.opacity}
+            min={MIN_OPACITY}
+            step={0.05}
+            onChange={(opacity) => set({ opacity })}
+          />
+        </div>
+      )}
+      <button
+        onPointerDown={(e) => { tap.current = e.pointerType === 'touch' }}
+        onClick={() => {
+          if (tap.current) { setOpen((o) => !o); setByTap(true) }
+          else set({ on: !prefs.on })
+          tap.current = false
+        }}
+        aria-label={label}
+        title={label}
+        aria-pressed={prefs.on}
+        className={`group relative ${buttonClass}`}
+      >
+        {/* A screen with lines of text crossing it at different heights. */}
+        <svg className="relative h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+          <rect x="2" y="4" width="20" height="16" rx="2.5" />
+          <path strokeLinecap="round" d="M9 9h9M5.5 12.5h7M11 16h7" />
+        </svg>
+        {prefs.on && (
+          <span className="pointer-events-none absolute bottom-[5px] left-1/2 h-[3px] w-[18px] -translate-x-1/2 rounded-sm bg-white" />
+        )}
+      </button>
+    </div>
   )
 }

@@ -918,7 +918,8 @@ components/
                                   Chat tab
   ChatOverlay.tsx                 the same chat floating over the video, moved
                                   and sized by dragging
-  Danmaku.tsx                     the same chat flying across the picture (彈幕)
+  Danmaku.tsx                     the same chat flying across the picture
+                                  (彈幕), and its button and settings on the bar
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -1111,8 +1112,8 @@ Other details:
     a shortcut is one you have to have been told about — and these are the only
     marks on the bar you can't otherwise put there. The hook hands the buttons
     the same actions the key handler calls, so the two ways of asking can't
-    drift apart. In our row they follow the clock, while the caption and panel
-    buttons open the right-hand group, where YouTube keeps CC (`rightControls`;
+    drift apart. In our row they follow the clock, while the caption, 彈幕 and
+    panel buttons open the right-hand group, where YouTube keeps CC (`rightControls`;
     the caption menu opens leftwards from there). Floating over YouTube's
     chrome, all four sit in a row on the left: caption, panel, then these.
   - **Each opens its menu on hover and acts on a click**, the way CC does. The
@@ -2119,7 +2120,14 @@ from right to left, coming in at the moment it was sent.
   that stopped every message, then let it jump.
 - **A bigger player** has taller lines: the lanes are spaced afresh, and what's
   flying moves to its lane's new height and crosses the new width from where it
-  had got to.
+  had got to. The display area is only a resize too, so dragging its slider
+  starts nothing over.
+- **On our bar**, beside CC: a click turns it on or off, and hovering opens its
+  settings. They are the display area (how much of the picture's height, from
+  the top, it may fly over: 10–100%, half by default, since the captions sit
+  along the bottom), the size (stepped by 10% from 100%, like the captions'),
+  the speed, and the opacity. A touch opens the settings, whose switch does what
+  the click would. Over a bare embed the Chat tab's button is the way.
 
 ### Notes on a video (`NotesPanel.tsx`)
 

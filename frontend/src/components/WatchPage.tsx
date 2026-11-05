@@ -20,7 +20,7 @@ import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import NotesPanel from './NotesPanel'
 import ChatReplay, { useChatReplay } from './ChatReplay'
 import ChatOverlay from './ChatOverlay'
-import Danmaku from './Danmaku'
+import Danmaku, { DanmakuControl } from './Danmaku'
 import { loadDanmaku, saveDanmaku } from '../lib/danmaku'
 import { loadChatOverlay, saveChatOverlay } from '../lib/chatOverlay'
 import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
@@ -2747,6 +2747,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // The panel over the video, beside CC because it's the same kind of thing:
   // text laid over the picture, on or off. Same two placements as the caption
   // button.
+  // Only on our own bar: over a bare embed the chat tab's own button does it.
+  const danmakuControl = ownBar && hasChat && (
+    <DanmakuControl prefs={danmaku} onPrefs={setDanmaku} chat={chatFeed.state.status} buttonClass={BAR_BUTTON} />
+  )
   const panelControl = (
     <button
       onClick={() => setPanelOnVideo((v) => !v)}
@@ -3507,7 +3511,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
               onFullscreen={toggleFullscreen}
               nextControl={nextButton}
               leftControls={marksControls}
-              rightControls={<>{captionControl}{panelControl}</>}
+              rightControls={<>{captionControl}{danmakuControl}{panelControl}</>}
               extraControls={youtubeButton}
               bookmarks={marks.bookmarks}
               loop={marks.loop}
@@ -3593,7 +3597,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             onFullscreen={toggleFullscreen}
             nextControl={nextButton}
             leftControls={marksControls}
-            rightControls={<>{captionControl}{panelControl}</>}
+            rightControls={<>{captionControl}{danmakuControl}{panelControl}</>}
             extraControls={youtubeButton}
             bookmarks={marks.bookmarks}
             loop={marks.loop}
