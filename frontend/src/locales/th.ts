@@ -461,6 +461,8 @@ export const th: Record<string, string> = {
   'Darker background': 'พื้นหลังเข้ม',
   'Back to the panel': 'กลับไปที่แผง',
   'Close the chat': 'ปิดแชท',
+  'Hide names': 'ซ่อนชื่อ',
+  'Show names': 'แสดงชื่อ',
   // Player marks
   '{label} — jump to {time}': '{label} — ข้ามไปที่ {time}',
   '{label} at {time}': '{label} ที่ {time}',

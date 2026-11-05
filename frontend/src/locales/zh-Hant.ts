@@ -462,6 +462,8 @@ export const zhHant: Record<string, string> = {
   'Darker background': '深色背景',
   'Back to the panel': '回到面板',
   'Close the chat': '關閉聊天室',
+  'Hide names': '隱藏名稱',
+  'Show names': '顯示名稱',
   // Player marks
   '{label} — jump to {time}': '{label}：跳到 {time}',
   '{label} at {time}': '{label}，位於 {time}',

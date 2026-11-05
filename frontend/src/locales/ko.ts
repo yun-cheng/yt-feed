@@ -461,6 +461,8 @@ export const ko: Record<string, string> = {
   'Darker background': '진한 배경',
   'Back to the panel': '패널로 돌아가기',
   'Close the chat': '채팅 닫기',
+  'Hide names': '이름 숨기기',
+  'Show names': '이름 표시',
   // Player marks
   '{label} — jump to {time}': '{label} — {time}로 이동',
   '{label} at {time}': '{label}, {time} 위치',

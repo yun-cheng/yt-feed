@@ -461,6 +461,8 @@ export const vi: Record<string, string> = {
   'Darker background': 'Nền đậm hơn',
   'Back to the panel': 'Về lại bảng',
   'Close the chat': 'Đóng trò chuyện',
+  'Hide names': 'Ẩn tên',
+  'Show names': 'Hiện tên',
   // Player marks
   '{label} — jump to {time}': '{label} — nhảy đến {time}',
   '{label} at {time}': '{label} tại {time}',

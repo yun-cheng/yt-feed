@@ -131,6 +131,19 @@ describe('ChatOverlay', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('hides names from its strip, for the panel’s tab as much as itself', async () => {
+    const { setChatNames, useChatNames } = await import('../hooks/chatNames')
+    mount()
+    expect(screen.getByText('@ann')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Hide names' }))
+    expect(screen.queryByText('@ann')).not.toBeInTheDocument()
+    // One switch: whatever else shows the chat reads the same one.
+    function Probe() { return <span>{useChatNames() ? 'names on' : 'names off'}</span> }
+    render(<Probe />)
+    expect(screen.getByText('names off')).toBeInTheDocument()
+    setChatNames(true)
+  })
+
   it('keeps its clicks from the player under it', () => {
     const onPlayerClick = vi.fn()
     const room = { current: null }

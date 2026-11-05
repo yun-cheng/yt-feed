@@ -13,7 +13,7 @@
  * is only another place to show it.
  */
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
-import { ChatList, type ChatState } from './ChatReplay'
+import { ChatList, ChatNamesToggle, type ChatState } from './ChatReplay'
 import { PANEL_UNIT } from './VideoPanel'
 import { moveBox, nextBackdrop, resizeBox, type Backdrop, type ChatOverlayPrefs, type OverlayBox } from '../lib/chatOverlay'
 import { t } from '../lib/i18n'
@@ -143,6 +143,7 @@ export default function ChatOverlay({ room, prefs, onPrefs, feed, time, duration
             <rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor" fillOpacity={prefs.backdrop === 'none' ? 0 : prefs.backdrop === 'light' ? 0.35 : 0.75} />
           </svg>
         </button>
+        <ChatNamesToggle className={STRIP_BUTTON} />
         <button onClick={onDock} aria-label={t('Back to the panel')} title={t('Back to the panel')} className={STRIP_BUTTON}>
           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
             <rect x="3" y="4" width="18" height="16" rx="2" />

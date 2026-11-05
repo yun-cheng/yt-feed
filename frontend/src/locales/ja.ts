@@ -461,6 +461,8 @@ export const ja: Record<string, string> = {
   'Darker background': '濃い背景',
   'Back to the panel': 'パネルに戻す',
   'Close the chat': 'チャットを閉じる',
+  'Hide names': '名前を隠す',
+  'Show names': '名前を表示',
   // Player marks
   '{label} — jump to {time}': '{label}：{time} にジャンプ',
   '{label} at {time}': '{label}、{time}',

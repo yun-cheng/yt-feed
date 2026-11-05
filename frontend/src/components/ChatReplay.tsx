@@ -23,6 +23,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { apiFetch } from '../lib/api'
 import { formatTime } from '../lib/time'
 import { t } from '../lib/i18n'
+import { setChatNames, useChatNames } from '../hooks/chatNames'
 
 /** A run of a message: text, or a channel's custom emoji as a picture. */
 type Run = string | { e: string; n: string }
@@ -76,7 +77,12 @@ const NAME_STYLE: Record<NonNullable<ChatMessage['b']> | 'none', string> = {
   none: 'text-shade-aa',
 }
 
-function ChatLine({ m, onSeek, showTime }: { m: ChatMessage; onSeek: (seconds: number) => void; showTime: boolean }) {
+function ChatLine({ m, onSeek, showTime, showName }: {
+  m: ChatMessage
+  onSeek: (seconds: number) => void
+  showTime: boolean
+  showName: boolean
+}) {
   return (
     <div className={`flex gap-2 rounded-lg px-1.5 py-0.5 ${m.p ? 'bg-amber-500/15' : m.m ? 'bg-green-500/10' : ''}`}>
       {showTime && (
@@ -88,7 +94,7 @@ function ChatLine({ m, onSeek, showTime }: { m: ChatMessage; onSeek: (seconds: n
         </button>
       )}
       <p className="min-w-0 text-(length:--panel-body) leading-snug text-shade-dd [overflow-wrap:anywhere]">
-        <span className={`mr-1.5 font-medium ${NAME_STYLE[m.b ?? 'none']}`}>{m.a}</span>
+        {showName && <span className={`mr-1.5 font-medium ${NAME_STYLE[m.b ?? 'none']}`}>{m.a}</span>}
         {m.p && <span className="mr-1.5 rounded bg-amber-500/25 px-1 font-semibold text-amber-200">{m.p}</span>}
         {m.r.map((run, i) => typeof run === 'string'
           ? <span key={i}>{run}</span>
@@ -167,6 +173,7 @@ export function ChatList({ feed, time, duration, onSeek, syncButton, showTime = 
   onPicture?: boolean
 }) {
   const { state, retry } = feed
+  const showNames = useChatNames()
   const messages = state.status === 'done' ? state.messages : null
   const liveEnd = useMemo(() => (messages ? sentBy(messages, time * 1000) : 0), [messages, time])
   // Where the list stopped when you scrolled up to read; null while it follows.
@@ -248,7 +255,7 @@ export function ChatList({ feed, time, duration, onSeek, syncButton, showTime = 
         )}
         {messages && !messages.length && note(t('Nobody wrote in this stream’s chat.'))}
         {messages && messages.length > 0 && !shown.length && note(t('Messages appear here as the video reaches them.'))}
-        {shown.map((m, i) => <ChatLine key={`${m.t}-${end - shown.length + i}`} m={m} onSeek={onSeek} showTime={showTime} />)}
+        {shown.map((m, i) => <ChatLine key={`${m.t}-${end - shown.length + i}`} m={m} onSeek={onSeek} showTime={showTime} showName={showNames} />)}
       </div>
       {heldEnd !== null && (
         <button
@@ -264,16 +271,34 @@ export function ChatList({ feed, time, duration, onSeek, syncButton, showTime = 
   )
 }
 
+/** Shows or hides who wrote each message, everywhere the chat shows (see
+ *  hooks/chatNames). An icon only, with the words as its tooltip: it shares a
+ *  row with Float over the video, and the panel can be narrow. */
+export function ChatNamesToggle({ className }: { className: string }) {
+  const shown = useChatNames()
+  const text = shown ? t('Hide names') : t('Show names')
+  return (
+    <button onClick={() => setChatNames(!shown)} aria-label={text} title={text} className={className}>
+      {/* A person, struck through while their names are hidden. */}
+      <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+        <circle cx="12" cy="8" r="4" />
+        <path strokeLinecap="round" d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+        {!shown && <path strokeLinecap="round" d="M3 3l18 18" />}
+      </svg>
+    </button>
+  )
+}
+
+const HEADER_BUTTON = 'flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs text-shade-cc transition-colors hover:bg-white/10 hover:text-white'
+
 /** The panel's Chat tab: the list with times, and a way to float it over the
  *  picture instead. */
 export default function ChatReplay({ onFloat, ...list }: Parameters<typeof ChatList>[0] & { onFloat: () => void }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 justify-end px-2 pb-1">
-        <button
-          onClick={onFloat}
-          className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs text-shade-cc transition-colors hover:bg-white/10 hover:text-white"
-        >
+      <div className="flex shrink-0 justify-end gap-1 px-2 pb-1">
+        <ChatNamesToggle className={HEADER_BUTTON} />
+        <button onClick={onFloat} className={HEADER_BUTTON}>
           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
             <rect x="3" y="4" width="18" height="16" rx="2" />
             <rect x="12" y="7" width="6" height="8" rx="1" fill="currentColor" />

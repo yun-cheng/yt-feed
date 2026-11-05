@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import ChatReplay, { CHAT_WINDOW, sentBy, useChatReplay, type ChatMessage } from '../components/ChatReplay'
+import { CHAT_NAMES_KEY, setChatNames } from '../hooks/chatNames'
 
 type Reply = Record<string, unknown>
 
@@ -38,7 +39,7 @@ async function mount(time: number, wanted = true) {
 const rerenderAt = (view: Awaited<ReturnType<typeof mount>>, time: number) => view.rerender(<Tab time={time} />)
 
 beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); onSeek.mockReset(); onFloat.mockReset() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); onSeek.mockReset(); onFloat.mockReset(); setChatNames(true); localStorage.clear() })
 
 describe('sentBy', () => {
   it('counts the messages sent by a moment, that moment included', () => {
@@ -83,6 +84,22 @@ describe('ChatReplay', () => {
     view.rerender(<Tab time={61} wanted />)
     await flush()
     expect(methods).toEqual(['GET'])
+  })
+
+  it('hides who wrote each message on asking, and keeps it that way', async () => {
+    serve({ status: 'done', messages: [MESSAGES[0], { t: 7_000, a: '@rich', r: [], p: 'NT$150' }, ...MESSAGES.slice(1)] })
+    await mount(61)
+    expect(screen.getByText('@ann')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide names' }))
+    expect(screen.queryByText('@ann')).not.toBeInTheDocument()
+    expect(screen.getByText('first')).toBeInTheDocument()
+    // A Super Chat still says what it was worth, if not who sent it.
+    expect(screen.getByText('NT$150')).toBeInTheDocument()
+    expect(localStorage.getItem(CHAT_NAMES_KEY)).toBe('0')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show names' }))
+    expect(screen.getByText('@ann')).toBeInTheDocument()
   })
 
   it('floats over the video from its button', async () => {
