@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import ChatReplay, { CHAT_WINDOW, sentBy, type ChatMessage } from '../components/ChatReplay'
+import ChatReplay, { CHAT_WINDOW, sentBy, useChatReplay, type ChatMessage } from '../components/ChatReplay'
 
 type Reply = Record<string, unknown>
 
@@ -22,15 +22,19 @@ const msg = (s: number, a: string, text: string, more: Partial<ChatMessage> = {}
 const MESSAGES = [msg(5, '@ann', 'first'), msg(60, '@bo', 'second'), msg(120, '@cy', 'third')]
 
 const onSeek = vi.fn()
-async function mount(time: number, duration = 600) {
-  const view = render(
-    <ChatReplay videoId="vid00000001" time={time} duration={duration} onSeek={onSeek} syncButton={{ className: '', icon: '↓' }} />,
-  )
-  await act(async () => { for (let i = 0; i < 5; i++) await Promise.resolve() })
+
+/** The tab as the watch page builds it: the shared fetch, then the tab. */
+function Tab({ time, wanted = true }: { time: number; wanted?: boolean }) {
+  const feed = useChatReplay('vid00000001', wanted)
+  return <ChatReplay feed={feed} time={time} duration={600} onSeek={onSeek} syncButton={{ className: '', icon: '↓' }} />
+}
+const flush = () => act(async () => { for (let i = 0; i < 5; i++) await Promise.resolve() })
+async function mount(time: number, wanted = true) {
+  const view = render(<Tab time={time} wanted={wanted} />)
+  await flush()
   return view
 }
-const rerenderAt = (view: Awaited<ReturnType<typeof mount>>, time: number) =>
-  view.rerender(<ChatReplay videoId="vid00000001" time={time} duration={600} onSeek={onSeek} syncButton={{ className: '', icon: '↓' }} />)
+const rerenderAt = (view: Awaited<ReturnType<typeof mount>>, time: number) => view.rerender(<Tab time={time} />)
 
 beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); onSeek.mockReset() })
@@ -69,6 +73,15 @@ describe('ChatReplay', () => {
     expect(screen.queryByText('line 49')).not.toBeInTheDocument()
     expect(screen.getByText('line 50')).toBeInTheDocument()
     expect(screen.getByText(`line ${CHAT_WINDOW + 49}`)).toBeInTheDocument()
+  })
+
+  it('asks for nothing until something shows the chat', async () => {
+    const methods = serve({ status: 'done', messages: MESSAGES })
+    const view = await mount(61, false)
+    expect(methods).toEqual([])
+    view.rerender(<Tab time={61} wanted />)
+    await flush()
+    expect(methods).toEqual(['GET'])
   })
 
   it('starts the fetch on first opening, and says how far it has got', async () => {
@@ -122,6 +135,7 @@ describe('ChatReplay', () => {
     const box = screen.getByText('first').closest('.overflow-y-auto') as HTMLElement
     Object.defineProperty(box, 'scrollHeight', { value: 1000, configurable: true })
     Object.defineProperty(box, 'clientHeight', { value: 300, configurable: true })
+    fireEvent.wheel(box, { deltaY: -200 })
     box.scrollTop = 100
     fireEvent.scroll(box)
 
@@ -129,6 +143,20 @@ describe('ChatReplay', () => {
     expect(screen.queryByText('third')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sync to video' }))
+    expect(screen.getByText('third')).toBeInTheDocument()
+  })
+
+  it('keeps following through a scroll nobody made, like the box being resized', async () => {
+    serve({ status: 'done', messages: MESSAGES })
+    const view = await mount(61)
+    const box = screen.getByText('first').closest('.overflow-y-auto') as HTMLElement
+    Object.defineProperty(box, 'scrollHeight', { value: 1000, configurable: true })
+    Object.defineProperty(box, 'clientHeight', { value: 300, configurable: true })
+    box.scrollTop = 100
+    fireEvent.scroll(box)
+
+    expect(screen.queryByRole('button', { name: 'Sync to video' })).not.toBeInTheDocument()
+    rerenderAt(view, 121)
     expect(screen.getByText('third')).toBeInTheDocument()
   })
 })

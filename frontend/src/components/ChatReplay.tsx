@@ -12,6 +12,11 @@
  * list holds still under you — new messages would otherwise push what you're
  * reading off the top — until you scroll back down or press the button that
  * brings it back to the present.
+ *
+ * Three pieces, so the same chat can be shown more than one way: the fetch
+ * (`useChatReplay`, one per page, read by everything that shows the chat), the
+ * list (`ChatList`, with or without times, on the panel's ground or straight on
+ * the picture), and the panel's tab built from them.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { apiFetch } from '../lib/api'
@@ -33,7 +38,8 @@ export type ChatMessage = {
   m?: boolean
 }
 
-type State =
+export type ChatState =
+  | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'none' }
   | { status: 'running'; covered: number }
@@ -69,15 +75,17 @@ const NAME_STYLE: Record<NonNullable<ChatMessage['b']> | 'none', string> = {
   none: 'text-shade-aa',
 }
 
-function ChatLine({ m, onSeek }: { m: ChatMessage; onSeek: (seconds: number) => void }) {
+function ChatLine({ m, onSeek, showTime }: { m: ChatMessage; onSeek: (seconds: number) => void; showTime: boolean }) {
   return (
     <div className={`flex gap-2 rounded-lg px-1.5 py-0.5 ${m.p ? 'bg-amber-500/15' : m.m ? 'bg-green-500/10' : ''}`}>
-      <button
-        onClick={() => onSeek(m.t / 1000)}
-        className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-shade-99 hover:text-tint-3ea6ff"
-      >
-        {formatTime(m.t / 1000)}
-      </button>
+      {showTime && (
+        <button
+          onClick={() => onSeek(m.t / 1000)}
+          className="shrink-0 pt-px font-mono text-(length:--panel-time) tabular-nums text-shade-99 hover:text-tint-3ea6ff"
+        >
+          {formatTime(m.t / 1000)}
+        </button>
+      )}
       <p className="min-w-0 text-(length:--panel-body) leading-snug text-shade-dd [overflow-wrap:anywhere]">
         <span className={`mr-1.5 font-medium ${NAME_STYLE[m.b ?? 'none']}`}>{m.a}</span>
         {m.p && <span className="mr-1.5 rounded bg-amber-500/25 px-1 font-semibold text-amber-200">{m.p}</span>}
@@ -98,23 +106,22 @@ function ChatLine({ m, onSeek }: { m: ChatMessage; onSeek: (seconds: number) => 
   )
 }
 
-export default function ChatReplay({ videoId, time, duration, onSeek, syncButton }: {
-  videoId: string
-  /** The play head, in seconds. */
-  time: number
-  /** The video's length, for the progress line while the chat is fetched. */
-  duration: number
-  onSeek: (seconds: number) => void
-  /** The floating "back to the present" button's look, shared with the
-   *  transcript's. */
-  syncButton: { className: string; icon: ReactNode }
-}) {
-  const [state, setState] = useState<State>({ status: 'loading' })
+/**
+ * The chat replay of `videoId`, fetched by the backend the first time anything
+ * asks for it (`wanted`), then watched until it lands. One per page, read by
+ * everything that shows the chat, so showing it twice fetches nothing twice.
+ */
+export function useChatReplay(videoId: string, wanted: boolean): { state: ChatState; retry: () => void } {
+  const [state, setState] = useState<ChatState>({ status: 'idle' })
   const [attempt, setAttempt] = useState(0)
+  // A new video starts over, and isn't asked about until something shows it.
+  useEffect(() => { setState({ status: 'idle' }); setAttempt(0) }, [videoId])
+  const started = wanted || state.status !== 'idle'
 
-  // Asked once on opening; started if nobody has fetched it yet; then watched
-  // until it lands. A retry starts it again straight away.
+  // Asked once; started if nobody has fetched it yet; then watched until it
+  // lands. A retry starts it again straight away.
   useEffect(() => {
+    if (!started) return
     let stopped = false
     let timer: number | undefined
     const ask = async (start: boolean) => {
@@ -133,10 +140,32 @@ export default function ChatReplay({ videoId, time, duration, onSeek, syncButton
         if (!stopped) setState({ status: 'error', error: '' })
       }
     }
+    setState((s) => (s.status === 'idle' ? { status: 'loading' } : s))
     void ask(attempt > 0)
     return () => { stopped = true; window.clearTimeout(timer) }
-  }, [videoId, attempt])
+  }, [videoId, attempt, started])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  return { state, retry: () => setAttempt((a) => a + 1) }
+}
+
+/** The chat as a list, following the play head (see the module comment). */
+export function ChatList({ feed, time, duration, onSeek, syncButton, showTime = true, onPicture = false }: {
+  feed: { state: ChatState; retry: () => void }
+  /** The play head, in seconds. */
+  time: number
+  /** The video's length, for the progress line while the chat is fetched. */
+  duration: number
+  onSeek: (seconds: number) => void
+  /** The floating "back to the present" button's look, shared with the
+   *  transcript's. */
+  syncButton: { className: string; icon: ReactNode }
+  /** Each message's time, as a button that seeks. */
+  showTime?: boolean
+  /** Drawn straight on the video rather than on the panel's dark ground: the
+   *  text carries its own shadow, and the scrollbar keeps out of the picture. */
+  onPicture?: boolean
+}) {
+  const { state, retry } = feed
   const messages = state.status === 'done' ? state.messages : null
   const liveEnd = useMemo(() => (messages ? sentBy(messages, time * 1000) : 0), [messages, time])
   // Where the list stopped when you scrolled up to read; null while it follows.
@@ -145,16 +174,34 @@ export default function ChatReplay({ videoId, time, duration, onSeek, syncButton
   const shown = messages ? messages.slice(Math.max(0, end - CHAT_WINDOW), end) : []
 
   const boxRef = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
+  const pin = () => {
     const box = boxRef.current
-    if (box && heldEnd === null) box.scrollTop = box.scrollHeight
-  }, [end, heldEnd])
+    if (box) box.scrollTop = box.scrollHeight
+  }
+  useLayoutEffect(() => { if (heldEnd === null) pin() }, [end, heldEnd])
+  // A box that changes size — the overlay resized, the player going
+  // fullscreen — keeps its newest message in view while it follows.
+  const following = useRef(true)
+  following.current = heldEnd === null
+  useEffect(() => {
+    const box = boxRef.current
+    if (!box || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => { if (following.current) pin() })
+    ro.observe(box)
+    return () => ro.disconnect()
+  }, [])
+  // Only the reader's own scrolling holds the list: a wheel, a touch, a key,
+  // or the scrollbar. A scroll the layout caused (the box resized under it)
+  // is not someone reading back.
+  const reading = useRef(0)
+  const intent = () => { reading.current = Date.now() }
   const onScroll = () => {
     const box = boxRef.current
     if (!box || !messages) return
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < AT_BOTTOM_PX
-    if (!atBottom && heldEnd === null) setHeldEnd(liveEnd)
-    else if (atBottom && heldEnd !== null) setHeldEnd(null)
+    if (atBottom) { if (heldEnd !== null) setHeldEnd(null); return }
+    if (heldEnd === null && Date.now() - reading.current < 1000) setHeldEnd(liveEnd)
+    else if (heldEnd === null) pin()
   }
 
   const note = (text: ReactNode) => (
@@ -162,9 +209,17 @@ export default function ChatReplay({ videoId, time, duration, onSeek, syncButton
   )
 
   return (
-    <div className="relative min-h-0 flex-1">
-      <div ref={boxRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain px-1.5 pb-3 pt-1">
-        {(state.status === 'loading' || state.status === 'none') && note(t('Fetching the chat replay…'))}
+    <div className={`relative min-h-0 flex-1 ${onPicture ? 'chat-on-picture' : ''}`}>
+      <div
+        ref={boxRef}
+        onScroll={onScroll}
+        onWheel={intent}
+        onTouchStart={intent}
+        onKeyDown={intent}
+        onPointerDown={intent}
+        className={`h-full overflow-y-auto overscroll-contain px-1.5 pb-3 pt-1 ${onPicture ? '[scrollbar-width:none]' : ''}`}
+      >
+        {(state.status === 'idle' || state.status === 'loading' || state.status === 'none') && note(t('Fetching the chat replay…'))}
         {state.status === 'running' && (
           <div className="px-1.5 py-2">
             {note(t('Fetching the chat replay… {done} of {total}', {
@@ -183,7 +238,7 @@ export default function ChatReplay({ videoId, time, duration, onSeek, syncButton
             <p>{t('The chat replay couldn’t be fetched.')}</p>
             {state.error && <p className="mt-1 text-xs text-shade-99 [overflow-wrap:anywhere]">{state.error}</p>}
             <button
-              onClick={() => setAttempt((a) => a + 1)}
+              onClick={retry}
               className="mt-2 rounded-full bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20"
             >
               {t('Try again')}
@@ -192,7 +247,7 @@ export default function ChatReplay({ videoId, time, duration, onSeek, syncButton
         )}
         {messages && !messages.length && note(t('Nobody wrote in this stream’s chat.'))}
         {messages && messages.length > 0 && !shown.length && note(t('Messages appear here as the video reaches them.'))}
-        {shown.map((m, i) => <ChatLine key={`${m.t}-${end - shown.length + i}`} m={m} onSeek={onSeek} />)}
+        {shown.map((m, i) => <ChatLine key={`${m.t}-${end - shown.length + i}`} m={m} onSeek={onSeek} showTime={showTime} />)}
       </div>
       {heldEnd !== null && (
         <button
@@ -206,4 +261,9 @@ export default function ChatReplay({ videoId, time, duration, onSeek, syncButton
       )}
     </div>
   )
+}
+
+/** The panel's Chat tab: the list, with each message's time. */
+export default function ChatReplay(list: Parameters<typeof ChatList>[0]) {
+  return <ChatList {...list} />
 }

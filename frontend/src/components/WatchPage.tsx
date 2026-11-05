@@ -18,7 +18,7 @@ import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
 import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import NotesPanel from './NotesPanel'
-import ChatReplay from './ChatReplay'
+import ChatReplay, { useChatReplay } from './ChatReplay'
 import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
 import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
@@ -883,6 +883,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const transcriptWanted = showTranscript || panelShows('transcript')
   // And the play head, for whichever list of moments is showing.
   const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks') || panelShows('chat')
+  // The chat replay, fetched once the tab first shows it.
+  const chatFeed = useChatReplay(videoId, hasChat && panelShows('chat'))
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -2321,7 +2323,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             <PanelTab shown={panelTabShown === 'chat'}>
               <ChatReplay
                 key={videoId}
-                videoId={videoId}
+                feed={chatFeed}
                 time={curTime}
                 duration={meta?.duration_seconds ?? 0}
                 onSeek={seekTo}
