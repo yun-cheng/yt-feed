@@ -2117,6 +2117,33 @@ export default function App() {
     return f.tags && f.watchStatus && f.length && f.summarised
   }, [page])
 
+  // YouTube API token expired/revoked — stats stop updating until re-auth.
+  // Rendered in one of two places, by layout (see where it's placed).
+  const tokenBanner = tokenBad && !tokenNoticeDismissed && (
+    <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 text-sm bg-amber-500/15 text-amber-300 border-b border-amber-500/30">
+      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A2 2 0 003.53 21h16.94a2 2 0 001.72-2.44l-8.48-14.7a2 2 0 00-3.42 0z"/>
+      </svg>
+      <span className="flex-1 min-w-0">
+        {t('YouTube API token is expired/revoked — video stats will stop updating.')}{' '}
+        <a
+          href="/api/auth/login"
+          target="_blank"
+          rel="noreferrer"
+          className="underline font-semibold text-amber-200 hover:text-amber-100"
+        >
+          {t('Re-authenticate')}
+        </a>{' '}{t('to resume.')}
+      </span>
+      <button
+        className="flex-shrink-0 text-amber-300/70 hover:text-amber-200 text-xs px-2 py-0.5"
+        onClick={() => { sessionStorage.setItem('yt_token_notice_dismissed', '1'); setTokenNoticeDismissed(true) }}
+      >
+        Dismiss
+      </button>
+    </div>
+  )
+
   return (
     <div className="flex h-dvh overflow-hidden">
       {/* Mobile backdrop */}
@@ -2186,31 +2213,10 @@ export default function App() {
 
       {/* Right column: token banner + topbar + main content */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* YouTube API token expired/revoked — stats stop updating until re-auth */}
-        {tokenBad && !tokenNoticeDismissed && (
-          <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 text-sm bg-amber-500/15 text-amber-300 border-b border-amber-500/30">
-            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86l-8.48 14.7A2 2 0 003.53 21h16.94a2 2 0 001.72-2.44l-8.48-14.7a2 2 0 00-3.42 0z"/>
-            </svg>
-            <span className="flex-1 min-w-0">
-              {t('YouTube API token is expired/revoked — video stats will stop updating.')}{' '}
-              <a
-                href="/api/auth/login"
-                target="_blank"
-                rel="noreferrer"
-                className="underline font-semibold text-amber-200 hover:text-amber-100"
-              >
-                {t('Re-authenticate')}
-              </a>{' '}{t('to resume.')}
-            </span>
-            <button
-              className="flex-shrink-0 text-amber-300/70 hover:text-amber-200 text-xs px-2 py-0.5"
-              onClick={() => { sessionStorage.setItem('yt_token_notice_dismissed', '1'); setTokenNoticeDismissed(true) }}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+        {/* Above the page on a desktop. On a phone it rides in the fixed top
+            bar instead (below): out here it would sit under that bar, unseen,
+            and push the page down by its own height. */}
+        {!isMobile && tokenBanner}
       <main ref={mainRef} className="flex-1 overflow-y-auto min-w-0 pb-[env(safe-area-inset-bottom)] md:pb-0 [overflow-anchor:none] [scrollbar-gutter:stable]" style={isMobile ? { paddingTop: topbarHeight } : undefined}>
         {/* TopBar lives INSIDE the scroll container so scrolling works natively
             even when the cursor rests on it. Desktop: sticky at the top. Mobile:
@@ -2220,6 +2226,9 @@ export default function App() {
           ref={topbarRef}
           className={`fixed top-0 inset-x-0 z-20 transition-transform duration-200 md:sticky md:top-0 md:translate-y-0 ${topbarPinned ? 'translate-y-0' : '-translate-y-full'}`}
         >
+        {/* On the header's own ground: the banner's tint is see-through, and
+            here the page scrolls underneath it. */}
+        {isMobile && tokenBanner && <div className="bg-shade-0f">{tokenBanner}</div>}
         {/* The bar shows the CURRENT page's window and sort, straight off its
             view. Passing no window is what hides the slider, so the one table
             that keeps `age` out of the URL keeps it out of the bar too. */}

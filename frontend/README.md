@@ -2424,6 +2424,13 @@ small screen on four of the nine destinations, a door the drawer already has.
 Picking anything from the drawer closes it; a filter click inside it does not.
 `Sidebar.test.tsx` holds that line.
 
+**The top bar is fixed, so a notice rides in it.** Below `md` the bar is
+`fixed` and slides away as you scroll, with `<main>` padded by its measured
+height. A notice above the page — the expired-token banner — would sit under it
+there, unseen, and push the page down by its own height. So on a phone it renders
+inside the bar, on the header's ground (its tint is see-through, and the page
+scrolls beneath), and is measured with it; on a desktop it stays above the page.
+
 **Leaving a video.** The watch overlay is `z-[60]` — above the sidebar — and
 opening a video pushes a history entry, so the way out is the browser's own:
 its Back button, the mouse's back button, Alt+← / ⌘[, or a phone's swipe back.
@@ -2623,7 +2630,7 @@ own Chromium can't decode H.264, and Chrome needs no download.
 | `local.spec.ts` | a folder added by path lists its files with the lengths ffprobe read, and plays one |
 | `player.spec.ts` | the keys, read off the `<video>` itself: `k` play/pause, `j` `l` and the arrows seeking by their step, `.` `,` the speed (and the bar showing it), `m` and the volume arrows; the volume boost switching on without an error from its WebAudio graph and gone on coming back; and focus mode keeping the bar down while paused until the pointer is over the video, and holding across a reload |
 | `settings.spec.ts` | the app language and the light theme taking over the page and holding across a reload — then put back, since the whole suite shares one account |
-| `mobile.spec.ts` | at 375px wide, the feed, Settings, History, Downloads and the watch page never scroll sideways, the watch page's Back stays on screen, and the sidebar opens from its button |
+| `mobile.spec.ts` | at 375px wide, the feed, Settings, History, Downloads and the watch page never scroll sideways, the watch page's Back stays on screen, the sidebar opens from its button, and a notice above the page rides in the fixed top bar, where it can be read and dismissed without leaving a gap |
 | `filters.spec.ts` | Shorts as a feed of its own; the watched hidden until Watched is picked; a length chip; a tag chip and its − exclusion; Summarised |
 | `presets.spec.ts` | a selection saved as a preset and put back with one click |
 | `search.spec.ts` | a title found by a word in it, and by a misspelt one |
