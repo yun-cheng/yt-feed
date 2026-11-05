@@ -463,6 +463,8 @@ export const th: Record<string, string> = {
   'Close the chat': 'ปิดแชท',
   'Hide names': 'ซ่อนชื่อ',
   'Show names': 'แสดงชื่อ',
+  'Turn danmaku on': 'เปิดดันมาคุ',
+  'Turn danmaku off': 'ปิดดันมาคุ',
   // Player marks
   '{label} — jump to {time}': '{label} — ข้ามไปที่ {time}',
   '{label} at {time}': '{label} ที่ {time}',

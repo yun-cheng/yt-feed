@@ -24,11 +24,12 @@ const MESSAGES = [msg(5, '@ann', 'first'), msg(60, '@bo', 'second'), msg(120, '@
 
 const onSeek = vi.fn()
 const onFloat = vi.fn()
+const onDanmaku = vi.fn()
 
 /** The tab as the watch page builds it: the shared fetch, then the tab. */
 function Tab({ time, wanted = true }: { time: number; wanted?: boolean }) {
   const feed = useChatReplay('vid00000001', wanted)
-  return <ChatReplay feed={feed} time={time} duration={600} onSeek={onSeek} onFloat={onFloat} syncButton={{ className: '', icon: '↓' }} />
+  return <ChatReplay feed={feed} time={time} duration={600} onSeek={onSeek} onFloat={onFloat} danmaku={false} onDanmaku={onDanmaku} syncButton={{ className: '', icon: '↓' }} />
 }
 const flush = () => act(async () => { for (let i = 0; i < 5; i++) await Promise.resolve() })
 async function mount(time: number, wanted = true) {
@@ -39,7 +40,7 @@ async function mount(time: number, wanted = true) {
 const rerenderAt = (view: Awaited<ReturnType<typeof mount>>, time: number) => view.rerender(<Tab time={time} />)
 
 beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }) })
-afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); onSeek.mockReset(); onFloat.mockReset(); setChatNames(true); localStorage.clear() })
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); onSeek.mockReset(); onFloat.mockReset(); onDanmaku.mockReset(); setChatNames(true); localStorage.clear() })
 
 describe('sentBy', () => {
   it('counts the messages sent by a moment, that moment included', () => {
@@ -107,6 +108,13 @@ describe('ChatReplay', () => {
     await mount(61)
     fireEvent.click(screen.getByRole('button', { name: 'Float over the video' }))
     expect(onFloat).toHaveBeenCalled()
+  })
+
+  it('sends the chat flying across the picture from its button', async () => {
+    serve({ status: 'done', messages: MESSAGES })
+    await mount(61)
+    fireEvent.click(screen.getByRole('button', { name: 'Turn danmaku on' }))
+    expect(onDanmaku).toHaveBeenCalled()
   })
 
   it('starts the fetch on first opening, and says how far it has got', async () => {

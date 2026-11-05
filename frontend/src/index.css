@@ -269,6 +269,42 @@ button, a, [role="button"] {
   text-shadow: 0 0 2px rgb(0 0 0 / 0.9), 0 1px 3px rgb(0 0 0 / 0.8);
 }
 
+/* 彈幕 (components/Danmaku): one line per message, white with a dark outline
+   so it reads over any picture. The layer sets the size; each message is moved
+   by its transform alone. */
+.danmaku-item, .danmaku-probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #fff;
+  text-shadow:
+    1px 0 1px rgb(0 0 0 / 0.85), -1px 0 1px rgb(0 0 0 / 0.85),
+    0 1px 1px rgb(0 0 0 / 0.85), 0 -1px 1px rgb(0 0 0 / 0.85);
+  will-change: transform;
+}
+/* One line's height, measured to space the lanes; never seen. */
+.danmaku-probe { visibility: hidden; }
+.danmaku-item img {
+  display: inline-block;
+  height: 1.15em;
+  width: auto;
+  vertical-align: -0.2em;
+}
+.danmaku-item.is-owner { color: #facc15; }
+.danmaku-item.is-mod { color: #93c5fd; }
+.danmaku-item.is-member { color: #86efac; }
+.danmaku-paid {
+  margin-right: 0.4em;
+  border-radius: 0.3em;
+  background: rgb(245 158 11 / 0.85);
+  padding: 0 0.35em;
+  color: #1c1917;
+  text-shadow: none;
+}
+
 /* Volume slider (VideoCard hover control). Track background is set inline as a
    gradient so the filled portion tracks the current volume. */
 .vol-slider {

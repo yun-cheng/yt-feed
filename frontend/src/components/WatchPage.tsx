@@ -20,6 +20,8 @@ import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import NotesPanel from './NotesPanel'
 import ChatReplay, { useChatReplay } from './ChatReplay'
 import ChatOverlay from './ChatOverlay'
+import Danmaku from './Danmaku'
+import { loadDanmaku, saveDanmaku } from '../lib/danmaku'
 import { loadChatOverlay, saveChatOverlay } from '../lib/chatOverlay'
 import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
 import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
@@ -494,6 +496,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [chatOverlay, setChatOverlay] = useState(loadChatOverlay)
   useEffect(() => { saveChatOverlay(chatOverlay) }, [chatOverlay])
   const chatFloats = hasChat && chatOverlay.on
+  // 彈幕: the chat flying across the picture, on its own switch — it can fly
+  // with the chat in the panel, floating, or nowhere else at all.
+  const [danmaku, setDanmaku] = useState(loadDanmaku)
+  useEffect(() => { saveDanmaku(danmaku) }, [danmaku])
+  const danmakuFlies = hasChat && danmaku.on
   const [embedError, setEmbedError] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
   // Whether this video sits in any playlist, so the Save pill can say so.
@@ -891,8 +898,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const transcriptWanted = showTranscript || panelShows('transcript')
   // And the play head, for whichever list of moments is showing.
   const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks') || panelShows('chat') || chatFloats
-  // One fetch of the chat replay for both places it shows.
-  const chatFeed = useChatReplay(videoId, hasChat && (panelShows('chat') || chatFloats))
+  // One fetch of the chat replay for every place it shows.
+  const chatFeed = useChatReplay(videoId, hasChat && (panelShows('chat') || chatFloats || danmakuFlies))
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -2340,6 +2347,8 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   setChatOverlay((c) => ({ ...c, on: true }))
                   setPanelOnVideo(false)
                 }}
+                danmaku={danmaku.on}
+                onDanmaku={() => setDanmaku((d) => ({ ...d, on: !d.on }))}
               />
             </PanelTab>
           )}
@@ -3546,6 +3555,16 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
 
         {/* Caption + volume-HUD overlays (defined above). They stay inside the
             box, which is also the fullscreen target, so they show in fullscreen. */}
+        {danmakuFlies && (
+          <Danmaku
+            key={videoId}
+            player={playerRef}
+            messages={chatFeed.state.status === 'done' ? chatFeed.state.messages : null}
+            prefs={danmaku}
+            // Beside the panel, not under it, the way the captions keep clear.
+            style={panelOnVideo ? { [panelSide]: PANEL_WIDTH } : undefined}
+          />
+        )}
         {overlays}
 
         {/* Everything we draw over the EMBED — the caption button, open-on-YouTube,

@@ -463,6 +463,8 @@ export const ko: Record<string, string> = {
   'Close the chat': '채팅 닫기',
   'Hide names': '이름 숨기기',
   'Show names': '이름 표시',
+  'Turn danmaku on': '탄막 켜기',
+  'Turn danmaku off': '탄막 끄기',
   // Player marks
   '{label} — jump to {time}': '{label} — {time}로 이동',
   '{label} at {time}': '{label}, {time} 위치',

@@ -463,6 +463,8 @@ export const ja: Record<string, string> = {
   'Close the chat': 'チャットを閉じる',
   'Hide names': '名前を隠す',
   'Show names': '名前を表示',
+  'Turn danmaku on': '弾幕をオン',
+  'Turn danmaku off': '弾幕をオフ',
   // Player marks
   '{label} — jump to {time}': '{label}：{time} にジャンプ',
   '{label} at {time}': '{label}、{time}',

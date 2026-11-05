@@ -918,6 +918,7 @@ components/
                                   Chat tab
   ChatOverlay.tsx                 the same chat floating over the video, moved
                                   and sized by dragging
+  Danmaku.tsx                     the same chat flying across the picture (彈幕)
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -974,6 +975,7 @@ lib/
   channelCaptions.ts              captions remembered per channel (the caption_memory setting)
   chatOverlay.ts                  where the floating chat sits and how it looks,
                                   as shares of the player; kept per browser
+  danmaku.ts                      彈幕's settings (kept per browser) and its lanes
   richText.tsx                    YouTube free text (descriptions, comments):
                                   URLs as links, timestamps as seek buttons;
                                   formatCount (1.2M, or 35.6萬 in Chinese)
@@ -1996,7 +1998,7 @@ a tab opened here after its twin below fetches nothing twice:
 | Repeat | `marks.loops`, the passages the repeat menu lists, the running one lit; each its start's picture, its range, and its note or — dimmer — what's said at its start, with the same pencil and ×. Pressing a row does what the menu's does: another passage starts (from its top), the running one stops |
 | Notes | `NotesPanel`, its own fetch — see "Notes on a video" below |
 | Comments | `CommentList compact`, from the same `useComments` feed as the tab |
-| Chat | `ChatReplay`, its own fetch, only on a finished stream with a chat replay. Opening it the first time starts the backend's fetch and says how far it has got (`Fetching the chat replay… 27:06 of 3:05:48`, with a bar); after that it's one read. It draws the messages sent up to the play head, the last `CHAT_WINDOW` (150) of them, newest at the bottom and kept there as the video plays; the channel's name on yellow, moderators blue, members green, a Super Chat's amount on amber, custom emoji as pictures, and each message's time seeks. Scroll up to read and the list holds where it was (`heldEnd`) rather than sliding under you, until you scroll back down or press Sync to video — only your own scrolling holds it (a wheel, a touch, a key, the scrollbar); a box that changes size keeps its newest message in view. A failed fetch says why and offers Try again. The header's person icon hides or shows who wrote each line (`hooks/chatNames.ts`: one switch for here and the overlay, kept in this browser; a Super Chat still shows its amount). Where neither a time nor a name starts a line — the overlay with names hidden — a small person icon does, in a column of its own so a wrapped message indents under its text and reads as one, coloured as the name would have been (yellow, blue, green). **Float over the video** moves it onto the picture (below) |
+| Chat | `ChatReplay`, its own fetch, only on a finished stream with a chat replay. Opening it the first time starts the backend's fetch and says how far it has got (`Fetching the chat replay… 27:06 of 3:05:48`, with a bar); after that it's one read. It draws the messages sent up to the play head, the last `CHAT_WINDOW` (150) of them, newest at the bottom and kept there as the video plays; the channel's name on yellow, moderators blue, members green, a Super Chat's amount on amber, custom emoji as pictures, and each message's time seeks. Scroll up to read and the list holds where it was (`heldEnd`) rather than sliding under you, until you scroll back down or press Sync to video — only your own scrolling holds it (a wheel, a touch, a key, the scrollbar); a box that changes size keeps its newest message in view. A failed fetch says why and offers Try again. The header's person icon hides or shows who wrote each line (`hooks/chatNames.ts`: one switch for here and the overlay, kept in this browser; a Super Chat still shows its amount). Where neither a time nor a name starts a line — the overlay with names hidden — a small person icon does, in a column of its own so a wrapped message indents under its text and reads as one, coloured as the name would have been (yellow, blue, green). **Float over the video** moves it onto the picture, and the button beside it sends it flying across the picture as 彈幕 (both below) |
 | Transcript | `PanelRows`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
 | Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
 
@@ -2077,6 +2079,47 @@ on the picture.
 - **One fetch.** The overlay and the tab read the same `useChatReplay`, started
   by whichever shows the chat first; the play-head tick runs while the overlay
   is up (`timeWanted`).
+
+### 彈幕: the chat across the picture (`Danmaku.tsx`)
+
+The third way to see a stream's chat: each message flies across the picture
+from right to left, coming in at the moment it was sent.
+
+- **On its own switch.** The Chat tab's screen-with-lines button turns it on
+  or off. It flies alongside the chat in the panel, the floating one, or
+  neither, and reads the same `useChatReplay`, so it fetches nothing again.
+  Its settings are kept per browser in `ytfeed:danmaku` (`lib/danmaku.ts`).
+- **Where a message is comes from the play head alone.** It came in at the
+  right edge when it was sent and has moved left at one speed since, counted
+  in seconds of video: a point crosses the picture in 11, 8 or 5.5 seconds at
+  1× (Slow, Normal, Fast). So it keeps pace with the playback speed and stands
+  still while paused. After a seek, the screen is what it was at that moment,
+  rebuilt from the messages sent in the two crossings before it.
+- **Lanes.** The text is sized like the captions (2% of the player's width at
+  100%, never under 14px), the lanes 1.4 lines apart, as many as the display
+  area holds. A new message takes the lane that has stood free longest, so the
+  chat spreads over the whole area rather than crowding its top; a lane is
+  free again once its last message has wholly come in, plus two lines of gap.
+  With every lane taken a message is skipped: shown late, it would no longer
+  match the picture. Colours follow the chat's: the channel yellow,
+  moderators blue, members green, a Super Chat's amount on amber, custom emoji
+  as pictures.
+- **Run by the compositor.** Each crossing is a Web Animation at the playback
+  speed, so it moves a fraction of a pixel at a time whatever the page is busy
+  with. One loop reads the player each frame, lets in what's due and drops
+  what has left. The embed says where it is only a few times a second, so the
+  loop carries a drawn play head on between its reports and eases it toward
+  them. That head never goes back but for a seek back of a second or more, and
+  jumps forward only for a seek of a second and a half or more.
+- **Made up, not jumped.** A message that strays from the head runs a fifth
+  slower or, when behind, up to twice as fast until it's back, so a short hop
+  forward or a new speed reads as speeding up. The speed goes through
+  `updatePlaybackRate`: written straight to `playbackRate`, Chrome holds the
+  animation still until the compositor has it, and adjusted every few frames
+  that stopped every message, then let it jump.
+- **A bigger player** has taller lines: the lanes are spaced afresh, and what's
+  flying moves to its lane's new height and crosses the new width from where it
+  had got to.
 
 ### Notes on a video (`NotesPanel.tsx`)
 

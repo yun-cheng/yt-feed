@@ -80,7 +80,8 @@ stripped and the app draws its own control bar:
 - **Chat**, on a finished live stream: its chat replay, playing along with the
   video, with or without who wrote each line. Float it over the picture
   instead, with no times and a light backdrop or none, and drag it wherever
-  the picture can spare it
+  the picture can spare it. Or send it flying across the picture as 彈幕
+  (danmaku), each message crossing right to left from the moment it was sent
 - **Transcript**, where a click seeks
 - **Ask AI**: a conversation answered from this video's own transcript, whose
   timestamps are buttons that seek

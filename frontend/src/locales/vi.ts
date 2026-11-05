@@ -463,6 +463,8 @@ export const vi: Record<string, string> = {
   'Close the chat': 'Đóng trò chuyện',
   'Hide names': 'Ẩn tên',
   'Show names': 'Hiện tên',
+  'Turn danmaku on': 'Bật danmaku',
+  'Turn danmaku off': 'Tắt danmaku',
   // Player marks
   '{label} — jump to {time}': '{label} — nhảy đến {time}',
   '{label} at {time}': '{label} tại {time}',

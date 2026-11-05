@@ -320,13 +320,30 @@ export function ChatNamesToggle({ className }: { className: string }) {
 
 const HEADER_BUTTON = 'flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs text-shade-cc transition-colors hover:bg-white/10 hover:text-white'
 
-/** The panel's Chat tab: the list with times, and a way to float it over the
- *  picture instead. */
-export default function ChatReplay({ onFloat, ...list }: Parameters<typeof ChatList>[0] & { onFloat: () => void }) {
+/** The panel's Chat tab: the list with times, a way to float it over the
+ *  picture instead, and a way to send it flying across it (彈幕). */
+export default function ChatReplay({ onFloat, danmaku, onDanmaku, ...list }: Parameters<typeof ChatList>[0] & {
+  onFloat: () => void
+  danmaku: boolean
+  onDanmaku: () => void
+}) {
+  const danmakuLabel = danmaku ? t('Turn danmaku off') : t('Turn danmaku on')
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 justify-end gap-1 px-2 pb-1">
         <ChatNamesToggle className={HEADER_BUTTON} />
+        <button
+          onClick={onDanmaku}
+          aria-label={danmakuLabel}
+          title={danmakuLabel}
+          aria-pressed={danmaku}
+          className={`${HEADER_BUTTON} ${danmaku ? 'bg-white/15 text-white' : ''}`}
+        >
+          <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <rect x="2" y="4" width="20" height="16" rx="2.5" />
+            <path strokeLinecap="round" d="M9 9h9M5.5 12.5h7M11 16h7" />
+          </svg>
+        </button>
         <button onClick={onFloat} className={HEADER_BUTTON}>
           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
             <rect x="3" y="4" width="18" height="16" rx="2" />

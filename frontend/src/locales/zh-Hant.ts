@@ -464,6 +464,8 @@ export const zhHant: Record<string, string> = {
   'Close the chat': '關閉聊天室',
   'Hide names': '隱藏名稱',
   'Show names': '顯示名稱',
+  'Turn danmaku on': '開啟彈幕',
+  'Turn danmaku off': '關閉彈幕',
   // Player marks
   '{label} — jump to {time}': '{label}：跳到 {time}',
   '{label} at {time}': '{label}，位於 {time}',
