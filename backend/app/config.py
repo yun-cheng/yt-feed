@@ -168,6 +168,12 @@ class Settings(BaseSettings):
         return str(Path(self.db_path).parent / "asr-audio")
 
     @property
+    def live_chat_dir(self) -> str:
+        """Chat replays of finished streams, one trimmed file per video, kept:
+        a replay never changes, and fetching one takes about 30 seconds."""
+        return str(Path(self.db_path).parent / "live_chat")
+
+    @property
     def local_thumbs_dir(self) -> str:
         """Poster frames extracted from local-folder videos (see routers/local.py)."""
         return str(Path(self.db_path).parent / "local_thumbs")

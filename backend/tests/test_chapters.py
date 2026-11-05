@@ -55,6 +55,7 @@ async def test_the_description_endpoint_carries_the_chapters(client, fake_extrac
         "description": "0:00 a\n1:00 b",
         "chapters": [{"start": 0.0, "end": 60.0, "title": "a"},
                      {"start": 60.0, "end": 90.0, "title": "b"}],
+        "chat": False,
     }
 
 
@@ -76,4 +77,4 @@ async def test_a_failed_extraction_reads_as_empty(client, monkeypatch):
     monkeypatch.setattr(feed, "_extract_info", boom)
     feed._desc_cache.clear()
     r = await client.get("/api/feed/description/vid1")
-    assert r.json() == {"description": "", "chapters": []}
+    assert r.json() == {"description": "", "chapters": [], "chat": False}

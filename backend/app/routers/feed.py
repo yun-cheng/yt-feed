@@ -18,7 +18,7 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import asr, auth, users, ytdl
+from app import asr, auth, live_chat, users, ytdl
 from app.languages import CAPTION_LANG_OPTIONS
 from app.config import settings
 from app.database import async_session
@@ -171,8 +171,13 @@ def _chapters_from_info(info: dict) -> list[dict]:
 
 
 def _watch_info(info: dict) -> dict:
-    """What the watch page reads from an extraction: description and chapters."""
-    return {"description": info.get("description") or "", "chapters": _chapters_from_info(info)}
+    """What the watch page reads from an extraction: description, chapters, and
+    whether it was a stream with a chat replay to offer (see routers/chat.py)."""
+    return {
+        "description": info.get("description") or "",
+        "chapters": _chapters_from_info(info),
+        "chat": live_chat.has_replay(info),
+    }
 
 
 def _extract_info(video_id: str) -> dict:
@@ -1586,7 +1591,7 @@ async def get_description(video_id: str):
         video_id, _desc_cache, _desc_inflight,
         lambda: _fetch_description(video_id), _DESC_TTL,
     )
-    return data or {"description": "", "chapters": []}
+    return data or {"description": "", "chapters": [], "chat": False}
 
 
 @router.get("/comments/{video_id}")

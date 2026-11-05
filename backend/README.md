@@ -699,6 +699,39 @@ translation costs a fraction of a cent, so persisting them would be care spent
 on nothing. An unknown target, an empty comment or one over 10,000 characters
 (YouTube's own cap) is a 400; a model failure is a 502 and isn't cached.
 
+## Chat replays (`live_chat.py`, `routers/chat.py`)
+
+A finished live stream keeps its chat, each message stamped with how far into
+the stream it was sent, and the watch page's Chat tab plays it back against the
+video. yt-dlp reaches it as a "subtitle" track named `live_chat`: JSON lines, a
+page of chat each, walked from the start of the stream to the end. No Data API,
+so no quota, but not quick — a 3-hour broadcast with 10,500 messages was 13 MB
+over about 30 seconds — so it's fetched once, when someone first opens the tab,
+and **kept**: `$DATA_DIR/live_chat/<id>.json`, shared by everyone, since a
+replay never changes once the stream has aired.
+
+- **Offered only where there is one.** The description's extraction already
+  says (`chat` in `/api/feed/description/{id}`): `live_status == "was_live"` and
+  a `live_chat` track. A stream still on air lists the track too, but yt-dlp
+  would follow it until the broadcast ended, so live chat is a different job.
+- **A job, not a request.** `POST /api/chat/{id}` starts it on a pool of two
+  (each is a long walk of requests from this address) and is idempotent;
+  `GET` reports `none`, `running` with `covered` — the seconds of stream fetched,
+  read off the last whole page of the growing `.part` file — `done` with the
+  messages, or `error` with why. Asking again after an error retries. Jobs and
+  errors are in memory: a restart ends a job, and a failure is worth reporting
+  until the next try.
+- **Kept trimmed** (`live_chat.parse`): each message is `{t, a, r}` — ms into
+  the stream, author, and runs of text, a standard emoji being its own character
+  and a channel's custom one `{e: picture, n: name}` — plus `b` for the role that
+  changes how a name is drawn (owner, moderator, member; Verified changes
+  nothing), `p` for a Super Chat's amount and `m` for a new member's welcome.
+  Placeholders for removed messages, banners and the "replay is on" notice go.
+  That 13 MB stream keeps 786 KB. Written aside and moved into place, so a
+  reader never meets half a file, and the raw download is deleted.
+- **Only an id reaches the filesystem**: anything but YouTube's 11-character
+  form is a 404 before a path is built from it.
+
 ## Dictionary look-ups (`dictionary.py`, `routers/dictionary.py`)
 
 Rest the pointer on a word in a paused caption and the watch page asks
@@ -2290,6 +2323,7 @@ offending process frees them instantly (16,350 → 4). `lsof -nP -iTCP
 | GET | `/api/feed/next/{id}` | the same channel's next video FORWARD IN TIME — what the watch page offers when this one ends; `null` on the channel's newest. Shorts and long-form stay separate. Takes the channel page's filters (`age`, `label`, `watch`) so the suggestion comes from the list you were browsing |
 | GET | `/api/feed/description/{id}` | one video's description and chapters, fetched on demand (never stored) |
 | GET | `/api/feed/comments/{id}` | the comment section, fetched only when the panel is opened (query: `sort` = `top`\|`new`, `replies=1` for the slower walk that also brings each thread's replies) |
+| GET \| POST | `/api/chat/{id}` | a finished stream's chat replay: GET → `{status: none \| running \| done \| error}`, with `covered` (seconds fetched) while running and `messages` when done; POST starts the fetch, idempotent, and retries after an error |
 | POST | `/api/feed/comments-translate` | one comment translated into `target` (`en` \| `zh-Hant` \| `ja` \| `ko` \| `th` \| `vi`) → `{text}`; cached in memory |
 | GET | `/api/channels` | the channels you follow, with their topics (`?tags=` filters, `-tag` excludes; `?q=` filters by name — typo-tolerant, via Meilisearch — or by topic, and `sort=relevance` keeps that match's order) |
 | GET | `/api/channels/{id}/videos` | a channel's ranked videos + topic chips (`?label=` filters by topic, `?q=` by title text; `sort=relevance` keeps Meilisearch's order for a `?q=`). The channel block carries `source` and `scanning` |
@@ -2378,6 +2412,7 @@ no per-test decorator). What's covered:
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
 | `test_caption_translation.py` | the AI translation's store: each line kept against its source sentence, a line the model didn't return shown as its source but not kept (so it's asked for again), and a row from before `by_source` read by the split it was numbered against — or dropped when a line in it is its own source |
 | `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |
+| `test_live_chat.py` | trimming a chat replay: time, author and text with standard emoji inline and custom ones as pictures, the roles that change a name (Verified doesn't), Super Chats and new members kept and the rest dropped, stream order whatever order the pages came in; progress read off the last whole page of a download under way; the tab offered only for a finished stream with chat. Then the endpoint with the download faked: fetched once and served after, the raw file gone, a failure saying why and retried on asking, and anything but a video id refused |
 | `test_dictionary.py` | a hovered letter bringing back its whole term ("ice cream" from inside "cream"), an inflected word finding its headword, a comma, a space and a full stop being no entry, positions counted in UTF-16 units as the page counts them, one section per ticked dictionary in Dictionary.app's order, the public call still answering when the private ones are gone, and a server with no dictionary saying so (503). The look-ups themselves are skipped off a Mac |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |
 | `test_notifications.py` | the bell: newest first, unread until looked at, opening it reading all of them, a row about no video carrying no cover, and one account never seeing or dismissing another's |
