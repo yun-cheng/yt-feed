@@ -77,6 +77,14 @@ const NAME_STYLE: Record<NonNullable<ChatMessage['b']> | 'none', string> = {
   none: 'text-shade-aa',
 }
 
+// The same tells on the person that stands in for a hidden name (see ChatLine).
+const MARK_STYLE: Record<NonNullable<ChatMessage['b']> | 'none', string> = {
+  owner: 'text-yellow-400',
+  mod: 'text-blue-400',
+  member: 'text-green-400',
+  none: 'text-white/60',
+}
+
 function ChatLine({ m, onSeek, showTime, showName }: {
   m: ChatMessage
   onSeek: (seconds: number) => void
@@ -85,6 +93,27 @@ function ChatLine({ m, onSeek, showTime, showName }: {
 }) {
   return (
     <div className={`flex gap-2 rounded-lg px-1.5 py-0.5 ${m.p ? 'bg-amber-500/15' : m.m ? 'bg-green-500/10' : ''}`}>
+      {/* With neither a time nor a name, nothing says where one message ends
+          and the next begins: a long one wrapping looks like two. So a person
+          — someone, where the name was — starts each, in a column of its own:
+          a wrapped line indents under the text, not under the person. Coloured
+          as the name would have been. */}
+      {!showTime && !showName && (
+        // One line of the message's text tall — its size, its line height —
+        // with the person centred in it, so it sits level with the first line
+        // whatever size the panel's units make the text.
+        <span aria-hidden className="flex h-[1lh] shrink-0 items-center text-(length:--panel-body) leading-snug">
+          <svg
+            data-testid="chat-mark"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className={`h-[0.95em] w-[0.95em] drop-shadow-[0_0_1px_rgb(0_0_0/0.9)] ${MARK_STYLE[m.b ?? 'none']}`}
+          >
+            <circle cx="12" cy="8" r="4.5" />
+            <path d="M3.5 21.5c0-4.7 3.8-8 8.5-8s8.5 3.3 8.5 8z" />
+          </svg>
+        </span>
+      )}
       {showTime && (
         <button
           onClick={() => onSeek(m.t / 1000)}

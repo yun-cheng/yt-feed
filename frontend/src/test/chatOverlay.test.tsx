@@ -144,6 +144,29 @@ describe('ChatOverlay', () => {
     setChatNames(true)
   })
 
+  it('starts each message with a person once names are gone, so a wrapped one still reads as one', async () => {
+    const { setChatNames } = await import('../hooks/chatNames')
+    const twoBy = { state: { status: 'done' as const, messages: [
+      { t: 1_000, a: '@ann', r: ['a long message that wraps onto a second line'] },
+      { t: 2_000, a: '@mod', r: ['short'], b: 'mod' as const },
+    ] }, retry: vi.fn() }
+    render(
+      <ChatOverlay
+        room={{ current: null }} prefs={{ ...OVERLAY_DEFAULTS, on: true }} onPrefs={vi.fn()} feed={twoBy} time={10} duration={60}
+        onSeek={vi.fn()} syncButton={{ className: '', icon: '↓' }} onDock={vi.fn()} onClose={vi.fn()}
+      />,
+    )
+    // A name already marks where each message starts.
+    expect(screen.queryAllByTestId('chat-mark')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide names' }))
+    const marks = screen.getAllByTestId('chat-mark')
+    expect(marks).toHaveLength(2)
+    // The tell the name carried, on the person instead.
+    expect(marks[1]).toHaveClass('text-blue-400')
+    setChatNames(true)
+  })
+
   it('keeps its clicks from the player under it', () => {
     const onPlayerClick = vi.fn()
     const room = { current: null }
