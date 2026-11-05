@@ -10,6 +10,8 @@ data/*.db-wal
 data/downloads/
 data/local_thumbs/
 data/meili/
+data/live_chat/
+data/asr-audio/
 frontend/dist/
 backend/config/*.json
 backend/config/subscriptions.yaml
