@@ -20,7 +20,7 @@ import { sentBy, type ChatMessage, type ChatState } from './ChatReplay'
 import type { PlayerApi } from './LocalControls'
 import {
   AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
-  fitLanes, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
+  fitLanes, laneCount, trueClock, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
 import { t } from '../lib/i18n'
 
@@ -153,6 +153,7 @@ export default function Danmaku({ player, messages, prefs, style }: {
     let reported = Number.NaN
     let reportedAt = 0
     let next = 0
+    const clock = trueClock()
     let lastFrame = performance.now()
     let raf = 0
     // What the animations were last told: whether to run, and how fast.
@@ -223,13 +224,17 @@ export default function Danmaku({ player, messages, prefs, style }: {
       if (!p || !W) return
       const r = p.getCurrentTime()
       const playing = p.getPlayerState() === 1
-      const rate = p.getPlaybackRate?.() || 1
+      const said = p.getPlaybackRate?.() || 1
+      // A speed set behind the player's back (another extension's): the
+      // player's time says what it really is, and from when.
+      const real = clock.read(now, r, said, playing)
+      const rate = real?.speed ?? said
 
       // Still, a report is just where it is; playing, when it was said
       // matters too. (Reset while still, or the first report after a pause
       // would read as made long ago, and run the head ahead.)
       if (r !== reported || !playing) { reported = r; reportedAt = now }
-      const target = playing ? r + (Math.min(1000, now - reportedAt) / 1000) * rate : r
+      const target = real ? real.time : playing ? r + (Math.min(1000, now - reportedAt) / 1000) * rate : r
 
       // The drawn head never goes back but for a real seek back: the player's
       // time wobbles — a late report, a stall — and every wobble drawn would

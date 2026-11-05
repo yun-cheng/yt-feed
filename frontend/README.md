@@ -976,7 +976,8 @@ lib/
   channelCaptions.ts              captions remembered per channel (the caption_memory setting)
   chatOverlay.ts                  where the floating chat sits and how it looks,
                                   as shares of the player; kept per browser
-  danmaku.ts                      彈幕's settings (kept per browser) and its lanes
+  danmaku.ts                      彈幕's settings (kept per browser), its lanes,
+                                  and the player's real speed when it's wrong
   richText.tsx                    YouTube free text (descriptions, comments):
                                   URLs as links, timestamps as seek buttons;
                                   formatCount (1.2M, or 35.6萬 in Chinese)
@@ -2128,6 +2129,13 @@ from right to left, coming in at the moment it was sent.
   along the bottom), the size (stepped by 10% from 100%, like the captions'),
   the speed, and the opacity. A touch opens the settings, whose switch does what
   the click would. Over a bare embed the Chat tab's button is the way.
+- **A speed set behind the player's back** — by another extension's speed
+  control, on the video inside the embed — leaves the player saying 1× and
+  carrying its time on at 1× between the video's reports of where it is, so
+  its time creeps, then leaps, every half second or so. `trueClock` reads the
+  real speed off the last two leaps and the real time off the last, and the
+  danmaku runs on those until the player is right again (no leap for two of
+  its gaps). A new speed is caught by the second report after it.
 
 ### Notes on a video (`NotesPanel.tsx`)
 

@@ -4,7 +4,7 @@ import Danmaku, { DanmakuControl, danmakuItem } from '../components/Danmaku'
 import type { ChatMessage } from '../components/ChatReplay'
 import type { PlayerApi } from '../components/LocalControls'
 import {
-  AREA_MIN, DANMAKU_DEFAULTS, DANMAKU_KEY, LANE_GAP_PX, MIN_OPACITY, SIZE_MAX, fitLanes, laneCount, laneGap, lanePitch, loadDanmaku, saveDanmaku, takeLane,
+  AREA_MIN, DANMAKU_DEFAULTS, DANMAKU_KEY, LANE_GAP_PX, MIN_OPACITY, SIZE_MAX, fitLanes, laneCount, laneGap, lanePitch, loadDanmaku, saveDanmaku, takeLane, trueClock,
   type DanmakuPrefs,
 } from '../lib/danmaku'
 
@@ -112,6 +112,21 @@ function fakePlayer() {
   return { p, ref: { current: api } }
 }
 
+/** The embed when something else — another extension — has set the video's
+ *  speed: it says `said` and carries its time on at that between the video's
+ *  reports of where it really is, every `every` ms. `p` is the truth. */
+function speedBehindItsBack(said = 1, every = 500) {
+  const { p, ref } = fakePlayer()
+  let report = { at: performance.now(), r: p.time }
+  ref.current.getPlaybackRate = () => said
+  ref.current.getCurrentTime = () => {
+    const now = performance.now()
+    if (now - report.at >= every) report = { at: now, r: p.time }
+    return report.r + (p.state === 1 ? ((now - report.at) / 1000) * said : 0)
+  }
+  return { p, ref }
+}
+
 /** Web Animations as the compositor runs them, stood in for: each frame moves
  *  the running ones on by the frame's time at their own speed. */
 type FakeAnim = {
@@ -208,6 +223,49 @@ const xOf = (el: HTMLElement) => {
   const to = px(a.keyframes[1].transform)
   return from + (to - from) * Math.min(1, Math.max(0, a.currentTime / a.duration))
 }
+
+describe('the player’s real speed', () => {
+  // Frames 16ms apart through an embed told 1× while its video plays at
+  // `truth`, reporting where it is every half second.
+  const run = (truth: number, ms: number, from = { now: 0, time: 0 }, said = 1, clock = trueClock()) => {
+    let { now, time } = from
+    let report = { at: now, r: time }
+    let out: ReturnType<ReturnType<typeof trueClock>['read']> = null
+    for (let t = 0; t < ms; t += 16) {
+      now += 16
+      time += 0.016 * truth
+      if (now - report.at >= 500) report = { at: now, r: time }
+      out = clock.read(now, report.r + ((now - report.at) / 1000) * said, said, true)
+    }
+    return { out, now, time, clock }
+  }
+
+  it('is measured from where the player keeps putting its time right', () => {
+    const { out, time } = run(1.5, 3000)
+    expect(out?.speed).toBeCloseTo(1.5)
+    expect(Math.abs(out!.time - time)).toBeLessThan(0.03)
+  })
+
+  it('works slower than the player says too', () => {
+    const { out, time } = run(0.5, 3000)
+    expect(out?.speed).toBeCloseTo(0.5)
+    expect(Math.abs(out!.time - time)).toBeLessThan(0.03)
+  })
+
+  it('is the player’s own word when that’s right, and again once it’s right again', () => {
+    expect(run(1, 3000).out).toBeNull()
+    expect(run(1.5, 3000, undefined, 1.5).out).toBeNull()
+    const sped = run(1.5, 3000)
+    expect(sped.out).not.toBeNull()
+    expect(run(1, 2000, sped, 1, sped.clock).out).toBeNull()
+  })
+
+  it('starts over on a pause', () => {
+    const { clock, now, time } = run(1.5, 3000)
+    expect(clock.read(now + 16, time, 1, false)).toBeNull()
+    expect(clock.read(now + 32, time, 1, true)).toBeNull()
+  })
+})
 
 describe('Danmaku', () => {
   const on = { ...DANMAKU_DEFAULTS, on: true }
@@ -431,6 +489,62 @@ describe('Danmaku on the compositor', () => {
     }
     const [a] = flying()
     expect(Math.abs(xOf(a) - (1000 - (p.time - 0.2) * SPEED))).toBeLessThan(15)
+  })
+
+  it('moves evenly at a speed the player doesn’t know it’s playing at', () => {
+    const tick = frames()
+    const { p, ref } = speedBehindItsBack()
+    p.rate = 1.5
+    render(<Danmaku player={ref} messages={[say(0.2, 'a'), say(0.5, 'b'), say(0.9, 'c'), say(2.5, 'd')]} prefs={on} />)
+    // A second and a half to learn the speed from the player's corrections.
+    tick(16, p, 100)
+    const last = new Map<HTMLElement, number>()
+    for (let i = 0; i < 240; i++) {
+      tick(16, p)
+      for (const el of flying()) {
+        const x = xOf(el)
+        if (i > 2 && last.has(el)) {
+          // 125px a second of video at 1.5× is 3px a frame.
+          const moved = last.get(el)! - x
+          expect(moved).toBeGreaterThan(2)
+          expect(moved).toBeLessThan(4)
+        }
+        last.set(el, x)
+      }
+    }
+    const a = flying().find((el) => el.textContent === 'd')!
+    expect(Math.abs(xOf(a) - (1000 - (p.time - 2.5) * SPEED))).toBeLessThan(10)
+  })
+
+  it('speeds up to a new speed set behind the player’s back without a jump, and keeps up', () => {
+    const tick = frames()
+    const { p, ref } = speedBehindItsBack()
+    const msgs = Array.from({ length: 40 }, (_, i) => say(0.3 + i * 0.6, `m${i}`))
+    render(<Danmaku player={ref} messages={msgs} prefs={on} />)
+    tick(16, p, 60)
+    const last = new Map<HTMLElement, number>()
+    const watch = (frames: number) => {
+      for (let i = 0; i < frames; i++) {
+        tick(16, p)
+        for (const el of flying()) {
+          const x = xOf(el)
+          // Never back, never a jump: at most twice 2× at 125px a second,
+          // 8px a frame (a jump of even a quarter second is 31px).
+          if (last.has(el)) {
+            expect(last.get(el)! - x).toBeGreaterThan(0)
+            expect(last.get(el)! - x).toBeLessThan(8.5)
+          }
+          last.set(el, x)
+        }
+      }
+    }
+    p.rate = 2
+    watch(150)
+    p.rate = 1.25
+    watch(150)
+    const caught = flying().at(-1)!
+    const sent = msgs.find((m) => m.r[0] === caught.textContent)!.t / 1000
+    expect(Math.abs(xOf(caught) - (1000 - (p.time - sent) * SPEED))).toBeLessThan(10)
   })
 
   it('redraws the screen on a real seek back, and only then', () => {
