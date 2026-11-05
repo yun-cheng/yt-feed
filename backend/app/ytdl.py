@@ -26,6 +26,7 @@ is shared.
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
@@ -74,7 +75,15 @@ class _Recorder:
             note_failure(msg)
 
     def error(self, msg: str) -> None:
+        # A channel with no Shorts or no Live tab is an answer, not a failure:
+        # the scan asks every channel for all three, every time.
+        if _is_missing_tab(msg):
+            return
         note_failure(msg)
+
+
+def _is_missing_tab(msg: str) -> bool:
+    return bool(re.search(r"does not have an? \w+ tab", msg))
 
 
 def _is_bot_check(msg: str) -> bool:
