@@ -18,6 +18,7 @@ import { formatCount, linkify } from '../lib/richText'
 import Comments, { CommentList, useComments, type Sort as CommentSort } from './Comments'
 import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import NotesPanel from './NotesPanel'
+import ChatReplay from './ChatReplay'
 import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
 import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
@@ -303,6 +304,14 @@ const TAB_ICONS: Record<PanelTabKey, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5M17.5 3.5a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4 8.5-8.5z" />
     </svg>
   ),
+  // Two speech bubbles, one behind the other: many people talking, where
+  // Comments' single bubble is one at a time.
+  chat: (
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path strokeLinejoin="round" d="M3 4h12v8H8l-5 4V4z" />
+      <path strokeLinejoin="round" d="M18 8h3v12l-4-3h-7v-2" />
+    </svg>
+  ),
   ask: (
     <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M12 2l1.9 5.2L19 9l-5.1 1.8L12 16l-1.9-5.2L5 9l5.1-1.8L12 2z" />
@@ -474,6 +483,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // our bar's track; over a bare embed, YouTube's own bar already shows them.
   const [description, setDescription] = useState('')
   const [chapters, setChapters] = useState<Chapter[]>([])
+  // Whether it was a stream whose chat YouTube kept: what puts the Chat tab
+  // on the panel. Read off the same extraction as the description.
+  const [hasChat, setHasChat] = useState(false)
   const [embedError, setEmbedError] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
   // Whether this video sits in any playlist, so the Save pill can say so.
@@ -834,6 +846,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const panelTabShown: PanelTabKey =
     ((panelTab === 'transcript' || panelTab === 'ask') && captions !== null && !hasCaptions)
       || (panelTab === 'chapters' && !chapters.length)
+      || (panelTab === 'chat' && !hasChat)
       ? 'info' : panelTab
   const panelShows = (tab: PanelTabKey) => panelOnVideo && panelTabShown === tab
   // Kept once shown. Read as "kept, or showing now" so a tab's first render
@@ -845,9 +858,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // Every tab, whatever the page's own switch holds at this width. Transcript
   // and Ask go once the video turns out to have no captions; Chapters comes
   // once it turns out to have some. Bookmarks is always there — empty, it says
-  // how to make one, and so is Notes. The video's own map of itself, yours, and
-  // what you've written about it follow Info; what other people said, what's
-  // said in it, and asking about it come after.
+  // how to make one, and so is Notes. Chat comes only on a finished stream
+  // whose chat was kept. The video's own map of itself, yours, and what you've
+  // written about it follow Info; what other people said (comments, then the
+  // stream's chat), what's said in it, and asking about it come after.
   const panelTabs: { key: PanelTabKey; label: string; icon: ReactNode }[] = [
     { key: 'info', label: t('Info'), icon: TAB_ICONS.info },
     ...(chapters.length ? [{ key: 'chapters' as const, label: t('Chapters'), icon: TAB_ICONS.chapters }] : []),
@@ -855,6 +869,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     { key: 'loops', label: t('Repeat'), icon: TAB_ICONS.loops },
     { key: 'notes', label: t('Notes'), icon: TAB_ICONS.notes },
     { key: 'comments', label: t('Comments'), icon: TAB_ICONS.comments },
+    ...(hasChat ? [{ key: 'chat' as const, label: t('Chat'), icon: TAB_ICONS.chat }] : []),
     ...(captions === null || hasCaptions ? [
       { key: 'transcript' as const, label: t('Transcript'), icon: TAB_ICONS.transcript },
       { key: 'ask' as const, label: t('Ask AI'), icon: TAB_ICONS.ask },
@@ -867,7 +882,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // highlight, are wanted while either place shows it.
   const transcriptWanted = showTranscript || panelShows('transcript')
   // And the play head, for whichever list of moments is showing.
-  const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks')
+  const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks') || panelShows('chat')
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -1256,6 +1271,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   useEffect(() => {
     setDescription('')
     setChapters([])
+    setHasChat(false)
     let cancelled = false
     apiFetch(`/api/feed/description/${videoId}`)
       .then((r) => r.json())
@@ -1263,6 +1279,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         if (cancelled) return
         setDescription(d?.description || '')
         setChapters(Array.isArray(d?.chapters) ? d.chapters : [])
+        setHasChat(d?.chat === true)
       })
       .catch(() => { /* no description box */ })
     return () => { cancelled = true }
@@ -2298,6 +2315,18 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                   compact
                 />
               </PanelScroll>
+            </PanelTab>
+          )}
+          {panelKeeps('chat') && hasChat && (
+            <PanelTab shown={panelTabShown === 'chat'}>
+              <ChatReplay
+                key={videoId}
+                videoId={videoId}
+                time={curTime}
+                duration={meta?.duration_seconds ?? 0}
+                onSeek={seekTo}
+                syncButton={{ className: FLOAT_BUTTON, icon: <SyncIcon /> }}
+              />
             </PanelTab>
           )}
           {panelKeeps('chapters') && (

@@ -446,6 +446,12 @@ export const vi: Record<string, string> = {
   'Search playlists': 'Tìm danh sách phát',
   'Search transcript': 'Tìm trong bản ghi',
   'Sync to video': 'Đồng bộ với video',
+  'Chat': 'Trò chuyện',
+  'Fetching the chat replay…': 'Đang tải phát lại cuộc trò chuyện…',
+  'Fetching the chat replay… {done} of {total}': 'Đang tải phát lại cuộc trò chuyện… {done} / {total}',
+  'The chat replay couldn’t be fetched.': 'Không tải được phát lại cuộc trò chuyện.',
+  'Nobody wrote in this stream’s chat.': 'Không ai viết gì trong cuộc trò chuyện của buổi phát này.',
+  'Messages appear here as the video reaches them.': 'Tin nhắn sẽ hiện ở đây khi video phát tới thời điểm đó.',
   // Player marks
   '{label} — jump to {time}': '{label} — nhảy đến {time}',
   '{label} at {time}': '{label} tại {time}',

@@ -908,10 +908,13 @@ components/
                                   and the panel over the video's — fetched
                                   only when you open one of them
   VideoPanel.tsx                  the panel over the video: Info, Chapters,
-                                  Bookmarks, Repeat, Notes, Comments, Transcript
-                                  and Ask AI down one side of the picture
+                                  Bookmarks, Repeat, Notes, Comments, Chat,
+                                  Transcript and Ask AI down one side of the
+                                  picture
   NotesPanel.tsx                  the panel's Notes tab: labels, fields of
                                   several values, and a note, saved as you type
+  ChatReplay.tsx                  the panel's Chat tab: a finished stream's chat
+                                  replay, played back against the video
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -1944,9 +1947,10 @@ keeps whichever scroller contains the column.
 
 ### The panel on the video (`VideoPanel.tsx`)
 
-A column laid over one side of the player with eight tabs — Info, Chapters,
-Bookmarks, Repeat, Notes, Comments, Transcript, Ask AI: the page's four, three
-of its own for jumping around the video, and one for writing about it — to read while it
+A column laid over one side of the player with up to nine tabs — Info, Chapters,
+Bookmarks, Repeat, Notes, Comments, Chat, Transcript, Ask AI: the page's four,
+three of its own for jumping around the video, one for writing about it, and a
+finished stream's chat — to read while it
 plays without leaving it for the details below. The button right of CC (`panelControl`) or
 `g` (the `videoPanel` shortcut) opens and closes it; the × in its header closes
 it too.
@@ -1959,7 +1963,8 @@ have none they leave the tab row and a panel set to open on either opens on
 **Info**, the one tab that costs nothing (`panelTabShown`); while the captions
 are still on their way it waits on the tab it was asked for rather than
 flashing through Comments and fetching them for nothing. Chapters joins the row
-once the video turns out to have some. Chapters, Bookmarks and Repeat are lists
+once the video turns out to have some, and Chat once the description says it was
+a stream whose chat YouTube kept (`hasChat`). Chapters, Bookmarks and Repeat are lists
 to jump around in, and Notes is somewhere to write, rather than somewhere to start, so
 the setting doesn't offer them. It's off again for
 every new video, for the Comments reason below.
@@ -1984,12 +1989,13 @@ a tab opened here after its twin below fetches nothing twice:
 | Repeat | `marks.loops`, the passages the repeat menu lists, the running one lit; each its start's picture, its range, and its note or — dimmer — what's said at its start, with the same pencil and ×. Pressing a row does what the menu's does: another passage starts (from its top), the running one stops |
 | Notes | `NotesPanel`, its own fetch — see "Notes on a video" below |
 | Comments | `CommentList compact`, from the same `useComments` feed as the tab |
+| Chat | `ChatReplay`, its own fetch, only on a finished stream with a chat replay. Opening it the first time starts the backend's fetch and says how far it has got (`Fetching the chat replay… 27:06 of 3:05:48`, with a bar); after that it's one read. It draws the messages sent up to the play head, the last `CHAT_WINDOW` (150) of them, newest at the bottom and kept there as the video plays; the channel's name on yellow, moderators blue, members green, a Super Chat's amount on amber, custom emoji as pictures, and each message's time seeks. Scroll up to read and the list holds where it was (`heldEnd`) rather than sliding under you, until you scroll back down or press Sync to video. A failed fetch says why and offers Try again |
 | Transcript | `PanelRows`: the page's rows, in the language picked there, following the play head in its own box; scroll away and Sync to video brings it back. Search and the language menu stay on the page's — too narrow here to do either well. The rows and the play-head tick run while **either** place shows it (`transcriptWanted`) |
 | Ask AI | `AskPanel inPanel`: fills the column, question box at the foot. The thread is the server's, so either place shows the same conversation when it opens |
 
 **Where it sits.** `PANEL_WIDTH`, 31.25% of the player (320px over a 1024px
 one), never less than 12 panel units, so a phone-sized player's panel stays
-readable. Eight tabs and two buttons need about 21 units on one line, so on a
+readable. All nine tabs and two buttons need about 23 units on one line, so on a
 narrow player the tabs wrap onto a line of their own rather than squeeze — on a `bg-black/65` blurred backdrop, flush with the player's top and side edges. It's in the
 player box, so it goes to fullscreen with it. It reaches the bottom edge while
 the controls are hidden; while they show it stops just above the progress bar
@@ -2530,6 +2536,7 @@ problem.
 | `quality.test.ts` | the resolution label: the names that say nothing on their own, and the ones that hide it |
 | `timeWindow.test.ts` | the time-window ladder: clamping, snapping, and the `age` round-trip |
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
+| `ChatReplay.test.tsx` | the Chat tab: messages up to the play head and more as it moves, a note before the first, only the latest stretch of a long chat drawn, the fetch started on first opening with its progress, polling until it lands, a failure saying why and Try again starting it over, the channel, moderators, Super Chats and custom emoji drawn as such and a message's time seeking, and the list holding while you read back until Sync to video |
 | `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, a save reaching the cards as the server kept it, and Escape handing the keyboard back |
 | `VideoPanel.test.tsx` | that the panel over the video keeps a tab's state when you switch away and back, and when you close and reopen it, and that closed it's out of reach |
 | `Comments.test.tsx` | that nothing is fetched before the tab opens, that the panel on the video and the tab share one fetch and the panel's side button moves it, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |

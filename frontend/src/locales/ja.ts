@@ -446,6 +446,12 @@ export const ja: Record<string, string> = {
   'Search playlists': '再生リストを検索',
   'Search transcript': '文字起こしを検索',
   'Sync to video': '動画に同期',
+  'Chat': 'チャット',
+  'Fetching the chat replay…': 'チャットのリプレイを取得中…',
+  'Fetching the chat replay… {done} of {total}': 'チャットのリプレイを取得中… {done} / {total}',
+  'The chat replay couldn’t be fetched.': 'チャットのリプレイを取得できませんでした。',
+  'Nobody wrote in this stream’s chat.': 'この配信のチャットには書き込みがありません。',
+  'Messages appear here as the video reaches them.': '動画がその時点に来ると、メッセージがここに表示されます。',
   // Player marks
   '{label} — jump to {time}': '{label}：{time} にジャンプ',
   '{label} at {time}': '{label}、{time}',

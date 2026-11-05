@@ -446,6 +446,12 @@ export const ko: Record<string, string> = {
   'Search playlists': '재생목록 검색',
   'Search transcript': '스크립트 검색',
   'Sync to video': '동영상과 동기화',
+  'Chat': '채팅',
+  'Fetching the chat replay…': '채팅 다시보기를 가져오는 중…',
+  'Fetching the chat replay… {done} of {total}': '채팅 다시보기를 가져오는 중… {done} / {total}',
+  'The chat replay couldn’t be fetched.': '채팅 다시보기를 가져오지 못했습니다.',
+  'Nobody wrote in this stream’s chat.': '이 방송의 채팅에는 메시지가 없습니다.',
+  'Messages appear here as the video reaches them.': '동영상이 해당 시점에 이르면 메시지가 여기에 표시됩니다.',
   // Player marks
   '{label} — jump to {time}': '{label} — {time}로 이동',
   '{label} at {time}': '{label}, {time} 위치',

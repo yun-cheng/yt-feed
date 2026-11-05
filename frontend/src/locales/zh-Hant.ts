@@ -447,6 +447,12 @@ export const zhHant: Record<string, string> = {
   'Search playlists': '搜尋播放清單',
   'Search transcript': '搜尋逐字稿',
   'Sync to video': '同步到影片位置',
+  'Chat': '聊天室',
+  'Fetching the chat replay…': '正在取得聊天室重播…',
+  'Fetching the chat replay… {done} of {total}': '正在取得聊天室重播… {done} / {total}',
+  'The chat replay couldn’t be fetched.': '無法取得聊天室重播。',
+  'Nobody wrote in this stream’s chat.': '這場直播的聊天室沒有人留言。',
+  'Messages appear here as the video reaches them.': '影片播放到時，訊息會出現在這裡。',
   // Player marks
   '{label} — jump to {time}': '{label}：跳到 {time}',
   '{label} at {time}': '{label}，位於 {time}',

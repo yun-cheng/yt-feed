@@ -77,6 +77,8 @@ stripped and the app draws its own control bar:
 - **Notes**: labels, multi-value fields and a free-text note, suggested from what
   you've used before
 - **Comments**, with a Translate button on comments in another language
+- **Chat**, on a finished live stream: its chat replay, playing along with the
+  video
 - **Transcript**, where a click seeks
 - **Ask AI**: a conversation answered from this video's own transcript, whose
   timestamps are buttons that seek

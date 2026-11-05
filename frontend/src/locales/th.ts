@@ -446,6 +446,12 @@ export const th: Record<string, string> = {
   'Search playlists': 'ค้นหาเพลย์ลิสต์',
   'Search transcript': 'ค้นหาบทถอดเสียง',
   'Sync to video': 'ซิงค์กับวิดีโอ',
+  'Chat': 'แชท',
+  'Fetching the chat replay…': 'กำลังดึงแชทย้อนหลัง…',
+  'Fetching the chat replay… {done} of {total}': 'กำลังดึงแชทย้อนหลัง… {done} / {total}',
+  'The chat replay couldn’t be fetched.': 'ดึงแชทย้อนหลังไม่สำเร็จ',
+  'Nobody wrote in this stream’s chat.': 'ไม่มีใครพิมพ์ในแชทของสตรีมนี้',
+  'Messages appear here as the video reaches them.': 'ข้อความจะปรากฏที่นี่เมื่อวิดีโอเล่นถึงช่วงนั้น',
   // Player marks
   '{label} — jump to {time}': '{label} — ข้ามไปที่ {time}',
   '{label} at {time}': '{label} ที่ {time}',

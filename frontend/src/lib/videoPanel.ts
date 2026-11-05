@@ -7,8 +7,9 @@ export type VideoPanelTab = 'info' | 'comments' | 'transcript' | 'ask'
 
 /** Every tab the panel can show. Chapters and Bookmarks are lists of moments in
  *  this video, there to jump between, Repeat its saved passages, and Notes is
- *  what you write about it — each picked on the video rather than opened on. */
-export type PanelTabKey = VideoPanelTab | 'chapters' | 'bookmarks' | 'loops' | 'notes'
+ *  what you write about it — each picked on the video rather than opened on.
+ *  Chat is a finished stream's chat replay, there only on a stream that had one. */
+export type PanelTabKey = VideoPanelTab | 'chapters' | 'bookmarks' | 'loops' | 'notes' | 'chat'
 
 const TABS: readonly VideoPanelTab[] = ['info', 'comments', 'transcript', 'ask']
 const FALLBACK: VideoPanelTab = 'comments'
