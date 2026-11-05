@@ -62,10 +62,13 @@ async def scan_channel_videos(
     """
     url = f"https://www.youtube.com/channel/{channel.youtube_id}"
     # Flat mode is fast — no JS challenges, no format extraction.
-    # Shorts live on a separate tab, so scan both. Videos first, then shorts:
-    # if a video somehow appears in both, the first-seen (long-form) wins.
+    # Shorts and live streams each live on a tab of their own, so scan all
+    # three. Videos first, then shorts, then streams: if a video somehow appears
+    # in more than one, the first-seen wins. A stream that is on air now comes
+    # in with no length; the stats refresh fills it in once it has ended.
     videos_data = fetch_latest_videos(url, max_results=50, since=since, detailed=False)
     videos_data += fetch_latest_videos(url, max_results=50, since=since, detailed=False, tab="shorts")
+    videos_data += fetch_latest_videos(url, max_results=50, since=since, detailed=False, tab="streams")
 
     if not videos_data:
         return []

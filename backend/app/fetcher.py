@@ -99,10 +99,14 @@ def fetch_latest_videos(
     """
     Fetch the latest N videos from a channel.
 
-    `tab` selects which channel tab to scan: "videos" (long-form, default) or
-    "shorts" (vertical short-form). Shorts live on a separate tab, so the normal
-    /videos scan never returns them. Entries from the shorts tab are flagged
-    is_short=True in the returned dicts.
+    `tab` selects which channel tab to scan: "videos" (long-form, default),
+    "shorts" (vertical short-form) or "streams" (live broadcasts and their
+    recordings). Shorts and streams each live on a tab of their own, so the
+    normal /videos scan never returns them. Entries from the shorts tab are
+    flagged is_short=True in the returned dicts.
+
+    A stream that is only scheduled is left out: it has no start, no length and
+    nothing to play yet. It's picked up by a later scan once it goes live.
 
     When `since` is provided, only returns videos published after that time
     (used for incremental refresh).
@@ -151,6 +155,8 @@ def fetch_latest_videos(
 
         # Skip member-only / subscriber-only videos
         if entry.get("availability") in ("subscriber_only", "needs_auth", "premium_only"):
+            continue
+        if entry.get("live_status") == "is_upcoming":
             continue
 
         view_count = entry.get("view_count")

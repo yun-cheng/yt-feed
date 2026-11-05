@@ -238,13 +238,17 @@ subscription reconcile (below).
 
 `run_update()` has four phases:
 
-1. **Scan** — for each channel, yt-dlp *flat mode* over `/videos` and `/shorts`
-   to collect video IDs and upsert rows (fast, no JS challenges). A channel
-   without a Shorts tab makes yt-dlp report an error, which the extraction
-   status ignores rather than counting a failure per channel per pass. None of
-   this costs API quota, and it runs for every channel every pass, which is why
-   no channel is ever left with nothing however the archive fill below is
-   ordered.
+1. **Scan** — for each channel, yt-dlp *flat mode* over `/videos`, `/shorts`
+   and `/streams` to collect video IDs and upsert rows (fast, no JS challenges).
+   Each kind of upload is on its own tab and on no other, so a tab left out is a
+   kind of video the feed never has — live streams were, until the third was
+   added. A stream that's only scheduled is skipped until it goes live; one on
+   air comes in with no length, which the stats refresh fills in once it ends.
+   A channel without a Shorts or Live tab makes yt-dlp report an error, which
+   the extraction status ignores rather than counting a failure per channel per
+   pass. None of this costs API quota, and it runs for every channel every pass,
+   which is why no channel is ever left with nothing however the archive fill
+   below is ordered.
 2. **New-video stats** — batch-fetch real view/like counts for newly-seen
    videos via the YouTube Data API (yt-dlp fallback if the token is dead).
 3. **Stale-video refresh** — re-fetch stats for recent videos on an age-based
@@ -2395,7 +2399,7 @@ no per-test decorator). What's covered:
 | `test_bootstrap.py` | the first boot on an empty volume: the directories made, a session key generated (and stable across restarts, and different between two deployments, and left alone when one is configured), the setup token written and read back — and that `SKIP_CONFIG_ADOPTION` stops a test run inheriting the developer's live OAuth token, which is not hypothetical: the guard it replaced inferred wrong and a suite ran against real credentials |
 | `test_setup.py` | claiming a deployment nobody owns, which is mostly refusals: a stranger can't configure an unclaimed one (before this, an empty database meant nobody was signed in and nobody was turned away), a wrong token is refused, a claimed one asks you to sign in instead, and the second claim is a 409 — the token stays on disk, but the window it opens shuts the first time anybody walks through it |
 | `test_settings_secrets.py` | that a key never comes back out of the API it went in through, for every secret and not just the one; the tail-shaped hint; a stored value beating `.env` while an emptied field *removes* the row so the environment shows through again rather than the feature going quiet; a trailing newline stripped but a newline in the middle of a one-line credential refused; and the cookie jar reaching disk as a file yt-dlp can be handed |
-| `test_scan_tabs.py` | a channel with no Shorts or Live tab isn't counted as an extraction failure, while a real error on the same call is |
+| `test_scan_tabs.py` | the scan asks every channel for all three tabs (Videos, Shorts, Live); a scheduled stream is left out while one on air and a recording are kept; and a channel with no Shorts or Live tab isn't counted as an extraction failure, while a real error on the same call is |
 | `test_ytdl_opts.py` | the shared yt-dlp floor: cookies and proxy passed only when set, a call site's own options surviving the merge — and, read across `app/`, that no call site builds its own option dict, because one that did would ignore both and fail while everything around it worked. Plus the extraction status: a bot check reported as itself rather than as "extraction failed", recorded by the logger without nine call sites remembering to |
 | `test_spa_fallback.py` | serving the built frontend from this process without swallowing the API: a client-side route answered with the app, and an unknown `/api` path still a 404 — which is what keeps `test_api_contract.py` above meaning anything, since a catch-all that answered it would make every call site match |
 

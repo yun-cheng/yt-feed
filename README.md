@@ -26,7 +26,8 @@ the past 3 days, or 3 days to 2 weeks ago. The **sidebar** narrows it down:
   split: its body shows only that tag, its `−` hides it
 - **Presets** — name the selection you've built and put it back with one click
 
-Shorts have a feed of their own. Hover a card and the real video plays inline,
+Shorts have a feed of their own; live streams and their recordings come in
+with the rest. Hover a card and the real video plays inline,
 muted, with captions and scrubbing. Search is typo-tolerant and can stay inside
 one channel or one list. Cards carry a red resume bar, a Watched badge, the
 playlists they're in, and your labels for them.
