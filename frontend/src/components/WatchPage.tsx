@@ -19,6 +19,8 @@ import Comments, { CommentList, useComments, type Sort as CommentSort } from './
 import VideoPanel, { PANEL_UNIT, PanelScroll, PanelTab } from './VideoPanel'
 import NotesPanel from './NotesPanel'
 import ChatReplay, { useChatReplay } from './ChatReplay'
+import ChatOverlay from './ChatOverlay'
+import { loadChatOverlay, saveChatOverlay } from '../lib/chatOverlay'
 import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
 import { videoPanelDefault, type PanelTabKey } from '../lib/videoPanel'
 import AskPanel from './AskPanel'
@@ -486,6 +488,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // Whether it was a stream whose chat YouTube kept: what puts the Chat tab
   // on the panel. Read off the same extraction as the description.
   const [hasChat, setHasChat] = useState(false)
+  // The chat floating over the video instead of in the panel, and where and
+  // how it floats. Kept for this screen, like the panel's side: a stream after
+  // this one opens its chat the same way.
+  const [chatOverlay, setChatOverlay] = useState(loadChatOverlay)
+  useEffect(() => { saveChatOverlay(chatOverlay) }, [chatOverlay])
+  const chatFloats = hasChat && chatOverlay.on
   const [embedError, setEmbedError] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
   // Whether this video sits in any playlist, so the Save pill can say so.
@@ -882,9 +890,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // highlight, are wanted while either place shows it.
   const transcriptWanted = showTranscript || panelShows('transcript')
   // And the play head, for whichever list of moments is showing.
-  const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks') || panelShows('chat')
-  // The chat replay, fetched once the tab first shows it.
-  const chatFeed = useChatReplay(videoId, hasChat && panelShows('chat'))
+  const timeWanted = transcriptWanted || panelShows('chapters') || panelShows('bookmarks') || panelShows('chat') || chatFloats
+  // One fetch of the chat replay for both places it shows.
+  const chatFeed = useChatReplay(videoId, hasChat && (panelShows('chat') || chatFloats))
   const actions: Action[] = !meta ? [] : [
     ...(hasCaptions && !panelsAsTabs ? [
       {
@@ -2328,6 +2336,10 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 duration={meta?.duration_seconds ?? 0}
                 onSeek={seekTo}
                 syncButton={{ className: FLOAT_BUTTON, icon: <SyncIcon /> }}
+                onFloat={() => {
+                  setChatOverlay((c) => ({ ...c, on: true }))
+                  setPanelOnVideo(false)
+                }}
               />
             </PanelTab>
           )}
@@ -2447,6 +2459,26 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             </PanelTab>
           )}
         </VideoPanel>
+      )}
+
+      {chatFloats && (
+        <ChatOverlay
+          key={videoId}
+          room={playerBoxRef}
+          prefs={chatOverlay}
+          onPrefs={setChatOverlay}
+          feed={chatFeed}
+          time={curTime}
+          duration={meta?.duration_seconds ?? 0}
+          onSeek={seekTo}
+          syncButton={{ className: FLOAT_BUTTON, icon: <SyncIcon /> }}
+          onDock={() => {
+            setChatOverlay((c) => ({ ...c, on: false }))
+            setPanelTab('chat')
+            setPanelOnVideo(true)
+          }}
+          onClose={() => setChatOverlay((c) => ({ ...c, on: false }))}
+        />
       )}
 
       {/* Volume HUD — a brief overlay while adjusting volume / mute by keyboard. */}

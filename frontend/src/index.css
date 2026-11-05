@@ -261,6 +261,14 @@ button, a, [role="button"] {
   --panel-time: calc(var(--panel-unit) * 0.75);
 }
 
+/* The chat laid straight on the picture (ChatOverlay), with little or no
+   ground under it: each line carries a shadow, the way captions without a box
+   do, so it reads over a bright frame as well as a dark one. */
+.chat-on-picture p {
+  color: #fff;
+  text-shadow: 0 0 2px rgb(0 0 0 / 0.9), 0 1px 3px rgb(0 0 0 / 0.8);
+}
+
 /* Volume slider (VideoCard hover control). Track background is set inline as a
    gradient so the filled portion tracks the current volume. */
 .vol-slider {

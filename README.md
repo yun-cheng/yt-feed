@@ -78,7 +78,8 @@ stripped and the app draws its own control bar:
   you've used before
 - **Comments**, with a Translate button on comments in another language
 - **Chat**, on a finished live stream: its chat replay, playing along with the
-  video
+  video. Float it over the picture instead, with no times and a light backdrop
+  or none, and drag it wherever the picture can spare it
 - **Transcript**, where a click seeks
 - **Ask AI**: a conversation answered from this video's own transcript, whose
   timestamps are buttons that seek
