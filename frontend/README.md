@@ -1091,7 +1091,7 @@ Other details:
   the iframe holds focus. `space`/`k` play-pause, `m` mute, `f` fullscreen (of
   our box, so overlays and shortcuts survive it), `←`/`→` ±5s, `j`/`l` ±10s,
   `↑`/`↓` volume (the embed doesn't map these itself), `c` captions, `g` the
-  panel on the video, `p` pin,
+  panel on the video, `n` 彈幕, `p` pin,
   `,`/`.` playback speed (YouTube's two keys, without the shift it asks for), and
   the marks below (`b`, `[`, `]`, `\`). **Every one of those is a default, not a
   wire**: the handler asks `lib/shortcuts.ts` what a key *means* and the answer
@@ -2088,8 +2088,9 @@ on the picture.
 The third way to see a stream's chat: each message flies across the picture
 from right to left, coming in at the moment it was sent.
 
-- **On its own switch.** The Chat tab's screen-with-lines button turns it on
-  or off. It flies alongside the chat in the panel, the floating one, or
+- **On its own switch.** `n` (the `danmaku` shortcut) or the Chat tab's
+  screen-with-lines button turns it on or off; on a video with no chat replay
+  the key does nothing, rather than change a setting nothing shows. It flies alongside the chat in the panel, the floating one, or
   neither, and reads the same `useChatReplay`, so it fetches nothing again.
   Its settings are kept per browser in `ytfeed:danmaku` (`lib/danmaku.ts`).
 - **Where a message is comes from the play head alone.** It came in at the
@@ -2657,7 +2658,7 @@ problem.
 | `presets.test.ts` | filter presets: what a page captures, what it trims on the way back in, when a preset counts as the one in force, and an empty watch list counting as a selection where a null one doesn't — and the length buckets, whose empty list is the default and so counts as nothing; plus the three calls behind the row, where an unreachable server has to read as "no presets" and a refused save as nothing added |
 | `channels.test.ts` | the two calls behind all three ways of adding a channel by hand: the query encoded rather than pasted into the URL, a lookup miss answered in place instead of toasted (it's the call's ordinary negative answer), and a failed *add* still shouting — since that one you asked for |
 | `ChannelPage.test.tsx` | a channel page confined to a search: the words riding along beside the window and the sort, trimmed (and blank meaning no search at all), the list starting again rather than appending when they change, and an empty result naming both the words and the range; plus the length buckets going to the server, this list being paged |
-| `shortcuts.test.ts` | the key table: what a keypress means, a capital and a shifted punctuation key reading as the key under it, an override answering on the new key and no longer the old one, a stored value it can't use dropped rather than shadowing a default, and the conflict the editor asks about — against the draft being edited, not the keys in force |
+| `shortcuts.test.ts` | the key table: what a keypress means, a capital and a shifted punctuation key reading as the key under it, an override answering on the new key and no longer the old one, a stored value it can't use dropped rather than shadowing a default, and the conflict the editor asks about — against the draft being edited, not the keys in force; and the danmaku on `n` unless something was moved there first |
 | `playbackSpeeds.test.ts` | the speed list: what a stored value is tidied into (sorted, de-duplicated, normal speed forced in, capped in length), what the settings field accepts and what it refuses outright, and `nextSpeed` stepping through *your* list from the nearest speed and stopping at both ends |
 | `playerSettings.test.tsx` | the two editors: a tidied list saved on blur and on Enter, text that isn't speeds refused instead of salvaged, Escape putting the field back — and, for shortcuts, a key recorded by being pressed, a taken key refused by name, a row put back on its default stored as nothing at all, and space declined |
 | `focusMode.test.tsx` | the preference under the bar's button: off until asked for, reaching every reader, written down, and taking the other tab's word for it |

@@ -540,6 +540,7 @@ export const ko: Record<string, string> = {
   'Fullscreen': '전체화면',
   'Captions on / off': '자막 켜기/끄기',
   'Panel on the video on / off': '동영상 위 패널 켜기 / 끄기',
+  'Danmaku on / off': '탄막 켜기 / 끄기',
   'Panel on the video opens on': '동영상 위 패널의 첫 탭',
   'Which tab the panel over the video shows when you open it, with G or the button beside CC. Transcript and Ask AI need a video with captions; one without opens on Info instead.': 'G 키나 CC 옆 버튼으로 동영상 위 패널을 열 때 먼저 보여 줄 탭입니다. 스크립트와 AI에게 묻기는 자막이 있는 동영상에서만 쓸 수 있으며, 자막이 없으면 정보 탭으로 열립니다.',
   'Pin the player': '플레이어 고정',

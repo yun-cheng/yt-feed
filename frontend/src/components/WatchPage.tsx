@@ -501,6 +501,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [danmaku, setDanmaku] = useState(loadDanmaku)
   useEffect(() => { saveDanmaku(danmaku) }, [danmaku])
   const danmakuFlies = hasChat && danmaku.on
+  // For the once-bound key handler.
+  const hasChatRef = useRef(hasChat)
+  hasChatRef.current = hasChat
   const [embedError, setEmbedError] = useState(false)
   const [showSavePanel, setShowSavePanel] = useState(false)
   // Whether this video sits in any playlist, so the Save pill can say so.
@@ -2156,6 +2159,12 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
         // fetches whatever its tab shows, the same as pressing the button.
         e.preventDefault()
         setPanelOnVideo((v) => !v)
+      } else if (action === 'danmaku') {
+        // The same toggle as its buttons, which only a stream with a chat
+        // replay has: elsewhere it would change a setting nothing shows.
+        if (!hasChatRef.current) return
+        e.preventDefault()
+        setDanmaku((d) => ({ ...d, on: !d.on }))
       } else if (action === 'pin') {
         // The same toggle the pin button makes: whether the player holds its
         // place while the details scroll, or the whole page scrolls together.

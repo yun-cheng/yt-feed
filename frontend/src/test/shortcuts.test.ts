@@ -19,6 +19,14 @@ describe('the built-in keys', () => {
     expect(actionFor('[')).toBe('loopStart')
   })
 
+  it('puts the danmaku on n, unless something was moved there first', () => {
+    expect(actionFor('n')).toBe('danmaku')
+    expect(keyFor('danmaku')).toBe('n')
+    setShortcutOverrides({ bookmark: 'n' })
+    expect(actionFor('n')).toBe('bookmark')
+    setShortcutOverrides({})
+  })
+
   it('means nothing by a key nothing is on', () => {
     expect(actionFor('q')).toBeNull()
   })

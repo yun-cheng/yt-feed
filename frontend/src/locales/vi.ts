@@ -540,6 +540,7 @@ export const vi: Record<string, string> = {
   'Fullscreen': 'Toàn màn hình',
   'Captions on / off': 'Bật / tắt phụ đề',
   'Panel on the video on / off': 'Bật / tắt bảng trên video',
+  'Danmaku on / off': 'Bật / tắt danmaku',
   'Panel on the video opens on': 'Bảng trên video mở ở thẻ',
   'Which tab the panel over the video shows when you open it, with G or the button beside CC. Transcript and Ask AI need a video with captions; one without opens on Info instead.': 'Thẻ mà bảng trên video hiển thị khi bạn mở bằng G hoặc nút cạnh CC. Bản chép lời và Hỏi AI cần video có phụ đề; video không có phụ đề sẽ mở ở thẻ Thông tin.',
   'Pin the player': 'Ghim trình phát',

@@ -48,6 +48,7 @@ export const DYNAMIC_MESSAGES: string[] = [
   'Fullscreen',
   'Captions on / off',
   'Panel on the video on / off',
+  'Danmaku on / off',
   'Pin the player',
   'Volume up',
   'Volume down',

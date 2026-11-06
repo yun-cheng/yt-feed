@@ -23,6 +23,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { apiFetch } from '../lib/api'
 import { formatTime } from '../lib/time'
 import { t } from '../lib/i18n'
+import { shortcutLabel } from '../lib/shortcuts'
 import { setChatNames, useChatNames } from '../hooks/chatNames'
 
 /** A run of a message: text, or a channel's custom emoji as a picture. */
@@ -335,7 +336,7 @@ export default function ChatReplay({ onFloat, danmaku, onDanmaku, ...list }: Par
         <button
           onClick={onDanmaku}
           aria-label={danmakuLabel}
-          title={danmakuLabel}
+          title={`${danmakuLabel} (${shortcutLabel('danmaku')})`}
           aria-pressed={danmaku}
           className={`${HEADER_BUTTON} ${danmaku ? 'bg-white/15 text-white' : ''}`}
         >

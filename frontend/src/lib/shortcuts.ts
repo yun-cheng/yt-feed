@@ -29,6 +29,7 @@ export type ActionId =
   | 'back5' | 'forward5' | 'back10' | 'forward10'
   | 'speedDown' | 'speedUp'
   | 'bookmark' | 'loopStart' | 'loopEnd' | 'loopClear'
+  | 'danmaku'
 
 export type Action = {
   id: ActionId
@@ -59,6 +60,9 @@ export const ACTIONS: readonly Action[] = [
   { id: 'loopStart', key: '[', label: 'Passage: pin the start', group: 'Marks' },
   { id: 'loopEnd', key: ']', label: 'Passage: pin the end', group: 'Marks' },
   { id: 'loopClear', key: '\\', label: 'Stop repeating', group: 'Marks' },
+  // Last, though it's listed with Playback: the first row on a key wins, so an
+  // action someone has already moved onto this one stays where they put it.
+  { id: 'danmaku', key: 'n', label: 'Danmaku on / off', group: 'Playback' },
 ]
 
 const BY_ID = new Map(ACTIONS.map((a) => [a.id, a]))

@@ -540,6 +540,7 @@ export const ja: Record<string, string> = {
   'Fullscreen': '全画面表示',
   'Captions on / off': '字幕のオン／オフ',
   'Panel on the video on / off': '動画上のパネルのオン / オフ',
+  'Danmaku on / off': '弾幕のオン / オフ',
   'Panel on the video opens on': '動画上のパネルの最初のタブ',
   'Which tab the panel over the video shows when you open it, with G or the button beside CC. Transcript and Ask AI need a video with captions; one without opens on Info instead.': 'G キーまたは CC の横のボタンで動画上のパネルを開いたときに表示するタブ。文字起こしと AI に質問は字幕のある動画でのみ使えます。字幕のない動画では情報タブで開きます。',
   'Pin the player': 'プレーヤーをピン留め',

@@ -23,6 +23,7 @@ import {
   fitLanes, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
 import { t } from '../lib/i18n'
+import { shortcutLabel } from '../lib/shortcuts'
 import { trueClock } from '../lib/trueClock'
 
 /** One message as it flies: its text and emoji, coloured the way the chat's
@@ -501,7 +502,7 @@ export function DanmakuControl({ prefs, onPrefs, chat, buttonClass }: {
           tap.current = false
         }}
         aria-label={label}
-        title={label}
+        title={`${label} (${shortcutLabel('danmaku')})`}
         aria-pressed={prefs.on}
         className={`group relative ${buttonClass}`}
       >

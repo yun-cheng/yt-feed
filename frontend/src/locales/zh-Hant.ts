@@ -541,6 +541,7 @@ export const zhHant: Record<string, string> = {
   'Fullscreen': '全螢幕',
   'Captions on / off': '字幕開／關',
   'Panel on the video on / off': '開關影片上的面板',
+  'Danmaku on / off': '開關彈幕',
   'Panel on the video opens on': '影片上的面板預設分頁',
   'Which tab the panel over the video shows when you open it, with G or the button beside CC. Transcript and Ask AI need a video with captions; one without opens on Info instead.': '按 G 或 CC 旁的按鈕開啟影片上的面板時，要先顯示哪個分頁。逐字稿和 AI 問答需要影片有字幕；沒有字幕的影片會改為開啟資訊。',
   'Pin the player': '釘選播放器',

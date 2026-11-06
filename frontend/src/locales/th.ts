@@ -540,6 +540,7 @@ export const th: Record<string, string> = {
   'Fullscreen': 'เต็มหน้าจอ',
   'Captions on / off': 'เปิด / ปิดคำบรรยาย',
   'Panel on the video on / off': 'เปิด / ปิดแผงบนวิดีโอ',
+  'Danmaku on / off': 'เปิด / ปิดดันมาคุ',
   'Panel on the video opens on': 'แผงบนวิดีโอเปิดที่แท็บ',
   'Which tab the panel over the video shows when you open it, with G or the button beside CC. Transcript and Ask AI need a video with captions; one without opens on Info instead.': 'แท็บที่แผงบนวิดีโอแสดงเมื่อคุณเปิดด้วย G หรือปุ่มข้าง CC ข้อความถอดเสียงและถาม AI ต้องใช้วิดีโอที่มีคำบรรยาย วิดีโอที่ไม่มีจะเปิดที่ข้อมูลแทน',
   'Pin the player': 'ปักหมุดโปรแกรมเล่น',
