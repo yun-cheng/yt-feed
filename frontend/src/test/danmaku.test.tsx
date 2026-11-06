@@ -4,7 +4,7 @@ import Danmaku, { DanmakuControl, danmakuItem } from '../components/Danmaku'
 import type { ChatMessage } from '../components/ChatReplay'
 import type { PlayerApi } from '../components/LocalControls'
 import {
-  AREA_MIN, DANMAKU_DEFAULTS, DANMAKU_KEY, LANE_GAP_PX, MIN_OPACITY, SIZE_MAX, fitLanes, laneCount, laneGap, lanePitch, loadDanmaku, saveDanmaku, takeLane,
+  AREA_MIN, DANMAKU_DEFAULTS, DANMAKU_KEY, LANE_GAP_PX, MAX_FLY_RATE, MIN_OPACITY, SIZE_MAX, fitLanes, laneCount, laneGap, lanePitch, loadDanmaku, saveDanmaku, takeLane,
   type DanmakuPrefs,
 } from '../lib/danmaku'
 
@@ -267,10 +267,69 @@ describe('Danmaku', () => {
     tick(100, p, 7)
     const [hi] = flying()
     const before = xOf(hi)
-    p.rate = 2
+    p.rate = 1.5
     tick(100, p)
-    // A tenth of a second at 2× is a fifth of one of video.
-    expect(before - xOf(hi)).toBeCloseTo(SPEED * 0.2)
+    // A tenth of a second at 1.5× is 0.15 of one of video.
+    expect(before - xOf(hi)).toBeCloseTo(SPEED * 0.15)
+  })
+
+  it('moves no faster than it can be read, however fast the video', () => {
+    const tick = frames()
+    const { p, ref } = fakePlayer()
+    render(<Danmaku player={ref} messages={[say(0.5, 'hello')]} prefs={on} />)
+    tick(100, p, 7)
+    const [hi] = flying()
+    p.rate = 3
+    tick(100, p, 2)
+    const before = xOf(hi)
+    tick(100, p)
+    expect(before - xOf(hi)).toBeCloseTo(SPEED * MAX_FLY_RATE * 0.1)
+  })
+
+  it('comes in when it’s sent past the limit, and crosses in the time the limit gives it', () => {
+    const tick = frames()
+    const { p, ref } = fakePlayer()
+    p.rate = 3
+    render(<Danmaku player={ref} messages={[say(3, 'hello')]} prefs={on} />)
+    tick(100, p, 9)
+    expect(flying()).toHaveLength(0)
+    tick(100, p, 2)
+    const [hi] = flying()
+    expect(xOf(hi)).toBeGreaterThan(1000 - SPEED * MAX_FLY_RATE * 0.2)
+    // A Normal crossing takes 8 seconds at 1×, so over 5 at the limit.
+    tick(100, p, 45)
+    expect(flying()).toHaveLength(1)
+    tick(100, p, 25)
+    expect(flying()).toHaveLength(0)
+  })
+
+  it('draws the screen as it would be after a seek past the limit', () => {
+    const tick = frames()
+    const { p, ref } = fakePlayer()
+    p.rate = 3
+    render(<Danmaku player={ref} messages={[say(100, 'hello')]} prefs={on} />)
+    tick(100, p)
+    // 6 seconds of video after it was sent, 3 by how it flies at 1.5× of 3×.
+    p.time = 106
+    tick(100, p)
+    const [hi] = flying()
+    expect(Math.abs(xOf(hi) - (1000 - 3 * SPEED))).toBeLessThan(SPEED)
+  })
+
+  it('doesn’t move a message when the speed crosses the limit', () => {
+    const tick = frames()
+    const { p, ref } = fakePlayer()
+    render(<Danmaku player={ref} messages={[say(0.5, 'hello')]} prefs={on} />)
+    tick(100, p, 7)
+    const [hi] = flying()
+    const xs: number[] = []
+    for (const rate of [2, 1, 3, 1.5]) {
+      p.rate = rate
+      for (let i = 0; i < 3; i++) { tick(100, p); xs.push(xOf(hi)) }
+    }
+    const steps = xs.slice(1).map((x, i) => xs[i] - x)
+    expect(Math.min(...steps)).toBeGreaterThan(0)
+    expect(Math.max(...steps)).toBeLessThan(SPEED * MAX_FLY_RATE * 0.1 + 1)
   })
 
   it('moves smoothly at a slow speed, though the player says where it is only now and then', () => {
@@ -478,6 +537,30 @@ describe('Danmaku on the compositor', () => {
     }
     const a = flying().find((el) => el.textContent === 'd')!
     expect(Math.abs(xOf(a) - (1000 - (p.time - 2.5) * SPEED))).toBeLessThan(10)
+  })
+
+  it('keeps to the limit at a speed past it the player doesn’t know it’s playing at', () => {
+    const tick = frames()
+    const { p, ref } = speedBehindItsBack()
+    p.rate = 2
+    render(<Danmaku player={ref} messages={[0.2, 0.5, 0.9, 2.5, 4, 5.5].map((at) => say(at, String(at)))} prefs={on} />)
+    // Long enough to learn the speed from the player's corrections.
+    tick(16, p, 150)
+    const last = new Map<HTMLElement, number>()
+    for (let i = 0; i < 240; i++) {
+      tick(16, p)
+      for (const el of flying()) {
+        const x = xOf(el)
+        if (i > 2 && last.has(el)) {
+          // 125px a second at 1.5× is 3px a frame, not the 4 of 2×.
+          const moved = last.get(el)! - x
+          expect(moved).toBeGreaterThan(2)
+          expect(moved).toBeLessThan(3.75)
+        }
+        last.set(el, x)
+      }
+    }
+    expect(anims[0].playbackRate).toBeCloseTo(MAX_FLY_RATE, 0)
   })
 
   it('speeds up to a new speed set behind the player’s back without a jump, and keeps up', () => {

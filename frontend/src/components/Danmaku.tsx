@@ -19,7 +19,7 @@ import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 
 import { sentBy, type ChatMessage, type ChatState } from './ChatReplay'
 import type { PlayerApi } from './LocalControls'
 import {
-  AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
+  AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MAX_FLY_RATE, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
   fitLanes, isBot, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
 import { t } from '../lib/i18n'
@@ -84,14 +84,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 type Flying = {
   el: HTMLElement
-  /** When it was sent, in seconds of video. */
+  /** When it came in, on the screen's clock (`screen`). */
   t: number
   w: number
   lane: number
   /** Its crossing, run by the compositor; null where there's no Web
    *  Animations, and the loop moves it instead. */
   anim: Animation | null
-  /** How long the crossing takes, in ms of video. */
+  /** How long the crossing takes, in ms of the screen's clock. */
   span: number
   /** The speed its animation was last asked to run at. */
   rate: number
@@ -115,7 +115,7 @@ export default function Danmaku({ player, messages, prefs, style }: {
     const cross = CROSS_SECONDS[speed]
     // How far back a message can have been sent and still be on the screen:
     // the crossing, and as long again for one wider than the picture.
-    const reach = cross * 2
+    const reachAt = (share: number) => (cross * 2) / share
     const flying: Flying[] = []
     let lanes: Lanes = []
     // The layer's size and one line's height, read once per change rather
@@ -153,6 +153,10 @@ export default function Danmaku({ player, messages, prefs, style }: {
     // would show as a hitch, plainest at a slow speed, where everything moves
     // only a pixel or so a frame.
     let head: number | null = null
+    // The time messages fly by: the drawn head's, up to MAX_FLY_RATE, and
+    // beyond it a share of that. Running on its own, a speed past the limit
+    // changes how fast it goes and nothing on the screen moves.
+    let screen = 0
     let reported = Number.NaN
     let reportedAt = 0
     let next = 0
@@ -164,7 +168,7 @@ export default function Danmaku({ player, messages, prefs, style }: {
     let pace = 1
 
     // Each message's crossing is an animation the compositor runs, at the
-    // playback speed, rather than a position this loop writes every frame:
+    // speed they fly at, rather than a position this loop writes every frame:
     // the compositor places it a fraction of a pixel at a time and keeps time
     // whatever the page is busy with — at a slow speed, where a message moves
     // a pixel or so a frame, whole-pixel steps or a late frame are what shows.
@@ -182,7 +186,7 @@ export default function Danmaku({ player, messages, prefs, style }: {
       a.playbackRate = pace
       f.rate = pace
       if (!running) a.pause()
-      a.currentTime = ((head ?? f.t) - f.t) * 1000
+      a.currentTime = (screen - f.t) * 1000
       f.anim = a
     }
     const drop = (f: Flying) => {
@@ -197,12 +201,14 @@ export default function Danmaku({ player, messages, prefs, style }: {
     }
     // From scratch at `v`: the screen as it was at that moment, every message
     // sent in the reach before it where it would have got to by now.
-    const rebuild = (v: number) => {
+    const rebuild = (v: number, reach: number) => {
       clear()
+      screen = v
       next = sentBy(messages, (v - reach) * 1000)
     }
-    const launch = (m: ChatMessage, v: number, speedPx: number) => {
-      const at = m.t / 1000
+    const launch = (m: ChatMessage, v: number, speedPx: number, share: number) => {
+      // When it was sent, on the clock it flies by.
+      const at = screen - (v - m.t / 1000) * share
       // Every lane taken when it was sent: skipped without building anything.
       if (lanes.length && !lanes.some((free) => free <= at)) return
       const el = danmakuItem(m)
@@ -212,7 +218,7 @@ export default function Danmaku({ player, messages, prefs, style }: {
       const w = el.offsetWidth
       const lane = takeLane(lanes, at, w, speedPx, laneGap(lineH))
       // No lane, or sent long enough ago that it has already flown past.
-      if (lane < 0 || W - (v - at) * speedPx + w < 0) { el.remove(); return }
+      if (lane < 0 || W - (screen - at) * speedPx + w < 0) { el.remove(); return }
       el.style.top = laneTop(lane)
       const f: Flying = { el, t: at, w, lane, anim: null, span: 0, rate: pace }
       fly(f)
@@ -258,37 +264,40 @@ export default function Danmaku({ player, messages, prefs, style }: {
       // Back, or further forward than anything on the screen reaches: start
       // from scratch at the new moment. A short hop forward needs nothing —
       // what was sent in between comes in where it would be by now.
-      if (head === null || v < head || v - head > reach) rebuild(v)
+      const flyRate = Math.min(rate, MAX_FLY_RATE)
+      const share = flyRate / rate
+      if (head === null || v < head || v - head > reachAt(share)) rebuild(v, reachAt(share))
+      else screen += (v - head) * share
       head = v
       if (lineH) lanes = fitLanes(lanes, laneCount(H, lanePitch(lineH)))
 
       // Played, paused, or a new speed: every crossing follows.
-      if (playing !== running || rate !== pace) {
+      if (playing !== running || flyRate !== pace) {
         running = playing
-        pace = rate
+        pace = flyRate
         for (const f of flying) {
           if (!f.anim) continue
-          setRate(f.anim, rate)
-          f.rate = rate
+          setRate(f.anim, pace)
+          f.rate = pace
           if (!playing) f.anim.pause()
           else if (f.anim.playState !== 'finished') f.anim.play()
         }
       }
 
       const speedPx = W / cross
-      while (next < messages.length && messages[next].t <= v * 1000) launch(messages[next++], v, speedPx)
+      while (next < messages.length && messages[next].t <= v * 1000) launch(messages[next++], v, speedPx, share)
       for (let i = flying.length - 1; i >= 0; i--) {
         const f = flying[i]
-        const into = (v - f.t) * 1000
+        const into = (screen - f.t) * 1000
         if (into > f.span) { drop(f); flying.splice(i, 1); continue }
         if (!f.anim) {
-          f.el.style.transform = `translate3d(${W - (v - f.t) * speedPx}px,0,0)`
+          f.el.style.transform = `translate3d(${W - (screen - f.t) * speedPx}px,0,0)`
           continue
         }
         // Still, or a new speed on its way to the compositor: where it is
         // says nothing yet.
         if (!running || f.anim.pending) continue
-        // Seconds of video it has strayed: ahead if more than nothing.
+        // Seconds it has strayed: ahead if more than nothing.
         const stray = (Number(f.anim.currentTime ?? 0) - into) / 1000
         // Well behind — a hop forward: there at once, which is forwards.
         if (stray < -RESYNC_SEC) { f.anim.currentTime = into; continue }

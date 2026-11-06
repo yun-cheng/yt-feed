@@ -6,8 +6,9 @@
  *
  * Where a message is depends only on the play head: it entered at the right
  * edge at the moment it was sent, and has moved left at one speed since, in
- * seconds of video. So it moves faster at 2×, stands still while paused, and
- * after a seek the screen is what it was at that moment.
+ * seconds of video. So it moves faster at 1.5×, stands still while paused, and
+ * after a seek the screen is what it was at that moment. Past MAX_FLY_RATE it
+ * moves no faster: it's there to be read.
  *
  * Every message moves at one speed, so a message can never catch up with the
  * one ahead of it in its lane. A lane is free again once the last message in
@@ -52,6 +53,11 @@ export const MIN_OPACITY = 0.2
  *  speed is the picture's width over this, the same for every message on the
  *  screen. */
 export const CROSS_SECONDS: Record<DanmakuSpeed, number> = { slow: 11, normal: 8, fast: 5.5 }
+
+/** The fastest messages move, as a playback speed: at 2× the video runs on and
+ *  they fly as at this, or they cross a Normal screen in 4 seconds, too quick
+ *  to read. */
+export const MAX_FLY_RATE = 1.5
 
 /** Text size at 100%, as a share of the player's width (cqw), with a floor in
  *  pixels so a small player still reads. */
