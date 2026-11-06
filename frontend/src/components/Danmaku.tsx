@@ -20,9 +20,10 @@ import { sentBy, type ChatMessage, type ChatState } from './ChatReplay'
 import type { PlayerApi } from './LocalControls'
 import {
   AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
-  fitLanes, laneCount, trueClock, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
+  fitLanes, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
 import { t } from '../lib/i18n'
+import { trueClock } from '../lib/trueClock'
 
 /** One message as it flies: its text and emoji, coloured the way the chat's
  *  names are (the channel yellow, moderators blue, members green), a Super

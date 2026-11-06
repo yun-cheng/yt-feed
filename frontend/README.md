@@ -976,8 +976,9 @@ lib/
   channelCaptions.ts              captions remembered per channel (the caption_memory setting)
   chatOverlay.ts                  where the floating chat sits and how it looks,
                                   as shares of the player; kept per browser
-  danmaku.ts                      彈幕's settings (kept per browser), its lanes,
-                                  and the player's real speed when it's wrong
+  danmaku.ts                      彈幕's settings (kept per browser) and its lanes
+  trueClock.ts                    the player's real speed and time when it's
+                                  wrong about them (another extension's speed)
   richText.tsx                    YouTube free text (descriptions, comments):
                                   URLs as links, timestamps as seek buttons;
                                   formatCount (1.2M, or 35.6萬 in Chinese)
@@ -2132,10 +2133,15 @@ from right to left, coming in at the moment it was sent.
 - **A speed set behind the player's back** — by another extension's speed
   control, on the video inside the embed — leaves the player saying 1× and
   carrying its time on at 1× between the video's reports of where it is, so
-  its time creeps, then leaps, every half second or so. `trueClock` reads the
-  real speed off the last two leaps and the real time off the last, and the
-  danmaku runs on those until the player is right again (no leap for two of
-  its gaps). A new speed is caught by the second report after it.
+  its time creeps, then leaps, every half second or so. `lib/trueClock.ts`
+  reads the real speed off the leaps of the last 2.5 seconds, and the real time
+  off the last, and the danmaku runs on those until the player is right again
+  (no leap for two of its gaps). Over one half-second gap, a report arriving a
+  few hundredths late would make 1.3× read now 1.25×, now 1.35×; over the
+  window it doesn't, and a reading has to move clearly past the halfway mark
+  before the speed changes. A last pair far off the reading is a new speed,
+  caught by the second report after it, if that leap is the size the speed
+  says. Leaps closer than 200ms are the time wobbling, and it starts over.
 
 ### Notes on a video (`NotesPanel.tsx`)
 
@@ -2635,6 +2641,8 @@ problem.
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `chatOverlay.test.tsx` | the floating chat's box kept whole and inside the player, moved by a drag and stopped at the edges, sized from either lower corner (the left keeping its right edge), the backdrop stepping round, and the layout kept and read back from a store it can't parse; then the overlay itself: no times, placed where it was put, moved and resized by dragging (as shares of the player), the backdrop, hiding names from its strip (for the tab too: one switch) and a person icon then starting each message in the role's colour, Back to the panel and close, and its clicks kept from the player under it |
 | `ChatReplay.test.tsx` | the Chat tab: nothing fetched until something shows the chat, names hidden on asking and kept so (a Super Chat's amount staying), Float over the video, messages up to the play head and more as it moves, a note before the first, only the latest stretch of a long chat drawn, the fetch started on first opening with its progress, polling until it lands, a failure saying why and Try again starting it over, the channel, moderators, Super Chats and custom emoji drawn as such and a message's time seeking, and the list holding while you read back until Sync to video — but not through a scroll nobody made |
+| `danmaku.test.tsx` | the lanes (the one free longest, room behind a message growing with the text, resizing keeping what's held) and the settings kept and read back from a store it can't parse; a message's text, colours and Super Chat amount; messages let in at the right edge and carried by the play head, keeping pace with the speed, stacked in lanes and skipped when none is free, and the screen rebuilt after a seek; then on a stand-in compositor that, like Chrome, holds an animation still after a direct write to `playbackRate`: pausing, every message moving step by even step through a speed change, never backwards however the player's time wobbles, even at a speed set behind the player's back and through a change of it, redrawn only on a real seek back, and a new width crossed from where it had got to; the display area keeping what's flying; and the bar's button and settings |
+| `trueClock.test.ts` | a speed set behind the player's back read off where it keeps putting its time right, faster or slower than it says; the player's word when that's right, and again once it's right again; a steady reading however late each report arrives, and a new speed still caught at the second report |
 | `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, a save reaching the cards as the server kept it, and Escape handing the keyboard back |
 | `VideoPanel.test.tsx` | that the panel over the video keeps a tab's state when you switch away and back, and when you close and reopen it, and that closed it's out of reach |
 | `Comments.test.tsx` | that nothing is fetched before the tab opens, that the panel on the video and the tab share one fetch and the panel's side button moves it, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |
