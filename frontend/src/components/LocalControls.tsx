@@ -23,6 +23,7 @@ import type { Chapter } from '../lib/chapters'
 import type { Bookmark, Loop } from './PlayerMarks'
 import { t } from '../lib/i18n'
 import { playbackSpeeds } from '../lib/playbackSpeeds'
+import { trueClock } from '../lib/trueClock'
 import { shortcutLabel } from '../lib/shortcuts'
 
 /**
@@ -339,6 +340,12 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
   // shortcuts change it on the player directly (see WatchPage), and a second
   // copy in this component would be the one that goes stale.
   const [rate, setRate] = useState(1)
+  // A speed set behind the embed's back — by another extension, on the video
+  // inside it — which the embed doesn't know of and goes on calling 1×. Read
+  // off the embed's own time, which it gives away (lib/trueClock): every frame,
+  // as the poll's quarter seconds are too coarse for it. Shown in place of
+  // what the embed says, and held through a pause or a seek.
+  const measuredRate = useRef<number | null>(null)
   const [rateMenu, setRateMenu] = useState(false)
   const rateRef = useRef<HTMLDivElement>(null)
   // Whether the pointer is over the speed control — the menu it opened by
@@ -372,6 +379,22 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
     const el = videoRef?.current
     return el ? localPlayer(el) : player?.current ?? null
   }
+
+  useEffect(() => {
+    // A file's own playbackRate is the truth, whoever set it.
+    if (videoRef || !player || typeof requestAnimationFrame !== 'function') return
+    const clock = trueClock()
+    let raf = 0
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame)
+      const p = player.current
+      if (!p) return
+      clock.read(now, p.getCurrentTime(), p.getPlaybackRate?.() || 1, p.getPlayerState() === 1)
+      measuredRate.current = clock.held()
+    }
+    raf = requestAnimationFrame(frame)
+    return () => { cancelAnimationFrame(raf); measuredRate.current = null }
+  }, [videoRef, player])
 
   // Mirror the source's state. A <video> tells us when it changes, which covers
   // every way the position can move (the keyboard shortcuts, the resume seek);
@@ -414,7 +437,7 @@ export default function LocalControls({ videoRef, player, src, storyboard, hover
         p.setPlaybackRate?.(1)
         setRate(1)
       } else {
-        setRate(r)
+        setRate(measuredRate.current ?? r)
       }
       // What's actually on screen. A file knows its own height; the embed only
       // has YouTube's name for the quality it settled on, which drifts on its

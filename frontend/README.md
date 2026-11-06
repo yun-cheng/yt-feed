@@ -2141,7 +2141,8 @@ from right to left, coming in at the moment it was sent.
   window it doesn't, and a reading has to move clearly past the halfway mark
   before the speed changes. A last pair far off the reading is a new speed,
   caught by the second report after it, if that leap is the size the speed
-  says. Leaps closer than 200ms are the time wobbling, and it starts over.
+  says. Leaps closer than 200ms are the time wobbling, and it starts over. The
+  bar's speed button shows the speed too (see *Playback speed*).
 
 ### Notes on a video (`NotesPanel.tsx`)
 
@@ -2370,6 +2371,13 @@ up means more there as it does on the volume slider.
   `LocalWatchPage`'s on a local file — and the bar reads it back on the same poll
   that carries the clock, so the label follows a speed it never set. A second
   copy of the number here is the one that would go stale.
+- **Even a speed the embed doesn't know.** Another extension's speed control
+  sets the video inside the embed, which goes on calling it 1×. Its time gives
+  the real speed away (`lib/trueClock.ts`, read every frame, since the poll's
+  quarter seconds are too coarse), and the label shows that instead. It's held
+  through a pause or a seek, and let go when the player sets a speed of its own
+  or plays on a while at the one it says. A file's own `playbackRate` is the
+  truth whoever set it, so this is the embed's alone.
 - **It resets with the player**, since nothing persists it: a new video plays at
   1×, which is what a speed chosen for one video's narrator should do.
 - **On a broadcast too, capped at the edge.** Watching behind the edge, faster
@@ -2616,7 +2624,7 @@ problem.
 | File | Covers |
 |------|--------|
 | `PlayerMarks.test.tsx` | `b` / `[` / `]` / `\` and the bar's two buttons driving the same actions, the repeat button's on / off, the chapter menu (lists, lights the playing one, jumps without closing, Escape or a press outside closes it), the menus' pictures (`MomentThumb`: grabbed frame, else storyboard tile, else the bar's mark), notes on both kinds of mark (written in a menu, kept on Enter or a press outside, left on Escape, sent once a fresh mark is saved), the add-toggle tolerance, whether the head is standing on a mark, the loop tick, and how both are drawn — the bookmark's pin and the loop's ▶ ◀ markers |
-| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), the live bar (its held track length, the speed dropping to 1× at the edge, an ended player read as a recording), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark |
+| `LocalControls.test.tsx` | the `<video>`→`PlayerApi` adapter, scrubbing, volume, driving either source, the scrub popup (its frame, and where it stops at the ends), the live bar (its held track length, the speed dropping to 1× at the edge, an ended player read as a recording), and the marks in the track — including the **document order** that lets the loop's veil dim the fill without ever dimming the play head or a bookmark; and the speed button showing a speed set behind the embed's back, still through a pause |
 | `AskPanel.test.tsx` | the streamed answer: frames split across network chunks, Markdown rendered as it lands, a citation that seeks, the play head riding along, what a refused question does to the box, and a reply that stops partway |
 | `markdown.test.tsx` | the block parse (headings, both list kinds, nesting, paragraph joining) and — the reason it exists — a timestamp surviving a bullet, a bold run and a sub-item and still seeking |
 | `NotificationBell.test.tsx` | the badge and its cap, opening the bell clearing it, the cover and its icon fallback, a summary row opening the video on its Ask panel while a failure row has nowhere to send you, and dismissing one row without touching the rest |
@@ -2642,7 +2650,7 @@ problem.
 | `chatOverlay.test.tsx` | the floating chat's box kept whole and inside the player, moved by a drag and stopped at the edges, sized from either lower corner (the left keeping its right edge), the backdrop stepping round, and the layout kept and read back from a store it can't parse; then the overlay itself: no times, placed where it was put, moved and resized by dragging (as shares of the player), the backdrop, hiding names from its strip (for the tab too: one switch) and a person icon then starting each message in the role's colour, Back to the panel and close, and its clicks kept from the player under it |
 | `ChatReplay.test.tsx` | the Chat tab: nothing fetched until something shows the chat, names hidden on asking and kept so (a Super Chat's amount staying), Float over the video, messages up to the play head and more as it moves, a note before the first, only the latest stretch of a long chat drawn, the fetch started on first opening with its progress, polling until it lands, a failure saying why and Try again starting it over, the channel, moderators, Super Chats and custom emoji drawn as such and a message's time seeking, and the list holding while you read back until Sync to video — but not through a scroll nobody made |
 | `danmaku.test.tsx` | the lanes (the one free longest, room behind a message growing with the text, resizing keeping what's held) and the settings kept and read back from a store it can't parse; a message's text, colours and Super Chat amount; messages let in at the right edge and carried by the play head, keeping pace with the speed, stacked in lanes and skipped when none is free, and the screen rebuilt after a seek; then on a stand-in compositor that, like Chrome, holds an animation still after a direct write to `playbackRate`: pausing, every message moving step by even step through a speed change, never backwards however the player's time wobbles, even at a speed set behind the player's back and through a change of it, redrawn only on a real seek back, and a new width crossed from where it had got to; the display area keeping what's flying; and the bar's button and settings |
-| `trueClock.test.ts` | a speed set behind the player's back read off where it keeps putting its time right, faster or slower than it says; the player's word when that's right, and again once it's right again; a steady reading however late each report arrives, and a new speed still caught at the second report |
+| `trueClock.test.ts` | a speed set behind the player's back read off where it keeps putting its time right, faster or slower than it says; the player's word when that's right, and again once it's right again; a steady reading however late each report arrives, a new speed still caught at the second report, and a held speed kept through a pause and let go |
 | `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, a save reaching the cards as the server kept it, and Escape handing the keyboard back |
 | `VideoPanel.test.tsx` | that the panel over the video keeps a tab's state when you switch away and back, and when you close and reopen it, and that closed it's out of reach |
 | `Comments.test.tsx` | that nothing is fetched before the tab opens, that the panel on the video and the tab share one fetch and the panel's side button moves it, that coming back to it refetches nothing, a sort picked before opening fetching in that order, that a new video starts closed without fetching, the replies walk following the comments on its own (and failing without disturbing them), a chain of replies nested under one count and one toggle, a timestamp in a comment seeking the player, and disabled vs empty |

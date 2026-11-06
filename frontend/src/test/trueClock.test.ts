@@ -43,6 +43,20 @@ describe('the player’s real speed', () => {
     expect(clock.read(now + 32, time, 1, true)).toBeNull()
   })
 
+  it('holds the speed alone through a pause, and lets it go for one the player sets itself', () => {
+    const { clock, now, time } = run(1.5, 3000)
+    expect(clock.read(now + 16, time, 1, false)).toBeNull()
+    expect(clock.held()).toBe(1.5)
+    clock.read(now + 32, time, 2, true)
+    expect(clock.held()).toBeNull()
+  })
+
+  it('lets a held speed go once the player plays on a while with no leap', () => {
+    const sped = run(1.5, 3000)
+    sped.clock.read(sped.now + 16, sped.time, 1, false)
+    expect(run(1, 3000, { now: sped.now + 16, time: sped.time }, 1, sped.clock).clock.held()).toBeNull()
+  })
+
   it('reads a steady speed steadily, however late each report arrives', () => {
     // At 1.3×, each report reaching the page up to 40ms late: over one half
     // second gap that alone reads anywhere from 1.22× to 1.38×.

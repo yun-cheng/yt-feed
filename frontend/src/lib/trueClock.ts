@@ -1,6 +1,6 @@
 /**
- * The player's real speed, when it's wrong about it, which the danmaku
- * (components/Danmaku) runs at.
+ * The player's real speed, when it's wrong about it — what the bar shows and
+ * the danmaku (components/Danmaku) runs at.
  */
 
 /** How far a frame's move in the player's time may stray from what its speed
@@ -43,6 +43,10 @@ const LEAP_FIT = 0.04
  *  halfway mark to the next twentieth, so one hovering there doesn't flick. */
 const STICK = 0.035
 
+/** How long the clock plays on without a leap before the speed it held
+ *  through a pause or a seek is let go: it's the player's own again. */
+const HOLD_MS = 2500
+
 /**
  * The player's real speed and time, when it's wrong about them.
  *
@@ -53,6 +57,11 @@ const STICK = 0.035
  * the leaps of the last few seconds, the real speed (a new one is caught by
  * the second report after it, see NEW_SPEED), and from the last, the real
  * time since. Null while the player's word holds.
+ *
+ * `held` is the speed alone, for showing: kept through a pause or a seek,
+ * after which the time needs a leap or two to be known again but the speed
+ * hasn't changed, and let go only when the player sets one of its own or
+ * plays on a while with no leap.
  */
 export function trueClock() {
   let prev: { at: number; r: number; said: number } | null = null
@@ -63,22 +72,29 @@ export function trueClock() {
   let raw: number | null = null
   // How long a measured speed outlives its last leap.
   let stale = LEAP_STALE_MS
+  let held: number | null = null
+  // When it last started over or leapt.
+  let since = 0
   const slope = (a: { at: number; r: number }, b: { at: number; r: number }) => (b.r - a.r) / ((b.at - a.at) / 1000)
   return {
+    held: () => held,
     /** One frame: the player's time `r` and speed `said` at `now` (ms). */
     read(now: number, r: number, said: number, playing: boolean): { speed: number; time: number } | null {
       const last = prev
       prev = { at: now, r, said }
+      // A new speed of its own: what it says now.
+      if (last && last.said !== said) held = null
       // Still, a new speed of its own, or a first look: start over.
-      if (!playing || !last || last.said !== said) { leaps = []; speed = null; raw = null; return null }
+      if (!playing || !last || last.said !== said) { leaps = []; speed = null; raw = null; since = now; return null }
       const moved = r - last.r
       // Far enough to be a seek: start over from here.
-      if (Math.abs(moved) > 2) { leaps = []; speed = null; raw = null; return null }
+      if (Math.abs(moved) > 2) { leaps = []; speed = null; raw = null; since = now; return null }
       const by = moved - ((now - last.at) / 1000) * said
       const before = leaps[leaps.length - 1]
       // Wobbling: start over.
-      if (Math.abs(by) > LEAP_SEC && before && now - before.at < LEAP_GAP_MS) { leaps = []; speed = null; raw = null; return null }
+      if (Math.abs(by) > LEAP_SEC && before && now - before.at < LEAP_GAP_MS) { leaps = []; speed = null; raw = null; since = now; return null }
       if (Math.abs(by) > LEAP_SEC) {
+        since = now
         const leap = { at: now, r, by }
         // Too long since the last to say anything about the speed between.
         if (before && leap.at - before.at > LEAP_SPAN_MS) leaps = []
@@ -96,10 +112,12 @@ export function trueClock() {
             raw = v
             const m = speed !== null && Math.abs(v - speed) < STICK ? speed : Math.round(v * SPEED_STEPS) / SPEED_STEPS
             speed = Math.abs(m - said) >= SPEED_OFF ? m : null
+            held = speed
             stale = Math.max(LEAP_STALE_MS, (leap.at - before!.at) * LEAP_STALE_GAPS)
           }
         }
       }
+      if (speed === null && now - since > HOLD_MS) held = null
       const at = leaps[leaps.length - 1]
       if (speed === null || !at) return null
       if (now - at.at > stale) { leaps = []; speed = null; return null }

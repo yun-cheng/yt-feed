@@ -198,6 +198,29 @@ describe('LocalControls — the speed menu', () => {
     expect(screen.getByTestId('speed-button')).toHaveTextContent('1.75\u00d7')
   })
 
+  it('shows a speed set behind the embed’s back, which it goes on calling 1×', () => {
+    // The embed's time carried on at 1× between the video's reports of where
+    // it really is, at 1.5×, every half second.
+    const start = performance.now()
+    let report = { at: start, r: 0 }
+    const truth = () => ((performance.now() - start) / 1000) * 1.5
+    const { player } = renderOverEmbed({}, {
+      getPlaybackRate: () => 1,
+      getCurrentTime: () => {
+        const now = performance.now()
+        if (now - report.at >= 500) report = { at: now, r: truth() }
+        return report.r + (now - report.at) / 1000
+      },
+    })
+    player._state(1)
+    act(() => { vi.advanceTimersByTime(3000) })
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1.5\u00d7')
+    // Paused, it still says so.
+    player._state(2)
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(screen.getByTestId('speed-button')).toHaveTextContent('1.5\u00d7')
+  })
+
   it('follows a <video>’s own ratechange, even while it is paused', () => {
     const el = withDuration(videoEl(), 600)
     render(<LocalControls videoRef={{ current: el }} src="/x" hovering onFullscreen={vi.fn()} />)
