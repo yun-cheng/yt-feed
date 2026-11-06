@@ -97,6 +97,13 @@ describe('a flying message', () => {
     expect(danmakuItem({ t: 0, a: '@x', r: ['  '] })).toBeNull()
     expect(danmakuItem({ t: 0, a: '@x', r: [], p: '$5' })).not.toBeNull()
   })
+
+  it('isn’t made for a moderation bot’s reply, but is for someone mentioning it', () => {
+    const reply = '@someone -> Boop! [stop spamming caps]'
+    expect(danmakuItem({ t: 0, a: '@nightbot', b: 'mod', r: [reply] })).toBeNull()
+    expect(danmakuItem({ t: 0, a: '@Nightbot', b: 'mod', r: [reply] })).toBeNull()
+    expect(danmakuItem({ t: 0, a: '@x', r: ['@nightbot why'] })).not.toBeNull()
+  })
 })
 
 // ── The layer ────────────────────────────────────────────────────────

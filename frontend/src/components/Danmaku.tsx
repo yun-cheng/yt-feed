@@ -20,7 +20,7 @@ import { sentBy, type ChatMessage, type ChatState } from './ChatReplay'
 import type { PlayerApi } from './LocalControls'
 import {
   AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
-  fitLanes, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
+  fitLanes, isBot, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
 import { t } from '../lib/i18n'
 import { shortcutLabel } from '../lib/shortcuts'
@@ -28,10 +28,11 @@ import { trueClock } from '../lib/trueClock'
 
 /** One message as it flies: its text and emoji, coloured the way the chat's
  *  names are (the channel yellow, moderators blue, members green), a Super
- *  Chat led by its amount. Null for a message with nothing to show. */
+ *  Chat led by its amount. Null for a message with nothing to show, or a
+ *  bot's. */
 export function danmakuItem(m: ChatMessage): HTMLElement | null {
   const hasText = m.r.some((run) => typeof run !== 'string' || run.trim())
-  if (!hasText && !m.p) return null
+  if ((!hasText && !m.p) || isBot(m.a)) return null
   const el = document.createElement('div')
   el.className = `danmaku-item${m.b ? ` is-${m.b}` : ''}`
   if (m.p) {

@@ -83,6 +83,12 @@ export const laneGap = (lineHeightPx: number) => Math.max(LANE_GAP_PX, lineHeigh
  *  message. */
 export type Lanes = number[]
 
+/** Bots that answer spam in the chat, by handle: `@name -> Boop! [stop spamming
+ *  caps]`. Their lines stay in the chat, where they're seen to be the bot's;
+ *  flying, with no name on them, they read as nonsense from a viewer. */
+const BOTS = new Set(['@nightbot'])
+export const isBot = (author: string) => BOTS.has(author.toLowerCase())
+
 /** How many lanes `pitchPx` apart fit `areaPx` of height, never none. */
 export function laneCount(areaPx: number, pitchPx: number): number {
   if (!(pitchPx > 0)) return 1
