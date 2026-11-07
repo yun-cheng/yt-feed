@@ -21,6 +21,7 @@ import NotesPanel from './NotesPanel'
 import ChatReplay, { useChatReplay } from './ChatReplay'
 import ChatOverlay from './ChatOverlay'
 import Danmaku, { DanmakuControl } from './Danmaku'
+import DanmakuPhrases from './DanmakuPhrases'
 import { loadDanmaku, saveDanmaku } from '../lib/danmaku'
 import { loadChatOverlay, saveChatOverlay } from '../lib/chatOverlay'
 import { DictionaryTip, useCaptionLookup, type CaptionLookup } from './CaptionLookup'
@@ -3575,6 +3576,16 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
             messages={chatFeed.state.status === 'done' ? chatFeed.state.messages : null}
             prefs={danmaku}
             // Beside the panel, not under it, the way the captions keep clear.
+            style={panelOnVideo ? { [panelSide]: PANEL_WIDTH } : undefined}
+          />
+        )}
+        {danmakuFlies && danmaku.phrases && chatFeed.state.status === 'done' && (
+          <DanmakuPhrases
+            // Not the 彈幕's key: two alike here and React mounts it again and again.
+            key={`phrases:${videoId}`}
+            player={playerRef}
+            messages={chatFeed.state.messages}
+            size={danmaku.size}
             style={panelOnVideo ? { [panelSide]: PANEL_WIDTH } : undefined}
           />
         )}

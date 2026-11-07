@@ -471,6 +471,7 @@ export const ko: Record<string, string> = {
   'Display area': '표시 영역',
   'Speed': '속도',
   'Opacity': '불투명도',
+  'Count repeated phrases': '반복되는 문구 세기',
   'Slow': '느리게',
   'Normal': '보통',
   'Fast': '빠르게',

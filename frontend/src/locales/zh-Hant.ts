@@ -472,6 +472,7 @@ export const zhHant: Record<string, string> = {
   'Display area': '顯示範圍',
   'Speed': '速度',
   'Opacity': '不透明度',
+  'Count repeated phrases': '計算重複語句',
   'Slow': '慢',
   'Normal': '普通',
   'Fast': '快',

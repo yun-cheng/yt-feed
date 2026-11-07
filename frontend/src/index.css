@@ -305,6 +305,58 @@ button, a, [role="button"] {
   text-shadow: none;
 }
 
+/* What the chat is saying together (components/DanmakuPhrases): a stack at the
+   picture's right, each row sized by its count (set on the row). The number
+   pops as it goes up, so the row isn't clipped. */
+.danmaku-phrases {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3em;
+  padding: 0.8em 1em;
+}
+.danmaku-phrase {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  max-width: 36cqw;
+  border-radius: 0.35em;
+  background: rgb(0 0 0 / 0.3);
+  backdrop-filter: blur(6px);
+  padding: 0.1em 0.5em;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.8);
+  transition: opacity 1s, font-size 0.3s;
+}
+.danmaku-phrase.is-leaving { opacity: 0; }
+.danmaku-phrase-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.danmaku-phrase-text img {
+  display: inline-block;
+  height: 1.15em;
+  width: auto;
+  vertical-align: -0.2em;
+}
+.danmaku-phrase-count {
+  flex: none;
+  font-size: 1.2em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fde047;
+  animation: danmaku-count-up 0.3s ease-out;
+}
+@keyframes danmaku-count-up {
+  from { transform: scale(1.5); color: #fff; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .danmaku-phrase-count { animation: none; }
+}
+
 /* Volume slider (VideoCard hover control). Track background is set inline as a
    gradient so the filled portion tracks the current volume. */
 .vol-slider {

@@ -471,6 +471,7 @@ export const ja: Record<string, string> = {
   'Display area': '表示範囲',
   'Speed': '速度',
   'Opacity': '不透明度',
+  'Count repeated phrases': '繰り返しのフレーズを数える',
   'Slow': '遅い',
   'Normal': '標準',
   'Fast': '速い',

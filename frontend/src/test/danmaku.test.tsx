@@ -58,7 +58,7 @@ describe('lanes', () => {
 describe('danmaku settings', () => {
   it('are kept for next time, and survive a store they can’t read', () => {
     expect(loadDanmaku()).toEqual(DANMAKU_DEFAULTS)
-    const mine: DanmakuPrefs = { on: true, area: 1, opacity: 0.5, size: 1.3, speed: 'fast' }
+    const mine: DanmakuPrefs = { on: true, area: 1, opacity: 0.5, size: 1.3, speed: 'fast', phrases: false }
     saveDanmaku(mine)
     expect(loadDanmaku()).toEqual(mine)
     localStorage.setItem(DANMAKU_KEY, JSON.stringify({ on: true, area: 'top', opacity: -4, size: 'huge', speed: 'warp' }))
@@ -716,6 +716,8 @@ describe('DanmakuControl', () => {
     expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ speed: 'fast' }))
     fireEvent.change(screen.getByRole('slider', { name: 'Opacity' }), { target: { value: '40' } })
     expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ opacity: 0.4 }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Count repeated phrases' }))
+    expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ phrases: false }))
   })
 
   it('says why nothing flies while the chat is still being fetched', () => {
@@ -730,7 +732,7 @@ describe('DanmakuControl', () => {
     fireEvent.pointerDown(button, { pointerType: 'touch' })
     fireEvent.click(button)
     expect(onPrefs).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('switch'))
+    fireEvent.click(screen.getByRole('switch', { name: 'Danmaku' }))
     expect(onPrefs).toHaveBeenCalledWith({ ...DANMAKU_DEFAULTS, on: true })
   })
 })

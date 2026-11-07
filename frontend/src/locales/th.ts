@@ -471,6 +471,7 @@ export const th: Record<string, string> = {
   'Display area': 'พื้นที่แสดงผล',
   'Speed': 'ความเร็ว',
   'Opacity': 'ความทึบ',
+  'Count repeated phrases': 'นับวลีที่ซ้ำกัน',
   'Slow': 'ช้า',
   'Normal': 'ปกติ',
   'Fast': 'เร็ว',

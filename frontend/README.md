@@ -920,6 +920,8 @@ components/
                                   and sized by dragging
   Danmaku.tsx                     the same chat flying across the picture
                                   (彈幕), and its button and settings on the bar
+  DanmakuPhrases.tsx              what the chat is saying together, counted at
+                                  the picture's right while it flies
   Toaster.tsx                     the app's single toast surface: errors, and
                                   the removals you can still take back
   NotificationBell.tsx            the bell in every TopBar: what finished while
@@ -977,6 +979,7 @@ lib/
   chatOverlay.ts                  where the floating chat sits and how it looks,
                                   as shares of the player; kept per browser
   danmaku.ts                      彈幕's settings (kept per browser) and its lanes
+  chatPhrases.ts                  the phrases a chat repeats, who said them and when
   trueClock.ts                    the player's real speed and time when it's
                                   wrong about them (another extension's speed)
   richText.tsx                    YouTube free text (descriptions, comments):
@@ -2137,8 +2140,33 @@ from right to left, coming in at the moment it was sent.
   settings. They are the display area (how much of the picture's height, from
   the top, it may fly over: 10–100%, half by default, since the captions sit
   along the bottom), the size (stepped by 10% from 100%, like the captions'),
-  the speed, and the opacity. A touch opens the settings, whose switch does what
-  the click would. Over a bare embed the Chat tab's button is the way.
+  the speed, the opacity, and whether repeated phrases are counted. A touch opens
+  the settings, whose switch does what the click would. Over a bare embed the
+  Chat tab's button is the way.
+- **What the chat is saying together is counted at the right**
+  (`DanmakuPhrases.tsx`, `lib/chatPhrases.ts`): the votes when a streamer asks
+  for a or b, the chant when a play sets everyone off. A phrase starts as
+  something people send on its own, so 了 and 的 never count however often
+  they're typed: 5 people for a single word, 3 for two or more (`9哥`), and a
+  row shows once 5 people have said it within 15 seconds, sentences included.
+  It's read the same however it was typed (`A!`, `a` and `a a a`; `777` and
+  `77777`; `？？` and `?`; `-1` stays apart from `1`). A message up to 5 words
+  longer counts for a phrase it holds, so `i choose a` is a vote for `a`, and
+  each message counts once, for the longest it holds. A shorter phrase takes in
+  the longer ones around it (`同意` takes `同意了`), but not those that outweigh
+  it when two do (`牛逼` in `許哥牛逼` and `9哥牛逼`) or it's one word (`哥`, as
+  `哥哥` reads, in `9哥`). A person counts once, a phrase is named as people
+  sent it on its own, the way most did, and a moderation bot isn't heard. It's
+  debounced: a row stays while someone says it within 10 seconds of the last,
+  its count only rising, then fades. Up to 5 rows show, the ones most people are
+  on, biggest first; when two are level, the one that got there first stays
+  ahead, so two neck and neck don't swap back and forth, and a row that
+  overtakes another slides past it. A row's text grows with its count, by the
+  logarithm (5 people at the text's own size, 100 or more at 1.8×), and the
+  number pops as it goes up. Worked out once from the whole chat, it depends
+  only on the play head, so a seek lands on what was showing then. The rows stay
+  solid whatever the opacity: they're there to be read, with the 彈幕 flying
+  under them.
 - **A speed set behind the player's back** — by another extension's speed
   control, on the video inside the embed — leaves the player saying 1× and
   carrying its time on at 1× between the video's reports of where it is, so
@@ -2658,6 +2686,8 @@ problem.
 | `TimeRangeSlider.test.tsx` | the two thumbs, the tick notches and their alignment, clicking a label, and the keyboard |
 | `chatOverlay.test.tsx` | the floating chat's box kept whole and inside the player, moved by a drag and stopped at the edges, sized from either lower corner (the left keeping its right edge), the backdrop stepping round, and the layout kept and read back from a store it can't parse; then the overlay itself: no times, placed where it was put, moved and resized by dragging (as shares of the player), the backdrop, hiding names from its strip (for the tab too: one switch) and a person icon then starting each message in the role's colour, Back to the panel and close, and its clicks kept from the player under it |
 | `ChatReplay.test.tsx` | the Chat tab: nothing fetched until something shows the chat, names hidden on asking and kept so (a Super Chat's amount staying), Float over the video, messages up to the play head and more as it moves, a note before the first, only the latest stretch of a long chat drawn, the fetch started on first opening with its progress, polling until it lands, a failure saying why and Try again starting it over, the channel, moderators, Super Chats and custom emoji drawn as such and a message's time seeking, and the list holding while you read back until Sync to video — but not through a scroll nobody made |
+| `chatPhrases.test.ts` | a message read the same however it was typed and kept apart from what only looks alike (`-1` and `1`); a phrase taking enough people within the window, a person counted once and a moderation bot not heard; a longer message counted for the phrase it holds but not a sentence, or a word, that happens to contain it; a vote side by side; named as people sent it on its own; a phrase of two words found from few alone and more in sentences, a single word needing the full number; two phrases outweighing a fragment they share, and a phrase outweighing a single word; the size a count is drawn at, and where it stops growing; and what shows at a moment: from when it caught on, its count only rising, until it's gone quiet, the same after a seek, and only the rows most people are on, biggest first, the one that got there first staying ahead of one that draws level |
+| `DanmakuPhrases.test.tsx` | the counts rising as the video plays, a row sized by its count, the number's pop starting again only when it goes up, rows sliding when they change places and only then, a row fading as it goes quiet and then dropped, staying solid and clear of the panel, a custom emoji as its picture, and no timer left behind |
 | `danmaku.test.tsx` | the lanes (the one free longest, room behind a message growing with the text, resizing keeping what's held) and the settings kept and read back from a store it can't parse; a message's text, colours and Super Chat amount, and a moderation bot's reply left out; messages let in at the right edge and carried by the play head, keeping pace with the speed up to the limit and no faster past it, even after a seek, a speed crossing it moving nothing, stacked in lanes and skipped when none is free, and the screen rebuilt after a seek; then on a stand-in compositor that, like Chrome, holds an animation still after a direct write to `playbackRate`: pausing, every message moving step by even step through a speed change, never backwards however the player's time wobbles, even at a speed set behind the player's back, past the limit, and through a change of it, redrawn only on a real seek back, and a new width crossed from where it had got to; the display area keeping what's flying; and the bar's button and settings |
 | `trueClock.test.ts` | a speed set behind the player's back read off where it keeps putting its time right, faster or slower than it says; the player's word when that's right, and again once it's right again; a steady reading however late each report arrives, a new speed still caught at the second report, and a held speed kept through a pause and let go |
 | `NotesPanel.test.tsx` | the Notes tab: what was written before shown, labels added by Enter or comma and one in another case refused, a field of several values with one removed, a new field taking the cursor, Backspace taking back the last, the note saved once after typing stops, a pending save sent on leaving, nothing saved just for opening, suggestions minus what's there, a save reaching the cards as the server kept it, and Escape handing the keyboard back |
@@ -2753,6 +2783,7 @@ own Chromium can't decode H.264, and Chrome needs no download.
 |------|--------|
 | `marks.spec.ts` | a bookmark made with `b` shows a frame of its moment in the panel's Bookmarks tab and is there again when the video is reopened; the Chapters tab lists the description's chapters, each with its frame, and a click seeks; captions follow the play head |
 | `loop.spec.ts` | a passage pinned with `[` and `]` plays round more than once without running past its end, until `\` lets go |
+| `danmaku.spec.ts` | a stream's chat flying across the picture in one layer, each message once, with what it's saying counted at the side, and the switch taking the counts away and leaving the 彈幕 |
 | `upnext.spec.ts` | the channel's next video is offered when one ends and opens on a click; Dismiss; and with the panel open on either side, the card stays centred on the whole frame, at full width, clear of the panel |
 | `feed.spec.ts` | the followed channels' videos from the last 3 days, a wider window bringing in an older one (from a button, and by dragging the window's far edge), the sort deciding the order and surviving a reload, and each of Views, Hot, Likes and Like% putting its own video first |
 | `history.spec.ts` | a video reopens where it was left, one left near its end starts over, and History lists it and gives it back after a removal is undone |

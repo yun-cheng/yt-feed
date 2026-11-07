@@ -19,8 +19,8 @@ import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 
 import { sentBy, type ChatMessage, type ChatState } from './ChatReplay'
 import type { PlayerApi } from './LocalControls'
 import {
-  AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MAX_FLY_RATE, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_CQW, SIZE_MAX, SIZE_MIN, SIZE_MIN_PX, SIZE_STEP,
-  fitLanes, isBot, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
+  AREA_MIN, AREA_STEP, CROSS_SECONDS, DANMAKU_SPEEDS, MAX_FLY_RATE, MIN_OPACITY, BACK_SEEK_SEC, RESYNC_SEC, SIZE_MAX, SIZE_MIN, SIZE_STEP,
+  danmakuFont, fitLanes, isBot, laneCount, laneGap, lanePitch, roundDanmakuArea, roundDanmakuSize, takeLane, type DanmakuPrefs, type DanmakuSpeed, type Lanes,
 } from '../lib/danmaku'
 import { t } from '../lib/i18n'
 import { shortcutLabel } from '../lib/shortcuts'
@@ -333,7 +333,7 @@ export default function Danmaku({ player, messages, prefs, style }: {
       style={{
         height: `${area * 100}%`,
         opacity,
-        fontSize: `max(${SIZE_MIN_PX * size}px, ${SIZE_CQW * size}cqw)`,
+        fontSize: danmakuFont(size),
         ...style,
       }}
     />
@@ -502,6 +502,16 @@ export function DanmakuControl({ prefs, onPrefs, chat, buttonClass }: {
             step={0.05}
             onChange={(opacity) => set({ opacity })}
           />
+          <label className="flex cursor-pointer items-center justify-between px-3 py-1.5">
+            <span className="text-xs text-shade-99">{t('Count repeated phrases')}</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={prefs.phrases}
+              onChange={(e) => set({ phrases: e.target.checked })}
+              className="h-4 w-4 accent-white"
+            />
+          </label>
         </div>
       )}
       <button

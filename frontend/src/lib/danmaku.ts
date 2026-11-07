@@ -43,9 +43,11 @@ export type DanmakuPrefs = {
    *  SIZE_CQW of the player's width). */
   size: number
   speed: DanmakuSpeed
+  /** Whether what the chat is saying together is counted at the side. */
+  phrases: boolean
 }
 
-export const DANMAKU_DEFAULTS: DanmakuPrefs = { on: false, area: 0.5, opacity: 0.85, size: 1, speed: 'normal' }
+export const DANMAKU_DEFAULTS: DanmakuPrefs = { on: false, area: 0.5, opacity: 0.85, size: 1, speed: 'normal', phrases: true }
 
 export const MIN_OPACITY = 0.2
 
@@ -66,6 +68,8 @@ export const SIZE_MIN_PX = 14
 export const SIZE_MIN = 0.5
 export const SIZE_MAX = 2
 export const SIZE_STEP = 0.1
+/** The text's size, for the layer's CSS. */
+export const danmakuFont = (size: number) => `max(${SIZE_MIN_PX * size}px, ${SIZE_CQW * size}cqw)`
 /** A size kept to the range and to whole tenths, so it prints as 120%, not
  *  120.00000000000001%. */
 export const roundDanmakuSize = (n: number) => Math.round(clamp(n, SIZE_MIN, SIZE_MAX) * 10) / 10
@@ -147,6 +151,7 @@ export function loadDanmaku(): DanmakuPrefs {
       size: typeof raw.size === 'number' && Number.isFinite(raw.size) ? roundDanmakuSize(raw.size)
         : typeof raw.size === 'string' && raw.size in OLD_SIZES ? OLD_SIZES[raw.size] : d.size,
       speed: DANMAKU_SPEEDS.includes(raw.speed) ? raw.speed : d.speed,
+      phrases: typeof raw.phrases === 'boolean' ? raw.phrases : d.phrases,
     }
   } catch {
     return { ...DANMAKU_DEFAULTS }

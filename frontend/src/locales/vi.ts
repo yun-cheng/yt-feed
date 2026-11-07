@@ -471,6 +471,7 @@ export const vi: Record<string, string> = {
   'Display area': 'Vùng hiển thị',
   'Speed': 'Tốc độ',
   'Opacity': 'Độ mờ đục',
+  'Count repeated phrases': 'Đếm cụm từ lặp lại',
   'Slow': 'Chậm',
   'Normal': 'Bình thường',
   'Fast': 'Nhanh',
