@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '../components/ChatReplay'
-import { PHRASE_MIN_PEOPLE, PHRASE_QUIET_SEC, PHRASE_ROWS, PHRASE_SEED_PEOPLE, PHRASE_WINDOW_SEC, phraseRuns, phraseScale, phraseWords, phrasesAt } from '../lib/chatPhrases'
+import { PHRASE_MIN_PEOPLE, PHRASE_QUIET_SEC, PHRASE_ROWS, PHRASE_SEED_PEOPLE, PHRASE_WINDOW_SEC, SPIKE_PEOPLE, phraseRuns, phraseScale, phraseWords, phrasesAt } from '../lib/chatPhrases'
 
 let who = 0
 /** `text` from someone new at `sec` seconds. */
@@ -107,6 +107,57 @@ describe('phraseRuns', () => {
     const bot = Array.from({ length: 6 }, (_, i) => say(i, 'Boop!', '@Nightbot'))
     const chat = inOrder(bot, crowd(0, 5, 'Boop!'))
     expect(showing(chat, 5)).toEqual([['Boop!', 5]])
+  })
+})
+
+describe('a spike', () => {
+  // An hour of ordinary chat, a line every ten seconds, for what's usual.
+  const chatter = () => Array.from({ length: 360 }, (_, i) => say(i * 10, `閒聊${String.fromCodePoint(0x4e00 + i)}`))
+  const TAILS = '好棒讚強猛帥神美酷贏衝來高興哭笑'
+  /** Different people saying `head` and something else each, a second apart. */
+  const mentions = (sec: number, n: number, head: string) => Array.from({ length: n }, (_, i) => say(sec + i, `${head}${TAILS[i]}`))
+
+  it('is a word many people mention though nobody sends it on its own', () => {
+    expect(showing(inOrder(chatter(), mentions(1000, 12, '許哥')), 1012)).toEqual([['許哥', 12]])
+  })
+
+  it('takes as many people as it takes', () => {
+    expect(showing(inOrder(chatter(), mentions(1000, SPIKE_PEOPLE - 1, '許哥')), 1012)).toEqual([])
+  })
+
+  it('shows beside a longer row it has in it, counting everyone', () => {
+    const chat = inOrder(chatter(), crowd(1000, 8, '許哥牛逼'), mentions(1000, 12, '許哥'))
+    expect(showing(chat, 1012)).toEqual([['許哥', 20], ['許哥牛逼', 8]])
+  })
+
+  it('adds nothing beside a row nearly everyone is on', () => {
+    const chat = inOrder(chatter(), crowd(1000, 12, '許哥牛逼'), mentions(1000, 2, '許哥'))
+    expect(showing(chat, 1013)).toEqual([['許哥牛逼', 12]])
+  })
+
+  it('counts for a row of the same words, past the words a message may add', () => {
+    const chat = inOrder(chatter(), crowd(1000, 5, '9哥'), Array.from({ length: 8 }, (_, i) => say(1000 + i, `9哥${TAILS[i]}今天真的打得太好了`)))
+    expect(showing(chat, 1012)).toEqual([['9哥', 13]])
+  })
+
+  it('is out of the ordinary: what the chat always says is not', () => {
+    const steady = Array.from({ length: 400 }, (_, i) => say(i, `許哥${TAILS[i % TAILS.length]}${i}`))
+    expect(showing(inOrder(chatter(), steady), 200)).toEqual([])
+  })
+
+  it('is a whole word, not a piece cut out of one', () => {
+    const chat = inOrder(chatter(), Array.from({ length: 12 }, (_, i) => say(1000 + i, `${TAILS[i]}惡意收購`)))
+    expect(showing(chat, 1012)).toEqual([['惡意收購', 12]])
+  })
+
+  it('is one row for two that come in one message', () => {
+    const chat = inOrder(chatter(), crowd(1000, 5, '今年不一樣'), crowd(1000, 3, '今年真不一樣'), crowd(1003, 3, '今年很不一樣'), crowd(1006, 3, '今年好不一樣'))
+    expect(showing(chat, 1012)).toEqual([['今年不一樣', 14]])
+  })
+
+  it('is named as most people typed it', () => {
+    const chat = inOrder(chatter(), Array.from({ length: 12 }, (_, i) => say(1000 + i, `${i < 2 ? 'shy' : 'Shy'} ${TAILS[i]}`)))
+    expect(showing(chat, 1012)).toEqual([['Shy', 12]])
   })
 })
 

@@ -9,6 +9,11 @@
  * holds, so `i choose a` is a vote for `a`, and a row shows once
  * PHRASE_MIN_PEOPLE different people have said it within PHRASE_WINDOW_SEC.
  *
+ * What nobody sends on its own is still caught when it suddenly runs through
+ * the chat: `許哥` in `許哥好開心`, `許哥高興` and `許哥牛逼`, or `內戰` when that's
+ * the talk (spikes, below). Its row is everyone who mentioned it, so `許哥 ×59`
+ * can show above the `許哥牛逼 ×33` it includes.
+ *
  * It's debounced: a phrase goes on for as long as someone says it within
  * PHRASE_QUIET_SEC of the last, its count only rising, and leaves when that
  * time has passed with nobody saying it.
@@ -48,6 +53,22 @@ const MAX_WORDS = 12
  *  `i choose a`, but not a sentence that happens to have an `a` in it. */
 const EXTRA_WORDS = 5
 
+/** What makes a spike: this many people within the window, this share of the
+ *  chat at the time, and this many times their usual share of it. */
+export const SPIKE_PEOPLE = 5
+const SPIKE_SHARE = 0.05
+const SPIKE_TIMES = 4
+/** The longest a spike is, in words. */
+const SPIKE_WORDS = 6
+/** How often the same word may sit beside a spike before it's a piece of
+ *  something longer. */
+const SPIKE_CUT = 0.6
+/** How much of a spike a longer row must take up for the spike to add nothing:
+ *  no `許哥` beside a `許哥牛逼` that nearly everyone is saying. */
+const SPIKE_COVERED = 0.8
+/** How many of a spike's messages must hold another for them to be one. */
+const SPIKE_TOGETHER = 0.6
+
 const SEP = '\u0001'
 const SPACELESS = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}'
 /** A number, with its sign and joints (`-1`, `3:0`, `13.1`), so that a vote
@@ -55,6 +76,12 @@ const SPACELESS = '\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Sc
  *  or any other single mark. */
 const WORD = new RegExp(`[-+]?\\d+(?:[.:/-]\\d+)*|[${SPACELESS}]|(?:(?![${SPACELESS}])[\\p{L}\\p{M}\\d])+|\\S`, 'gu')
 const HAS_MEANING = /[\p{L}\p{N}\p{Extended_Pictographic}]/u
+/** A word a spike can be made of, and one that can be a spike by itself: a
+ *  character of a language without spaces is too much a part of anything. */
+const TALK = /^[\p{L}\p{M}\p{N}]+$/u
+const SPACED = new RegExp(`[${SPACELESS}]`, 'u')
+const LONE = new RegExp(`^(?:(?![${SPACELESS}])[\\p{L}\\p{M}\\p{N}]){2,}$`, 'u')
+
 /** A message's words, so that everything said the same way reads the same:
  *  `A!`, `a` and `a a a`; `777` and `77777`; `？？` and `?`; `哈哈哈` and `哈`. */
 export function phraseWords(m: Pick<ChatMessage, 'r'>): string[] {
@@ -142,6 +169,8 @@ export type PhraseRun = {
 type Draft = { key: string; said: Said[]; from: number; merged: boolean }
 
 const during = (a: Draft, b: Draft) => a.said[0].t <= b.said[b.said.length - 1].t && b.said[0].t <= a.said[a.said.length - 1].t
+/** Whether the phrase `long` has the phrase `short` in it, word for word. */
+const holds = (long: string, short: string) => `${SEP}${long}${SEP}`.includes(`${SEP}${short}${SEP}`)
 const together = (...lists: Said[][]) => [...new Set(lists.flat())].sort((a, b) => a.t - b.t)
 
 /** A shorter phrase takes in the longer ones around it, which are ways of
@@ -181,6 +210,125 @@ function merge(drafts: Draft[]) {
       short.from = Math.min(short.from, d.from)
     }
   }
+}
+
+/** A row with no message of its own to name it: the words as most people
+ *  typed them, so `Shy` rather than `shy`. */
+function phrased({ key, said }: Draft): ChatMessage {
+  const plain = key.split(SEP).reduce((all, w) => all + (all && !SPACED.test(all.slice(-1)) && !SPACED.test(w) ? ' ' : '') + w, '')
+  const forms = new Map<string, number>()
+  for (const { m } of said) {
+    for (const run of m.r) {
+      if (typeof run !== 'string') continue
+      const text = run.normalize('NFKC')
+      const at = text.toLowerCase().indexOf(plain)
+      if (at < 0) continue
+      const form = text.slice(at, at + plain.length)
+      forms.set(form, (forms.get(form) ?? 0) + 1)
+    }
+  }
+  const most = [...forms].reduce<[string, number]>((a, b) => (b[1] > a[1] ? b : a), [plain, 0])
+  return { ...said[0].m, r: [most[0]] }
+}
+
+/** Whether `key`, in the messages `said`, is cut out of something longer: the
+ *  same word keeps coming before it or after it, as 惡 does before `意收購`. */
+function isCut(key: string, said: Said[]): boolean {
+  const words = key.split(SEP)
+  const before = new Map<string, number>()
+  const after = new Map<string, number>()
+  for (const s of said) {
+    const at = s.words.findIndex((_, i) => words.every((w, j) => s.words[i + j] === w))
+    const next = s.words[at + words.length]
+    if (at > 0) before.set(s.words[at - 1], (before.get(s.words[at - 1]) ?? 0) + 1)
+    if (next !== undefined) after.set(next, (after.get(next) ?? 0) + 1)
+  }
+  return Math.max(0, ...before.values(), ...after.values()) >= SPIKE_CUT * said.length
+}
+
+/** The stretches of `heard` when words suddenly ran through the chat, whether
+ *  or not anyone sent them on their own. `drafts`, the phrases already found,
+ *  take in those that are them, and those they account for go. */
+function spikes(heard: Said[], drafts: Draft[]): Draft[] {
+  const saying = new Map<string, Said[]>()
+  for (const s of heard) {
+    const seen = new Set<string>()
+    for (let i = 0; i < s.words.length; i++) {
+      for (let n = 1; n <= SPIKE_WORDS && i + n <= s.words.length; n++) {
+        if (!TALK.test(s.words[i + n - 1])) break
+        if (n === 1 && !LONE.test(s.words[i])) continue
+        const key = s.words.slice(i, i + n).join(SEP)
+        if (seen.has(key)) continue
+        seen.add(key)
+        const list = saying.get(key)
+        if (list) list.push(s)
+        else saying.set(key, [s])
+      }
+    }
+  }
+
+  // Out of its usual share of the chat, and a good part of it.
+  const sent = heard.map((s) => s.t)
+  const window = PHRASE_WINDOW_SEC * 1000
+  const quiet = PHRASE_QUIET_SEC * 1000
+  const found: Draft[] = []
+  for (const [key, said] of saying) {
+    if (said.length < SPIKE_PEOPLE) continue
+    const usual = said.length / heard.length
+    const spans: { start: number; from: number; to: number }[] = []
+    for (const { t, since, people } of crowds(said)) {
+      const share = people / Math.max(1, upTo(sent, t) - upTo(sent, t - window))
+      if (people < SPIKE_PEOPLE || share < SPIKE_SHARE || share < SPIKE_TIMES * usual) continue
+      const last = spans[spans.length - 1]
+      if (last && since - last.to <= quiet) last.to = t
+      else spans.push({ start: since, from: t, to: t })
+    }
+    for (const { start, from, to } of spans) {
+      const inSpan = said.filter((s) => start <= s.t && s.t <= to + quiet)
+      if (!isCut(key, inSpan)) found.push({ key, said: inSpan, from, merged: false })
+    }
+  }
+
+  // The shortest way of saying it is the one that counts everybody.
+  const whole = found
+    .filter((a) => !found.some((b) => b.key !== a.key && holds(a.key, b.key) && during(a, b)))
+    .sort((a, b) => people(b.said) - people(a.said))
+
+  // Two that mostly come in one message are one thing, said in many ways:
+  // `今年不一樣`, `今年真的不一樣`, `今年不一樣了`. It's named as most said it.
+  for (const a of whole) {
+    if (a.merged) continue
+    for (const b of whole) {
+      if (b === a || b.merged || !during(a, b)) continue
+      const both = b.said.filter((s) => holds(s.words.join(SEP), a.key))
+      if (both.length < SPIKE_TOGETHER * b.said.length) continue
+      const forms = new Map<string, number>()
+      for (const s of both) forms.set(s.words.join(SEP), (forms.get(s.words.join(SEP)) ?? 0) + 1)
+      a.key = [...forms].reduce((x, y) => (y[1] > x[1] || (y[1] === x[1] && y[0].length < x[0].length) ? y : x))[0]
+      a.said = together(a.said, b.said)
+      a.from = Math.min(a.from, b.from)
+      b.merged = true
+    }
+  }
+
+  const out: Draft[] = []
+  for (const spike of whole) {
+    if (spike.merged) continue
+    const around = drafts.filter((d) => !d.merged && during(d, spike))
+    const same = around.filter((d) => d.key === spike.key)
+    if (same.length) {
+      const [first, ...rest] = same
+      first.said = together(first.said, ...rest.map((d) => d.said), spike.said)
+      first.from = Math.min(first.from, ...rest.map((d) => d.from))
+      for (const d of rest) d.merged = true
+      continue
+    }
+    const n = people(spike.said)
+    const accounted = around.some((d) => (holds(d.key, spike.key) && people(d.said) >= SPIKE_COVERED * n)
+      || (holds(spike.key, d.key) && people(d.said) >= n))
+    if (!accounted) out.push(spike)
+  }
+  return out
 }
 
 /** Everything the chat said together, in the order it caught on. */
@@ -230,26 +378,26 @@ export function phraseRuns(messages: ChatMessage[]): PhraseRun[] {
     for (const c of caught(said)) drafts.push({ key, ...c, merged: false })
   }
   merge(drafts)
+  drafts.push(...spikes(heard, drafts))
 
   const runs: PhraseRun[] = []
   for (const d of drafts) {
     if (d.merged) continue
     const seen = new Set<string>()
     const times: number[] = []
-    const forms = new Map<string, { n: number; m: ChatMessage }>()
     // Those that say the phrase itself and nothing more, which name it best.
     const own = new Map<string, { n: number; m: ChatMessage }>()
     for (const { t, m, words } of d.said) {
-      for (const list of words.join(SEP) === d.key ? [forms, own] : [forms]) {
-        const form = list.get(shownAs(m))
+      if (words.join(SEP) === d.key) {
+        const form = own.get(shownAs(m))
         if (form) form.n++
-        else list.set(shownAs(m), { n: 1, m })
+        else own.set(shownAs(m), { n: 1, m })
       }
       if (seen.has(m.a)) continue
       seen.add(m.a)
       times.push(t)
     }
-    const shown = [...(own.size ? own : forms).values()].reduce((a, b) => (b.n > a.n ? b : a)).m
+    const shown = own.size ? [...own.values()].reduce((a, b) => (b.n > a.n ? b : a)).m : phrased(d)
     runs.push({ id: 0, shown, from: d.from, last: d.said[d.said.length - 1].t, times })
   }
   runs.sort((a, b) => a.from - b.from)

@@ -82,8 +82,8 @@ stripped and the app draws its own control bar:
   instead, with no times and a light backdrop or none, and drag it wherever
   the picture can spare it. Or send it flying across the picture as 彈幕
   (danmaku), each message crossing right to left from the moment it was sent,
-  with what the chat is saying together counted at the side: the votes and the
-  chants
+  with what the chat is saying together counted at the side: the votes, the
+  chants, and the names and topics it suddenly can't stop mentioning
 - **Transcript**, where a click seeks
 - **Ask AI**: a conversation answered from this video's own transcript, whose
   timestamps are buttons that seek
