@@ -17,14 +17,14 @@ test('a shortcut moved to another key answers there, and not on the old one', as
   await page.goto('/settings')
   const mute = page.getByRole('button', { name: 'Shortcut for Mute' })
   await mute.click()
-  await page.keyboard.press('n')
-  await expect(mute).toHaveText('N')
+  await page.keyboard.press('q')
+  await expect(mute).toHaveText('Q')
 
   await watch(page, 'e2ePlayer00')
   await page.keyboard.press('m')
   await page.waitForTimeout(300)
   expect(await muted(page)).toBe(false)
-  await page.keyboard.press('n')
+  await page.keyboard.press('q')
   await expect.poll(() => muted(page)).toBe(true)
 })
 
