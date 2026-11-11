@@ -38,6 +38,9 @@ os.environ["SKIP_CONFIG_ADOPTION"] = "1"
 # every caller of it is written to degrade rather than fail — so an accidentally
 # un-stubbed call surfaces as a degraded result, not a live request.
 os.environ["OPENROUTER_API_KEY"] = ""
+# Nor the real Meilisearch: a prune test's remove_documents went to the real
+# index. Port 9 refuses at once, and every search_index call degrades on that.
+os.environ["MEILI_URL"] = "http://127.0.0.1:9"
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
