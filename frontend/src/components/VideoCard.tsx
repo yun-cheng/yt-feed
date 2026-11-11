@@ -53,6 +53,23 @@ interface YTPlayerInstance {
   destroy(): void
 }
 
+/**
+ * Takes YouTube's own captions off, if it has put them up.
+ *
+ * Leaving `cc_load_policy` out isn't enough: YouTube shows captions on its own
+ * when it thinks a viewer wants them, and remembers having been asked for them
+ * (its CC button, `c` with the player focused), and they sit over ours. They
+ * come with its captions module, which loads after onReady, as playback
+ * starts, and is announced by `onApiChange`. Choosing no track takes them
+ * away, and is remembered in turn. Unloading the module doesn't do: YouTube
+ * loads it straight back. Returns whether there was anything to take.
+ */
+export function hideYouTubeCaptions(p: YTPlayerInstance): boolean {
+  if (!p.getOptions().includes('captions')) return false
+  p.setOption('captions', 'track', {})
+  return true
+}
+
 let _ytReady = false
 const _ytQ: Array<() => void> = []
 export function ensureYTApi(): Promise<void> {
@@ -330,8 +347,9 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
           playlist: video.youtube_id, iv_load_policy: 3,
           fs: 0, disablekb: 1, playsinline: 1, modestbranding: 1,
           // We render captions ourselves from the /feed/captions transcript
-          // (see the caption overlay below), so YouTube's own captions stay off —
-          // its embedded rendering is tiny and unreliable inside a cropped embed.
+          // (see the caption overlay below), so YouTube's own captions stay off
+          // (onApiChange) — its embedded rendering is tiny and unreliable inside
+          // a cropped embed.
           // controls:0 removes the controls bar; the symmetric over-scan on the
           // wrapper hides the remaining top/bottom chrome (share, logo, etc.).
           // pointer-events:none on the wrapper prevents the hover overlay.
@@ -357,6 +375,7 @@ export default function VideoCard({ video, isHovered, onHover, onChannelClick, s
             if (isHoveredRef.current) e.target.playVideo()
             else e.target.pauseVideo()
           },
+          onApiChange: (e) => { hideYouTubeCaptions(e.target) },
           onStateChange: (e) => {
             // 1 === PLAYING.
             if (e.data === 1) {

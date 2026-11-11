@@ -1386,7 +1386,11 @@ Other details:
     only once the bar is 50rem wide (a container query on it, `@container/controls`):
     narrower, the clock and the buttons leave the title a few pixels.
 - **Captions**: rendered by us from the `/api/feed/captions` transcript (the
-  embed's own captions can't be positioned or styled). The style is cloned from
+  embed's own captions can't be positioned or styled). YouTube's own are taken
+  off as its captions module loads (`hideYouTubeCaptions`, on `onApiChange`):
+  it puts them up by itself when it thinks a viewer wants them, and remembers
+  having been asked once. Over YouTube's own bar only the first time, so its CC
+  button still works. The style is cloned from
   youtube.com's player (measured): per-line `rgba(8,8,8,.75)` box, weight 400,
   grayscale smoothing, size scaled to the player via container queries. Auto
   tracks reveal word-by-word from the per-word timing and roll two lines

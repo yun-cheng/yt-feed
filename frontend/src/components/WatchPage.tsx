@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { apiFetch } from '../lib/api'
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from 'react'
 import type { VideoItem } from '../App'
-import { ensureYTApi } from './VideoCard'
+import { ensureYTApi, hideYouTubeCaptions } from './VideoCard'
 import SaveToPlaylist from './SaveToPlaylist'
 import { useVolume, setAudioVolume, VOLUME_STEP } from '../hooks/audioStore'
 import { useFocusMode } from '../hooks/focusMode'
@@ -1984,6 +1984,7 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
     let player: { destroy: () => void } | null = null
     let cancelled = false
     let watchdog: number | undefined
+    let youtubeCaptionsHidden = false
     ensureYTApi().then(() => {
       if (cancelled || !hostRef.current) return
       // YT.Player replaces the node it's given with an iframe, so hand it a fresh
@@ -2026,6 +2027,11 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
                 }
               }, 250)
             }
+          },
+          // Ours are the captions. Over YouTube's own bar it gets one go, so
+          // its CC button can still bring its captions back.
+          onApiChange: (e) => {
+            if ((EMBED_OWN_CONTROLS || !youtubeCaptionsHidden) && hideYouTubeCaptions(e.target)) youtubeCaptionsHidden = true
           },
           // 101 / 150 = embedding disabled by the uploader — fall back to YouTube.
           onError: () => { if (!cancelled) setEmbedError(true) },
