@@ -44,8 +44,9 @@ Back up the volume and you have backed up the deployment. `docker compose down`
 without `-v` keeps it; `docker compose down -v` **deletes the feed**, and there
 is no undo — the videos are gone and the next scan re-fetches them from zero.
 
-Meilisearch gets its own volume, and that one is derived: the indexes are rebuilt
-from the database on every startup, so losing it costs one reindex.
+Meilisearch gets its own volume, and that one is derived: on startup the indexes
+are rebuilt from the database whenever they don't hold what it does, so losing
+it costs one reindex.
 
 `DATA_DIR` moves the lot. Locally it defaults to `./data`, which is where an
 existing checkout already keeps its database.

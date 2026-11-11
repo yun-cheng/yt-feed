@@ -3,7 +3,8 @@
 Every push waits in Meilisearch's queue as a file until it's indexed. A full
 push of the corpus every scan, onto a queue that had stopped moving, once
 filled the disk with a thousand copies of it. So a scan pushes only what it
-touched, and nothing is pushed onto a queue that isn't moving. Meilisearch is stubbed.
+touched, startup pushes only when the index is out of step, and nothing is
+pushed onto a queue that isn't moving. Meilisearch is stubbed.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -17,11 +18,14 @@ pytestmark = pytest.mark.asyncio
 
 
 class FakeMeili:
-    """Records each push, and answers how many are waiting."""
+    """Records each push, and answers the queue and stats questions."""
 
     def __init__(self):
         self.pushed: list[tuple[str, list]] = []
+        self.deleted: list[tuple[str, list]] = []
         self.waiting = 0
+        self.counts: dict[str, int] = {}
+        self.held: dict[str, list[str]] = {"videos": [], "channels": []}
         self.asked: list[dict] = []
 
     async def __aenter__(self):
@@ -34,10 +38,18 @@ class FakeMeili:
         if path == "/tasks":
             self.asked.append(params)
             return _Reply({"total": self.waiting})
-        raise AssertionError(f"unexpected GET {path}")
+        uid = path.split("/")[2]
+        if path.endswith("/documents"):
+            start = params["offset"]
+            page = self.held[uid][start:start + params["limit"]]
+            return _Reply({"results": [{"youtube_id": i} for i in page]})
+        return _Reply({"numberOfDocuments": self.counts.get(uid, 0)})
 
     async def post(self, path, json=None):
-        self.pushed.append((path.split("/")[2], json))
+        if path.endswith("/delete-batch"):
+            self.deleted.append((path.split("/")[2], json))
+        else:
+            self.pushed.append((path.split("/")[2], json))
         return _Reply({})
 
     def ids(self, index):
@@ -108,9 +120,33 @@ async def test_a_few_waiting_still_take_a_push(meili, library):
     assert meili.ids("videos") == ["fresh"]
 
 
+async def test_startup_leaves_an_index_in_step_alone(meili, library):
+    meili.counts = {"videos": 2, "channels": 1}
+    assert await search_index.reindex_if_out_of_step() is None
+    assert meili.pushed == []
+
+
+async def test_startup_rebuilds_an_index_out_of_step(meili, library):
+    meili.counts = {"videos": 1, "channels": 1}
+    assert await search_index.reindex_if_out_of_step() == {"channels": 1, "videos": 2}
+    assert meili.ids("videos") == ["fresh", "old"]
+
+
 async def test_only_pushes_count_as_waiting(meili, library):
     """ensure_indexes queues settings tasks just before the startup reindex;
     they're not files on disk, and mustn't hold the reindex back."""
     await search_index.index_videos(["fresh"])
     assert meili.asked[-1]["types"] == "documentAdditionOrUpdate"
 
+
+async def test_a_full_reindex_takes_out_what_the_database_no_longer_has(meili, library, monkeypatch):
+    monkeypatch.setattr(search_index, "_ID_PAGE", 2)  # so it pages
+    meili.held = {"videos": ["fresh", "gone1", "old", "gone2", "gone3"], "channels": ["chan1", "chanX"]}
+    await search_index.reindex_all()
+    assert dict(meili.deleted) == {"channels": ["chanX"], "videos": ["gone1", "gone2", "gone3"]}
+
+
+async def test_a_full_reindex_of_an_index_in_step_deletes_nothing(meili, library):
+    meili.held = {"videos": ["fresh", "old"], "channels": ["chan1"]}
+    await search_index.reindex_all()
+    assert meili.deleted == []

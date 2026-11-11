@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     async def _init_search():
         from app import search_index
         await search_index.ensure_indexes()
-        await search_index.reindex_all()
+        await search_index.reindex_if_out_of_step()
     asyncio.create_task(_init_search())
 
     # Backend-owned scan scheduler: one scan shortly after startup, then every

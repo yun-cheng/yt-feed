@@ -8,8 +8,9 @@ just push documents into it and proxy queries.
 Design notes:
 - Two indexes: "videos" and "channels", so the UI can show two result sections.
 - A full reindex re-pushes everything, but the corpus is no longer small (the
-  archive fill brought it to ~180k videos, 67 MB a push), so the scheduled scan
-  pushes just the videos it touched (`index_changed_since`).
+  archive fill brought it to ~180k videos, 67 MB a push), so it runs only when
+  the index is out of step with the database or someone asks for one. The
+  scheduled scan pushes just the videos it touched (`index_changed_since`).
 - Nothing is pushed onto a queue Meilisearch isn't working through: each push
   is kept as a file until it's indexed, so a stalled Meilisearch fed a push a
   scan once filled the disk with 1,000 copies of the corpus (33 GB).
@@ -22,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app import runtime_config
 from app.config import settings
@@ -43,6 +44,9 @@ MAX_WAITING = 3
 # Only pushes are counted: they're what's kept as files. ensure_indexes queues
 # a few settings tasks of its own just before the startup reindex.
 _PUSHES = "documentAdditionOrUpdate"
+# How many ids to read from an index at a time, to find what it holds that the
+# database no longer does.
+_ID_PAGE = 50_000
 
 
 def _headers() -> dict[str, str]:
@@ -132,8 +136,24 @@ def _video_doc(v: Video, channel_name: str) -> dict:
     }
 
 
+async def _held_ids(c: httpx.AsyncClient, index: str) -> set[str]:
+    """Every document id `index` holds."""
+    ids: set[str] = set()
+    offset = 0
+    while True:
+        r = await c.get(f"/indexes/{index}/documents",
+                        params={"fields": "youtube_id", "limit": _ID_PAGE, "offset": offset})
+        r.raise_for_status()
+        page = r.json().get("results", [])
+        ids.update(d["youtube_id"] for d in page)
+        if len(page) < _ID_PAGE:
+            return ids
+        offset += _ID_PAGE
+
+
 async def reindex_all() -> dict[str, int]:
-    """Push every channel + video into Meilisearch. Best-effort; returns counts."""
+    """Push every channel + video into Meilisearch, and take out what the
+    database no longer has. Best-effort; returns counts pushed."""
     try:
         async with await _client(_ADMIN_TIMEOUT) as c:
             if await _stalled(c):
@@ -161,6 +181,13 @@ async def reindex_all() -> dict[str, int]:
                 await c.post(f"/indexes/{CHANNELS_INDEX}/documents", json=channel_docs)
             if video_docs:
                 await c.post(f"/indexes/{VIDEOS_INDEX}/documents", json=video_docs)
+            # A push only adds and updates: what was deleted without
+            # remove_documents (by hand, or before it existed) would stay a
+            # search hit, and the index never match the database's count.
+            for index, docs in ((CHANNELS_INDEX, channel_docs), (VIDEOS_INDEX, video_docs)):
+                gone = sorted(await _held_ids(c, index) - {d["youtube_id"] for d in docs})
+                if gone:
+                    await c.post(f"/indexes/{index}/documents/delete-batch", json=gone)
 
         return {"channels": len(channel_docs), "videos": len(video_docs)}
     except Exception as e:
@@ -230,6 +257,53 @@ async def index_changed_since(since: datetime) -> dict[str, int]:
         return {"channels": 0, "videos": 0}
 
 
+async def reindex_if_out_of_step() -> dict[str, int] | None:
+    """A full reindex, only when the index doesn't hold what the database
+    does: on startup, which `--reload` makes every save. Returns the counts
+    pushed, or None when it was already in step."""
+    try:
+        async with async_session() as session:
+            want = {
+                VIDEOS_INDEX: (await session.execute(select(func.count()).select_from(Video))).scalar_one(),
+                CHANNELS_INDEX: (await session.execute(select(func.count()).select_from(Channel))).scalar_one(),
+            }
+        async with await _client(_ADMIN_TIMEOUT) as c:
+            have = {}
+            for uid in want:
+                r = await c.get(f"/indexes/{uid}/stats")
+                have[uid] = r.json().get("numberOfDocuments") if r.status_code == 200 else None
+        if have == want:
+            return None
+    except Exception as e:
+        print(f"[search] index check skipped (Meilisearch unavailable?): {e}")
+        return None
+    return await reindex_all()
+
+
+async def remove_documents(
+    channel_ids: list[str] | None = None, video_ids: list[str] | None = None
+) -> None:
+    """Delete specific channel + video docs from Meilisearch.
+
+    reindex_all() only ever upserts, so removed rows would otherwise linger as
+    stale search hits. Call this when pruning unsubscribed channels. Best-effort.
+    """
+    channel_ids = list(channel_ids or [])
+    video_ids = list(video_ids or [])
+    if not channel_ids and not video_ids:
+        return
+    try:
+        async with await _client(_ADMIN_TIMEOUT) as c:
+            if video_ids:
+                await c.post(
+                    f"/indexes/{VIDEOS_INDEX}/documents/delete-batch", json=video_ids
+                )
+            if channel_ids:
+                await c.post(
+                    f"/indexes/{CHANNELS_INDEX}/documents/delete-batch", json=channel_ids
+                )
+    except Exception as e:  # never let a prune fail on search bookkeeping
+        print(f"[search] remove_documents skipped: {e}")
 
 
 async def _search_raw(
