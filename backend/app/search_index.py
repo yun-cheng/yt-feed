@@ -7,13 +7,19 @@ just push documents into it and proxy queries.
 
 Design notes:
 - Two indexes: "videos" and "channels", so the UI can show two result sections.
-- The dataset is tiny (thousands of rows), so we simply re-push everything on a
-  full reindex rather than maintaining per-row sync — simple and never stale.
+- A full reindex re-pushes everything, but the corpus is no longer small (the
+  archive fill brought it to ~180k videos, 67 MB a push), so the scheduled scan
+  pushes just the videos it touched (`index_changed_since`).
+- Nothing is pushed onto a queue Meilisearch isn't working through: each push
+  is kept as a file until it's indexed, so a stalled Meilisearch fed a push a
+  scan once filled the disk with 1,000 copies of the corpus (33 GB).
 - Every call is best-effort: if Meilisearch is down, we swallow the error so the
   rest of the app keeps working (search just returns nothing).
 """
 
 from __future__ import annotations
+
+from datetime import datetime
 
 import httpx
 from sqlalchemy import select
@@ -29,6 +35,14 @@ CHANNELS_INDEX = "channels"
 # Short timeouts: search must feel instant, and a hung Meili shouldn't stall us.
 _SEARCH_TIMEOUT = 3.0
 _ADMIN_TIMEOUT = 30.0
+
+# How many pushes may wait in Meilisearch's queue before we stop adding more.
+# A healthy queue is empty within seconds of each push; one this long isn't
+# moving, and every push it holds is a file on disk.
+MAX_WAITING = 3
+# Only pushes are counted: they're what's kept as files. ensure_indexes queues
+# a few settings tasks of its own just before the startup reindex.
+_PUSHES = "documentAdditionOrUpdate"
 
 
 def _headers() -> dict[str, str]:
@@ -87,9 +101,43 @@ async def ensure_indexes() -> None:
         print(f"[search] ensure_indexes skipped: {e}")
 
 
+async def _waiting(c: httpx.AsyncClient) -> int:
+    """How many pushes Meilisearch has yet to start."""
+    r = await c.get("/tasks", params={"statuses": "enqueued", "types": _PUSHES, "limit": 1})
+    r.raise_for_status()
+    return int(r.json().get("total", 0))
+
+
+async def _stalled(c: httpx.AsyncClient) -> bool:
+    """Whether Meilisearch's queue is too long to add to, saying so if it is."""
+    waiting = await _waiting(c)
+    if waiting >= MAX_WAITING:
+        print(f"[search] push skipped: {waiting} tasks already waiting in Meilisearch")
+        return True
+    return False
+
+
+def _video_doc(v: Video, channel_name: str) -> dict:
+    return {
+        "youtube_id": v.youtube_id,
+        "title": v.title or "",
+        "channel_id": v.channel_id,
+        "channel_name": channel_name,
+        "thumbnail_url": v.thumbnail_url or "",
+        "published_at": v.published_at.isoformat() if v.published_at else "",
+        "published_ts": int(v.published_at.timestamp()) if v.published_at else 0,
+        "view_count": v.view_count or 0,
+        "like_count": v.like_count or 0,
+        "duration_seconds": v.duration_seconds or 0,
+    }
+
+
 async def reindex_all() -> dict[str, int]:
     """Push every channel + video into Meilisearch. Best-effort; returns counts."""
     try:
+        async with await _client(_ADMIN_TIMEOUT) as c:
+            if await _stalled(c):
+                return {"channels": 0, "videos": 0}
         async with async_session() as session:
             chan_rows = (await session.execute(
                 select(Channel.youtube_id, Channel.title, Channel.thumbnail_url)
@@ -106,21 +154,7 @@ async def reindex_all() -> dict[str, int]:
             }
             for r in chan_rows
         ]
-        video_docs = [
-            {
-                "youtube_id": v.youtube_id,
-                "title": v.title or "",
-                "channel_id": v.channel_id,
-                "channel_name": channel_name.get(v.channel_id, ""),
-                "thumbnail_url": v.thumbnail_url or "",
-                "published_at": v.published_at.isoformat() if v.published_at else "",
-                "published_ts": int(v.published_at.timestamp()) if v.published_at else 0,
-                "view_count": v.view_count or 0,
-                "like_count": v.like_count or 0,
-                "duration_seconds": v.duration_seconds or 0,
-            }
-            for v in vid_rows
-        ]
+        video_docs = [_video_doc(v, channel_name.get(v.channel_id, "")) for v in vid_rows]
 
         async with await _client(_ADMIN_TIMEOUT) as c:
             if channel_docs:
@@ -155,22 +189,10 @@ async def index_videos(video_ids: list[str]) -> int:
                 )
             )).all())
 
-        docs = [
-            {
-                "youtube_id": v.youtube_id,
-                "title": v.title or "",
-                "channel_id": v.channel_id,
-                "channel_name": names.get(v.channel_id, ""),
-                "thumbnail_url": v.thumbnail_url or "",
-                "published_at": v.published_at.isoformat() if v.published_at else "",
-                "published_ts": int(v.published_at.timestamp()) if v.published_at else 0,
-                "view_count": v.view_count or 0,
-                "like_count": v.like_count or 0,
-                "duration_seconds": v.duration_seconds or 0,
-            }
-            for v in vid_rows
-        ]
+        docs = [_video_doc(v, names.get(v.channel_id, "")) for v in vid_rows]
         async with await _client(_ADMIN_TIMEOUT) as c:
+            if await _stalled(c):
+                return 0
             await c.post(f"/indexes/{VIDEOS_INDEX}/documents", json=docs)
         return len(docs)
     except Exception as e:
@@ -178,30 +200,36 @@ async def index_videos(video_ids: list[str]) -> int:
         return 0
 
 
-async def remove_documents(
-    channel_ids: list[str] | None = None, video_ids: list[str] | None = None
-) -> None:
-    """Delete specific channel + video docs from Meilisearch.
+async def index_changed_since(since: datetime) -> dict[str, int]:
+    """Push every channel, and the videos added or refreshed since `since`.
 
-    reindex_all() only ever upserts, so removed rows would otherwise linger as
-    stale search hits. Call this when pruning unsubscribed channels. Best-effort.
+    What the scheduled scan changes: the videos it found and those whose stats
+    it refreshed, each stamped with `last_updated`. The channels are a few
+    hundred rows, so they all go, which keeps a renamed one current.
     """
-    channel_ids = list(channel_ids or [])
-    video_ids = list(video_ids or [])
-    if not channel_ids and not video_ids:
-        return
     try:
+        async with async_session() as session:
+            ids = list((await session.execute(
+                select(Video.youtube_id).where(Video.last_updated >= since)
+            )).scalars())
+            chan_rows = (await session.execute(
+                select(Channel.youtube_id, Channel.title, Channel.thumbnail_url)
+            )).all()
+        channel_docs = [
+            {"youtube_id": r.youtube_id, "title": r.title or "", "thumbnail_url": r.thumbnail_url or ""}
+            for r in chan_rows
+        ]
         async with await _client(_ADMIN_TIMEOUT) as c:
-            if video_ids:
-                await c.post(
-                    f"/indexes/{VIDEOS_INDEX}/documents/delete-batch", json=video_ids
-                )
-            if channel_ids:
-                await c.post(
-                    f"/indexes/{CHANNELS_INDEX}/documents/delete-batch", json=channel_ids
-                )
-    except Exception as e:  # never let a prune fail on search bookkeeping
-        print(f"[search] remove_documents skipped: {e}")
+            if await _stalled(c):
+                return {"channels": 0, "videos": 0}
+            if channel_docs:
+                await c.post(f"/indexes/{CHANNELS_INDEX}/documents", json=channel_docs)
+        return {"channels": len(channel_docs), "videos": await index_videos(ids)}
+    except Exception as e:
+        print(f"[search] index_changed_since skipped (Meilisearch unavailable?): {e}")
+        return {"channels": 0, "videos": 0}
+
+
 
 
 async def _search_raw(

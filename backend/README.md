@@ -255,7 +255,14 @@ subscription reconcile (below).
    schedule (newer videos refresh more often).
 4. **Archive fill** — deep per-channel history, under a quota budget. Off unless
    `ARCHIVE_FILL_ENABLED` (see below).
-5. **Reindex** — push updated titles/stats into Meilisearch.
+5. **Reindex** — push the videos this run added or refreshed (by
+   `last_updated`) into Meilisearch, with every channel. Not the whole corpus:
+   at ~180k videos that's 67 MB a push.
+
+Meilisearch keeps each push as a file until it's indexed, so nothing is pushed
+onto a queue already holding `MAX_WAITING` (3) of them: a Meilisearch that has
+stopped working through its queue would otherwise fill the disk, as one did with
+1,000 full pushes (33 GB) in ten days. A restart of Meilisearch unsticks it.
 
 Phases 2–4 all spend Data API quota and all record it in the persisted ledger.
 A `quotaExceeded` refusal stops the rest of the run rather than being retried.
@@ -2409,6 +2416,7 @@ no per-test decorator). What's covered:
 | `test_tags.py` | the derived taxonomy maps, language detection |
 | `test_video_length.py` | the runtime buckets: each boundary second belonging to the longer one, an unprobed duration belonging to none, both ways of meaning "any length", an unknown name dropped rather than refused, `total` counting what you'll be shown, and a channel page filtering the same way |
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
+| `test_search_sync.py` | keeping Meilisearch in step without flooding it: a scan pushing only the videos it touched, with their channel's name; nothing pushed onto a queue of waiting pushes, settings tasks not counting as one |
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
 | `test_caption_translation.py` | the AI translation's store: each line kept against its source sentence, a line the model didn't return shown as its source but not kept (so it's asked for again), and a row from before `by_source` read by the split it was numbered against — or dropped when a line in it is its own source |
 | `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |

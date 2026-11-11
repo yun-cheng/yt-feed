@@ -355,10 +355,11 @@ async def run_update():
 
     print(f"\nDone. {total} new videos across {len(channels)} channels.")
 
-    # Keep the search index current with the freshly-updated titles/stats.
+    # Keep the search index current with the freshly-updated titles/stats:
+    # just what this run touched, not the whole corpus.
     try:
         from app import search_index
-        counts = await search_index.reindex_all()
+        counts = await search_index.index_changed_since(start)
         print(f"  [search] reindexed {counts['videos']} videos, {counts['channels']} channels")
     except Exception as e:
         print(f"  [search] reindex skipped: {e}")
