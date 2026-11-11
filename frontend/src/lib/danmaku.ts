@@ -24,7 +24,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 
 /** How much of the picture's height, from its top, messages may fly over:
  *  a share from AREA_MIN to all of it, in AREA_STEP steps. Captions sit
- *  along the bottom, so the default stops at half. */
+ *  along the bottom, so the default stops well above them, at 40%. */
 export const AREA_MIN = 0.1
 export const AREA_STEP = 0.05
 /** An area kept to the range and to whole steps. */
@@ -47,7 +47,7 @@ export type DanmakuPrefs = {
   phrases: boolean
 }
 
-export const DANMAKU_DEFAULTS: DanmakuPrefs = { on: false, area: 0.5, opacity: 0.85, size: 1, speed: 'normal', phrases: true }
+export const DANMAKU_DEFAULTS: DanmakuPrefs = { on: false, area: 0.4, opacity: 0.5, size: 1, speed: 'normal', phrases: true }
 
 export const MIN_OPACITY = 0.2
 

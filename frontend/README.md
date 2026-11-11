@@ -2138,9 +2138,10 @@ from right to left, coming in at the moment it was sent.
   starts nothing over.
 - **On our bar**, beside CC: a click turns it on or off, and hovering opens its
   settings. They are the display area (how much of the picture's height, from
-  the top, it may fly over: 10–100%, half by default, since the captions sit
+  the top, it may fly over: 10–100%, 40% by default, since the captions sit
   along the bottom), the size (stepped by 10% from 100%, like the captions'),
-  the speed, the opacity, and whether repeated phrases are counted. A touch opens
+  the speed, the opacity (50% by default, so the picture shows through), and
+  whether repeated phrases are counted. A touch opens
   the settings, whose switch does what the click would. Over a bare embed the
   Chat tab's button is the way.
 - **What the chat is saying together is counted at the right**

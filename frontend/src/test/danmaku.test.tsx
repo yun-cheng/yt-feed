@@ -703,7 +703,8 @@ describe('DanmakuControl', () => {
     const onPrefs = mount({ on: true })
     fireEvent.pointerEnter(screen.getByRole('button', { name: 'Turn danmaku off' }).parentElement!, { pointerType: 'mouse' })
     // How much of the screen: a share, from a slider.
-    expect(screen.getByRole('slider', { name: 'Display area' })).toHaveValue('50')
+    expect(screen.getByRole('slider', { name: 'Display area' })).toHaveValue('40')
+    expect(screen.getByRole('slider', { name: 'Opacity' })).toHaveValue('50')
     fireEvent.change(screen.getByRole('slider', { name: 'Display area' }), { target: { value: '80' } })
     expect(onPrefs).toHaveBeenLastCalledWith(expect.objectContaining({ area: 0.8 }))
     // Size steps by tenths from 100%, like the captions'.
