@@ -663,6 +663,42 @@ _SENTENCE_END = re.compile(r"[.!?。！？][\"')\]”’」』]?\s*$")
 # one sentence as two lines, joined them and renumbered every line after it.
 _ABBREVIATION = re.compile(r"(?:^|\s)(?:Mrs?|Ms|Dr|Prof|St|Jr|Sr|vs|e\.g|i\.e)\.\s*$")
 _CJK = re.compile(r"[　-鿿＀-￯]")
+# A hand-made line that opens a new one whatever came before it: a speaker or
+# sound tag, a dialogue dash, a change of speaker.
+_LINE_OPENS = re.compile(r"^\s*(?:[\[(♪]|-|>>)")
+# A line starting with a capital ("I" aside, which is mid-sentence as often as not).
+_CAPITAL = re.compile(r"^\s*(?!I[\s'’])[A-Z]")
+# Past this a sentence ends at the next cue whatever its punctuation, so a track
+# that seldom marks a stop can't glue minutes of talk into one line.
+_MAX_SENTENCE = 400
+_MAX_CJK_SENTENCE = 160
+
+
+def _line_breaks(cues: list[dict]) -> list[bool]:
+    """Which cues of a hand-made track begin a sentence of their own, whatever
+    the cue before them ended on.
+
+    A hand-made track is one line per cue, and most mark their stops, so a line
+    without one runs on into the next: "create time and space / for her own
+    exploration." Some write dialogue with no stops at all ("Gnar" / "[Ruler]
+    NT, it's over" / "Comp felt kinda rough too"), and grouping those on
+    punctuation glued two and a half minutes of chat into one "sentence", whose
+    translation then stood on screen through all of it. Such a track's lines
+    start with a capital where a sentence starts, and the track gives itself
+    away by how seldom those capitals follow a stop: about one in six on that
+    one, against nearly all on a track that marks them, where a capital after
+    an unfinished line is a name ("between the / Whoop and the other two").
+    """
+    if any(len(c.get("words") or []) > 1 for c in cues):
+        return [False] * len(cues)  # word-timed: cue edges fall anywhere
+    texts = [c.get("text") or "" for c in cues]
+    after = [_SENTENCE_END.search(a) is not None
+             for a, b in zip(texts, texts[1:]) if _CAPITAL.match(b)]
+    unmarked = bool(after) and sum(after) / len(after) < 0.5
+    return [
+        i > 0 and bool(_LINE_OPENS.match(t) or (unmarked and _CAPITAL.match(t)))
+        for i, t in enumerate(texts)
+    ]
 
 
 def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
@@ -676,7 +712,10 @@ def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
     output and the line count, and it will drop lines. Translating whole
     sentences removes the conflict.
 
-    Mirrors the frontend's `toSentences()` (used there for "Whole line" mode).
+    Mirrors the frontend's `toSentences()` (used there for "Whole line" mode),
+    plus the breaks punctuation can't see (`_line_breaks`, `_MAX_SENTENCE`):
+    a sentence here is one translation, timed across its whole span, while
+    the frontend's only decides how a line is laid out.
 
     `legacy` splits as it did before titles like "Mr." stopped ending a
     sentence: the split translations stored by position were numbered against,
@@ -699,13 +738,16 @@ def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
         return out
 
     # Segment on the WORD stream: sentence ends fall mid-cue in rolling captions.
+    # Each token knows whether it opens a cue, and whether that cue opens a
+    # sentence of its own (_line_breaks), since a sentence may also end there.
+    breaks = [False] * len(cues) if legacy else _line_breaks(cues)
     toks: list[dict] = []
-    for c in cues:
-        words = c.get("words") or []
-        if words:
-            toks.extend({"t": w["t"], "text": w.get("text", "")} for w in words)
-        else:
-            toks.append({"t": c["start"], "text": c.get("text", "")})
+    for c, opens in zip(cues, breaks):
+        words = c.get("words") or [{"t": c["start"], "text": c.get("text", "")}]
+        toks.extend(
+            {"t": w["t"], "text": w.get("text", ""), "cue": j == 0, "opens": opens and j == 0}
+            for j, w in enumerate(words)
+        )
 
     sents: list[dict] = []
     buf: list[dict] = []
@@ -731,10 +773,18 @@ def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
             sents.append({"start": buf[0]["t"], "text": s})
         buf.clear()
 
+    held = 0  # characters in `buf`, near enough
     for w in toks:
+        if buf and w["cue"] and not legacy:
+            cap = _MAX_CJK_SENTENCE if any(_CJK.search(b["text"]) for b in buf) else _MAX_SENTENCE
+            if w["opens"] or held >= cap:
+                flush()
+                held = 0
         buf.append(w)
+        held += len(w["text"])
         if _SENTENCE_END.search(w["text"]) and (legacy or not _ABBREVIATION.search(w["text"])):
             flush()
+            held = 0
     flush()
 
     last_end = cues[-1]["start"] + cues[-1]["dur"]

@@ -571,6 +571,21 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   `…channels like Mr. / Beast and Fireship came in…` sent as two lines came
   back as one.
 
+  Stops alone can also glue too much. A hand-made track is one line per cue,
+  and one that writes dialogue without stops (`Gnar` / `[Ruler] NT, it's
+  over` / `Comp felt kinda rough too`, on `6LFBpAXyego`) went in as sentences
+  of up to 2,767 characters and two and a half minutes, each translation then
+  shared out across its span by character count, far out of step with what
+  was said. So on a hand-made track (`_line_breaks`) a line opening with a
+  speaker or sound tag (`[`, `(`, `♪`, `-`, `>>`) starts a sentence, and so
+  does a line opening with a capital on a track that seldom puts a stop
+  before one: about one in six on that video, against 97% on one that marks
+  its stops, where a capital after an unfinished line is a name (`between
+  the / Whoop and the other two`). A word-timed track's cue edges fall
+  anywhere and break nothing. Past `_MAX_SENTENCE` (400 characters, 160 CJK)
+  a sentence ends at the next cue whatever the track. Of 41 tracks with
+  translations stored, the auto-caption ones split exactly as before.
+
   Requests are position-based so the watch page can translate **as playback
   approaches**, like video buffering: a long video is never translated past where
   it's watched (a 37-min podcast used to mean ~2min of waiting), and a seek
@@ -2421,7 +2436,7 @@ no per-test decorator). What's covered:
 | `test_search_sync.py` | keeping Meilisearch in step without flooding it: a scan pushing only the videos it touched, with their channel's name; nothing pushed onto a queue of waiting pushes, settings tasks not counting as one; startup leaving an index in step alone and rebuilding one that isn't; a full reindex taking out what the database no longer has, page by page |
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
 | `test_caption_translation.py` | the AI translation's store: each line kept against its source sentence, a line the model didn't return shown as its source but not kept (so it's asked for again), and a row from before `by_source` read by the split it was numbered against — or dropped when a line in it is its own source |
-| `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |
+| `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence; a hand-made track that writes no stops breaks at its speaker tags and capitals, one that does reads a capital as a name; a sentence that never stops ends past the cap), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |
 | `test_live_chat.py` | trimming a chat replay: time, author and text with standard emoji inline and custom ones as pictures, the roles that change a name (Verified doesn't), Super Chats and new members kept and the rest dropped, stream order whatever order the pages came in; progress read off the last whole page of a download under way; the tab offered only for a finished stream with chat. Then the endpoint with the download faked: fetched once and served after, the raw file gone, a failure saying why and retried on asking, and anything but a video id refused |
 | `test_dictionary.py` | a hovered letter bringing back its whole term ("ice cream" from inside "cream"), an inflected word finding its headword, a comma, a space and a full stop being no entry, positions counted in UTF-16 units as the page counts them, one section per ticked dictionary in Dictionary.app's order, the public call still answering when the private ones are gone, and a server with no dictionary saying so (503). The look-ups themselves are skipped off a Mac |
 | `test_summaries.py` | the summary nobody is watching: the job row written before the work starts, the answer landing in the Ask thread under the panel's own question, each length asking its own question and a third one refused, every failure mode ending as an error on the row plus a notification rather than a 4xx, and a job orphaned by a restart giving up its claim to be running |

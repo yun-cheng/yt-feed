@@ -8,7 +8,7 @@ is what decides whether a reply is trustworthy enough to use.
 
 import pytest
 
-from app.routers.feed import _parse_numbered, _to_sentences
+from app.routers.feed import _MAX_SENTENCE, _parse_numbered, _to_sentences
 
 
 def cue(start, dur, text, words=None):
@@ -126,6 +126,62 @@ def test_a_title_does_not_end_a_sentence():
     ]
     # As it split before, which a row numbered against that split is read by.
     assert len(_to_sentences(cues, legacy=True)) == 3
+
+
+def test_a_track_that_writes_no_stops_breaks_where_a_line_starts_one():
+    """Team comms subtitled as dialogue: grouping on punctuation alone glued two
+    and a half minutes of them into one sentence, and its translation stood on
+    screen through all of it."""
+    cues = [
+        cue(0.0, 1.0, "Gnar"),
+        cue(1.0, 1.0, "NT, it's over"),
+        cue(2.0, 1.0, "Comp felt kinda rough too"),
+        cue(3.0, 1.0, "Nah, we just played kinda bad"),
+        cue(4.0, 1.0, "if you ask me"),
+        cue(5.0, 1.0, "Sorry."),
+    ]
+    assert [s["text"] for s in _to_sentences(cues)] == [
+        "Gnar", "NT, it's over", "Comp felt kinda rough too",
+        "Nah, we just played kinda bad if you ask me", "Sorry.",
+    ]
+
+
+def test_a_track_that_marks_its_stops_reads_a_capital_as_a_name():
+    cues = [
+        cue(0.0, 1.0, "Nearly half again, between the"),
+        cue(1.0, 1.0, "Whoop and the other two."),
+        cue(2.0, 1.0, "That is a lot."),
+        cue(3.0, 1.0, "So I wore all three."),
+    ]
+    assert [s["text"] for s in _to_sentences(cues)][0] == (
+        "Nearly half again, between the Whoop and the other two."
+    )
+
+
+@pytest.mark.parametrize("opener", ["[Ruler] ", "- ", ">> ", "(laughs) "])
+def test_a_speaker_or_sound_tag_opens_a_line_of_its_own(opener):
+    cues = [cue(0.0, 1.0, "we fight, we win"), cue(1.0, 1.0, f"{opener}don't go deep."),
+            cue(2.0, 1.0, "Done.")]
+    assert [s["text"] for s in _to_sentences(cues)][:2] == [
+        "we fight, we win", f"{opener}don't go deep.".strip(),
+    ]
+
+
+def test_a_word_timed_tracks_cue_edges_are_not_breaks():
+    """Rolling captions cut their lines anywhere, a name included."""
+    cues = [
+        cue(0.0, 2.0, "talking to", [w(0.0, "talking"), w(1.0, " to")]),
+        cue(2.0, 2.0, "Chovy about it.", [w(2.0, " Chovy"), w(3.0, " about"), w(3.5, " it.")]),
+    ]
+    assert [s["text"] for s in _to_sentences(cues)] == ["talking to Chovy about it."]
+
+
+def test_a_sentence_that_never_stops_ends_at_a_line_past_the_cap():
+    line = "and so on " * 10
+    cues = [cue(float(i), 1.0, line.strip()) for i in range(12)] + [cue(12.0, 1.0, "end.")]
+    out = _to_sentences(cues)
+    assert len(out) > 1
+    assert all(len(s["text"]) < _MAX_SENTENCE + len(line) for s in out)
 
 
 @pytest.mark.parametrize("abbr", ["Dr.", "Mrs.", "vs.", "e.g."])
