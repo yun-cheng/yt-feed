@@ -12,6 +12,8 @@ data/local_thumbs/
 data/meili/
 data/live_chat/
 data/asr-audio/
+# The Whisper model's weights (app/asr.py sets HF_HOME here)
+.cache/
 frontend/dist/
 backend/config/*.json
 backend/config/subscriptions.yaml

@@ -512,7 +512,9 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   requirements.txt; `asr.available()` gates the offer, and the watch page hides it
   on a server that answers False. `pip install mlx-whisper
   opencc-python-reimplemented` turns it on. Note it pulls torch — about 500MB
-  installed, on top of ~1.5GB of model weights. Without OpenCC the feature still
+  installed, on top of ~1.5GB of model weights. The weights download on first use
+  into `.cache/huggingface/` at the project root, so they move with the folder;
+  an `HF_HOME` already set wins. Without OpenCC the feature still
   runs; the Chinese is just mostly-Traditional rather than reliably so.
 
   **Always Traditional Chinese.** Whisper writes Simplified for Mandarin whatever

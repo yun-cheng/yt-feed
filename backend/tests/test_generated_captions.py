@@ -14,6 +14,7 @@ none of them, and that a failure is a state you can see rather than a spinner.
 
 import asyncio
 import json
+import os
 
 import pytest
 
@@ -385,3 +386,21 @@ async def _empty_tracks():
 
 async def _tracks(subs):
     return subs, {}, None
+
+
+def test_the_model_is_kept_in_the_project_folder(monkeypatch):
+    import importlib
+    from pathlib import Path
+
+    monkeypatch.delenv("HF_HOME", raising=False)
+    importlib.reload(asr)
+    assert os.environ["HF_HOME"] == str(
+        Path(settings.project_root) / ".cache" / "huggingface")
+
+
+def test_an_hf_home_already_set_wins(monkeypatch, tmp_path):
+    import importlib
+
+    monkeypatch.setenv("HF_HOME", str(tmp_path))
+    importlib.reload(asr)
+    assert os.environ["HF_HOME"] == str(tmp_path)

@@ -39,10 +39,20 @@ hundred and twenty. After the first window nobody is ever waiting for this.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from app.config import settings
+
+# The model's weights (~1.5GB) are kept in the project folder, not ~/.cache, so
+# moving or deleting the folder takes them along and nothing outside it depends
+# on where it lives. huggingface_hub reads HF_HOME once, when it is first
+# imported, which is inside mlx_whisper, and only this module imports that. An
+# HF_HOME that is already set wins.
+os.environ.setdefault(
+    "HF_HOME", str(Path(settings.project_root) / ".cache" / "huggingface"))
 
 # Whisper is one model on one GPU: a second concurrent transcription doesn't run
 # twice as fast, it runs both at half speed and doubles the time to the first
