@@ -1553,7 +1553,10 @@ Other details:
   It arrives as whole **sentences** with the time span each covers, not per-cue text,
   because a cue's mid-clause split point doesn't survive translation (see the
   backend's `_to_sentences`) — so it renders one complete sentence at a time against a
-  source that may still be rolling word-by-word. The row shows "翻譯中…" while a
+  source that may still be rolling word-by-word. Each leaves the screen at its
+  `until`, when its source lines do, not at `end`, where the next sentence starts:
+  the read-ahead walks `end`, so a translated stretch has no holes, but a line shown
+  through the silence after it reads as out of step. The row shows "翻譯中…" while a
   request is in flight.
 
   It is **never restored from saved prefs** in either slot — unlike the other caption

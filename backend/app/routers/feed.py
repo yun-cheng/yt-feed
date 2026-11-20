@@ -702,7 +702,11 @@ def _line_breaks(cues: list[dict]) -> list[bool]:
 
 
 def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
-    """Group caption cues into whole SENTENCES: [{start, end, text}].
+    """Group caption cues into whole SENTENCES: [{start, end, until, text}].
+
+    `end` is where the next sentence starts, so the sentences cover the track
+    end to end; `until` is where this one's own lines leave the screen, which
+    is sooner when a silence follows it.
 
     Cues are split at arbitrary phrase boundaries, and those split points do not
     survive translation — English trails its modifiers where Chinese leads them,
@@ -745,7 +749,8 @@ def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
     for c, opens in zip(cues, breaks):
         words = c.get("words") or [{"t": c["start"], "text": c.get("text", "")}]
         toks.extend(
-            {"t": w["t"], "text": w.get("text", ""), "cue": j == 0, "opens": opens and j == 0}
+            {"t": w["t"], "text": w.get("text", ""), "cue": j == 0, "opens": opens and j == 0,
+             "until": c["start"] + c["dur"]}
             for j, w in enumerate(words)
         )
 
@@ -770,7 +775,7 @@ def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
             s += (" " + t) if gap else t
         s = s.strip()
         if s:
-            sents.append({"start": buf[0]["t"], "text": s})
+            sents.append({"start": buf[0]["t"], "until": buf[-1]["until"], "text": s})
         buf.clear()
 
     held = 0  # characters in `buf`, near enough
@@ -788,12 +793,12 @@ def _to_sentences(cues: list[dict], *, legacy: bool = False) -> list[dict]:
     flush()
 
     last_end = cues[-1]["start"] + cues[-1]["dur"]
-    return [
-        {"start": s["start"],
-         "end": sents[i + 1]["start"] if i + 1 < len(sents) else last_end,
-         "text": s["text"]}
-        for i, s in enumerate(sents)
-    ]
+    out = []
+    for i, s in enumerate(sents):
+        end = sents[i + 1]["start"] if i + 1 < len(sents) else last_end
+        until = s["until"] if s["start"] < s["until"] < end else end
+        out.append({"start": s["start"], "end": end, "until": until, "text": s["text"]})
+    return out
 
 
 # Numbered lines, not JSON: the model reliably drops a quote or a comma somewhere
@@ -1347,7 +1352,7 @@ async def get_translated_captions(
 ):
     """Translate a run of SENTENCES around playback position `at`.
 
-    Returns `{lang, sentences: [{start, end, text}]}` — whole translated
+    Returns `{lang, sentences: [{start, end, until, text}]}` — whole translated
     sentences with the time span they cover, ready to render as-is.
 
     Sentences, not cues, because a cue is an arbitrary mid-clause fragment whose
@@ -1417,7 +1422,8 @@ async def get_translated_captions(
     return {
         "lang": _TRANSLATE_TARGET,
         "sentences": [
-            {"start": sents[i]["start"], "end": sents[i]["end"], "text": text}
+            {"start": sents[i]["start"], "end": sents[i]["end"],
+             "until": sents[i]["until"], "text": text}
             for i in range(idx, end)
             if (text := known.get(sents[i]["text"]) or shown.get(i))
         ],

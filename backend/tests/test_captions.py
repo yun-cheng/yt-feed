@@ -54,6 +54,21 @@ def test_sentences_span_from_their_start_to_the_next_one():
     assert out[1]["end"] == 8.0
 
 
+def test_a_sentence_is_up_until_its_own_lines_end():
+    """A translation standing through the silence after its line read as out
+    of step: "J4" stayed up forty seconds after the comms went quiet."""
+    cues = [cue(0.0, 1.0, "Look"), cue(1.0, 1.0, "out."), cue(40.0, 2.0, "Back.")]
+    out = _to_sentences(cues)
+    assert (out[0]["end"], out[0]["until"]) == (40.0, 2.0)
+    assert out[1]["until"] == 42.0
+
+
+def test_a_sentence_running_into_the_next_is_up_until_it_starts():
+    words = [w(0.0, "One."), w(1.0, " Two.")]
+    out = _to_sentences([cue(0.0, 3.0, "One. Two.", words)])
+    assert out[0]["until"] == out[0]["end"] == 1.0
+
+
 def test_an_unpunctuated_track_keeps_one_cue_per_line():
     """Chinese ASR often has no sentence punctuation at all — there is nothing
     to group on, and each cue is already a standalone phrase."""

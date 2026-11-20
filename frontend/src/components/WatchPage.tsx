@@ -569,7 +569,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   const [translating, setTranslating] = useState(false)
   // Translated sentences with the time span each covers, accumulated as playback
   // advances. Sparse: only what's been reached (plus the read-ahead) is translated.
-  const [aiSents, setAiSents] = useState<{ start: number; end: number; text: string }[]>([])
+  // `end` is where the next sentence starts (so a buffered stretch has no holes
+  // for the lookahead to stop at); `until` is when this one's own lines end.
+  const [aiSents, setAiSents] = useState<{ start: number; end: number; until?: number; text: string }[]>([])
   // One request at a time, so the 120ms play-head tick can't pile up duplicates.
   // A ref: this must not trigger a re-render.
   const aiBusy = useRef(false)
@@ -1693,8 +1695,9 @@ export default function WatchPage({ videoId, video, nextFilter = '', startAt, in
   // AI (main or second): each translated sentence already covers its own span, and
   // partially buffered stretches simply render as far as they've got. A long one
   // is shown a piece at a time, as a long word-timed sentence is (see splitTimed).
+  // Each leaves with its source line, not in the silence before the next one.
   const aiCues = useMemo<Cue[]>(
-    () => aiSents.flatMap(splitTimed).map((s) => ({
+    () => aiSents.map((s) => ({ start: s.start, end: s.until ?? s.end, text: s.text })).flatMap(splitTimed).map((s) => ({
       start: s.start, dur: s.end - s.start, text: s.text,
       words: [{ t: s.start, text: s.text }],
     })),
