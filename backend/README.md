@@ -625,6 +625,16 @@ through the bounded/de-duplicated/negatively-cached pool (see Concurrency notes)
   track, not the requested code, so `""` (native) and `"en"` on an English video
   don't translate — and pay — twice.
 
+  With no source asked for, it translates from the **language spoken**
+  (`_spoken_track`) when the uploaded subtitles are all in other languages
+  and YouTube has its own captions in the spoken one, though the display's
+  default stays the uploaded track. A Korean team's English subtitles are
+  themselves a translation, and Chinese made from them a translation of a
+  translation. The Korean speech recognition gets ordinary talk closer to
+  what was said and game terms worse (`NT` heard as 카밀, Camille). A track
+  asked for by name is still the source, so English as the main track with
+  the translation under it still translates the English.
+
   Things that make it fast, in descending order of impact:
   1. Model: `llm_translate_model` is `google/gemini-2.5-flash-lite`. Read while
      the video plays, so it's picked for speed — a 1.6s median against 5.0s for
@@ -2439,7 +2449,7 @@ no per-test decorator). What's covered:
 | `test_search.py` | searching inside one channel: which rows survive the text filter, the window and the sort still applying over them, relevance keeping Meilisearch's order through the ranking pass (and falling back to the default with no query to be relevant to), and nothing matching being an empty page rather than an unfiltered one — plus `matching_video_ids` itself against a stubbed index: a blank query asking it nothing, the request confined to the one channel with the cap as its limit, a hit with no id dropped before it reaches a `WHERE`, and an index that is down answering with no results rather than a 500 |
 | `test_search_sync.py` | keeping Meilisearch in step without flooding it: a scan pushing only the videos it touched, with their channel's name; nothing pushed onto a queue of waiting pushes, settings tasks not counting as one; startup leaving an index in step alone and rebuilding one that isn't; a full reindex taking out what the database no longer has, page by page |
 | `test_channel_search.py` | filtering the Channels page by `?q=`: names and topics both matching, relevance leading with the name that starts with the query while any other sort keeps the page's own order, a typo reaching a channel only through the stubbed index, and a dead index still matching what it plainly can rather than emptying the page |
-| `test_caption_translation.py` | the AI translation's store: each line kept against its source sentence, a line the model didn't return shown as its source but not kept (so it's asked for again), and a row from before `by_source` read by the split it was numbered against — or dropped when a line in it is its own source |
+| `test_caption_translation.py` | the source a translation starts from (the language spoken, when the uploaded subtitles are all in another; a track asked for by name), and the AI translation's store: each line kept against its source sentence, a line the model didn't return shown as its source but not kept (so it's asked for again), and a row from before `by_source` read by the split it was numbered against — or dropped when a line in it is its own source |
 | `test_captions.py` | sentence grouping (a title like "Mr." ends no sentence; a hand-made track that writes no stops breaks at its speaker tags and capitals, one that does reads a capital as a name; a sentence that never stops ends past the cap; each is up only until its own lines end), numbered-reply parsing (a reply short at the end is a shifted one), and a track download that fails once being retried rather than cached as no captions |
 | `test_live_chat.py` | trimming a chat replay: time, author and text with standard emoji inline and custom ones as pictures, the roles that change a name (Verified doesn't), Super Chats and new members kept and the rest dropped, stream order whatever order the pages came in; progress read off the last whole page of a download under way; the tab offered only for a finished stream with chat. Then the endpoint with the download faked: fetched once and served after, the raw file gone, a failure saying why and retried on asking, and anything but a video id refused |
 | `test_dictionary.py` | a hovered letter bringing back its whole term ("ice cream" from inside "cream"), an inflected word finding its headword, a comma, a space and a full stop being no entry, positions counted in UTF-16 units as the page counts them, one section per ticked dictionary in Dictionary.app's order, the public call still answering when the private ones are gone, and a server with no dictionary saying so (503). The look-ups themselves are skipped off a Mac |

@@ -1557,7 +1557,9 @@ Other details:
   `until`, when its source lines do, not at `end`, where the next sentence starts:
   the read-ahead walks `end`, so a translated stretch has no holes, but a line shown
   through the silence after it reads as out of step. The row shows "翻譯中…" while a
-  request is in flight.
+  request is in flight. As Main it translates the video's own track, from the
+  language spoken when the uploaded subtitles are all in another (the backend's
+  `_spoken_track`); as Second, whatever Main shows.
 
   It is **never restored from saved prefs** in either slot — unlike the other caption
   settings it's an explicit per-video opt-in, because auto-firing it would spend

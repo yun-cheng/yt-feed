@@ -1345,6 +1345,34 @@ async def get_captions(video_id: str, lang: str = ""):
     return await _captions_cached(video_id, lang) or {"cues": []}
 
 
+async def _spoken_track(video_id: str) -> str:
+    """The track the AI translation starts from when none was asked for: the
+    video's own, as for display, unless the uploaded subtitles are all in
+    another language and YouTube has captions in the one spoken — then those,
+    machine-made as they are.
+
+    The uploaded track there is itself a translation (a Korean team's English
+    subtitles), and the Chinese made from it a translation of a translation:
+    whatever the English had already lost, the jokes first, stays lost. The
+    spoken words, misheard here and there, are the closer source. '' leaves it
+    to the display's choice.
+    """
+    tracks = await _caption_tracks(video_id)
+    if not tracks:
+        return ""
+    subs, auto, spoken = tracks
+    if not spoken or not subs:
+        return ""
+    base = spoken.split("-")[0].lower()
+    if any(k.split("-")[0].lower() == base for k in subs):
+        return ""
+    for key, tracks_ in auto.items():
+        t = _json3(tracks_)
+        if key.split("-")[0].lower() == base and t and "tlang=" not in t.get("url", ""):
+            return base
+    return ""
+
+
 @router.get("/captions-translate/{video_id}")
 async def get_translated_captions(
     video_id: str, lang: str = "", at: float = 0.0, count: int = 10,
@@ -1367,7 +1395,7 @@ async def get_translated_captions(
     free. `lang` is the SOURCE track (empty = native); the video's title and
     channel go to the model as context for domain wording.
     """
-    src = await _captions_cached(video_id, lang)
+    src = await _captions_cached(video_id, lang or await _spoken_track(video_id))
     cues = (src or {}).get("cues") or []
     sents = _to_sentences(cues)
     if not sents:

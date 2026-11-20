@@ -27,6 +27,62 @@ def captions(monkeypatch):
     async def _cached(video_id, lang):
         return {"cues": CUES, "lang": "en"}
     monkeypatch.setattr(feed, "_captions_cached", _cached)
+    monkeypatch.setattr(feed, "_caption_tracks", _no_tracks)
+
+
+async def _no_tracks(video_id):
+    return None
+
+
+def track(lang, *, translated=False):
+    url = f"https://yt/api/timedtext?lang={lang}" + ("&tlang=zh-Hant" if translated else "")
+    return [{"ext": "json3", "url": url}]
+
+
+@pytest.mark.parametrize("subs, auto, spoken, source", [
+    # A Korean video with only English subtitles: from what's said in Korean.
+    ({"en": track("en")}, {"ko-orig": track("ko"), "en": track("en", translated=True)}, "ko", "ko"),
+    # Subtitles in the spoken language are the source, as they are on screen.
+    ({"ko": track("ko"), "en": track("en")}, {"ko": track("ko")}, "ko", ""),
+    # No subtitles: the display already picks the spoken language's captions.
+    ({}, {"ko": track("ko")}, "ko", ""),
+    # Nothing known to be spoken, or nothing captioned in it but YouTube's own
+    # translations: the subtitles there are.
+    ({"en": track("en")}, {"ko": track("ko")}, None, ""),
+    ({"en": track("en")}, {"ko": track("ko", translated=True)}, "ko", ""),
+])
+async def test_the_translation_starts_from_the_language_spoken(client, monkeypatch, subs, auto, spoken, source):
+    asked = []
+
+    async def _cached(video_id, lang):
+        asked.append(lang)
+        return {"cues": CUES, "lang": lang or "en"}
+
+    async def _tracks(video_id):
+        return subs, auto, spoken
+
+    monkeypatch.setattr(feed, "_captions_cached", _cached)
+    monkeypatch.setattr(feed, "_caption_tracks", _tracks)
+    translator(monkeypatch, lambda lines: [f"zh {t}" for t in lines])
+    await client.get("/api/feed/captions-translate/vid1?at=0&count=3")
+    assert asked == [source]
+
+
+async def test_a_track_asked_for_is_the_source(client, monkeypatch):
+    asked = []
+
+    async def _cached(video_id, lang):
+        asked.append(lang)
+        return {"cues": CUES, "lang": lang}
+
+    async def _tracks(video_id):
+        raise AssertionError("no need to look")
+
+    monkeypatch.setattr(feed, "_captions_cached", _cached)
+    monkeypatch.setattr(feed, "_caption_tracks", _tracks)
+    translator(monkeypatch, lambda lines: [f"zh {t}" for t in lines])
+    await client.get("/api/feed/captions-translate/vid1?lang=en&at=0&count=3")
+    assert asked == ["en"]
 
 
 def translator(monkeypatch, reply):
